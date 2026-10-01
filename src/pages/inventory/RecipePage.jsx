@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { useRestaurant } from '@/context/restaurant'
 import { calculateMixCost, costInside, deactivatedIn } from '@/lib/mixCost'
 import RecipeIngredientForm from '@/components/inventory/RecipeIngredientForm'
+import { useSaveOnce } from '@/components/ui/useSaveOnce'
 import Modal from '@/components/ui/Modal'
 import { friendlyError } from '@/lib/errors'
 import { fmtMoney, fmtUnitCost, namesList } from '@/lib/format'
@@ -210,9 +211,16 @@ export default function RecipePage() {
     return newErrors
   }
 
-  async function handleSave(e) {
-    e.preventDefault()
+  // A second tap on Add while the first was on its way put the ingredient in
+  // twice, and the MIX was costed with it twice. See useSaveOnce.
+  const [saving, once] = useSaveOnce()
 
+  function handleSave(e) {
+    e.preventDefault()
+    return once(saveLine)
+  }
+
+  async function saveLine() {
     setFormProblem('')
 
     const newErrors = validate()
@@ -433,6 +441,7 @@ export default function RecipePage() {
             onSubmit={handleSave}
             onCancel={resetForm}
             submitLabel="Add Ingredient"
+            saving={saving}
             errors={errors}
             availableProducts={availableProducts}
           />
@@ -618,6 +627,7 @@ export default function RecipePage() {
               onSubmit={handleSave}
               onCancel={resetForm}
               submitLabel="Save changes"
+              saving={saving}
               errors={errors}
               availableProducts={availableProducts}
             />

@@ -15,6 +15,7 @@ import { useConfirm } from '@/context/confirm'
 import BackButton from '@/components/ui/BackButton'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import ProductPriceHistory from '@/components/inventory/ProductPriceHistory'
+import { useSaveOnce } from '@/components/ui/useSaveOnce'
 
 // Every price we can buy one product at, for the restaurant you are working in.
 //
@@ -139,9 +140,17 @@ export default function ProductPricesPage() {
 
     const validate = () => priceProblem(formData)
 
-    async function handleSave(e) {
-        e.preventDefault()
+    // A second tap on Save while the first was on its way added the price
+    // twice, and a first price twice is two prices both marked preferred. See
+    // useSaveOnce.
+    const [saving, once] = useSaveOnce()
 
+    function handleSave(e) {
+        e.preventDefault()
+        return once(savePrice)
+    }
+
+    async function savePrice() {
         setFormProblem('')
 
         const newErrors = validate()
@@ -379,6 +388,7 @@ export default function ProductPricesPage() {
                         onSubmit={handleSave}
                         onCancel={resetForm}
                         submitLabel="Add Price"
+                        saving={saving}
                         errors={errors}
                         suppliers={suppliers}
                         unit={product?.unit}
@@ -576,6 +586,7 @@ export default function ProductPricesPage() {
                             onSubmit={handleSave}
                             onCancel={resetForm}
                             submitLabel="Save changes"
+                            saving={saving}
                             errors={errors}
                             suppliers={suppliers}
                             unit={product?.unit}

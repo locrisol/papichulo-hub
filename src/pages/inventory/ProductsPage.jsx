@@ -14,6 +14,7 @@ import {
   heldFor, partiesIn, prefillFrom,
 } from '@/lib/products'
 import SearchBox from '@/components/ui/SearchBox'
+import { useSaveOnce } from '@/components/ui/useSaveOnce'
 import RowActions from '@/components/ui/RowActions'
 import { useKeepScroll } from '@/context/scroll'
 import { sectionColour, productInk, DRINK_COLOUR } from '@/lib/sections'
@@ -235,6 +236,13 @@ export default function ProductsPage() {
   // page that is not on screen when you press it.
   const [formProblem, setFormProblem] = useState('')
   const [errors, setErrors] = useState({})
+  // A second tap on Save while the first is on its way ran the whole save
+  // again and made a second product. See useSaveOnce.
+  const [saving, once] = useSaveOnce()
+  // While it asks whether to save without a price or allergens. Nothing is
+  // being saved yet, so the button behind the question keeps its own name
+  // rather than saying Saving. A second tap is still turned away by once.
+  const [asking, setAsking] = useState(false)
   const [search, setSearch] = useState('')
   // Which sections are showing. Empty means all of them, which is the same
   // thing and one fewer state to keep straight than a list that has to contain
@@ -459,10 +467,62 @@ export default function ProductsPage() {
     return newErrors
   }
 
-  async function handleSave(e) {
+  function handleSave(e) {
     e.preventDefault()
+    return once(saveProduct)
+  }
 
+  // The pack sizes on a price, swapped for the ones on the form.
+  //
+  // Replaced rather than reconciled: there are a handful of them, they have no
+  // history worth keeping, and working out which one somebody renamed is a lot
+  // of care for a list of three. The new ones go in before the old ones come
+  // out, and the old ones go by their own ids. It used to delete first and
+  // check nothing, so a put in that failed lost every pack and the dialog
+  // closed as if it had saved. Hands back the error, or nothing.
+  async function replacePacks(priceId) {
+    const { data: old, error: readErr } = await supabase
+      .from('price_count_units').select('id').eq('price_id', priceId)
+    if (readErr) return readErr
+
+    if (formats.packs.length > 0) {
+      const { error: insertErr } = await supabase.from('price_count_units').insert(
+        formats.packs.map((pack, order) => ({
+          price_id: priceId,
+          label: pack.label,
+          factor: pack.factor,
+          sort_order: order,
+        })),
+      )
+      if (insertErr) return insertErr
+    }
+
+    const oldIds = (old || []).map(u => u.id)
+    if (oldIds.length > 0) {
+      const { error: deleteErr } = await supabase.from('price_count_units').delete().in('id', oldIds)
+      if (deleteErr) return deleteErr
+    }
+    return null
+  }
+
+  // What went in and what did not, when a save gets part of the way. The
+  // product row is the first write and the rest hang off it, so by the time
+  // any of them fails the product exists.
+  //
+  // missed is a list of { what, plural, error, next }: what did not save, and
+  // the sentence saying where to add it. One reason is enough, since on a weak
+  // signal it is the same one each time.
+  function savedButNot(name, missed) {
+    const what = missed.map(m => m.what)
+    const list = what.length > 1 ? `${what.slice(0, -1).join(', ')} and ${what.at(-1)}` : what[0]
+    const verb = missed.length > 1 || missed[0].plural ? 'were' : 'was'
+    const reason = friendlyError(missed[0].error).replace(/\.?$/, '.')
+    return `${name} was saved, but its ${list} ${verb} not: ${reason} ${missed.map(m => m.next).join(' ')}`
+  }
+
+  async function saveProduct() {
     setFormProblem('')
+    setError('')
 
     const newErrors = validate()
     // The price block is only checked if somebody started filling it in. Left
@@ -530,6 +590,7 @@ export default function ProductsPage() {
       // allergen sheet asks customers about any dish the product goes into
       // to see staff, so that is what the question says.
       if (missing.length > 0) {
+        setAsking(true)
         const ok = await confirm({
           title: 'Save without ' + missing.join(' or ') + '?',
           message: missing.length === 2
@@ -540,6 +601,7 @@ export default function ProductsPage() {
           confirmLabel: 'Save anyway',
           cancelLabel: 'Go back',
         })
+        setAsking(false)
         if (!ok) {
           // Open whichever one is missing, so Go back lands somewhere useful
           // rather than on the form they were already looking at.
@@ -555,6 +617,7 @@ export default function ProductsPage() {
     // Its own branch rather than the one above: that one would ask about a
     // supplier price and open a section a MIX never shows.
     if (!editingProduct && formData.is_mix && recipe.lines.length === 0) {
+      setAsking(true)
       const ok = await confirm({
         title: 'Save without a recipe?',
         message: 'Nothing goes into it yet, so it has no cost and its allergens are not known. '
@@ -562,6 +625,7 @@ export default function ProductsPage() {
         confirmLabel: 'Save anyway',
         cancelLabel: 'Go back',
       })
+      setAsking(false)
       if (!ok) {
         setOpenExtra('recipe')
         return
@@ -617,28 +681,27 @@ export default function ProductsPage() {
                 is_preferred: true,
               }).select().single()
 
+        // An edit stays open when part of it fails, and Save changes again
+        // is safe: the product and the price are updated, not added. The
+        // prices are read again first, so a price this save has just added
+        // is the one updated next time rather than a second one.
         if (priceErr) {
-          setFormProblem(`${formData.name} was saved, but the price was not: ${friendlyError(priceErr)}`)
+          setFormProblem(savedButNot(formData.name,
+            [{ what: 'price', error: priceErr, next: 'Press Save changes to try again.' }]))
           fetchProducts()
           return
         }
 
         await recordPrice(editingProduct.id, saved, existing || null)
 
-        // The packs are replaced rather than reconciled. There are a handful of
-        // them, they have no history worth keeping, and working out which one
-        // somebody renamed is a lot of care for a list of three.
         if (saved) {
-          await supabase.from('price_count_units').delete().eq('price_id', saved.id)
-          if (formats.packs.length > 0) {
-            await supabase.from('price_count_units').insert(
-              formats.packs.map((pack, order) => ({
-                price_id: saved.id,
-                label: pack.label,
-                factor: pack.factor,
-                sort_order: order,
-              })),
-            )
+          const packsErr = await replacePacks(saved.id)
+          if (packsErr) {
+            setFormProblem(savedButNot(formData.name,
+              [{ what: 'pack sizes', plural: true, error: packsErr, next: 'Press Save changes to try again.' }]))
+            await fetchPrices()
+            fetchProducts()
+            return
           }
         }
       }
@@ -654,7 +717,9 @@ export default function ProductsPage() {
             { onConflict: 'product_id' })
 
         if (allergenErr) {
-          setFormProblem(`${formData.name} was saved, but the allergens were not: ${friendlyError(allergenErr)}`)
+          setFormProblem(savedButNot(formData.name,
+            [{ what: 'allergens', plural: true, error: allergenErr, next: 'Press Save changes to try again.' }]))
+          await fetchPrices()
           fetchProducts()
           return
         }
@@ -693,6 +758,18 @@ export default function ProductsPage() {
         fetchRecipeLines()
       }
 
+      // Once the product is in, anything after it that fails closes the form
+      // and says what is missing and where to add it. Left open, the form
+      // still said Add Product, and pressing it again made a second product
+      // with the same name. The rest of the product is on its own screens.
+      //
+      // A failure does not stop the writes after it unless they hang off it:
+      // the packs need the price, but the recipe and the allergens need only
+      // the product. Stopping at the price threw the ticked allergens away
+      // with the form, and a product with no allergen row reads to a customer
+      // as having none of the fourteen.
+      const missed = []
+
       // The first price on a product is the preferred one, since it is the
       // only one. The same rule the prices screen uses.
       if (wantsPrice && data) {
@@ -708,28 +785,21 @@ export default function ProductsPage() {
           .select()
           .single()
 
-        // The product is saved either way. Saying so and leaving the form open
-        // would be worse than saying the price did not take: the product would
-        // be entered twice.
+        const packsMissed = { what: 'pack sizes', plural: true, next: 'Add the pack sizes under Formats on its Prices page.' }
+
         if (priceErr) {
-          setFormProblem(`${data.name} was saved, but the price was not: ${friendlyError(priceErr)}`)
-          fetchProducts()
-          return
-        }
+          missed.push({ what: 'price', error: priceErr, next: 'Add the price from its Prices page.' })
+          // The packs typed in go with it, since they have nothing to hang off.
+          if (formats.packs.length > 0) missed.push({ ...packsMissed, error: priceErr })
+        } else {
+          await recordPrice(data.id, newPrice, null)
 
-        await recordPrice(data.id, newPrice, null)
-
-        // The packs, which belong to the price rather than to the product and
-        // so have to wait for it the same way the recipe waits for the product.
-        if (newPrice && formats.packs.length > 0) {
-          await supabase.from('price_count_units').insert(
-            formats.packs.map((pack, order) => ({
-              price_id: newPrice.id,
-              label: pack.label,
-              factor: pack.factor,
-              sort_order: order,
-            })),
-          )
+          // The packs, which belong to the price rather than to the product and
+          // so have to wait for it the same way the recipe waits for the product.
+          if (newPrice) {
+            const packsErr = await replacePacks(newPrice.id)
+            if (packsErr) missed.push({ ...packsMissed, error: packsErr })
+          }
         }
       }
 
@@ -746,9 +816,7 @@ export default function ProductsPage() {
           })))
 
         if (recipeErr) {
-          setFormProblem(`${data.name} was saved, but the recipe was not: ${friendlyError(recipeErr)}`)
-          refresh()
-          return
+          missed.push({ what: 'recipe', error: recipeErr, next: 'Add the ingredients from its Recipe page.' })
         }
       }
 
@@ -763,12 +831,11 @@ export default function ProductsPage() {
           .insert({ product_id: data.id, ...allergens })
 
         if (allergenErr) {
-          setFormProblem(`${data.name} was saved, but the allergens were not: ${friendlyError(allergenErr)}`)
-          refresh()
-          return
+          missed.push({ what: 'allergens', plural: true, error: allergenErr, next: 'Set the allergens from its Allergens page.' })
         }
       }
 
+      if (missed.length > 0) setError(savedButNot(data.name, missed))
       refresh()
       resetForm()
     }
@@ -1108,6 +1175,7 @@ export default function ProductsPage() {
             onSubmit={handleSave}
             onCancel={resetForm}
             submitLabel="Add Product"
+            saving={saving && !asking}
             errors={errors}
             extras
             priceForm={priceForm}
@@ -1289,6 +1357,7 @@ export default function ProductsPage() {
                       onSubmit={handleSave}
                       onCancel={resetForm}
                       submitLabel="Save Changes"
+                      saving={saving && !asking}
                       errors={errors}
                       nameClash={nameClash}
                       heldForNames={heldForNames}
@@ -1491,6 +1560,7 @@ export default function ProductsPage() {
               onSubmit={handleSave}
               onCancel={resetForm}
               submitLabel="Save changes"
+              saving={saving && !asking}
               errors={errors}
               nameClash={nameClash}
               heldForNames={heldForNames}

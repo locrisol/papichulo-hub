@@ -147,7 +147,7 @@ export function PriceFields({ formData, onChange, errors = {}, suppliers, unit }
 // loose, and the arithmetic behind both lives in lib/productPrice.
 export default function PriceForm({
   problem,
-  formData, onChange, onSubmit, onCancel, submitLabel, errors, suppliers, unit,
+  formData, onChange, onSubmit, onCancel, submitLabel, errors, suppliers, unit, saving = false,
 }) {
   return (
     <form onSubmit={onSubmit}>
@@ -170,9 +170,10 @@ export default function PriceForm({
       <div className="flex gap-3">
         <button
           type="submit"
+          disabled={saving}
           className={primaryButton()}
         >
-          {submitLabel}
+          {saving ? 'Saving...' : submitLabel}
         </button>
         <button
           type="button"

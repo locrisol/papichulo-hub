@@ -35,7 +35,7 @@ export default function ProductForm({
   recipe, onRecipeChange, ingredientOptions,
   allergens, onAllergenChange, allergensAnswered, onNoAllergens,
   extras, openExtra, onOpenExtra,
-  otherPriceCount = 0, onOpenPrices, recipeBlock = true,
+  otherPriceCount = 0, onOpenPrices, recipeBlock = true, saving = false,
 }) {
   // Both of these only make sense for something you buy. A mix has no supplier
   // by definition, and its allergens come from its recipe rather than from
@@ -664,9 +664,10 @@ export default function ProductForm({
       <div className="flex gap-3">
         <button
           type="submit"
+          disabled={saving}
           className={primaryButton()}
         >
-          {submitLabel}
+          {saving ? 'Saving...' : submitLabel}
         </button>
         <button
           type="button"

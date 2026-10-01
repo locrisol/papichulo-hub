@@ -13,7 +13,7 @@ import ErrorBanner from '@/components/ui/ErrorBanner'
 // Typing it in grams rather than in fractions of a kilo is QuantityInUnit's
 // job, which the product form uses as well so a recipe reads the same wherever
 // it is written.
-export default function RecipeIngredientForm({ problem, formData, onChange, onSubmit, onCancel, submitLabel, errors, availableProducts }) {
+export default function RecipeIngredientForm({ problem, formData, onChange, onSubmit, onCancel, submitLabel, errors, availableProducts, saving = false }) {
   const ingredient = availableProducts.find(p => p.id === formData.ingredient_product_id)
   const ingredientUnit = ingredient?.unit || 'unit'
   const ingredientSelectRef = useRef(null)
@@ -75,9 +75,10 @@ export default function RecipeIngredientForm({ problem, formData, onChange, onSu
       <div className="flex gap-3">
         <button
           type="submit"
+          disabled={saving}
           className={primaryButton()}
         >
-          {submitLabel}
+          {saving ? 'Saving...' : submitLabel}
         </button>
         <button
           type="button"

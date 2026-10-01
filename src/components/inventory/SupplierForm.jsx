@@ -20,7 +20,7 @@ const CATEGORIES = [
     { value: 'other', label: 'Other' },
 ]
 
-export default function SupplierForm({ problem, formData, onChange, onSubmit, onCancel, submitLabel }) {
+export default function SupplierForm({ problem, formData, onChange, onSubmit, onCancel, submitLabel, saving = false }) {
 
     return (
         <form onSubmit={onSubmit}>
@@ -95,9 +95,10 @@ export default function SupplierForm({ problem, formData, onChange, onSubmit, on
                 </button>
                 <button
                     type="submit"
+                    disabled={saving}
                     className={primaryButton()}
                 >
-                    {submitLabel}
+                    {saving ? 'Saving...' : submitLabel}
                 </button>
             </div>
         </form>

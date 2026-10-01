@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
 import { screen, within, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { makeQuery, renderWithRouter, tableOf } from '@/test/helpers'
+import { heldQuery, makeQuery, renderWithRouter, tableOf } from '@/test/helpers'
 
 // The product catalogue at Point Campus. Invented products and prices.
 
@@ -19,13 +19,25 @@ const SYSCO = {
 
 let tables
 let written
+// refused: a table whose writes come back with an error, the way they do on a
+// weak signal. held: a table whose inserts wait until the test lets them go.
+let refused
+let held
+// ask: what the are-you-sure question answers. Yes, unless a test says.
+let ask
+const WEAK_SIGNAL = { message: 'Failed to fetch' }
 const db = {
     from: vi.fn(table => {
         const q = tableOf(tables[table] || [])
         q.insert = vi.fn(rows => {
             written.push({ table, how: 'insert', row: rows })
+            if (refused === table) return makeQuery({ data: null, error: WEAK_SIGNAL })
             const one = Array.isArray(rows) ? rows[0] : rows
-            return makeQuery({ data: { id: `new${written.length}`, ...one }, error: null })
+            const answer = { data: { id: `new${written.length}`, ...one }, error: null }
+            if (held?.table !== table) return makeQuery(answer)
+            const write = heldQuery(answer)
+            held.releases.push(write.release)
+            return write.chain
         })
         // The row an edit saved, as the database hands it back. Each test has
         // one row in the table being edited, so it is that one.
@@ -44,13 +56,7 @@ const db = {
 vi.mock('@/lib/supabase', () => ({ supabase: new Proxy({}, { get: (_, k) => db[k] }) }))
 vi.mock('@/context/auth', () => ({ useAuth: () => ({ user: { id: 'u1', role: 'store_manager' } }) }))
 vi.mock('@/context/restaurant', () => ({ useRestaurant: () => ({ activeRestaurant: { id: 'r1', name: 'Point Campus' } }) }))
-// Every question the page asks, and the answer given: yes unless a test says
-// otherwise.
-const asked = []
-let answer
-vi.mock('@/context/confirm', () => ({
-    useConfirm: () => options => { asked.push(options); return Promise.resolve(answer) },
-}))
+vi.mock('@/context/confirm', () => ({ useConfirm: () => options => ask(options) }))
 vi.mock('@/context/scroll', () => ({ useKeepScroll: () => {} }))
 
 const { default: ProductsPage } = await import('./ProductsPage')
@@ -62,8 +68,9 @@ beforeAll(() => {
 
 beforeEach(() => {
     written = []
-    asked.length = 0
-    answer = true
+    refused = null
+    held = null
+    ask = async () => true
     tables = {
         products: [PEPPERS],
         suppliers: SUPPLIERS,
@@ -134,6 +141,166 @@ describe('the price on the product form', () => {
     })
 })
 
+// Adding a product is up to five writes, and the product row is the first.
+// When a later one failed the form stayed open saying Add Product, and saving
+// again made a second product with the same name.
+describe('adding a product when part of it does not save', () => {
+    async function addOnions(clicker) {
+        tables.products = []
+        tables.product_supplier_prices = []
+        renderWithRouter(<ProductsPage />)
+        await clicker.click(await screen.findByRole('button', { name: '+ Add Product' }))
+        const form = within(screen.getByText('New Product').parentElement)
+        await clicker.type(box(form, 'Name'), 'Red Onions')
+        await clicker.click(form.getByRole('button', { name: /Who you buy it from/ }))
+        await clicker.selectOptions(form.getByText('Supplier').parentElement.querySelector('select'), 's1')
+        await clicker.type(box(form, 'Price per Case (€)'), '9')
+        await clicker.type(box(form, 'Units per Case (KG)'), '10')
+        return form
+    }
+
+    it('closes the form and says where to add the price', async () => {
+        refused = 'product_supplier_prices'
+        const clicker = userEvent.setup()
+        const form = await addOnions(clicker)
+        await clicker.click(form.getByRole('button', { name: 'Add Product' }))
+
+        expect(await screen.findByText(/Red Onions was saved, but its price was not/)).toBeInTheDocument()
+        expect(screen.getByText(/Add the price from its Prices page/)).toBeInTheDocument()
+        expect(screen.queryByText('New Product')).not.toBeInTheDocument()
+        expect(written.filter(w => w.table === 'products' && w.how === 'insert')).toHaveLength(1)
+    })
+
+    // The allergens do not hang off the price, so a price that fails is no
+    // reason to drop them. They were thrown away with the form, and a product
+    // with no allergen row reads to a customer as having none of the fourteen.
+    it('still saves the allergens when the price does not', async () => {
+        refused = 'product_supplier_prices'
+        const clicker = userEvent.setup()
+        const form = await addOnions(clicker)
+        await clicker.click(form.getByRole('button', { name: 'Declare the product has no allergens' }))
+        await clicker.click(form.getByRole('button', { name: 'Add Product' }))
+
+        expect(await screen.findByText(/Red Onions was saved, but its price was not/)).toBeInTheDocument()
+        expect(written.filter(w => w.table === 'product_allergens' && w.how === 'insert')).toHaveLength(1)
+    })
+
+    it('names everything that did not save, and where to add each', async () => {
+        refused = 'product_supplier_prices'
+        const clicker = userEvent.setup()
+        const form = await addOnions(clicker)
+        await clicker.type(form.getByPlaceholderText('Box, Bag, Tin'), 'Net')
+        await clicker.type(box(form, 'One of them is'), '5')
+        await clicker.click(form.getByRole('button', { name: 'Add pack' }))
+        await clicker.click(form.getByRole('button', { name: 'Add Product' }))
+
+        const said = await screen.findByText(/Red Onions was saved, but its price and pack sizes were not/)
+        expect(said.textContent).toMatch(/Add the price from its Prices page\. Add the pack sizes under Formats on its Prices page\./)
+    })
+
+    it('says so when the pack sizes do not save, rather than nothing', async () => {
+        refused = 'price_count_units'
+        const clicker = userEvent.setup()
+        const form = await addOnions(clicker)
+        await clicker.type(form.getByPlaceholderText('Box, Bag, Tin'), 'Net')
+        await clicker.type(box(form, 'One of them is'), '5')
+        await clicker.click(form.getByRole('button', { name: 'Add pack' }))
+        await clicker.click(form.getByRole('button', { name: 'Add Product' }))
+
+        expect(await screen.findByText(/Red Onions was saved, but its pack sizes were not/)).toBeInTheDocument()
+    })
+
+    // A second tap while the first is on its way, on a slow phone.
+    it('makes one product when Add Product is pressed twice', async () => {
+        held = { table: 'products', releases: [] }
+        const clicker = userEvent.setup()
+        const form = await addOnions(clicker)
+        const button = form.getByRole('button', { name: 'Add Product' })
+
+        await clicker.click(button)
+        await waitFor(() => expect(held.releases).toHaveLength(1))
+        await clicker.click(button)
+        held.releases.forEach(release => release())
+        await new Promise(resolve => setTimeout(resolve, 50))
+
+        expect(written.filter(w => w.table === 'products' && w.how === 'insert')).toHaveLength(1)
+    })
+})
+
+// Adding a product with no price or no allergens asks first.
+describe('the question before saving', () => {
+    // Saving has not started while it is still asking whether to, so the
+    // button behind the question keeps its own name.
+    it('does not say Saving while it asks about a missing price', async () => {
+        tables.products = []
+        let answer
+        ask = () => new Promise(resolve => { answer = resolve })
+        const clicker = userEvent.setup()
+        renderWithRouter(<ProductsPage />)
+        await clicker.click(await screen.findByRole('button', { name: '+ Add Product' }))
+        const form = within(screen.getByText('New Product').parentElement)
+        await clicker.type(box(form, 'Name'), 'Red Onions')
+        await clicker.click(form.getByRole('button', { name: 'Add Product' }))
+
+        await waitFor(() => expect(answer).toBeTypeOf('function'))
+        expect(form.queryByRole('button', { name: 'Saving...' })).not.toBeInTheDocument()
+        expect(form.getByRole('button', { name: 'Add Product' })).toBeInTheDocument()
+        answer(false)
+    })
+
+    it('does not say Saving while it asks about a missing recipe', async () => {
+        tables.products = []
+        let answer
+        let asked
+        ask = options => new Promise(resolve => { asked = options; answer = resolve })
+        const clicker = userEvent.setup()
+        renderWithRouter(<ProductsPage />)
+        await clicker.click(await screen.findByRole('button', { name: '+ Add Product' }))
+        const form = within(screen.getByText('New Product').parentElement)
+        await clicker.click(form.getByText(/This is a MIX product/))
+        await clicker.type(box(form, 'Name'), 'House Salsa')
+        await clicker.click(form.getByRole('button', { name: 'Add Product' }))
+
+        await waitFor(() => expect(answer).toBeTypeOf('function'))
+        expect(asked.title).toBe('Save without a recipe?')
+        expect(form.queryByRole('button', { name: 'Saving...' })).not.toBeInTheDocument()
+        expect(form.getByRole('button', { name: 'Add Product' })).toBeInTheDocument()
+        answer(false)
+    })
+})
+
+// Editing a priced product writes its pack sizes again. They were deleted
+// first and the new ones put in after, with neither checked, so a put in that
+// failed lost every pack and the dialog closed as if it had saved.
+describe('the pack sizes on an edit', () => {
+    it('keeps the old ones and the dialog when the new ones do not save', async () => {
+        tables.price_count_units = [{ id: 'cu1', price_id: 'pr1', label: 'Box', factor: 5, sort_order: 0, is_active: true }]
+        refused = 'price_count_units'
+        const clicker = userEvent.setup()
+        const dialog = await editPeppers(clicker)
+        await clicker.click(dialog.getByRole('button', { name: 'Save changes' }))
+
+        const said = await dialog.findByText(/Green Peppers was saved, but its pack sizes were not/)
+        // Not a promise about the old ones: when the new ones went in and the
+        // old ones would not come out, both sets are there until Save again.
+        expect(said.textContent).toMatch(/Press Save changes to try again\.$/)
+        expect(said.textContent).not.toMatch(/kept/)
+        expect(written.some(w => w.table === 'price_count_units' && w.how === 'delete')).toBe(false)
+        expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+
+    it('puts the new ones in before taking the old ones out', async () => {
+        tables.price_count_units = [{ id: 'cu1', price_id: 'pr1', label: 'Box', factor: 5, sort_order: 0, is_active: true }]
+        const clicker = userEvent.setup()
+        const dialog = await editPeppers(clicker)
+        await clicker.click(dialog.getByRole('button', { name: 'Save changes' }))
+
+        await waitFor(() => expect(written.some(w => w.table === 'price_count_units' && w.how === 'delete')).toBe(true))
+        const packs = written.filter(w => w.table === 'price_count_units')
+        expect(packs.map(w => w.how)).toEqual(['insert', 'delete'])
+    })
+})
+
 // Adding a product with half of it left for later, and what the save asks.
 //
 // A product nobody entered allergens for is not a product with none, and a
@@ -141,6 +308,9 @@ describe('the price on the product form', () => {
 // Either way the customer sheet asks people to see staff about any dish it
 // goes into, so the question says so rather than promising none. Each of
 // these answers Go back.
+
+const asked = []
+beforeEach(() => { asked.length = 0 })
 
 async function startAdding(me, name) {
     renderWithRouter(<ProductsPage />)
@@ -151,7 +321,7 @@ async function startAdding(me, name) {
 
 describe('saving a new MIX with nothing in it yet', () => {
     it('asks first, and says what it means for the allergens', async () => {
-        answer = false
+        ask = async options => { asked.push(options); return false }
         const me = userEvent.setup()
         await startAdding(me, 'House Salsa')
         await me.click(screen.getByText(/This is a MIX product/))
@@ -167,7 +337,7 @@ describe('saving a new MIX with nothing in it yet', () => {
 
 describe('saving a new bought product with no allergens answered', () => {
     it('does not say it will read as having none', async () => {
-        answer = false
+        ask = async options => { asked.push(options); return false }
         const me = userEvent.setup()
         await startAdding(me, 'Rice')
         await me.click(screen.getByRole('button', { name: 'Add Product' }))

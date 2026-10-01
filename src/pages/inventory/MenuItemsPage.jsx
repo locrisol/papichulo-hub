@@ -8,6 +8,7 @@ import { menuItemCost } from '@/lib/mixCost'
 import { deriveMenuItemAllergens, neverEnteredInDish, summariseAllergens } from '@/lib/allergens'
 import CategoryManagerModal from '@/components/inventory/CategoryManagerModal'
 import { useKeepScroll } from '@/context/scroll'
+import { useSaveOnce } from '@/components/ui/useSaveOnce'
 import ArrangeList from '@/components/ui/ArrangeList'
 import { friendlyError } from '@/lib/errors'
 import { everyReadArrived, productsWithARow, optionsWithoutARow } from '@/lib/allergenSheet'
@@ -185,8 +186,16 @@ export default function MenuItemsPage() {
     return e
   }
 
-  async function handleSave(e) {
+  // A second tap on Create while the first is on its way made the dish twice,
+  // and both went on the customer page. See useSaveOnce.
+  const [saving, once] = useSaveOnce()
+
+  function handleSave(e) {
     e.preventDefault()
+    return once(saveMenuItem)
+  }
+
+  async function saveMenuItem() {
     setFormProblem('')
     const v = validate()
     if (Object.keys(v).length) { setErrors(v); return }
@@ -547,9 +556,10 @@ export default function MenuItemsPage() {
             <div className="flex gap-3">
               <button
                 type="submit"
+                disabled={saving}
                 className={primaryButton()}
               >
-                Create & Edit Components
+                {saving ? 'Saving...' : 'Create & Edit Components'}
               </button>
               <button
                 type="button"
