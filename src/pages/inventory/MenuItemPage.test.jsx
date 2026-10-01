@@ -1,7 +1,19 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
-import { ComponentTable } from './MenuItemPage'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { Route, Routes } from 'react-router-dom'
+import { renderWithRouter, tableOf } from '@/test/helpers'
+import { emptyAllergens } from '@/lib/allergens'
+
+let db
+vi.mock('@/lib/supabase', () => ({ supabase: new Proxy({}, { get: (_, k) => db[k] }) }))
+vi.mock('@/context/restaurant', () => ({
+    useRestaurant: () => ({ activeRestaurant: { id: 'r1', name: 'Point Campus' } }),
+}))
+vi.mock('@/context/confirm', () => ({ useConfirm: () => vi.fn(() => Promise.resolve(true)) }))
+
+const { default: MenuItemPage, ComponentTable } = await import('./MenuItemPage')
 
 // The sauces off a real dish. Habanero Cheese Mayo is the dearest, so it is the
 // one the cost counts.
@@ -82,5 +94,103 @@ describe('ingredients and packaging, where every line is in the cost', () => {
     it('still shows every line cost', () => {
         show({ choiceGroup: false, counting: new Set(['c1', 'c2', 'c3']) })
         expect(screen.getAllByText('€0.22').length).toBeGreaterThan(0)
+    })
+})
+
+// ---- the whole page, against a database that answers for its filters ----
+//
+// A burrito with a house sauce in it, and the sauce still made with a cream
+// that has since been deactivated. Deactivating says the product stays on
+// every recipe that used it, and the cream is still in the sauce.
+
+const answered = (productId, overrides = {}) => ({ product_id: productId, ...emptyAllergens(), ...overrides })
+
+const CATALOGUE = [
+    { id: 'tortilla', name: 'Tortilla', section: 'Dry', unit: 'Units', is_mix: false, is_active: true },
+    { id: 'sauce', name: 'House Sauce', section: 'Cold Room', unit: 'KG', is_mix: true, is_active: true, batch_yield: 1 },
+    { id: 'cream', name: 'Old Cream', section: 'Cold Room', unit: 'KG', is_mix: false, is_active: false },
+    { id: 'beans', name: 'Old Beans', section: 'Dry', unit: 'KG', is_mix: false, is_active: false },
+    { id: 'rice', name: 'Rice', section: 'Dry', unit: 'KG', is_mix: false, is_active: true },
+]
+
+const BURRITO = [
+    { id: 'k1', menu_item_id: 'm1', product_id: 'tortilla', quantity: 1, no_quantity: false },
+    { id: 'k2', menu_item_id: 'm1', product_id: 'sauce', quantity: 0.05, no_quantity: false },
+]
+
+function tablesFor(overrides = {}) {
+    return {
+        menu_items: [{ id: 'm1', name: 'Chicken Burrito', category_id: 'c1', selling_price: 10, vat_rate: 13.5, is_active: true }],
+        menu_categories: [{ id: 'c1', name: 'Burritos', sort_order: 0, is_active: true, on_allergen_sheet: true }],
+        products: CATALOGUE,
+        menu_item_components: BURRITO,
+        mix_recipes: [{ id: 'x1', mix_product_id: 'sauce', ingredient_product_id: 'cream', quantity: 1 }],
+        product_allergens: [
+            answered('tortilla', { gluten: 'contains' }),
+            answered('cream', { milk: 'contains' }),
+            answered('beans'),
+        ],
+        product_supplier_prices: [],
+        ...overrides,
+    }
+}
+
+function useTables(tables) {
+    db = { from: vi.fn(table => tableOf(tables[table] || [])) }
+}
+
+// jsdom has no scrolling, and the product picker keeps its highlighted row in
+// view.
+Element.prototype.scrollIntoView ??= () => {}
+
+function showPage() {
+    return renderWithRouter(
+        <Routes><Route path="/catalogue/menu-items/:id" element={<MenuItemPage />} /></Routes>,
+        { route: '/catalogue/menu-items/m1' },
+    )
+}
+
+// What one allergen's chip says, from the Derived Allergens panel.
+async function chip(label) {
+    const panel = (await screen.findByText('Derived Allergens')).closest('div')
+    return within(panel).getByText(label).parentElement.textContent
+}
+
+describe('a deactivated product still in the recipe', () => {
+    beforeEach(() => useTables(tablesFor()))
+
+    // The customer sheet reads every product, so the cream's milk is on the
+    // burrito's row there. This panel read only active products and dropped
+    // it without a word.
+    it('still counts in the derived allergens, the same as on the customer sheet', async () => {
+        showPage()
+        expect(await chip('Milk')).toContain('Contains')
+        expect(await chip('Gluten')).toContain('Contains')
+    })
+
+    it('is named on the dish and marked inactive, rather than called a missing product', async () => {
+        useTables(tablesFor({
+            menu_item_components: [
+                ...BURRITO,
+                { id: 'k3', menu_item_id: 'm1', product_id: 'beans', quantity: 0.1, no_quantity: false },
+            ],
+        }))
+        showPage()
+        expect((await screen.findAllByText('Old Beans')).length).toBeGreaterThan(0)
+        expect(screen.getAllByText('Inactive').length).toBeGreaterThan(0)
+        expect(screen.queryByText('Missing product')).toBeNull()
+    })
+
+    // It cannot be picked for anything new, which is what the deactivate
+    // dialog promises.
+    it('is not offered when adding a component', async () => {
+        const me = userEvent.setup()
+        showPage()
+        await me.click(await screen.findByRole('button', { name: '+ Add Component' }))
+        await me.click(screen.getByPlaceholderText('Select a product...'))
+        const offered = screen.getAllByRole('option').map(o => o.textContent)
+        expect(offered.some(t => t.includes('Rice'))).toBe(true)
+        expect(offered.some(t => t.includes('Old Cream'))).toBe(false)
+        expect(offered.some(t => t.includes('Old Beans'))).toBe(false)
     })
 })

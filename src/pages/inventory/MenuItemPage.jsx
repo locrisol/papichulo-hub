@@ -148,7 +148,12 @@ export default function MenuItemPage() {
     ] = await Promise.all([
       supabase.from('menu_items').select('*').eq('id', id).single(),
       supabase.from('menu_categories').select('*').order('sort_order'),
-      supabase.from('products').select('*').eq('is_active', true).order('name'),
+      // Every product, switched off or not. A deactivated one stays on every
+      // recipe that used it, so its allergens are still in the dish, and the
+      // customer sheet counts them. Reading only the active ones dropped them
+      // from the panel below without a word. The pickers leave them out
+      // instead, further down.
+      supabase.from('products').select('*').order('name'),
       supabase.from('menu_item_components').select('*').eq('menu_item_id', id),
       supabase.from('mix_recipes').select('*'),
       supabase.from('product_allergens').select('*'),
@@ -397,9 +402,14 @@ export default function MenuItemPage() {
   // dish. Drinks and packaging stay: a can of Coke is a real line on a menu and
   // a container is a real cost on one, which is where this differs from a
   // recipe, where the question is only what goes into something we make.
+  //
+  // A deactivated product is left out too: it cannot be picked for anything
+  // new. The line being edited still shows whatever it points at.
   const addingTo = (componentForm.choice_group || '').trim() || null
+  const pickable = products.filter(p => p.is_active !== false)
   const availableProducts = products.filter(p => {
     if (editingComponent && editingComponent.product_id === p.id) return true
+    if (p.is_active === false) return false
     if (!canBeMenuComponent(p)) return false
     return !components.some(c =>
       c.product_id === p.id && (c.choice_group || null) === addingTo)
@@ -920,7 +930,7 @@ export default function MenuItemPage() {
           menuCategories={categories.filter(c => c.is_active)}
           menuItems={allMenuItems}
           allComponents={allComponents}
-          products={products}
+          products={pickable}
           existingGroups={existingGroups}
           existing={components}
           onAdd={addSeveral}
@@ -1092,6 +1102,12 @@ function ComponentForm({
 function ComponentChips({ product, component }) {
   return (
     <>
+      {/* Still on the dish and still counted, but nobody can pick it for
+          anything new, so it wants replacing. Its name is shown rather than
+          Missing product, which is kept for one that cannot be found at all. */}
+      {product?.is_active === false && (
+        <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-800">Inactive</span>
+      )}
       {product?.is_mix && <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700">MIX</span>}
       {component.choice_group && (
         <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">
