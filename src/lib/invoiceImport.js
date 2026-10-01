@@ -743,6 +743,20 @@ export function fillInPayload(doc, { createdBy }) {
     }
 }
 
+// What the invoice row goes back to when a fill in does not finish: exactly
+// as it was typed, so pressing again starts clean rather than putting the
+// lines in twice.
+export function typedAgain(invoice) {
+    return {
+        invoice_number: invoice.invoice_number ?? null,
+        document_type: invoice.document_type || 'invoice',
+        invoice_date: invoice.invoice_date,
+        total_amount: invoice.total_amount,
+        entry_method: invoice.entry_method || 'manual',
+        created_by: invoice.created_by ?? null,
+    }
+}
+
 // The claim that keeps the week still.
 //
 // Open rather than settled, and that is the point of doing it this way: the

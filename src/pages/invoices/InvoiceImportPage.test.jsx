@@ -50,8 +50,10 @@ vi.mock('@/components/invoices/StillMissing', () => ({ default: () => null }))
 let tables
 let nextId
 let writes
-// Tables whose reads fail, the way they do on a weak signal.
+// Tables whose reads fail, the way they do on a weak signal, and tables
+// whose next insert does.
 let failing
+let refuse
 
 // The columns that may not repeat, the way the real unique keys refuse them.
 const UNIQUE = {
@@ -88,6 +90,10 @@ function table(name) {
     function run() {
         const all = (tables[name] ||= [])
         if (op === 'select' && failing.has(name)) return { data: null, error: { message: `Could not read ${name}` } }
+        if (op === 'insert' && refuse.has(name)) {
+            refuse.delete(name)
+            return { data: null, error: { message: 'Failed to fetch' } }
+        }
         if (op === 'insert') {
             const list = (Array.isArray(payload) ? payload : [payload]).map(r => ({ id: `${name}-${++nextId}`, ...r }))
             const key = UNIQUE[name]
@@ -107,7 +113,13 @@ function table(name) {
             writes.push({ table: name, op, ids: hit.map(h => h.id), patch: payload })
             return { data: null, error: null }
         }
-        return { data: range ? hit.slice(range[0], range[1] + 1) : hit, error: null }
+        // Copies, the way rows come back over the wire, so a later write here
+        // never reaches into what the page is holding. Only the columns asked
+        // for, when a plain list was asked for.
+        const plain = !/[*(]/.test(columns)
+        const asked = columns.split(',').map(c => c.trim())
+        const rows = hit.map(r => (plain ? Object.fromEntries(asked.map(c => [c, r[c]])) : { ...r }))
+        return { data: range ? rows.slice(range[0], range[1] + 1) : rows, error: null }
     }
 
     chain.single = vi.fn(() => Promise.resolve().then(() => {
@@ -168,6 +180,7 @@ beforeEach(() => {
     nextId = 0
     writes = []
     failing = new Set()
+    refuse = new Set()
     DOCS = {}
     slow = { promise: Promise.resolve() }
     tables = {
@@ -333,5 +346,72 @@ describe('after an import', () => {
         await userEvent.click(await screen.findByRole('button', { name: 'Fill that one in' }))
         await userEvent.click(await screen.findByRole('button', { name: 'Fill it in' }))
         expect(await screen.findByText(`On Review: Filled in. ${SAID_ON_REVIEW}`)).toBeInTheDocument()
+    })
+})
+
+// Filling in a typed invoice wrote its lines and never its codes, so a code
+// first bought on one had no first or last day, which the quiet days check and
+// the report's new codes go by.
+describe('filling in a typed invoice', () => {
+    it('records the codes on it, as an import does', async () => {
+        tables.invoices.push({
+            id: 'typed', restaurant_id: 'r1', supplier_id: 's1', invoice_number: null,
+            invoice_date: '2026-09-28', document_type: 'invoice', total_amount: 23.7,
+        })
+        DOCS['a.pdf'] = doc('45000001', '2026-09-28', [RICE, { ...BEANS, line_no: 2 }])
+        renderImport()
+        await choose('a.pdf')
+        await userEvent.click(await screen.findByRole('button', { name: 'Fill that one in' }))
+        await userEvent.click(await screen.findByRole('button', { name: 'Fill it in' }))
+        await screen.findByText(/On Review/)
+
+        const code = c => tables.supplier_codes.find(r => r.supplier_code === c)
+        expect(code('777002')).toMatchObject({ first_seen_on: '2026-09-28', last_seen_on: '2026-09-28', price_id: null })
+        expect(code('777001')).toMatchObject({ first_seen_on: '2026-09-01', last_seen_on: '2026-09-28' })
+    })
+
+    const typed = extra => ({
+        id: 'typed', restaurant_id: 'r1', supplier_id: 's1', invoice_number: null, invoice_date: '2026-09-28',
+        document_type: 'invoice', total_amount: 23.7, entry_method: 'manual', created_by: 'u-typist', ...extra,
+    })
+
+    async function fillItIn() {
+        DOCS['a.pdf'] = doc('45000001', '2026-09-28', [RICE, { ...BEANS, line_no: 2 }])
+        renderImport()
+        await choose('a.pdf')
+        await userEvent.click(await screen.findByRole('button', { name: 'Fill that one in' }))
+        await userEvent.click(await screen.findByRole('button', { name: 'Fill it in' }))
+    }
+
+    it('keeps who typed it in', async () => {
+        tables.invoices.push(typed())
+        await fillItIn()
+        await screen.findByText(/On Review/)
+        expect(tables.invoices[0]).toMatchObject({ invoice_number: '45000001', created_by: 'u-typist' })
+    })
+
+    // Pressed again after the lines failed, it used to put them in twice.
+    it('puts the invoice back as typed when its lines do not go in, so pressing again is safe', async () => {
+        tables.invoices.push(typed())
+        refuse.add('invoice_lines')
+        await fillItIn()
+        await waitFor(() => expect(tables.invoices[0])
+            .toMatchObject({ invoice_number: null, total_amount: 23.7, entry_method: 'manual' }))
+        expect(await screen.findByRole('alert')).toBeInTheDocument()
+
+        await userEvent.click(screen.getByRole('button', { name: 'Fill it in' }))
+        await screen.findByText(/On Review/)
+        expect(tables.invoice_lines).toHaveLength(2)
+    })
+
+    it('says what did not save after the lines, and does not offer it again', async () => {
+        tables.invoices.push(typed())
+        refuse.add('supplier_codes')
+        await fillItIn()
+        expect(await screen.findByText(/Its codes were not all recorded/)).toBeInTheDocument()
+        expect(screen.getByText('Filled in.')).toBeInTheDocument()
+        expect(screen.queryByText('a.pdf')).toBeNull()
+        expect(screen.queryByRole('button', { name: 'Fill it in' })).toBeNull()
+        expect(tables.invoice_lines).toHaveLength(2)
     })
 })

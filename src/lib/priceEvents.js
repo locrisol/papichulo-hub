@@ -233,17 +233,23 @@ export function codeRow({ code, line, supplierId, restaurantId, priceId, date })
 
 // Seeing a code again.
 //
-// Only ever moves last_seen_on forward, and never touches first_seen_on, since
-// that is what says how long the Hub has known about something. The description
-// follows the most recent document, because a supplier tidying up its own
-// wording should not leave the Hub quoting a name nobody uses.
-export function seenAgain(existing, { line, date }) {
+// last_seen_on only ever moves forward. first_seen_on only ever moves back: it
+// says how long the code has been bought, and a typed invoice filled in with
+// its document, or a late batch, can be older than anything imported. The
+// description and the pack follow the most recent document, because a supplier
+// tidying up its own wording should not leave the Hub quoting a name nobody
+// uses, and an older piece of paper is not the most recent.
+//
+// `date` is the newest document the code was on, `firstSeen` the oldest.
+export function seenAgain(existing, { line, date, firstSeen = date }) {
+    const newest = !existing?.last_seen_on || date >= existing.last_seen_on
     return {
-        last_seen_on: !existing?.last_seen_on || date > existing.last_seen_on
-            ? date
-            : existing.last_seen_on,
-        last_description: line?.description || existing?.last_description || null,
-        pack_size: line?.pack_size || existing?.pack_size || null,
+        first_seen_on: existing?.first_seen_on && existing.first_seen_on <= firstSeen
+            ? existing.first_seen_on
+            : firstSeen,
+        last_seen_on: newest ? date : existing.last_seen_on,
+        last_description: (newest && line?.description) || existing?.last_description || line?.description || null,
+        pack_size: (newest && line?.pack_size) || existing?.pack_size || line?.pack_size || null,
     }
 }
 

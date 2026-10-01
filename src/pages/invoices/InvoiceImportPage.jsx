@@ -10,7 +10,7 @@ import { readPdfText } from '@/lib/pdfText'
 import {
     readDocument, whereItGoes, placeDocument, matchLines, pilesOf, documentTotals,
     documentBlocks, linePayload, invoicePayload, fillInPayload, fillInClaim, creditOnHandEntry,
-    documentTotal,
+    documentTotal, typedAgain,
 } from '@/lib/invoiceImport'
 import { mainCategory } from '@/lib/invoiceCategories'
 import { creditSettles, sentWeeks } from '@/lib/invoiceClaims'
@@ -105,8 +105,11 @@ export default function InvoiceImportPage() {
                     .eq('restaurant_id', restaurantId)
                     .order('id')),
                 everyRow(() => supabase.from('supplier_codes').select('*').eq('restaurant_id', restaurantId).order('id')),
+                // Who typed it, how and its note too, because a fill in keeps
+                // the first two and puts all of it back if it does not finish,
+                // and the note is what tells two typed on one day apart.
                 everyRow(() => supabase.from('invoices')
-                    .select('id, invoice_number, invoice_date, total_amount, supplier_id')
+                    .select('id, invoice_number, invoice_date, total_amount, supplier_id, document_type, entry_method, created_by, notes')
                     .eq('restaurant_id', restaurantId)
                     .order('id')),
                 // The supplier's own list, where it has been pasted. It is what
@@ -346,7 +349,7 @@ export default function InvoiceImportPage() {
             ))
 
             const patch = existing
-                ? seenAgain(existing, { line: entry.line, date: entry.lastSeen })
+                ? seenAgain(existing, { line: entry.line, date: entry.lastSeen, firstSeen: entry.firstSeen })
                 : codeRow({
                     code: entry.line.code,
                     line: entry.line,
@@ -367,6 +370,24 @@ export default function InvoiceImportPage() {
             seen.delete(key)
         }
         return null
+    }
+
+    // Every code on the document, gathered rather than written. This is what
+    // later lets the Hub notice that one stopped appearing and another turned
+    // up in its place.
+    function gather(seen, { doc, where, matched }) {
+        for (const row of matched) {
+            const key = `${where.supplierId}:${row.line.code}`
+            const already = seen.get(key)
+            seen.set(key, {
+                supplierId: where.supplierId,
+                restaurantId: where.restaurantId,
+                line: already && already.lastSeen > doc.date ? already.line : row.line,
+                priceId: row.price?.id || already?.priceId || null,
+                firstSeen: already && already.firstSeen < doc.date ? already.firstSeen : doc.date,
+                lastSeen: already && already.lastSeen > doc.date ? already.lastSeen : doc.date,
+            })
+        }
     }
 
     async function writeDocument(file, seen) {
@@ -397,21 +418,7 @@ export default function InvoiceImportPage() {
             })))
         if (e2) return friendlyError(e2)
 
-        // Every code on the document, gathered rather than written. This is
-        // what later lets the Hub notice that one stopped appearing and another
-        // turned up in its place.
-        for (const row of matched) {
-            const key = `${where.supplierId}:${row.line.code}`
-            const already = seen.get(key)
-            seen.set(key, {
-                supplierId: where.supplierId,
-                restaurantId: where.restaurantId,
-                line: already && already.lastSeen > doc.date ? already.line : row.line,
-                priceId: row.price?.id || already?.priceId || null,
-                firstSeen: already && already.firstSeen < doc.date ? already.firstSeen : doc.date,
-                lastSeen: already && already.lastSeen > doc.date ? already.lastSeen : doc.date,
-            })
-        }
+        gather(seen, file)
 
         if (doc.kind === 'credit') {
             const failed = await settleWith(doc, invoice, where, matched)
@@ -506,18 +513,44 @@ export default function InvoiceImportPage() {
             .eq('id', invoice.id)
         if (e1) return friendlyError(e1)
 
+        // The lines go in as one write. If they do not, the invoice goes back
+        // as it was typed, so pressing again starts clean rather than leaving
+        // a filled in invoice with nothing behind it.
         const { error: e2 } = await supabase.from('invoice_lines')
             .insert(matched.map(row => linePayload(row, invoice.id)))
-        if (e2) return friendlyError(e2)
+        if (e2) {
+            const { error: back } = await supabase.from('invoices').update(typedAgain(invoice)).eq('id', invoice.id)
+            return back
+                ? `${friendlyError(e2)} It could not be put back as it was typed either, so reload the page before trying again.`
+                : friendlyError(e2)
+        }
 
+        // **From here the invoice is that document**, and pressing again
+        // would put its lines in twice. So whatever does not save after this
+        // is said, and the file leaves the page like one that went in.
+        const after = []
         const claim = fillInClaim(plan, {
             invoice, doc, restaurantId: where.restaurantId,
             supplierId: where.supplierId, raisedBy: user?.id,
         })
+        let claimed = false
         if (claim) {
             const { error: e3 } = await supabase.from('invoice_line_claims').insert(claim)
-            if (e3) return friendlyError(e3)
+            claimed = !e3
+            if (e3) {
+                after.push(`The ${fmtMoney(claim.amount)} taken off by hand did not go on the claims list, `
+                    + `so that week is up by it: ${friendlyError(e3)} Log it on Delivery problems.`)
+            }
         }
+
+        // Its codes, the same as a document imported. Left out, a code first
+        // bought on a typed invoice had no first or last day, and the quiet
+        // days check and the report's new codes go by those. Last, because a
+        // code the next import records anyway is the least of it.
+        const seen = new Map()
+        gather(seen, file)
+        const failedCodes = await writeCodes(seen)
+        if (failedCodes) after.push(`Its codes were not all recorded: ${failedCodes} The next import records them.`)
 
         setFillingIn(null)
         readAgain()
@@ -531,9 +564,14 @@ export default function InvoiceImportPage() {
                 ? { ...h, invoice_number: doc.number, total_amount: documentTotal(doc) }
                 : h)),
         }))
-        await thenReview(claim
+        const filled = claimed
             ? `Filled in. ${claim.amount.toFixed(2)} is on the claims list as a shortage.`
-            : 'Filled in.', left)
+            : 'Filled in.'
+        if (after.length) {
+            setSaid(filled)
+            return after.join(' ')
+        }
+        await thenReview(filled, left)
         return null
     }
 

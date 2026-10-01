@@ -3,7 +3,7 @@ import {
     whereItGoes, placeDocument, lineCategory, SECTION_CATEGORY, similarWords,
     codeSuccessor, unitsWanted, matchLines, pilesOf, documentTotals,
     linePayload, invoicePayload, documentBlocks, storedLine,
-    fillInPlan, fillInPayload, fillInClaim, creditOnHandEntry, documentTotal, lineCost,
+    fillInPlan, fillInPayload, fillInClaim, creditOnHandEntry, documentTotal, lineCost, typedAgain,
     samePrice, packReadings, unitsForPack, byPieceWeight, sameMeasure, unitsPatch,
 } from '@/lib/invoiceImport'
 
@@ -928,6 +928,19 @@ describe('filling in an invoice somebody typed off a total', () => {
     it('puts the document total on the invoice, because that is what was charged', () => {
         expect(fillInPayload(doc, { createdBy: 'u1' })).toMatchObject({
             invoice_number: '45448455', total_amount: 163.03, entry_method: 'parsed',
+        })
+    })
+
+    // A fill in whose lines did not go in puts the invoice back as typed, so
+    // pressing again does not put the lines in twice.
+    it('can put the invoice back exactly as it was typed', () => {
+        const typed = {
+            id: 'i1', invoice_number: null, document_type: 'invoice', invoice_date: '2026-08-23',
+            total_amount: 140, entry_method: 'manual', created_by: 'u-typist', notes: 'Short one case',
+        }
+        expect(typedAgain(typed)).toEqual({
+            invoice_number: null, document_type: 'invoice', invoice_date: '2026-08-23',
+            total_amount: 140, entry_method: 'manual', created_by: 'u-typist',
         })
     })
 
