@@ -102,4 +102,34 @@ maybe('places shared between restaurants', () => {
         const { data } = await manager.from('places').delete().eq('id', place.id).select('id')
         expect(data).toHaveLength(1)
     })
+
+    // Migration 028. Every Ticketmaster sync writes how it went on the place,
+    // and the settings row, the roster and the calendar read it from there.
+    // Until 028 is run on this project the columns are not there to read.
+    it('lets a manager read how the last Ticketmaster sync went', async () => {
+        const { error } = await manager.from('places')
+            .select('feed_synced_at, feed_count, feed_problem').limit(1)
+        expect(error).toBeNull()
+    })
+
+    // Every sync writes when it ran and how many it listed, twice a day and on
+    // every manager's visit, so Changes leaves those out. What went wrong is
+    // news and is still logged.
+    it('keeps a sync that only ran out of Changes, and logs what went wrong', async () => {
+        const { data: place, error } = await superadmin.from('places').insert({ name: NAME }).select('id').single()
+        expect(error).toBeNull()
+        made.push(place.id)
+
+        const updates = () => superadmin.from('change_log').select('changes')
+            .eq('table_name', 'places').eq('row_id', place.id).eq('action', 'update')
+
+        await superadmin.from('places')
+            .update({ feed_synced_at: new Date().toISOString(), feed_count: 3 }).eq('id', place.id)
+        expect((await updates()).data).toEqual([])
+
+        await superadmin.from('places').update({ feed_problem: 'Ticketmaster said no (401).' }).eq('id', place.id)
+        const { data: logged } = await updates()
+        expect(logged).toHaveLength(1)
+        expect(Object.keys(logged[0].changes)).toEqual(['feed_problem'])
+    })
 })

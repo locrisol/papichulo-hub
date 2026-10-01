@@ -54,6 +54,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
     discoveryUrl, eventsFrom, isServiceRole, roleOf, sourceKeyFor,
     geocodeUrl, pointFrom, pointTyped, venuesUrl, venuesFrom, suggestions, refusalFor,
+    irishDate, stillToCome, emptyProblem, feedError, feedProblem,
 } from './discovery.js'
 
 // Asked of OpenStreetMap once when somebody adds a restaurant. They ask for a
@@ -102,15 +103,28 @@ type Place = { id: string; name: string; ticketmaster_venue_id: string | null }
 async function syncOne(admin: Admin, place: Place, key: string) {
     const res = await fetch(discoveryUrl(place.ticketmaster_venue_id as string, key), {
         signal: AbortSignal.timeout(WAIT_MS),
-    })
+    }).catch(() => null)
+    if (!res) throw feedError('Ticketmaster did not answer.')
     if (!res.ok) {
         // Deliberately not the body. Ticketmaster puts the key back in its own
-        // error text, and this answer goes to a browser.
-        throw new Error(`Ticketmaster said no (${res.status}).`)
+        // error text, and this sentence is kept on the place for anybody to read.
+        throw feedError(`Ticketmaster said no (${res.status}).`)
     }
 
     const fetched = eventsFrom(await res.json())
-    if (fetched.length === 0) return { added: 0, total: 0 }
+
+    // Nothing is usually a quiet venue. It is a problem when we hold nights
+    // there that Ticketmaster itself listed and that are still to come, which
+    // is what a retired venue id looks like. See emptyProblem.
+    if (fetched.length === 0) {
+        const today = irishDate()
+        const { data: held } = await admin
+            .from('events').select('event_date, status')
+            .eq('place_id', place.id)
+            .eq('source', 'ticketmaster')
+            .gt('event_date', today)
+        return { added: 0, total: 0, problem: emptyProblem(stillToCome(held, today)) }
+    }
 
     // Only to report how many are new. If this is racing another sync the count
     // may be off, which does not matter: the upsert below is what is correct.
@@ -134,7 +148,10 @@ async function syncOne(admin: Admin, place: Place, key: string) {
             { onConflict: 'ticketmaster_id' },
         )
 
-    if (error) throw new Error(error.message)
+    if (error) {
+        console.error('nearby-events', place.name, error.message)
+        throw feedError('The events could not be saved.')
+    }
 
     // **A reading of a night this feed now covers is superseded by it.**
     //
@@ -174,6 +191,7 @@ async function syncOne(admin: Admin, place: Place, key: string) {
     return {
         added: fetched.length - (existing || []).length,
         total: fetched.length,
+        problem: null,
         ...(stale.length ? { superseded: stale.length } : {}),
     }
 }
@@ -183,16 +201,32 @@ async function syncOne(admin: Admin, place: Place, key: string) {
 // Switched off is switched off. Somebody who turns a place off has said they do
 // not want to hear about it, and spending a call to fill a table nothing reads
 // would be the sort of thing nobody notices until the quota runs out.
+//
+// A list that could not be read is said, not answered as "nothing ticketed
+// near this one", which is the reply for a restaurant that really is near
+// nothing and would have hidden a failure behind it.
 async function placesFor(admin: Admin, restaurantId: string): Promise<Place[]> {
-    const { data } = await admin
+    const { data, error } = await admin
         .from('restaurant_places')
         .select('place:places(id, name, ticketmaster_venue_id)')
         .eq('restaurant_id', restaurantId)
         .eq('is_active', true)
 
+    if (error) throw new Error('Could not read the places this restaurant watches.')
+
     return (data || [])
         .map(row => row.place as unknown as Place)
         .filter(p => p && p.ticketmaster_venue_id)
+}
+
+// How the last sync of a place went, written where the roster, the calendar
+// and the settings row can read it. See migration 028.
+//
+// A write that fails is let go. The listings are what matter, and before the
+// migration is run there are no columns to write to.
+async function noteOn(admin: Admin, place: Place, how: Record<string, unknown>) {
+    const { error } = await admin.from('places').update(how).eq('id', place.id)
+    if (error) console.warn('nearby-events', place.name, 'could not note how the sync went:', error.message)
 }
 
 async function syncRestaurant(admin: Admin, restaurantId: string, key: string) {
@@ -202,14 +236,18 @@ async function syncRestaurant(admin: Admin, restaurantId: string, key: string) {
     const failures: string[] = []
 
     for (const place of places) {
+        const at = new Date().toISOString()
         try {
             const out = await syncOne(admin, place, key)
             added += out.added
             total += out.total
+            await noteOn(admin, place, { feed_synced_at: at, feed_count: out.total, feed_problem: out.problem ?? null })
         } catch (err) {
-            // One place refusing must not stop the others. The log is the only
-            // place anybody will see this, so it says which.
+            // One place refusing must not stop the others. It is written on
+            // the place as well as in the log, because the log is somewhere
+            // nobody looks and a broken feed otherwise looks like a quiet one.
             console.error('nearby-events', place.name, err)
+            await noteOn(admin, place, { feed_problem: feedProblem(err) })
             failures.push(place.name)
         }
     }
@@ -248,9 +286,16 @@ Deno.serve(async (request) => {
 
         const done: Record<string, unknown>[] = []
         for (const shop of shops || []) {
-            const out = await syncRestaurant(admin, shop.id, key)
-            // A restaurant near nothing ticketed is not news and not a failure.
-            if (out.places > 0) done.push({ restaurant: shop.name, ...out })
+            // One restaurant whose list could not be read must not stop the
+            // next one being brought up to date.
+            try {
+                const out = await syncRestaurant(admin, shop.id, key)
+                // A restaurant near nothing ticketed is not news and not a failure.
+                if (out.places > 0) done.push({ restaurant: shop.name, ...out })
+            } catch (err) {
+                console.error('nearby-events', shop.name, err)
+                done.push({ restaurant: shop.name, error: 'Could not read the places it watches.' })
+            }
         }
 
         console.log('nearby-events schedule', JSON.stringify(done))

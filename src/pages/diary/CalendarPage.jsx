@@ -10,6 +10,7 @@ import {
     nearbyRows, waiting, eventName, headlinePlaces, placeName, PAIRING_COLUMNS,
 } from '@/lib/nearby'
 import FoundNearby from '@/components/nearby/FoundNearby'
+import FeedTrouble from '@/components/nearby/FeedTrouble'
 import {
     LAYERS, layerOf, calendarItems, itemsByDate, kindLabel, kindDot, atRestaurant, canChangeEntry,
 } from '@/lib/diary'
@@ -571,6 +572,12 @@ export default function CalendarPage() {
             </div>
 
             {error && <ErrorBanner className="mb-3">{error}</ErrorBanner>}
+
+            {/* Whatever the schedule ran into, not only this browser's own
+                sync, because it is written on the place either way. */}
+            {canWrite && (
+                <FeedTrouble pairings={pairings} restaurant={activeRestaurant} className="mb-3" />
+            )}
 
             {/* Everything behind this is already saved. What a person decides
                 here is not whether a thing exists, it is whether it is ours. */}

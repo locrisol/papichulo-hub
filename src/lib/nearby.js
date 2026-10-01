@@ -624,6 +624,55 @@ export function readWords(place, today) {
     return `read ${when}, ${found === 0 ? 'nothing found' : `${found} found`}`
 }
 
+// When this place's feed last answered, and what it said.
+//
+// The same idea as readWords, for a feed. Every sync writes it on the place,
+// the schedule's included, so a refused key is on the settings row the next
+// morning rather than only in a function log nobody reads.
+export function feedWords(place, today) {
+    if (!place?.ticketmaster_venue_id) return ''
+    if (place.feed_problem) return place.feed_problem
+    if (!place.feed_synced_at) return 'not checked yet'
+    const when = agoWords(place.feed_synced_at, today)
+    const listed = Number(place.feed_count)
+    if (!Number.isFinite(listed)) return `checked ${when}`
+    return `checked ${when}, ${listed === 0 ? 'nothing listed' : `${listed} listed`}`
+}
+
+// How long a feed can go without answering before somebody is told. The
+// schedule asks twice a day, so two days is four runs in a row with nothing.
+export const FEED_QUIET_HOURS = 48
+
+// Every watched feed that has stopped answering, said where the week is
+// planned: the roster and the calendar.
+//
+// **A broken feed looks exactly like a quiet fortnight**, which is the worst
+// way for this to fail. The Arena row draws a dash on every day either way,
+// and only one of the two has been checked.
+//
+// Two signs. The last sync said what went wrong, or nothing has answered for
+// two days, which is the schedule stopping or the function failing before it
+// reached any place, and neither of those writes anything. A feed never asked
+// yet says nothing: there is no answer to be out of date.
+export function feedTrouble(pairings, restaurant, now = new Date()) {
+    const out = []
+    for (const p of watching(pairings, restaurant)) {
+        const place = p.place
+        if (!place?.ticketmaster_venue_id) continue
+
+        const last = place.feed_synced_at ? new Date(place.feed_synced_at) : null
+        const lastOn = last && !isNaN(last) ? shortDate(toISODate(last)) : ''
+        const name = placeName(place)
+
+        if (place.feed_problem) {
+            out.push({ place, words: `${name}: ${place.feed_problem}${lastOn ? ` Last updated ${lastOn}.` : ''}` })
+        } else if (lastOn && (now - last) / 36e5 > FEED_QUIET_HOURS) {
+            out.push({ place, words: `${name}: not updated since ${lastOn}.` })
+        }
+    }
+    return out
+}
+
 // -- Finding the next restaurant's places -------------------------------
 
 // A number, or nothing.

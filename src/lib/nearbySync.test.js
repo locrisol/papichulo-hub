@@ -9,10 +9,11 @@ import {
     mapEvent, discoveryUrl, eventsFrom, isServiceRole, roleOf,
     geohash, venuesUrl, venuesFrom, suggestions, geocodeUrl, pointFrom,
     distanceKm, walkMinutesFor, WALKABLE_MINUTES, sourceKeyFor, pointTyped,
+    irishDate, stillToCome, feedError, feedProblem, emptyProblem,
 } from '../../supabase/functions/nearby-events/discovery'
 import {
     distanceKm as browserDistanceKm, walkMinutesFor as browserWalkMinutesFor,
-    sourceKeyFor as browserSourceKeyFor,
+    sourceKeyFor as browserSourceKeyFor, offFor,
 } from '@/lib/nearby'
 import { syncEvents, syncIsDue, markSynced } from '@/lib/nearbySync'
 
@@ -454,5 +455,60 @@ describe('a point typed rather than looked up', () => {
         expect(pointTyped('153.3, -6.2')).toBe(null)
         expect(pointTyped('53.3, -186.2')).toBe(null)
         expect(pointTyped('53.3486')).toBe(null)
+    })
+})
+
+// A key that was revoked, or a venue id Ticketmaster retired, used to leave
+// nothing anywhere but a line in the function log. The listings stopped
+// changing and every screen looked like a quiet fortnight.
+describe('how a feed went', () => {
+    // Summer time. UTC still says the day before at half midnight in Dublin.
+    it('knows the date in Ireland, not in UTC', () => {
+        expect(irishDate(new Date('2026-09-30T23:30:00Z'))).toBe('2026-10-01')
+        expect(irishDate(new Date('2026-12-31T23:30:00Z'))).toBe('2026-12-31')
+    })
+
+    it('counts what we hold that is still to come and still on', () => {
+        const held = [
+            { event_date: '2026-10-01', status: 'onsale' },
+            { event_date: '2026-10-02', status: 'onsale' },
+            { event_date: '2026-10-03', status: 'canceled' },
+            { event_date: '2026-10-04', status: null },
+        ]
+        expect(stillToCome(held, '2026-10-01')).toBe(2)
+        expect(stillToCome(null, '2026-10-01')).toBe(0)
+    })
+
+    // An empty answer is a quiet venue, unless we already hold nights there
+    // that Ticketmaster itself listed. Then the venue id has stopped working.
+    it('calls an empty answer a problem only when it contradicts what we hold', () => {
+        expect(emptyProblem(0)).toBe(null)
+        expect(emptyProblem(12)).toBe('Ticketmaster returned no events, but 12 were still coming up.')
+        expect(emptyProblem(1)).toBe('Ticketmaster returned no events, but 1 was still coming up.')
+    })
+
+    // The function keeps its own list of what counts as off, because it
+    // deploys on its own and cannot reach lib/nearby. The two have to agree,
+    // or a night the roster calls off counts here as still coming up.
+    it('agrees with the app about which nights are off', () => {
+        const statuses = ['onsale', 'offsale', 'postponed', 'rescheduled', 'cancelled', 'canceled', 'Canceled', 'withdrawn', null]
+        for (const status of statuses) {
+            const counted = stillToCome([{ event_date: '2026-10-05', status }], '2026-10-01') === 1
+            expect(counted, String(status)).toBe(offFor({ status }) === '')
+        }
+    })
+
+    it('keeps the sentence a failure was made with', () => {
+        expect(feedProblem(feedError('Ticketmaster said no (401).'))).toBe('Ticketmaster said no (401).')
+    })
+
+    // A fetch that fails names the address it was fetching, and the address
+    // carries the key. Places can be read by every signed in person, so what
+    // is kept on one is never the error itself.
+    it('never keeps the error itself', () => {
+        const leak = new TypeError('error sending request for url (https://app.ticketmaster.com/x?apikey=SECRET)')
+        expect(feedProblem(leak)).not.toContain('SECRET')
+        expect(feedProblem(leak)).toBe('Something went wrong bringing the events in.')
+        expect(feedProblem(null)).toBe('Something went wrong bringing the events in.')
     })
 })

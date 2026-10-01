@@ -124,6 +124,61 @@ export function sourceKeyFor(date, name) {
     return flat ? `${date}-${flat}` : ''
 }
 
+// ------------------------------------------------------------ how a feed went
+
+// Today in Ireland, as the date a listing is on.
+//
+// Not toISOString, which is UTC and an hour behind all summer: a sync at half
+// midnight would have called it yesterday.
+export function irishDate(now = new Date()) {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Europe/Dublin', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).formatToParts(now)
+    const part = type => parts.find(p => p.type === type)?.value
+    return `${part('year')}-${part('month')}-${part('day')}`
+}
+
+// Statuses that mean a night is not going ahead. Ticketmaster spells it
+// canceled; the other spelling costs nothing to accept.
+const OFF = ['cancelled', 'canceled']
+
+// How many nights we hold from a feed that are still to come and still on.
+export function stillToCome(rows, today) {
+    return (rows || []).filter(r => (
+        r?.event_date > today && !OFF.includes(String(r?.status || '').toLowerCase())
+    )).length
+}
+
+// Whether an empty answer is a problem.
+//
+// Most of the time it is a quiet venue and nothing is wrong. **Unless we hold
+// nights there that Ticketmaster itself listed and that have not happened
+// yet.** Then the answer contradicts the feed's own earlier word, which is what
+// a retired venue id looks like, and it is worth somebody hearing about.
+export function emptyProblem(stillOn) {
+    const n = Number(stillOn) || 0
+    if (n === 0) return null
+    return `Ticketmaster returned no events, but ${n} ${n === 1 ? 'was' : 'were'} still coming up.`
+}
+
+// A failure carrying a sentence that is safe to keep and to show.
+export function feedError(sentence) {
+    const err = new Error(sentence)
+    err.feedProblem = sentence
+    return err
+}
+
+// What went wrong, in words that can be kept on the place.
+//
+// **Never the error itself.** A fetch that fails names the address it was
+// fetching, the address carries the key, and a place can be read by every
+// signed in person. So only a sentence this file wrote is ever kept.
+export function feedProblem(err) {
+    const said = err?.feedProblem
+    if (typeof said === 'string' && said) return said
+    return 'Something went wrong bringing the events in.'
+}
+
 // ---------------------------------------------------------- who is calling
 
 // What a token says it is, without checking whether it is telling the truth.

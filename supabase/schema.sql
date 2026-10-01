@@ -1513,6 +1513,9 @@ CREATE TABLE IF NOT EXISTS "public"."places" (
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "reading_key" "text" DEFAULT 'date'::"text" NOT NULL,
     "page_depth" integer DEFAULT 1 NOT NULL,
+    "feed_synced_at" timestamp with time zone,
+    "feed_count" integer,
+    "feed_problem" "text",
     CONSTRAINT "places_has_a_name" CHECK (("btrim"("name") <> ''::"text")),
     CONSTRAINT "places_page_url_is_a_url" CHECK ((("page_url" IS NULL) OR ("page_url" ~ '^https?://[^ ]+$'::"text"))),
     CONSTRAINT "places_capacity_is_a_number_of_people" CHECK ((("capacity" IS NULL) OR ("capacity" > 0))),
@@ -1522,6 +1525,8 @@ CREATE TABLE IF NOT EXISTS "public"."places" (
 
 COMMENT ON TABLE "public"."places" IS 'Somewhere near a restaurant that holds things: an arena, a theatre, a cinema, a harbour, a council that runs festivals. The place itself and nothing about who is near it, because the same place can be near more than one restaurant and would otherwise be typed twice.';
 COMMENT ON COLUMN "public"."places"."capacity" IS 'How many people it holds, typed by hand because no API publishes it. Only used by the city rule: something over about twenty thousand people a few kilometres away fills the hotels beside us even though nobody walks from it. Null means nobody has said, and the rule then leaves it out rather than guessing.';
+COMMENT ON COLUMN "public"."places"."feed_problem" IS 'What went wrong the last time the feed was asked, in a sentence the function wrote, or null when the last sync worked. Never the error itself: a failed fetch names its address, which carries the key, and every signed in person can read this row.';
+COMMENT ON COLUMN "public"."places"."feed_synced_at" IS 'When the Ticketmaster feed last answered for this place, with feed_count saying how many it listed. Shown in settings, and on the roster and the calendar when it is more than two days old, because a feed that stops answering looks exactly like a quiet fortnight.';
 COMMENT ON COLUMN "public"."places"."last_read_at" IS 'When a page here was last read, with last_read_count saying what that found. Both are shown in settings, because a page that changes its layout goes quiet rather than going wrong, and a run of zeroes is the only way anybody would notice.';
 COMMENT ON COLUMN "public"."places"."page_depth" IS 'How many pages deep to read, when the address carries {page}. One is the ordinary case and means the address is the whole of it. Only worth raising for a site that hands over a few events at a time, and worth keeping small: every page is a fetch and a slice of what gets sent to be read.';
 COMMENT ON COLUMN "public"."places"."page_url" IS 'A public listings page. Read on a schedule and turned into events, which then wait for somebody to keep them. Null means this place has no page worth reading and whatever it has comes from a feed instead. It may carry {month} or {page}, which are replaced before it is fetched: some sites hand over one calendar month or six events at a time, and reading only the first response is reading a fraction and calling it a week.';
@@ -2739,7 +2744,7 @@ CREATE OR REPLACE FUNCTION "public"."audit_skips"() RETURNS "text"[]
 CREATE OR REPLACE FUNCTION "public"."audit_ignored_columns"() RETURNS "text"[]
     LANGUAGE "sql" IMMUTABLE
     SET "search_path" TO 'public', 'pg_temp'
-    AS $$ select array['updated_at', 'last_seen_at'] $$;
+    AS $$ select array['updated_at', 'last_seen_at', 'feed_synced_at', 'feed_count', 'last_read_at', 'last_read_count'] $$;
 
 CREATE OR REPLACE FUNCTION "public"."row_label"("tbl" "text", "row_data" "jsonb") RETURNS "text"
     LANGUAGE "plpgsql" SECURITY DEFINER

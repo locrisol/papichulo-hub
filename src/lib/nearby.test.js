@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { shortDate } from '@/lib/dates'
 import {
     CITY_CAPACITY,
     WALKABLE_MINUTES,
@@ -41,6 +42,8 @@ import {
     offFor,
     offWords,
     forRoster,
+    feedWords,
+    feedTrouble,
 } from '@/lib/nearby'
 
 const arena = { id: 'p1', name: '3Arena', short_name: '3Arena', ticketmaster_venue_id: 'KovZ9177WYV' }
@@ -862,5 +865,49 @@ describe('a night that is not going ahead', () => {
         expect(ownRows(rows, headlinePlaces(pairs, {}))).toEqual([
             { place: arena, kind: 'arena', rows: [] },
         ])
+    })
+})
+
+// What the last sync of a feed said, on the settings row and wherever a
+// manager plans the week. A revoked key looked exactly like a quiet fortnight.
+describe('how the feed last went', () => {
+    const NOW = new Date('2026-10-01T12:00:00')
+    const fine = { ...arena, feed_synced_at: '2026-10-01T05:15:00', feed_count: 75, feed_problem: null }
+
+    it('says when and how many on the settings row', () => {
+        expect(feedWords(fine, '2026-10-01')).toBe('checked today, 75 listed')
+        expect(feedWords({ ...fine, feed_count: 0 }, '2026-10-01')).toBe('checked today, nothing listed')
+        expect(feedWords(arena, '2026-10-01')).toBe('not checked yet')
+        expect(feedWords(odeon, '2026-10-01')).toBe('')
+    })
+
+    it('says what went wrong instead, when it did', () => {
+        expect(feedWords({ ...fine, feed_problem: 'Ticketmaster said no (401).' }, '2026-10-01'))
+            .toBe('Ticketmaster said no (401).')
+    })
+
+    it('tells the week planners about a refusal', () => {
+        const broke = { ...fine, feed_synced_at: '2026-09-14T05:15:00', feed_problem: 'Ticketmaster said no (401).' }
+        const out = feedTrouble([{ ...pairs[0], place: broke }], {}, NOW)
+        expect(out).toHaveLength(1)
+        expect(out[0].words).toBe(`3Arena: Ticketmaster said no (401). Last updated ${shortDate('2026-09-14')}.`)
+    })
+
+    // The schedule stopping, or the function failing before it reached any
+    // place, writes nothing at all. Two days without an answer is the sign.
+    it('tells them when nothing has come in for two days', () => {
+        const old = { ...fine, feed_synced_at: '2026-09-28T05:15:00' }
+        expect(feedTrouble([{ ...pairs[0], place: old }], {}, NOW)[0].words)
+            .toBe(`3Arena: not updated since ${shortDate('2026-09-28')}.`)
+    })
+
+    it('says nothing about a feed that is fine, or one never asked yet', () => {
+        expect(feedTrouble([{ ...pairs[0], place: fine }], {}, NOW)).toEqual([])
+        expect(feedTrouble(pairs, {}, NOW)).toEqual([])
+    })
+
+    it('leaves out a place nobody is watching', () => {
+        const broke = { ...arena, feed_problem: 'Ticketmaster said no (401).' }
+        expect(feedTrouble([{ ...pairs[0], place: broke, is_active: false }], {}, NOW)).toEqual([])
     })
 })

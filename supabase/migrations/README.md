@@ -103,6 +103,11 @@ back to the name without it, but a rename only keeps its figures once it is run.
 `027` is **not run yet**. The nightly job keeps the photos of a checklist
 round still going, so a tick submitted days after its photo was taken still
 has it, and a tick is refused if its photo is no longer in storage.
+`028` is **not run yet**. It gives each place three columns saying how its
+last Ticketmaster sync went: when the feed last answered, how many it listed,
+and what went wrong if anything did. The roster and the calendar tell a
+manager when a feed has stopped answering, instead of it looking like a quiet
+fortnight. Redeploy `nearby-events` after it.
 `030` is **not run yet**. It works a timesheet row's hours out in real time
 from the date, so a shift on the night the clocks go back or forward comes to
 the hours really worked rather than what the clock face says. Every other

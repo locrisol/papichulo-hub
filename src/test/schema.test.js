@@ -87,3 +87,25 @@ describe('the nightly photo job', () => {
             .toMatch(/r\.id::text = split_part\(o\.name, '\/', 3\)\s+and r\.ended_at is null/)
     })
 })
+
+describe('the change log', () => {
+    // Every Ticketmaster sync stamps the place it checked, twice a day and on
+    // every manager's visit, and the weekly page read does the same. Logged,
+    // that was four places writing "The Hub itself" into Changes all day long
+    // to say only that something ran. What went wrong is real news, so it stays.
+    const ignoredIn = text => {
+        const found = /audit_ignored_columns"?\(\)[\s\S]*?array\[([^\]]*)\]/.exec(text)
+        return found ? found[1].split(',').map(v => v.trim().replace(/'/g, '')) : []
+    }
+
+    it('does not log a sync that only says when it ran and how many it found', () => {
+        const migration = readFileSync('supabase/migrations/028_the_feed_says_how_it_went.sql', 'utf8')
+        for (const text of [schema, migration]) {
+            const ignored = ignoredIn(text)
+            for (const column of ['updated_at', 'last_seen_at', 'feed_synced_at', 'feed_count', 'last_read_at', 'last_read_count']) {
+                expect(ignored).toContain(column)
+            }
+            expect(ignored).not.toContain('feed_problem')
+        }
+    })
+})

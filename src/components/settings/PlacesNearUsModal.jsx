@@ -12,7 +12,7 @@ import Modal from '@/components/ui/Modal'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import {
     CITY_CAPACITY, CITY_RADIUS_KM, WALKABLE_MINUTES,
-    walkWords, sourceWords, placeTag, readWords, pastWalking, cityProblem, samePlace,
+    walkWords, sourceWords, placeTag, readWords, feedWords, pastWalking, cityProblem, samePlace,
     couldBeSamePlace, placeName, PAIRING_COLUMNS,
 } from '@/lib/nearby'
 
@@ -788,6 +788,8 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
 function PlaceRow({ row, today, busy, onToggle, onEdit }) {
     const tag = placeTag(row.place, row)
     const read = readWords(row.place, today)
+    // And how the feed last went, which is the only sign a refused key gives.
+    const synced = feedWords(row.place, today)
     // A city place that is showing nothing says why, right here. Silence is
     // the worst thing a rule can do: somebody who ticks Croke Park and sees
     // nothing for a fortnight cannot tell whether it is quiet, broken, or
@@ -810,7 +812,7 @@ function PlaceRow({ row, today, busy, onToggle, onEdit }) {
             <button type="button" onClick={onEdit} className="flex-1 min-w-0 text-left">
                 <span className="block text-sm font-semibold text-gray-900">{row.place.name}</span>
                 <span className="block text-xs text-muted">
-                    {[far, sourceWords(row.place), read].filter(Boolean).join(' · ')}
+                    {[far, sourceWords(row.place), synced, read].filter(Boolean).join(' · ')}
                 </span>
             </button>
             <span

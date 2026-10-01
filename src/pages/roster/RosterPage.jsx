@@ -41,6 +41,7 @@ import DayNoteDialog from '@/components/roster/DayNoteDialog'
 import Modal from '@/components/ui/Modal'
 import EmployeeForm from '@/components/team/EmployeeForm'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import FeedTrouble from '@/components/nearby/FeedTrouble'
 import { atRestaurant, canChangeEntry } from '@/lib/diary'
 import DiaryDialog from '@/components/diary/DiaryDialog'
 import DiaryEntryModal from '@/components/diary/DiaryEntryModal'
@@ -89,6 +90,8 @@ export default function RosterPage() {
     // Kept apart from the listings so a place with nothing on this week still
     // draws its row. See ownRows.
     const [nearbyPlaces, setNearbyPlaces] = useState([])
+    // The pairings themselves, for saying when a feed has stopped answering.
+    const [nearbyPairings, setNearbyPairings] = useState([])
     const [diary, setDiary] = useState([])
     const [restaurants, setRestaurants] = useState([])
     const [editingDiary, setEditingDiary] = useState(null)
@@ -277,6 +280,7 @@ export default function RosterPage() {
         // going ahead comes off here, the way a cancelled diary job does.
         setNearbyOn(forRoster(nearbyRows(eventRes.data, nearRes.data, activeRestaurant)))
         setNearbyPlaces(headlinePlaces(nearRes.data, activeRestaurant))
+        setNearbyPairings(nearRes.data || [])
         setDiary((diaryRes.data || []).filter(e => atRestaurant(e, restaurantId)))
         setRestaurants(placeRes.data || [])
         setAbsences(offRes.data || [])
@@ -750,6 +754,10 @@ export default function RosterPage() {
             </div>
 
             {error && <div className="bg-amber-50 text-amber-700 text-sm rounded-lg p-3 mb-4">{error}</div>}
+
+            {/* A feed that has stopped answering, said here because this is
+                where its silence would pass for a quiet week. */}
+            <FeedTrouble pairings={nearbyPairings} restaurant={activeRestaurant} className="mb-4" />
 
             {/* Week picker and what the week comes to. */}
             <div className={`${cardEdge} bg-white p-3 mb-4 flex flex-wrap items-center gap-3`}>
