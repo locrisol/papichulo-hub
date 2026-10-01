@@ -104,6 +104,15 @@ export default function TimesheetPage() {
     // error, nothing. Six digits typed in full is how he types every time, so
     // it was most of them.
     const [typing, setTyping] = useState({})
+    // The cell somebody is typing into, as person|date.
+    //
+    // A clock in is saved the moment its box is left, a moment before the
+    // clock out is typed, so for that moment every day typed by hand is a
+    // clock in with no clock out. Said above the week, that warning would push
+    // the grid down and back up on every cell. So the banner leaves the cell
+    // being typed into alone, and says it once somebody has moved on without
+    // the clock out. The cell itself says it either way, where nothing moves.
+    const [workingOn, setWorkingOn] = useState(null)
     const [absences, setAbsences] = useState([])
     const [shifts, setShifts] = useState([])
     // Whether the till's report covering this week has been read in. It decides
@@ -239,6 +248,10 @@ export default function TimesheetPage() {
 
     const totals = weekTotals(rows)
     const waiting = unanswered(rows)
+    // The three things the banner can say, each about its own people.
+    const unsaid = waiting.filter(w => w.days.length)
+    const changed = waiting.filter(w => w.changed.length)
+    const noClockOut = waiting.filter(w => w.open.some(date => `${w.person.id}|${date}` !== workingOn))
 
     // The share of the day's sales the day's hours came to, and the target it
     // is judged against. Both the same as the cost dashboard uses, so a week is
@@ -280,6 +293,7 @@ export default function TimesheetPage() {
     // the box is left, so a half typed time is never saved and a week is not
     // written thirty times while somebody thinks.
     function type(person, cell, entry, field, value) {
+        setWorkingOn(keyFor(person, cell))
         if (entry.id) {
             setTyping(was => ({ ...was, [entry.id]: { ...was[entry.id], [field]: value } }))
             return
@@ -846,16 +860,16 @@ export default function TimesheetPage() {
                 </div>
             </div>
 
-            {waiting.length > 0 && (
+            {(unsaid.length > 0 || changed.length > 0 || noClockOut.length > 0) && (
                 <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4 text-xs text-amber-800 space-y-1">
-                    {/* Two different things to answer, said separately because
-                        they want different answers. One is a shift nobody has
-                        accounted for; the other is a till time somebody moved
-                        and has not explained. */}
-                    {waiting.some(w => w.days.length) && (
+                    {/* Three different things to answer, said separately
+                        because they want different answers. A shift nobody
+                        has accounted for, a till time somebody moved and has
+                        not explained, and a clock in with no clock out. */}
+                    {unsaid.length > 0 && (
                         <p>
                             <strong className="font-bold">
-                                {names(waiting.filter(w => w.days.length))} {waiting.filter(w => w.days.length).length === 1
+                                {names(unsaid)} {unsaid.length === 1
                                     ? 'has a rostered shift' : 'have rostered shifts'} with nothing said about it.
                             </strong>{' '}
                             A report cannot be drafted for this week until each one has times, time
@@ -863,16 +877,27 @@ export default function TimesheetPage() {
                             press <strong className="font-bold">+ comment</strong> on the cell.
                         </p>
                     )}
-                    {waiting.some(w => w.changed.length) && (
+                    {changed.length > 0 && (
                         <p>
                             <strong className="font-bold">
-                                {names(waiting.filter(w => w.changed.length))} {waiting.filter(w => w.changed.length).length === 1
+                                {names(changed)} {changed.length === 1
                                     ? 'has hours' : 'have hours'} the till&apos;s report does not have, with nothing
                                 said about them.
                             </strong>{' '}
                             A time off the report that was moved, or a shift typed onto a day the
                             report says nothing about. Either way the accountant is reading a
                             different figure, so the week needs a comment saying why.
+                        </p>
+                    )}
+                    {noClockOut.length > 0 && (
+                        <p>
+                            <strong className="font-bold">
+                                {names(noClockOut)} {noClockOut.length === 1 ? 'has' : 'have'} a clock in
+                                with no clock out.
+                            </strong>{' '}
+                            It counts as no hours, so no report can be drafted and the hours
+                            cannot be sent until it has one. Type the clock out time, or clear the
+                            clock in and add a comment.
                         </p>
                     )}
                 </div>

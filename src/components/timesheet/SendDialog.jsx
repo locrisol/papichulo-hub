@@ -126,6 +126,10 @@ export default function SendDialog({
     // A period with a day nobody has accounted for is a period with the wrong
     // hours on it, and the wrong hours are worse than late ones.
     const blocked = waiting.length > 0
+    // Said apart, because they want different answers: a day with nothing
+    // said about it, and a clock in with no clock out.
+    const unsaid = waiting.filter(w => w.days.length || w.changed.length)
+    const noClockOut = waiting.filter(w => w.open.length)
     // Nothing goes out for a fortnight that has not finished, the same rule the
     // grid follows about a week.
     const unfinished = period ? !periodIsOver(period.start, todayISO()) : false
@@ -245,13 +249,27 @@ export default function SendDialog({
                 )}
 
                 {blocked && (
-                    <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4 text-xs text-amber-800">
-                        <strong className="font-bold">
-                            {waiting.length === 1 ? 'One person has' : `${waiting.length} people have`} a
-                            day in this period with nothing said about it.
-                        </strong>{' '}
-                        {names(waiting)}. The period cannot go out until each one has times, time
-                        off, or a comment. A test can still be sent.
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4 text-xs text-amber-800 space-y-1">
+                        {unsaid.length > 0 && (
+                            <p>
+                                <strong className="font-bold">
+                                    {headCount(unsaid) === 1 ? 'One person has' : `${headCount(unsaid)} people have`} a
+                                    day in this period with nothing said about it.
+                                </strong>{' '}
+                                {names(unsaid)}. The period cannot go out until each one has times, time
+                                off, or a comment.
+                            </p>
+                        )}
+                        {noClockOut.length > 0 && (
+                            <p>
+                                <strong className="font-bold">
+                                    {names(noClockOut)} {headCount(noClockOut) === 1 ? 'has' : 'have'} a clock
+                                    in with no clock out.
+                                </strong>{' '}
+                                The period cannot go out until each one has a clock out time.
+                            </p>
+                        )}
+                        <p>A test can still be sent.</p>
                     </div>
                 )}
 
@@ -321,7 +339,9 @@ export default function SendDialog({
                     disabled={busy || loading || blocked || !canEdit}
                     onClick={() => go(false)}
                     className={`${primaryButton('md', 'good')} disabled:opacity-50`}
-                    title={blocked ? 'The period has a day nobody has accounted for' : undefined}
+                    title={!blocked ? undefined
+                        : unsaid.length ? 'The period has a day nobody has accounted for'
+                            : 'The period has a clock in with no clock out'}
                 >
                     {busy ? 'Sending...' : 'Send it'}
                 </button>
@@ -336,4 +356,10 @@ function names(waiting) {
     const all = [...new Set(waiting.map(w => w.person.full_name))]
     if (all.length <= 3) return all.join(', ')
     return `${all.slice(0, 3).join(', ')} and ${all.length - 3} more`
+}
+
+// How many people, once each. The list is a week at a time, so somebody
+// holding up both weeks of the period is in it twice.
+function headCount(waiting) {
+    return new Set(waiting.map(w => w.person.full_name)).size
 }

@@ -233,6 +233,15 @@ export default function TimesheetDay({ rows, date, canEdit = true, onOpenDay, on
                                             nothing registered
                                         </span>
                                     )}
+                                    {/* A clock in with no clock out draws no
+                                        block, because there is no end to draw
+                                        it to, so without this the day looked
+                                        empty. */}
+                                    {cell.open && (
+                                        <span className="text-[0.625rem] font-bold text-accent-ink">
+                                            no clock out
+                                        </span>
+                                    )}
                                 </div>
 
                                 <div className="flex-1 relative h-24" data-track>

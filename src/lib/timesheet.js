@@ -184,6 +184,15 @@ export function dayCell({
             !String(e.note || '').trim()
             && (e.source === 'corrected' || (imported && e.source === 'typed'))
         )),
+        // A clock in with no clock out. It comes to nought hours and the pay
+        // mail only carries a shift with both ends, so left alone the day
+        // reached the accountant as a day nobody worked. Its own question
+        // rather than part of `unanswered`: it matters on a day nobody
+        // rostered and on a week the till's report covers, and a comment does
+        // not answer it, because the clock in still never reaches her.
+        //
+        // Saved rows only. A draft is a box still being typed into.
+        open: asking && mine.some(e => e.id && e.starts_at && !e.ends_at),
     }
 }
 
@@ -361,7 +370,12 @@ export function unanswered(rows, covered) {
             .filter(d => d.unanswered && !already.has(d.date))
             .map(d => d.date)
         const changed = row.days.filter(d => d.unexplained).map(d => d.date)
-        if (days.length || changed.length) out.push({ person: row.person, days, changed })
+        // A clock in with no clock out. Not let off by the archive either: a
+        // half typed row is something somebody did on the timesheet itself.
+        const open = row.days.filter(d => d.open).map(d => d.date)
+        if (days.length || changed.length || open.length) {
+            out.push({ person: row.person, days, changed, open })
+        }
     }
     return out
 }
@@ -629,6 +643,13 @@ export function personPeriod({
                 .map(e => String(e.note || '').trim())
                 .filter(Boolean)
             const away = awayOn(person.id, date)
+            // A clock in nobody gave a clock out. The send is held while one
+            // is on the period, but a test still goes, and a day must never
+            // drop out as though nobody worked it.
+            const open = mine
+                .filter(e => e.work_date === date && e.starts_at && !e.ends_at)
+                .map(e => e.starts_at)
+                .sort()
 
             return {
                 date,
@@ -639,13 +660,14 @@ export function personPeriod({
                     hours: num(e.hours),
                     kind: e.kind,
                 })),
+                open,
                 notes: said,
                 hours: spans.reduce((t, e) => t + num(e.hours), 0),
                 bankHoliday: Boolean(bankHolidayOn(date)),
                 away: away ? away.kind : null,
                 part: isPartDay(away),
             }
-        }).filter(day => day.spans.length > 0 || day.notes.length > 0 || day.away)
+        }).filter(day => day.spans.length > 0 || day.open.length > 0 || day.notes.length > 0 || day.away)
 
         const inWeek = w => days.reduce((t, d) => (d.week === w ? t + d.hours : t), 0)
         const ofKind = kind => days.reduce((t, d) => (

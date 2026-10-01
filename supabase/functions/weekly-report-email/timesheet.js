@@ -221,6 +221,13 @@ export function personPeriod({ people = [], entries = [], absences = [], dates =
                 .filter(Boolean)
 
             const away = awayOn(absences, person.id, date)
+            // A clock in nobody gave a clock out. The send is held in the Hub
+            // while one is on the period, but a test still goes, and a day
+            // must never drop out of here as though nobody worked it.
+            const open = mine
+                .filter(e => e.work_date === date && e.starts_at && !e.ends_at)
+                .map(e => e.starts_at)
+                .sort()
 
             return {
                 date,
@@ -231,6 +238,7 @@ export function personPeriod({ people = [], entries = [], absences = [], dates =
                     hours: num(e.hours),
                     kind: e.kind,
                 })),
+                open,
                 notes: said,
                 hours: spans.reduce((t, e) => t + num(e.hours), 0),
                 bankHoliday: Boolean(bankHolidayOn(date)),
@@ -239,7 +247,7 @@ export function personPeriod({ people = [], entries = [], absences = [], dates =
                 away: away ? away.kind : null,
                 part: partOf(away),
             }
-        }).filter(day => day.spans.length > 0 || day.notes.length > 0 || day.away)
+        }).filter(day => day.spans.length > 0 || day.open.length > 0 || day.notes.length > 0 || day.away)
 
         const inWeek = w => days.reduce((t, d) => (d.week === w ? t + d.hours : t), 0)
         const ofKind = kind => days.reduce((t, d) => (
@@ -613,7 +621,13 @@ function dayLine(day) {
         return `<div style="font-size:13px;color:${INK};white-space:nowrap;">
             ${escapeHtml(clock(span.starts_at))} to ${escapeHtml(clock(span.ends_at))}${kind}
         </div>`
-    }).join('')
+    }).join('') + day.open.map(at => (
+        // Said rather than left out, and allowed to wrap: it is a sentence,
+        // and a line that cannot break is what makes a phone shrink the mail.
+        `<div style="font-size:13px;color:${INK};">
+            Clock in ${escapeHtml(clock(at))}, no clock out
+        </div>`
+    )).join('')
 
     // A day that has times and is also one of the two counted kinds says so
     // under the times, on its own line so it never widens the row on a phone.
@@ -706,7 +720,8 @@ function asText({ restaurantName, period, weeks, people, T, test, comment }) {
 
             for (const day of mine) {
                 const head = `    ${dayWords(day.date)}${day.bankHoliday ? ' (bank holiday)' : ''}`
-                if (!day.spans.length) {
+                const timed = day.spans.length + day.open.length
+                if (!timed) {
                     const away = day.away && AWAY_LOOK[day.away]
                     lines.push(`${head}: ${away ? awayWords(day).toLowerCase() : 'nothing worked'}`)
                 }
@@ -716,7 +731,8 @@ function asText({ restaurantName, period, weeks, people, T, test, comment }) {
                         : ''
                     lines.push(`${head}: ${clock(span.starts_at)} to ${clock(span.ends_at)}${kind}  ${hours(span.hours)} h`)
                 }
-                if (day.spans.length && COUNTED_DAYS.includes(day.away)) {
+                for (const at of day.open) lines.push(`${head}: clock in ${clock(at)}, no clock out`)
+                if (timed && COUNTED_DAYS.includes(day.away)) {
                     lines.push(`      ${awayWords(day).toLowerCase()}`)
                 }
                 for (const words of day.notes) lines.push(`      ${words}`)

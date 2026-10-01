@@ -228,7 +228,7 @@ describe('a week whose till report has been read in', () => {
             entries: [shift({ employee_id: 'e1', work_date: MON, starts_at: '09:20:00', ends_at: '17:00:00', source: 'corrected' })],
         })]
         expect(weekAnswered(rows)).toBe(false)
-        expect(unanswered(rows)).toEqual([{ person: aoife, days: [], changed: [MON] }])
+        expect(unanswered(rows)).toEqual([{ person: aoife, days: [], changed: [MON], open: [] }])
     })
 
     it('blocks nothing at all once the week is imported and nothing was changed', () => {
@@ -246,7 +246,7 @@ describe('a week whose till report has been read in', () => {
             entries: [shift({ employee_id: 'e1', work_date: MON, starts_at: '09:20:00', ends_at: '18:00:00', source: 'typed' })],
         })]
         expect(weekAnswered(rows)).toBe(false)
-        expect(unanswered(rows)).toEqual([{ person: aoife, days: [], changed: [MON] }])
+        expect(unanswered(rows)).toEqual([{ person: aoife, days: [], changed: [MON], open: [] }])
     })
 
     it('is happy once those hours say why', () => {
@@ -524,7 +524,7 @@ describe('whether the week can go anywhere', () => {
     it('names who has a rostered shift nobody answered', () => {
         const rows = [personWeek({ person: aoife, weekStart: WEEK, shifts: rostered, today: AFTER })]
         expect(weekAnswered(rows)).toBe(false)
-        expect(unanswered(rows)).toEqual([{ person: aoife, days: [TUE], changed: [] }])
+        expect(unanswered(rows)).toEqual([{ person: aoife, days: [TUE], changed: [], open: [] }])
     })
 
     // The other half of "times or a reason", which is the half that had
@@ -545,7 +545,7 @@ describe('whether the week can go anywhere', () => {
             entries: [shift({ employee_id: 'e1', work_date: TUE, starts_at: '09:20:00', ends_at: '17:00:00', source: 'corrected' })],
         })]
         expect(weekAnswered(rows)).toBe(false)
-        expect(unanswered(rows)).toEqual([{ person: aoife, days: [], changed: [TUE] }])
+        expect(unanswered(rows)).toEqual([{ person: aoife, days: [], changed: [TUE], open: [] }])
     })
 
     it('is happy once the change says why', () => {
@@ -595,6 +595,49 @@ describe('whether the week can go anywhere', () => {
     it('still asks about a day the archive does not cover', () => {
         const rows = [personWeek({ person: aoife, weekStart: WEEK, shifts: rostered, today: AFTER })]
         expect(weekAnswered(rows, ['2026-10-25'])).toBe(false)
+    })
+
+    // A clock in typed, then something else needed doing and the clock out
+    // never was. The row counted as an answer, came to nought hours, and the
+    // day dropped out of the payroll mail as if she had not worked.
+    describe('a clock in with no clock out', () => {
+        const half = (over = {}, week = {}) => [personWeek({
+            person: aoife, weekStart: WEEK, today: AFTER, ...week,
+            entries: [shift({ id: 't1', employee_id: 'e1', work_date: TUE, starts_at: '09:00:00', ends_at: null, ...over })],
+        })]
+
+        it('holds the week, rostered or not', () => {
+            const rows = half()
+            expect(rows[0].days.find(d => d.date === TUE).open).toBe(true)
+            expect(weekAnswered(rows)).toBe(false)
+            expect(unanswered(rows)).toEqual([{ person: aoife, days: [], changed: [], open: [TUE] }])
+        })
+
+        it('holds a rostered day as well, which it used to count as answered', () => {
+            expect(weekAnswered(half({}, { shifts: rostered }))).toBe(false)
+        })
+
+        // The clock in never reaches the accountant without a clock out, so a
+        // sentence cannot stand in for the missing time.
+        it('is not answered by a comment', () => {
+            expect(weekAnswered(half({ note: 'forgot to clock out' }))).toBe(false)
+        })
+
+        // A till row with no clock out says nothing new about the till, so the
+        // check for changed rows does not see it. This one has to.
+        it('holds a week the till report was read in for, too', () => {
+            expect(weekAnswered(half({ source: 'import' }, { imported: true }))).toBe(false)
+        })
+
+        // Nothing is asked about a week still being worked. On a Wednesday a
+        // clock in with no clock out is somebody who is still at work.
+        it('asks nothing while the week is still being worked', () => {
+            expect(weekAnswered(half({}, { today: TUE }))).toBe(true)
+        })
+
+        it('is happy once the clock out is in', () => {
+            expect(weekAnswered(half({ ends_at: '17:00:00' }))).toBe(true)
+        })
     })
 })
 

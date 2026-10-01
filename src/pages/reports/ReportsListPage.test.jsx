@@ -33,6 +33,14 @@ const db = mockSupabase({
         data: [{ id: 's1', employee_id: 'e1', shift_date: addDays(LAST_WEEK, 2), starts_at: '09:00', ends_at: '17:00' }],
         error: null,
     },
+    // A clock in typed on the Thursday and no clock out.
+    timesheet_entries: {
+        data: [{
+            id: 't1', employee_id: 'e1', work_date: addDays(LAST_WEEK, 4),
+            starts_at: '09:00:00', ends_at: null, kind: 'worked', source: 'typed',
+        }],
+        error: null,
+    },
 })
 vi.mock('@/lib/supabase', () => ({ supabase: new Proxy({}, { get: (_, k) => db[k] }) }))
 vi.mock('@/context/auth', () => ({ useAuth: () => ({ user: { id: 'u1', role: 'store_manager' } }) }))
@@ -70,6 +78,24 @@ describe('a week with its sales in and its timesheet not', () => {
         const said = await screen.findAllByText(/Aoife has a rostered shift with nothing said on the timesheet/)
         expect(said).toHaveLength(2)
         expect(screen.queryByText(/undefined/)).toBeNull()
+    })
+
+    // It used to count as an answer and say nothing at all.
+    it('names a clock in with no clock out', async () => {
+        renderWithRouter(<ReportsListPage />)
+        const said = await screen.findAllByText(/Aoife has a clock in with no clock out on the timesheet/)
+        expect(said).toHaveLength(2)
+    })
+
+    // The mock above hands back every column whatever was asked for, so the
+    // test before this one passes without the id. A row read without it is
+    // never counted as saved, and the week could be started on live.
+    it('reads each entry with its id', async () => {
+        renderWithRouter(<ReportsListPage />)
+        await screen.findAllByText(/Aoife has a clock in with no clock out/)
+        const at = db.from.mock.calls.findIndex(([table]) => table === 'timesheet_entries')
+        const [columns] = db.from.mock.results[at].value.select.mock.calls[0]
+        expect(columns.split(', ')).toContain('id')
     })
 })
 

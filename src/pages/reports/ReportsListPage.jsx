@@ -70,6 +70,9 @@ function unansweredWords(waiting) {
     // carries a wage bill, and a figure the accountant's own copy disagrees
     // with is the one thing nobody reading it can see.
     const changed = waiting.filter(w => w.changed?.length)
+    // A clock in with no clock out. It comes to no hours, so the report's wage
+    // bill would be short by that shift with nothing on the page to say so.
+    const open = waiting.filter(w => w.open?.length)
 
     const said = []
     if (missing.length) {
@@ -79,6 +82,10 @@ function unansweredWords(waiting) {
     if (changed.length) {
         said.push(`${who(changed)} ${changed.length === 1 ? 'has hours' : 'have hours'} `
             + "the till's report does not have, with nothing said about them.")
+    }
+    if (open.length) {
+        said.push(`${who(open)} ${open.length === 1 ? 'has' : 'have'} a clock in with no clock out `
+            + 'on the timesheet.')
     }
     return said.join(' ')
 }
@@ -232,7 +239,9 @@ export default function ReportsListPage() {
                 // by hand is the one thing on a week that has to say why, and
                 // without these two columns that rule was never checked on this
                 // page at all: it read every row as typed and unremarkable.
-                .select('employee_id, work_date, starts_at, ends_at, kind, source, note')
+                // The id is what tells a saved clock in from a draft, so
+                // without it a clock in with no clock out never held the week.
+                .select('id, employee_id, work_date, starts_at, ends_at, kind, source, note')
                 .eq('restaurant_id', restaurantId)
                 .gte('work_date', from).lte('work_date', to),
             supabase

@@ -507,6 +507,38 @@ describe('marking a day with times on it as holiday or off sick', () => {
     })
 })
 
+describe('a clock in with no clock out', () => {
+    const half = {
+        id: 't5', restaurant_id: 'r1', employee_id: 'e1', work_date: WEEK,
+        starts_at: '09:00:00', ends_at: null, kind: 'worked', source: 'typed',
+    }
+
+    // It used to come to nought hours, count as an answer and drop out of the
+    // payroll mail, with nothing on the screen but an empty box.
+    it('says so on the day and above the week', async () => {
+        rows.timesheet_entries = [half]
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        expect(screen.getAllByText('no clock out').length).toBeGreaterThan(0)
+        expect(screen.getByText(/has a clock in with no clock out/)).toBeInTheDocument()
+    })
+
+    // Every day typed by hand is one of these for a moment: the clock in is
+    // saved when its box is left, just before the clock out is typed. The
+    // warning above the week must not jump in and out on every cell.
+    it('does not warn above the week while the clock out is being typed', async () => {
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        await userEvent.type(boxes()[0], '0900')
+        await userEvent.tab()
+        await waitFor(() => expect(inserted).toHaveLength(1))
+
+        expect(screen.queryByText(/has a clock in with no clock out/)).not.toBeInTheDocument()
+    })
+})
+
 describe('saying that it saved', () => {
     // The same three words the report page uses, because it is the same
     // promise: no Save button on either, both write when you leave a box, and

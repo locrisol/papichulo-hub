@@ -139,6 +139,23 @@ describe('a day somebody went home sick part way through', () => {
     })
 })
 
+// A clock in with no clock out holds the send, but the paper can still be
+// downloaded, and a day must not drop off it as if nobody had worked.
+describe('a clock in with no clock out', () => {
+    it('is on the page, saying the clock out is missing', async () => {
+        const mine = personPeriod({
+            people: [{ id: 'e1', full_name: 'Aoife Byrne' }],
+            entries: [shift({ employee_id: 'e1', work_date: '2026-10-28', starts_at: '09:00:00', ends_at: null, hours: null })],
+            absences: [],
+            dates: DATES,
+        })
+        const doc = await timesheetPdf({ restaurant, periodStart: PERIOD, people: mine, save: false })
+        const all = Array.from({ length: doc.getNumberOfPages() }, (_, i) => drawnOn(doc, i + 1)).join('')
+
+        expect(all).toContain('Clock in 09:00:00, no clock out')
+    })
+})
+
 describe('a person is kept in one piece', () => {
     // The rule the stock take and the allergen sheets already follow. Two days
     // stranded at the foot of a page, with the name overleaf, is a page nobody

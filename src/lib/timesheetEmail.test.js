@@ -237,6 +237,31 @@ describe('going home sick part way through a day', () => {
     })
 })
 
+// The send is held while one of these is on the period, but a test can still go,
+// and the mail is never the place a day quietly goes missing. It used to keep
+// only spans with both ends, so the day dropped out as if nobody had worked.
+describe('a clock in with no clock out', () => {
+    const half = [shift({ employee_id: 'e1', work_date: '2026-10-28', starts_at: '09:00:00', ends_at: null, hours: null })]
+
+    it('keeps the day, with the clock in it has', () => {
+        const [first] = personPeriod({ people: [aoife], entries: half, absences: [], dates: DATES })
+        const day = first.days.find(d => d.date === '2026-10-28')
+        expect(day.open).toEqual(['09:00:00'])
+        expect(day.spans).toEqual([])
+        expect(day.hours).toBe(0)
+    })
+
+    it('says so in the mail', () => {
+        const mail = timesheetEmail({
+            restaurantName: 'Point Campus',
+            periodStart: PERIOD,
+            people: personPeriod({ people: [aoife], entries: [...entries, ...half], absences: [], dates: DATES }),
+        })
+        expect(mail.html).toContain('Clock in 09:00:00, no clock out')
+        expect(mail.text).toContain('clock in 09:00:00, no clock out')
+    })
+})
+
 describe('a trial and a training day', () => {
     const trial = [shift({
         employee_id: 'e1', work_date: '2026-10-29', kind: 'trial',
@@ -553,6 +578,10 @@ describe('the browser and the function agree about a period', () => {
         shift({
             employee_id: 'e1', work_date: '2026-11-06', kind: 'training',
             starts_at: '09:00:00', ends_at: '13:00:00', hours: 4,
+        }),
+        // A clock in nobody gave a clock out.
+        shift({
+            employee_id: 'e2', work_date: '2026-11-01', starts_at: '12:00:00', ends_at: null, hours: null,
         }),
     ]
 

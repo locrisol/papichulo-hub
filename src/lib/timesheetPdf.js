@@ -431,9 +431,14 @@ export async function timesheetPdf({
                 let x = marginX + 48
                 if (day.bankHoliday) x += drawMark(BANK_LOOK, null, x, y)
 
-                if (day.spans.length) {
-                    const times = day.spans
-                        .map(s => `${clock(s.starts_at)} to ${clock(s.ends_at)}`).join(',  ')
+                if (day.spans.length || day.open.length) {
+                    // A clock in with no clock out is said, never dropped:
+                    // the send is held for one, but the paper can still be
+                    // downloaded.
+                    const times = [
+                        ...day.spans.map(s => `${clock(s.starts_at)} to ${clock(s.ends_at)}`),
+                        ...day.open.map(at => `Clock in ${clock(at)}, no clock out`),
+                    ].join(',  ')
                     pdf.setTextColor(...INK)
                     pdf.setFont('helvetica', 'normal')
                     pdf.setFontSize(8)
