@@ -451,6 +451,27 @@ export function checkWeek({
 
         if (mine.length === 0) continue
 
+        // Shifts on a day they do not work here, after their last day or
+        // before their first. A warning, because it is a mistake to put right
+        // rather than the law about the company, and it is the only thing that
+        // says these shifts are there: a week is often built before somebody
+        // gives notice, and those shifts go on counting in the hours and the
+        // headcount until somebody takes them off.
+        const daysOf = list => {
+            const days = [...new Set(list.map(s => s.shift_date))].sort().map(on)
+            return days.length > 1 ? `${days.slice(0, -1).join(', ')} and ${days.at(-1)}` : days[0]
+        }
+        const after = mine.filter(s => employee.ended_on && s.shift_date > employee.ended_on)
+        if (after.length > 0) {
+            add('warn', 'afterLastDay',
+                `${name}'s last day is ${on(employee.ended_on)}, and they are rostered after it on ${daysOf(after)}.`)
+        }
+        const before = mine.filter(s => employee.started_on && s.shift_date < employee.started_on)
+        if (before.length > 0) {
+            add('warn', 'beforeFirstDay',
+                `${name} starts on ${on(employee.started_on)}, and is rostered before then on ${daysOf(before)}.`)
+        }
+
         // The visa cap. On from the start and it blocks, because going over it
         // is the employer's offence rather than the employee's problem.
         if (settings.visaCap?.on) {

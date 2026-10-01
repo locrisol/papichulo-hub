@@ -13,7 +13,7 @@ import { secondaryButton, cardEdge, cardHeader, badge, segmentTrack, segmentButt
 import JumpButton from '@/components/ui/JumpButton'
 import DateStepper from '@/components/ui/DateStepper'
 import {
-    sortEmployees, isWorkingOn, nextSortOrder, employeeProblem, employeeNote, employeeRow, EMPTY_EMPLOYEE,
+    onTheRoster, whoCanWorkOn, nextSortOrder, employeeProblem, employeeNote, employeeRow, EMPTY_EMPLOYEE,
 } from '@/lib/team'
 import { fullDayRun, fullDayWords, closedTheNightBefore } from '@/lib/workRun'
 import {
@@ -319,11 +319,11 @@ export default function RosterPage() {
         }
     }
 
-    // Only the people actually working that week. Somebody who left in June is
-    // not a row on July's roster with nothing in it.
-    const roster = sortEmployees(employees).filter(e =>
-        dates.some(d => isWorkingOn(e, d)),
-    )
+    // The people working that week, and anybody else with a shift in it. See
+    // onTheRoster: a shift after somebody's last day used to have no row, so it
+    // counted in every total and nobody could open it. The checks below say
+    // what is wrong with it.
+    const roster = onTheRoster(employees, dates, shifts)
 
     const employeesById = Object.fromEntries(employees.map(e => [e.id, e]))
     const noteFor = d => dayNotes.find(n => n.note_date === d) || null
@@ -1114,7 +1114,7 @@ export default function RosterPage() {
                 <ShiftDialog
                     shift={editingShift.shift}
                     date={date}
-                    employees={roster}
+                    employees={whoCanWorkOn(roster, date, editingShift.shift?.employee_id)}
                     dayHours={dayHours}
                     breakRules={activeRestaurant?.break_rules}
                     onSave={saveShift}

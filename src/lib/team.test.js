@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
     isWorkingOn,
+    onTheRoster,
+    whoCanWorkOn,
     employeeStatus,
     sortEmployees,
     nextSortOrder,
@@ -14,6 +16,43 @@ import {
 } from '@/lib/team'
 
 const emp = (id, full_name, sort_order = 0, extra = {}) => ({ id, full_name, sort_order, ...extra })
+
+// The rows of a week on the roster.
+describe('onTheRoster', () => {
+    const WEEK = ['2026-10-04', '2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09', '2026-10-10']
+
+    it('is everybody working any day of the week, in the manager\'s order', () => {
+        const people = [emp('b', 'Ben', 2), emp('a', 'Ana', 1), emp('c', 'Cal', 3, { ended_on: '2026-06-30' })]
+        expect(onTheRoster(people, WEEK, []).map(e => e.id)).toEqual(['a', 'b'])
+    })
+
+    // Somebody who left in June is not a row on October's roster. Somebody
+    // who left on the 30th and is still on Friday's is, or the shift is
+    // counted everywhere and cannot be opened from anywhere.
+    it('keeps a row for somebody who has gone but still has a shift that week', () => {
+        const people = [emp('a', 'Ana', 1), emp('c', 'Cal', 2, { ended_on: '2026-09-30' })]
+        const shifts = [{ id: 's1', employee_id: 'c', shift_date: '2026-10-09' }]
+        expect(onTheRoster(people, WEEK, shifts).map(e => e.id)).toEqual(['a', 'c'])
+    })
+})
+
+// Who a shift on one day can be given to. The week's rows now include
+// somebody who has gone but still has a shift in it, and the shift box offered
+// them for any day of that week.
+describe('whoCanWorkOn', () => {
+    const people = [emp('a', 'Ana', 1), emp('c', 'Cal', 2, { ended_on: '2026-10-07' })]
+
+    it('is the people working here that day', () => {
+        expect(whoCanWorkOn(people, '2026-10-09').map(e => e.id)).toEqual(['a'])
+        expect(whoCanWorkOn(people, '2026-10-06').map(e => e.id)).toEqual(['a', 'c'])
+    })
+
+    // Opening the shift Cal still has after his last day, so it can be given
+    // to somebody else or taken off.
+    it('keeps whoever the shift is already on', () => {
+        expect(whoCanWorkOn(people, '2026-10-09', 'c').map(e => e.id)).toEqual(['a', 'c'])
+    })
+})
 
 describe('isWorkingOn', () => {
     it('is working between the two dates', () => {

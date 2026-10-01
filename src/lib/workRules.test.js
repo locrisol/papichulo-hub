@@ -234,6 +234,41 @@ describe('checkWeek', () => {
         expect(run(shifts, [person()])).toEqual([])
     })
 
+    // A week built ahead, and then somebody gives notice. Setting their last
+    // day took away the row their shifts were on, and the shifts went on
+    // counting in the hours, the cost and the headcount with nothing saying
+    // they were there.
+    describe('shifts on a day somebody does not work here', () => {
+        it('says so about a shift after their last day', () => {
+            const shifts = [shift(WEEK[1], '09:00', '17:00'), shift(WEEK[5], '17:00', '23:00')]
+            const found = run(shifts, [person({ ended_on: WEEK[2] })])
+            const left = found.filter(f => f.kind === 'afterLastDay')
+            expect(left).toHaveLength(1)
+            expect(left[0].level).toBe('warn')
+            expect(left[0].text).toBe("Ana's last day is 25/08/2026, and they are rostered after it on 28/08/2026.")
+        })
+
+        it('names every day after it', () => {
+            const shifts = [shift(WEEK[4], '09:00', '17:00'), shift(WEEK[6], '09:00', '17:00')]
+            const found = run(shifts, [person({ ended_on: WEEK[2] })])
+            expect(found.find(f => f.kind === 'afterLastDay').text)
+                .toMatch(/rostered after it on 27\/08\/2026 and 29\/08\/2026\.$/)
+        })
+
+        it('says so about a shift before their first day', () => {
+            const shifts = [shift(WEEK[0], '09:00', '17:00'), shift(WEEK[4], '09:00', '17:00')]
+            const found = run(shifts, [person({ started_on: WEEK[3] })])
+            expect(found.find(f => f.kind === 'beforeFirstDay').text)
+                .toBe('Ana starts on 26/08/2026, and is rostered before then on 23/08/2026.')
+        })
+
+        it('has nothing to say while they are working here', () => {
+            const shifts = [shift(WEEK[1], '09:00', '17:00')]
+            const found = run(shifts, [person({ started_on: '2026-01-01', ended_on: WEEK[1] })])
+            expect(found.filter(f => f.kind === 'afterLastDay' || f.kind === 'beforeFirstDay')).toEqual([])
+        })
+    })
+
     it('blocks a student over their cap', () => {
         const term = ['2026-11-01', '2026-11-02', '2026-11-03', '2026-11-04', '2026-11-05', '2026-11-06', '2026-11-07']
         const shifts = term.slice(0, 4).map(d => shift(d, '09:00', '17:00'))
