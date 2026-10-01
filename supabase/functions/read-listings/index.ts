@@ -338,7 +338,13 @@ Deno.serve(async (request) => {
         for (const [i, place] of places.entries()) {
             if (i > 0) await wait(GAP_MS)
             try {
-                done.push(await readOne(admin, place, key!, now, pairings))
+                const read = await readOne(admin, place, key!, now, pairings)
+                // Said as each place finishes and not only at the end. The
+                // platform stops a run at two and a half minutes, and a run
+                // stopped there never reaches the line at the end, so this is
+                // what says which places were read before it.
+                console.log('read-listings', place.name, JSON.stringify(read))
+                done.push(read)
             } catch (err) {
                 // One page refusing must not stop the others, and the log is
                 // the only place anybody sees the detail, so it says which.
