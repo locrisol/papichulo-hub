@@ -11,6 +11,7 @@ import { noAllergensDeclared } from '@/lib/allergens'
 import { everyReadArrived } from '@/lib/allergenSheet'
 import { onAllergensChanged } from '@/lib/allergensChanged'
 import { navBadge, menuDot } from '@/lib/controlStyles'
+import { cannotAnswer } from '@/lib/timeOff'
 
 // Whoever can open Products is whoever gets its count, read off the nav so the
 // two cannot drift apart.
@@ -60,7 +61,14 @@ export default function AppLayout({ children }) {
     //
     // Counted rather than listed, and read again whenever the page changes, so
     // it goes back down as soon as it has been dealt with.
+    //
+    // Only what this person can answer. A store manager's own holiday or day
+    // off is an owner's (see cannotAnswer), and counted it told them there was
+    // something to do when the Roster had nothing for them to press.
     const [waitingCount, setWaitingCount] = useState(0)
+    // Who they are on the team, asked once per account rather than on every
+    // page change, since it does not change while they are signed in.
+    const onTheTeam = useRef({ account: null, employee: null })
 
     useEffect(() => {
         let live = true
@@ -69,21 +77,29 @@ export default function AppLayout({ children }) {
                 if (live) setWaitingCount(0)
                 return
             }
+            if (user.role === 'store_manager' && onTheTeam.current.account !== user.id) {
+                const { data, error } = await supabase.rpc('get_my_employee_id')
+                if (!error) onTheTeam.current = { account: user.id, employee: data || null }
+            }
+            const me = onTheTeam.current.account === user.id ? onTheTeam.current.employee : null
+            // The requests themselves rather than a count of them, to ask each
+            // one the same question the Roster asks. A handful at most.
             const [swaps, off] = await Promise.all([
                 supabase.from('shift_requests')
                     .select('id', { count: 'exact', head: true })
                     .eq('restaurant_id', activeRestaurant.id)
                     .eq('status', 'accepted'),
                 supabase.from('absences')
-                    .select('id', { count: 'exact', head: true })
+                    .select('employee_id, can_work_from, can_work_to')
                     .eq('restaurant_id', activeRestaurant.id)
                     .eq('status', 'requested'),
             ])
-            if (live) setWaitingCount((swaps.count || 0) + (off.count || 0))
+            const theirs = (off.data || []).filter(a => !cannotAnswer(a, me, user.role))
+            if (live) setWaitingCount((swaps.count || 0) + theirs.length)
         }
         count()
         return () => { live = false }
-    }, [activeRestaurant?.id, user?.role, location.pathname])
+    }, [activeRestaurant?.id, user?.id, user?.role, location.pathname])
 
     // Products with no allergens set, counted on Products in red. Until one is
     // answered, the customer sheet asks people to see staff about every dish

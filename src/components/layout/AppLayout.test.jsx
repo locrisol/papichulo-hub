@@ -16,8 +16,9 @@ import { allergensChanged } from '@/lib/allergensChanged'
 let db
 let tables
 let user
-// What the roster's two counts answer.
+// What the roster's count of swaps answers, and who the account is on the team.
 let waiting
+let myEmployeeId
 // The real everyRow, paging through the mock the way it pages through the API.
 vi.mock('@/lib/supabase', async importOriginal => ({
     everyRow: (await importOriginal()).everyRow,
@@ -36,8 +37,11 @@ const pot = { id: 'pot', name: 'Dip pot', section: 'Packaging', is_mix: false, i
 
 beforeEach(() => {
     user = A_MANAGER
-    waiting = { swaps: 2, off: 1 }
+    waiting = { swaps: 2 }
+    myEmployeeId = 'e9'
     tables = {
+        // A colleague's holiday, waiting for an answer.
+        absences: [{ id: 'a1', restaurant_id: 'r1', status: 'requested', employee_id: 'e1', can_work_from: null, can_work_to: null }],
         products: [rice, cheese, pot],
         product_allergens: [],
         mix_recipes: [],
@@ -46,11 +50,16 @@ beforeEach(() => {
     }
     db = {
         from: vi.fn(table => {
-            // The roster's two are counts, asked for with head: true.
+            // The swaps are a count, asked for with head: true.
             if (table === 'shift_requests') return makeQuery({ data: null, count: waiting.swaps, error: null })
-            if (table === 'absences') return makeQuery({ data: null, count: waiting.off, error: null })
-            return tableOf(tables[table] || [])
+            const q = tableOf(tables[table] || [])
+            // With a count of the rows it hands back, the way the database
+            // answers when asked for one.
+            const answer = q.then
+            q.then = (resolve, reject) => answer(r => ({ ...r, count: r.data.length })).then(resolve, reject)
+            return q
         }),
+        rpc: vi.fn(name => Promise.resolve({ data: name === 'get_my_employee_id' ? myEmployeeId : null, error: null })),
         auth: { signOut: vi.fn() },
     }
 })
@@ -177,6 +186,38 @@ describe('the count on Roster', () => {
         const badge = (await within(navButton('Roster')).findByText('3 requests waiting for an answer')).parentElement
         expect(badge).toHaveClass('bg-amber-500', 'text-white')
     })
+
+    // A store manager's own holiday is an owner's to answer, and the Roster
+    // says so with no button. Counted, it told them there was something to do
+    // and there was nothing they could do.
+    it('leaves out a store manager\'s own time off', async () => {
+        myEmployeeId = 'e1'
+        waiting = { swaps: 0 }
+        show()
+        await waitFor(() => expect(db.from).toHaveBeenCalledWith('absences'))
+        await act(async () => {})
+
+        expect(within(navButton('Roster')).queryByText(/waiting for an answer/)).not.toBeInTheDocument()
+    })
+
+    it('still counts it for an owner, who answers it', async () => {
+        user = { ...A_MANAGER, role: 'owner' }
+        myEmployeeId = 'e1'
+        waiting = { swaps: 0 }
+        show()
+
+        expect(await within(navButton('Roster')).findByText('1 request waiting for an answer')).toBeInTheDocument()
+    })
+
+    // Part of a day stays theirs to answer, so it is still theirs to count.
+    it('still counts a store manager\'s own part of a day', async () => {
+        myEmployeeId = 'e1'
+        waiting = { swaps: 0 }
+        tables.absences[0].can_work_to = '15:00'
+        show()
+
+        expect(await within(navButton('Roster')).findByText('1 request waiting for an answer')).toBeInTheDocument()
+    })
 })
 
 // On a phone the sidebar is a drawer, so its counts are out of sight until it
@@ -204,7 +245,8 @@ describe('the dot on the menu button', () => {
 
     it('is not there with nothing to count', async () => {
         tables.product_allergens = [{ product_id: 'rice' }, { product_id: 'cheese' }]
-        waiting = { swaps: 0, off: 0 }
+        waiting = { swaps: 0 }
+        tables.absences = []
         show()
         await waitFor(() => expect(db.from).toHaveBeenCalledWith('menu_item_components'))
         await act(async () => {})
