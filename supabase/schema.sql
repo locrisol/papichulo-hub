@@ -3419,15 +3419,20 @@ CREATE POLICY "cost_target_overrides_select" ON "public"."cost_target_overrides"
 
 CREATE POLICY "cost_target_overrides_write" ON "public"."cost_target_overrides" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
+-- Waste is logged by whoever threw it out, so anybody at the restaurant can
+-- add to it, and only a manager can change or delete what is there. A super
+-- admin can do either at any restaurant, as everywhere else, because they work
+-- at whichever one they have switched to. The last policy covers every action,
+-- so its check counts for a new entry too and the two have to agree.
 ALTER TABLE "public"."waste_logs" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "waste_logs_insert" ON "public"."waste_logs" FOR INSERT TO "authenticated" WITH CHECK (((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text", 'employee'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))));
+CREATE POLICY "waste_logs_insert" ON "public"."waste_logs" FOR INSERT TO "authenticated" WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text", 'employee'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
 CREATE POLICY "waste_logs_select" ON "public"."waste_logs" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
 CREATE POLICY "waste_logs_select_today" ON "public"."waste_logs" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'employee'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND ("log_date" = CURRENT_DATE)));
 
-CREATE POLICY "waste_logs_update_delete" ON "public"."waste_logs" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))));
+CREATE POLICY "waste_logs_update_delete" ON "public"."waste_logs" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
 
 -- -- Counting the stock ------------------------------------------------

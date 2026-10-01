@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { makeQuery, renderWithRouter, tableOf } from '@/test/helpers'
+import { todayISO } from '@/lib/dates'
 
 // An employee logging waste at Point Campus. Invented products and prices.
 
@@ -19,13 +20,21 @@ const CHILLI_PRICE = { id: 'pr3', product_id: 'p3', restaurant_id: 'r1', is_pref
 
 let db
 let saved
-function setUp({ prices = [TOMATO_PRICE], recipes = RECIPE, products = [SALSA, TOMATOES, LIMES] } = {}) {
+let deleted
+// Who is signed in. An employee unless a test says otherwise.
+const me = { id: 'u2', role: 'employee', full_name: 'Maria' }
+
+// `refused` is a delete the rules turned away: no error, and no row gone.
+function setUp({
+    prices = [TOMATO_PRICE], recipes = RECIPE, products = [SALSA, TOMATOES, LIMES], logs = [], refused = false,
+} = {}) {
     saved = []
+    deleted = []
     const tables = {
         products,
         mix_recipes: recipes,
         product_supplier_prices: prices,
-        waste_logs: [],
+        waste_logs: logs,
     }
     db = {
         from: vi.fn(table => {
@@ -34,13 +43,18 @@ function setUp({ prices = [TOMATO_PRICE], recipes = RECIPE, products = [SALSA, T
                 saved.push(...rows)
                 return makeQuery({ data: null, error: null })
             })
+            q.delete = vi.fn(() => {
+                const gone = refused ? [] : tables[table].map(r => ({ id: r.id }))
+                deleted.push(...gone)
+                return makeQuery({ data: gone, error: null })
+            })
             return q
         }),
     }
 }
 
 vi.mock('@/lib/supabase', () => ({ supabase: new Proxy({}, { get: (_, k) => db[k] }) }))
-vi.mock('@/context/auth', () => ({ useAuth: () => ({ user: { id: 'u2', role: 'employee', full_name: 'Maria' } }) }))
+vi.mock('@/context/auth', () => ({ useAuth: () => ({ user: me }) }))
 vi.mock('@/context/restaurant', () => ({
     useRestaurant: () => ({ activeRestaurant: { id: 'r1', name: 'Point Campus' } }),
 }))
@@ -58,7 +72,10 @@ async function pick(name, quantity) {
     return clicker
 }
 
-beforeEach(() => setUp())
+beforeEach(() => {
+    me.role = 'employee'
+    setUp()
+})
 
 describe('an employee logging a MIX', () => {
     // Since 29 September an employee can read recipes, so a MIX they throw
@@ -141,5 +158,34 @@ describe('an employee logging something bought', () => {
     it('does not say there is no price while the quantity is still 0', async () => {
         await pick('Tomatoes', '0')
         expect(screen.queryByText(/No price is set/)).not.toBeInTheDocument()
+    })
+})
+
+describe('a manager deleting an entry', () => {
+    const DROPPED = {
+        id: 'w1', restaurant_id: 'r1', log_date: todayISO(), product_id: 'p2', quantity_wasted: 1,
+        reason: 'dropped', waste_value: null, products: { name: 'Limes', unit: 'KG' },
+    }
+
+    // A delete the rules turn away comes back with no error, so it used to
+    // reload the list with the entry still on it and nothing said at all.
+    it('says so when nothing was deleted', async () => {
+        me.role = 'super_admin'
+        setUp({ logs: [DROPPED], refused: true })
+        renderWithRouter(<WasteLogPage />)
+
+        await userEvent.click(await screen.findByRole('button', { name: 'Delete entry' }))
+        expect(await screen.findByText('That entry could not be deleted, so nothing has changed.')).toBeInTheDocument()
+        expect(screen.getByText('Limes')).toBeInTheDocument()
+    })
+
+    it('says nothing when it went', async () => {
+        me.role = 'store_manager'
+        setUp({ logs: [DROPPED] })
+        renderWithRouter(<WasteLogPage />)
+
+        await userEvent.click(await screen.findByRole('button', { name: 'Delete entry' }))
+        await waitFor(() => expect(deleted).toHaveLength(1))
+        expect(screen.queryByText(/could not be deleted/)).not.toBeInTheDocument()
     })
 })

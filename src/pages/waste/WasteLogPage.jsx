@@ -256,8 +256,12 @@ export default function WasteLogPage() {
             tone: 'danger',
         })
         if (!ok) return
-        const { error: e1 } = await supabase.from('waste_logs').delete().eq('id', entry.id)
+        // A delete the rules turn away is not an error, it just removes
+        // nothing, so the row has to come back for it to count as gone.
+        const { data: gone, error: e1 } = await supabase.from('waste_logs')
+            .delete().eq('id', entry.id).select('id')
         if (e1) setError(friendlyError(e1))
+        else if (!gone?.length) setError('That entry could not be deleted, so nothing has changed.')
         else setRefresh(n => n + 1)
     }
 

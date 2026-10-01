@@ -12,6 +12,24 @@ import { signInAs, anonClient, countVisible, writeRefused, changesRefused, crede
 const run = credentialsPresent()
 const maybe = run ? describe : describe.skip
 
+// A waste entry for a product that cannot exist, so no row is ever made. The
+// rules are checked before the product is, which makes the code say which of
+// the two stopped it: the rules, or the missing product after the rules had
+// let it through. An allowed write proved without touching the live waste.
+const REFUSED_BY_THE_RULES = '42501'
+const MISSING_PRODUCT = '23503'
+
+async function wasteRefusal(client, restaurantId) {
+    const { error } = await client.from('waste_logs').insert({
+        restaurant_id: restaurantId,
+        product_id: NOBODY,
+        log_date: '2020-01-01',
+        quantity_wasted: 1,
+        reason: 'other',
+    })
+    return error?.code ?? null
+}
+
 if (!run) {
     console.warn('Skipping the database tests: the TEST_ credentials are not set in .env')
 }
@@ -371,6 +389,36 @@ maybe('what each role can see and do', () => {
             const restaurants = new Set((data || []).map(r => r.restaurant_id))
             // Only meaningful once both restaurants have sales in them.
             expect(restaurants.size).toBeGreaterThan(0)
+        })
+
+        // Since 031. A super admin works at whichever restaurant they have
+        // switched to, and waste was the one table that held them to their
+        // own.
+        it('logs waste at a restaurant that is not their own', async () => {
+            const { data: auth } = await superadmin.auth.getUser()
+            const { data: me } = await superadmin
+                .from('users').select('restaurant_id').eq('id', auth.user.id).single()
+            const { data: restaurants } = await superadmin.from('restaurants').select('id')
+            const elsewhere = restaurants.find(r => r.id !== me.restaurant_id).id
+
+            expect(await wasteRefusal(superadmin, elsewhere), 'the rules refused a super admin waste elsewhere')
+                .toBe(MISSING_PRODUCT)
+        })
+    })
+
+    describe('waste at the other restaurant', () => {
+        it('is refused for a store manager', async () => {
+            expect(await wasteRefusal(manager, otherRestaurantId)).toBe(REFUSED_BY_THE_RULES)
+        })
+
+        it('is refused for an owner', async () => {
+            expect(await wasteRefusal(owner, otherRestaurantId)).toBe(REFUSED_BY_THE_RULES)
+        })
+
+        // And their own still goes past the rules, so the two above are
+        // refused for the restaurant and not for the role.
+        it('is not what stops a store manager at their own', async () => {
+            expect(await wasteRefusal(manager, ownRestaurantId)).toBe(MISSING_PRODUCT)
         })
     })
 
