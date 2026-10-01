@@ -5,7 +5,7 @@ import { useConfirm } from '@/context/confirm'
 import { shortDate } from '@/lib/dates'
 import { dayName } from '@/lib/events'
 import {
-    shiftMinutes, breakFor, breakLabel, shortTime, fmtHours, shiftEdges,
+    shiftMinutes, breakFor, breakLabel, shortTime, fmtHours, shiftEdges, toMinutes,
 } from '@/lib/roster'
 import { canWorkAt, availabilityOn } from '@/lib/availability'
 import { modalFooter, labelClass, fieldClass, primaryButton } from '@/lib/controlStyles'
@@ -61,7 +61,11 @@ export default function ShiftDialog({
     const problem = (() => {
         if (!form.employeeId) return 'Pick who is working it.'
         if (!form.startsAt || !form.endsAt) return 'A shift needs a start and a finish.'
-        if (minutes === 0) return 'That shift has no length.'
+        // Asked of the times, not the length. An end at or before the start
+        // is the next morning, so the same time at both ends measures 24
+        // hours, and this said it was over sixteen, which is the wrong thing
+        // to go and look at.
+        if (toMinutes(form.startsAt) === toMinutes(form.endsAt)) return 'That shift has no length.'
         if (minutes > 16 * 60) return 'That is over sixteen hours. Check the finishing time.'
         return null
     })()

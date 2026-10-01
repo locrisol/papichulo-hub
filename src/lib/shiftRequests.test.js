@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest'
 import {
     windowOf, isWholeShift, weekAfter, hoursFor, hoursChange, shortlist, gapTo,
     waitingOn, requestsOnShift, writesFor, newFindings, shiftIdsOf, requestDate,
-    canTakeBack, shiftsMoved,
+    canTakeBack, shiftsMoved, windowProblem, windowFits, windowsFit, hoursWords,
 } from '@/lib/shiftRequests'
 
 const WED = '2026-08-26'
@@ -247,6 +247,20 @@ describe('shortlist', () => {
         expect(run({ absences: asked }).cannot.find(c => c.person.id === 'cara')).toBeUndefined()
     })
 
+    // Only the person asked can answer, and somebody with no account never
+    // can. The request sat at waiting on them for good, and nobody was told.
+    it('rules out somebody with no account to answer with', () => {
+        const noLogin = people.map(p => (p.id === 'ben' ? { ...p, has_login: false } : { ...p, has_login: true }))
+        const list = run({ employees: noLogin })
+        expect(list.cannot.find(c => c.person.id === 'ben').why).toBe('no_login')
+        expect(list.finishing).toEqual([])
+    })
+
+    // Before the database says either way, nobody is ruled out for it.
+    it('rules nobody out when it is not known who has an account', () => {
+        expect(run().finishing.map(f => f.person.id)).toEqual(['ben'])
+    })
+
     it('never offers the asker themselves', () => {
         const all = run()
         const everyone = [...all.finishing, ...all.free, ...all.cannot]
@@ -349,6 +363,142 @@ describe('shifts that changed hands after the ask', () => {
         expect(shiftsMoved({ ...request, take_shift_id: null }, find([
             shift('s1', 'ana', WED, '09:00', '21:00'),
         ]))).toBe(false)
+    })
+})
+
+// A shift that ends at midnight ends that night, and every sum about a request
+// has to read it that way. Read as nought it was a shift finishing before it
+// started, and approving a swap next to it deleted somebody's evening.
+describe('a shift to midnight', () => {
+    const SAT = '2026-09-26'
+    const maria = shift('m1', 'maria', SAT, '17:00:00', '00:00:00')
+    const ben = shift('b1', 'ben', SAT, '12:00:00', '17:00:00')
+
+    it('keeps her evening when Ben gives her his afternoon', () => {
+        const request = { from_employee_id: 'ben', to_employee_id: 'maria', give_shift_id: 'b1' }
+        const { shifts } = weekAfter(request, [maria, ben])
+        const hers = shifts.filter(s => s.employee_id === 'maria')
+
+        expect(hers).toHaveLength(1)
+        expect(hers[0].starts_at).toBe('12:00:00')
+        expect(hers[0].ends_at).toBe('00:00:00')
+        expect(hoursFor(shifts, 'maria')).toBe(12)
+    })
+
+    it('hands over only the part she gives', () => {
+        const request = {
+            from_employee_id: 'maria', to_employee_id: 'ben',
+            give_shift_id: 'm1', give_from: '17:00', give_to: '20:00',
+        }
+        const { shifts } = weekAfter(request, [maria])
+        const hers = shifts.filter(s => s.employee_id === 'maria')
+
+        expect(hers).toHaveLength(1)
+        expect(hers[0].starts_at).toBe('20:00')
+        expect(hers[0].ends_at).toBe('00:00:00')
+        expect(hoursFor(shifts, 'ben')).toBe(3)
+    })
+
+    it('hands over the end of it', () => {
+        const request = {
+            from_employee_id: 'maria', to_employee_id: 'ben',
+            give_shift_id: 'm1', give_from: '20:00', give_to: '00:00',
+        }
+        const { shifts } = weekAfter(request, [maria])
+        expect(hoursFor(shifts, 'maria')).toBe(3)
+        expect(hoursFor(shifts, 'ben')).toBe(4)
+    })
+
+    it('counts somebody on until midnight as busy that evening', () => {
+        const list = shortlist({
+            date: SAT,
+            window: { from: '20:00', to: '22:00' },
+            employees: [{ id: 'maria', full_name: 'Maria' }],
+            shifts: [maria],
+            absences: [],
+            askerId: 'ana',
+        })
+        expect(list.cannot.map(c => c.person.id)).toEqual(['maria'])
+    })
+})
+
+// Ana has 12:00 to 17:00 and is giving part of it. Approving keeps whatever is
+// either side of the hours named, so hours outside the shift came out as hours
+// nobody was rostered for: 15:00 to 19:00 left her 12:00 to 15:00 and gave Ben
+// 15:00 to 19:00, seven hours where there had been five.
+describe('part of a shift has to be part of it', () => {
+    const ana = shift('s9', 'ana', WED, '12:00:00', '17:00:00')
+
+    it('takes hours inside the shift, its own two ends included', () => {
+        expect(windowProblem(ana, '15:00', '17:00')).toBe('')
+        expect(windowProblem(ana, '12:00', '14:00')).toBe('')
+        expect(windowFits(ana, '12:00', '17:00')).toBe(true)
+    })
+
+    it('takes the whole shift when no times are written on it', () => {
+        expect(windowFits(ana, null, null)).toBe(true)
+    })
+
+    it('refuses hours that run past the end', () => {
+        expect(windowProblem(ana, '15:00', '19:00')).toBe('outside')
+    })
+
+    it('refuses hours that start before it does', () => {
+        expect(windowProblem(ana, '07:00', '13:00')).toBe('outside')
+    })
+
+    it('refuses hours entirely outside it', () => {
+        expect(windowProblem(ana, '18:00', '20:00')).toBe('outside')
+        expect(windowProblem(ana, '07:00', '09:00')).toBe('outside')
+    })
+
+    it('says so when the hours finish before they start', () => {
+        expect(windowProblem(ana, '16:00', '14:00')).toBe('order')
+        expect(windowProblem(ana, '15:00', '15:00')).toBe('order')
+    })
+
+    // A shift that runs to midnight is measured the way it runs, from its own
+    // start, so its last hours are inside it.
+    it('measures a shift that runs to midnight from its own start', () => {
+        const late = shift('s8', 'ana', WED, '17:00', '00:00')
+        expect(windowProblem(late, '20:00', '00:00')).toBe('')
+        expect(windowProblem(late, '17:00', '20:00')).toBe('')
+        expect(windowProblem(late, '22:00', '01:00')).toBe('outside')
+    })
+
+    it('measures a shift that runs past midnight the same way', () => {
+        const night = shift('s7', 'ana', WED, '18:00', '02:00')
+        expect(windowProblem(night, '00:00', '02:00')).toBe('')
+        expect(windowProblem(night, '01:00', '03:00')).toBe('outside')
+    })
+
+    // The desk asks again at the moment of approving, because a manager can
+    // change the shift after the two of them agreed.
+    describe('on a request', () => {
+        const find = week => id => week.find(s => s.id === id) || null
+        const request = {
+            from_employee_id: 'ana', to_employee_id: 'ben',
+            give_shift_id: 's9', give_from: '15:00', give_to: '17:00',
+        }
+
+        it('is fine while the hours are still inside the shift', () => {
+            expect(windowsFit(request, find([ana]))).toBe(true)
+        })
+
+        it('notices the shift being shortened under it', () => {
+            expect(windowsFit(request, find([{ ...ana, ends_at: '16:00:00' }]))).toBe(false)
+        })
+
+        it('checks the half coming back as well', () => {
+            const ben = shift('s3', 'ben', THU, '09:00', '17:00')
+            const trade = { ...request, take_shift_id: 's3', take_from: '16:00', take_to: '18:00' }
+            expect(windowsFit(trade, find([ana, ben]))).toBe(false)
+        })
+
+        it('has nothing to say about a whole shift, or one not in hand', () => {
+            expect(windowsFit({ ...request, give_from: null, give_to: null }, find([ana]))).toBe(true)
+            expect(windowsFit(request, find([]))).toBe(true)
+        })
     })
 })
 
@@ -555,5 +705,30 @@ describe('the day a request is about', () => {
         expect(requestDate({ give_shift_id: 'gone' }, find)).toBe(null)
         expect(requestDate({}, find)).toBe(null)
         expect(requestDate(null, find)).toBe(null)
+    })
+})
+
+// The hours a request is about, the way the roster prints them. The swap mails
+// say Closing for a finish after closing, and the cards on My shifts and the
+// desk printed the time for part of a shift, the number the roster never
+// shows.
+describe('hoursWords', () => {
+    const late = shift('s9', 'ana', WED, '17:00:00', '23:40:00')
+    const hours = { open: '09:00', close: '23:00' }
+
+    it('says Closing for a whole closing shift', () => {
+        expect(hoursWords(late, null, null, hours)).toBe('17:00 to Closing')
+    })
+
+    it('says Closing for the last part of one', () => {
+        expect(hoursWords(late, '20:00', '23:40', hours)).toBe('20:00 to Closing')
+    })
+
+    it('prints the time for a part that stops before closing', () => {
+        expect(hoursWords(late, '17:00', '20:00', hours)).toBe('17:00 to 20:00')
+    })
+
+    it('prints the time with no hours to go on', () => {
+        expect(hoursWords(late, '20:00', '23:40', null)).toBe('20:00 to 23:40')
     })
 })

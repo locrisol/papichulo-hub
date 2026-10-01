@@ -1,5 +1,5 @@
-import { supabase } from '@/lib/supabase'
-import { sheetRows, everyReadArrived, reprintDue } from '@/lib/allergenSheet'
+import { supabase, everyRow } from '@/lib/supabase'
+import { sheetRows, everyReadArrived, reprintDue, productsWithARow } from '@/lib/allergenSheet'
 import { stampDate } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
 import { SHEET_ORDER, ALLERGEN_SHORT } from '@/lib/allergens'
@@ -164,18 +164,22 @@ export default function PublicAllergensPreviewPage() {
     // All six or nothing. It used to print whatever arrived, and a failed read
     // of the allergens came out as a grid with no marks in it, which reads as
     // none of the fourteen. That paper sits on the counter for months.
+    //
+    // And all of each, a page at a time in an order that cannot tie, for the
+    // same reason as the customer page: past a thousand lines a dish lost one
+    // and printed whole without its allergens.
     async function readSheet() {
         const [changedRes, ...reads] = await Promise.all([
             // The date the form carries, which is the day anything on it last
             // changed. It was the newest allergen row, which says nothing about
             // a new dish or a changed recipe.
             supabase.rpc('allergens_changed_at'),
-            supabase.from('menu_categories').select('*').eq('is_active', true).order('sort_order'),
-            supabase.from('menu_items').select('*').eq('is_active', true).order('name'),
-            supabase.from('menu_item_components').select('*'),
-            supabase.from('products').select('*').order('name'),
-            supabase.from('mix_recipes').select('*'),
-            supabase.from('product_allergens').select('*'),
+            everyRow(() => supabase.from('menu_categories').select('*').eq('is_active', true).order('sort_order').order('id')),
+            everyRow(() => supabase.from('menu_items').select('*').eq('is_active', true).order('name').order('id')),
+            everyRow(() => supabase.from('menu_item_components').select('*').order('id')),
+            everyRow(() => supabase.from('products').select('*').order('name').order('id')),
+            everyRow(() => supabase.from('mix_recipes').select('*').order('id')),
+            everyRow(() => supabase.from('product_allergens').select('*').order('product_id')),
         ])
         if (changedRes.error || !everyReadArrived(reads)) return null
 
@@ -598,17 +602,27 @@ export default function PublicAllergensPreviewPage() {
         // The same rows the customer page shows, worked out in one place so the
         // printed sheet and the screen cannot come out saying different things.
         // They used to have a copy of this reasoning each.
-        for (const category of menuData.categories) {
-            // A category can be kept off the sheet. No answer means shown, so
-            // nothing recorded before that switch existed disappears.
-            if (category.on_allergen_sheet === false) continue
+        //
+        // A category can be kept off the sheet. No answer means shown, so
+        // nothing recorded before that switch existed disappears.
+        const sheetCategories = menuData.categories.filter(c => c.on_allergen_sheet !== false)
 
+        // What already has a row of its own anywhere on the sheet, asked once
+        // of all of it, the same as the customer page asks.
+        const withARow = productsWithARow(
+            menuData.menuItems.filter(i => sheetCategories.some(c => c.id === i.category_id)),
+            menuData.components,
+            menuData.products,
+        )
+
+        for (const category of sheetCategories) {
             const rows = sheetRows(
                 menuData.menuItems.filter(i => i.category_id === category.id),
                 menuData.components,
                 menuData.products,
                 menuData.recipeLines,
                 menuData.allergens,
+                withARow,
             )
 
             if (rows.length === 0) continue

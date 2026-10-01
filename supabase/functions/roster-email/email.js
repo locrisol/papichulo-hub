@@ -11,6 +11,7 @@
 // The band at the top is a coloured table cell with the name typed into it.
 
 import { oneLine } from './mime.js'
+import { closesStore } from './hours.js'
 
 const GREEN = '#2E7D52'
 const RED = '#B91C1C'
@@ -306,7 +307,13 @@ export function hhmm(value) {
 // until a manager approves it: approving rewrites the roster, a shift handed
 // over whole keeps its row and changes hands, and from then on the row says the
 // taker owns it. The mail would have somebody taking a shift from themselves.
-export function swapHalves(request, shifts) {
+//
+// hoursOn gives the store's hours for a date, and with it a half that runs past
+// closing says Closing where the roster does, rather than the finishing time
+// the roster never prints. Without it the time is printed, which is all a mail
+// with no hours to go on can honestly say. whole is still decided on the real
+// times, or every whole closing shift would read as part of one.
+export function swapHalves(request, shifts, hoursOn = null) {
     const find = id => (shifts || []).find(s => s.id === id) || null
     const out = []
 
@@ -331,10 +338,13 @@ export function swapHalves(request, shifts) {
         if (!side.shift) continue
         const from = hhmm(side.from || side.shift.starts_at)
         const to = hhmm(side.to || side.shift.ends_at)
+        const closing = !!hoursOn
+            && closesStore({ starts_at: from, ends_at: to }, hoursOn(side.shift.shift_date))
         out.push({
             date: side.shift.shift_date,
             from,
             to,
+            until: closing ? 'Closing' : to,
             // Whole or part changes the size of the favour being asked, so it
             // is said rather than left to be worked out from two times.
             whole: from === hhmm(side.shift.starts_at) && to === hhmm(side.shift.ends_at),
@@ -361,7 +371,7 @@ export function halfWords(half, nameOf, meId = null) {
     const off = half.whole
         ? `from ${mine ? 'you' : nameOf(half.giverId)}`
         : `part of ${mine ? 'your' : `${nameOf(half.giverId)}'s`} shift`
-    return `${takes} ${fmtDate(half.date)}, ${half.from} to ${half.to}, ${off}`
+    return `${takes} ${fmtDate(half.date)}, ${half.from} to ${half.until || half.to}, ${off}`
 }
 
 // The day the swap is about, for a subject line. The earlier of the two.

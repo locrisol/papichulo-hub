@@ -10,22 +10,22 @@
 // expensive way: a failed write must never be reported as a success.
 
 import { supabase } from '@/lib/supabase'
+import { functionSaid } from '@/lib/errors'
 
 export async function writeToGoogle(entryId, { clear = false } = {}) {
     if (!entryId) return { ok: true, reason: '' }
 
     try {
+        // Only which entry. Where the event's link back to the Hub points is
+        // the function's own APP_URL, never this page's address: the event
+        // sits on a calendar everybody shares long after a save from the dev
+        // server or a preview build, and it said Open in Papi Chulo Hub over
+        // an address that went nowhere.
         const { data, error } = await supabase.functions.invoke('diary-calendar', {
-            body: {
-                entryId,
-                clear,
-                // Where this Hub lives, so the event carries a link back to the
-                // entry rather than to a guess about the address.
-                origin: typeof window !== 'undefined' ? window.location.origin : '',
-            },
+            body: { entryId, clear },
         })
 
-        if (error) return { ok: false, reason: friendly(error) }
+        if (error) return { ok: false, ...(await refusalOf(error)) }
         if (data?.failed?.length) return { ok: false, reason: data.failed.join('; ') }
         if (data && data.ok === false) return { ok: false, reason: data.reason || 'Google refused it.' }
 
@@ -33,6 +33,24 @@ export async function writeToGoogle(entryId, { clear = false } = {}) {
     } catch (e) {
         return { ok: false, reason: friendly(e) }
     }
+}
+
+// Why the function said no, from its status rather than its message.
+//
+// supabase-js words every refusal the same way, "Edge Function returned a
+// non-2xx status code", so reading only the message called a person being
+// refused "not deployed". Somebody taking out an entry that was not theirs to
+// change was sent looking for a deployment problem that did not exist.
+// `refused` lets the screen say it plainly rather than as a Google failure.
+async function refusalOf(error) {
+    const status = error?.context?.status
+    if (status === 403) return { refused: true, reason: 'You do not have permission to change this one.' }
+    if (status === 401) return { reason: 'You have been signed out. Sign in again and try once more.' }
+    // The function's own 404 is about the entry. One it never answered is
+    // the function itself not being there.
+    const said = status === 404 ? await functionSaid(error) : ''
+    if (said) return { reason: said }
+    return { reason: friendly(error) }
 }
 
 // The function has not been deployed yet is the one worth naming, because it is

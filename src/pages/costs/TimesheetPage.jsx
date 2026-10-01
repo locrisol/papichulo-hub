@@ -4,10 +4,11 @@ import { useAuth } from '@/context/auth'
 import { useConfirm } from '@/context/confirm'
 import { useRestaurant } from '@/context/restaurant'
 import { friendlyError } from '@/lib/errors'
-import { todayISO, weekStartOf, weekDates, addDays, shortDate, fullDate } from '@/lib/dates'
+import { can, RESTAURANT_CONFIG } from '@/lib/access'
+import { todayISO, weekStartOf, weekDates, addDays, shortDate, fullDate, toISODate } from '@/lib/dates'
 import { periodOf } from '@/lib/payPeriod'
 import { fmtMoney } from '@/lib/format'
-import { settleTime } from '@/lib/clock'
+import { settleTime, noLength } from '@/lib/clock'
 import {
     personWeek, weekTotals, unanswered, cameFromTill, labourPercent, STATE_KEYS,
 } from '@/lib/timesheet'
@@ -50,6 +51,10 @@ const VIEWS = [
 // week has finished and the till's report for it exists.
 const lastWeekStart = () => addDays(weekStartOf(todayISO()), -7)
 
+// A start and a finish at the same time read as 24 hours, so it is never
+// saved. See noLength.
+const SAME_TIME = 'A shift cannot start and finish at the same time.'
+
 // A list of people, read out the way somebody would say it.
 function names(waiting) {
     const all = waiting.map(w => w.person.full_name)
@@ -61,6 +66,11 @@ export default function TimesheetPage() {
     const { user } = useAuth()
     const confirm = useConfirm()
     const { activeRestaurant, setActiveRestaurant } = useRestaurant()
+    // Sending the hours is a store manager's, the same as sending the report.
+    // The mail function refuses an owner, and the list it goes to is kept on
+    // the restaurant row, which an owner cannot change. An owner still gets
+    // the dialog, for the PDF.
+    const sends = can(user, RESTAURANT_CONFIG)
 
     // Last week, not this one. A timesheet is filled in once the week has
     // finished and the till's report exists for it, so opening on the week that
@@ -104,6 +114,15 @@ export default function TimesheetPage() {
     // error, nothing. Six digits typed in full is how he types every time, so
     // it was most of them.
     const [typing, setTyping] = useState({})
+    // The cell somebody is typing into, as person|date.
+    //
+    // A clock in is saved the moment its box is left, a moment before the
+    // clock out is typed, so for that moment every day typed by hand is a
+    // clock in with no clock out. Said above the week, that warning would push
+    // the grid down and back up on every cell. So the banner leaves the cell
+    // being typed into alone, and says it once somebody has moved on without
+    // the clock out. The cell itself says it either way, where nothing moves.
+    const [workingOn, setWorkingOn] = useState(null)
     const [absences, setAbsences] = useState([])
     const [shifts, setShifts] = useState([])
     // Whether the till's report covering this week has been read in. It decides
@@ -239,6 +258,10 @@ export default function TimesheetPage() {
 
     const totals = weekTotals(rows)
     const waiting = unanswered(rows)
+    // The three things the banner can say, each about its own people.
+    const unsaid = waiting.filter(w => w.days.length)
+    const changed = waiting.filter(w => w.changed.length)
+    const noClockOut = waiting.filter(w => w.open.some(date => `${w.person.id}|${date}` !== workingOn))
 
     // The share of the day's sales the day's hours came to, and the target it
     // is judged against. Both the same as the cost dashboard uses, so a week is
@@ -280,6 +303,7 @@ export default function TimesheetPage() {
     // the box is left, so a half typed time is never saved and a week is not
     // written thirty times while somebody thinks.
     function type(person, cell, entry, field, value) {
+        setWorkingOn(keyFor(person, cell))
         if (entry.id) {
             setTyping(was => ({ ...was, [entry.id]: { ...was[entry.id], [field]: value } }))
             return
@@ -360,6 +384,13 @@ export default function TimesheetPage() {
             // box. The box already holds what was typed.
             const stored = entries.find(e => e.id === entry.id) || entry
             if (stored[field] === value) { stopTyping(entry.id, field); return }
+            // Refused like a write the database said no to, with the figure
+            // put back. See noLength.
+            if (noLength(next.starts_at, next.ends_at)) {
+                finish(null, SAME_TIME)
+                stopTyping(entry.id, field)
+                return
+            }
             return save(entry.id, { [field]: value, ...changedByHand(entry) }, field)
         }
 
@@ -369,6 +400,10 @@ export default function TimesheetPage() {
 
         // Nothing typed at all, so there is nothing to keep.
         if (!start && !end) { forget(person, cell); return }
+
+        // Left in the boxes to be put right, since nothing was saved to go
+        // back to.
+        if (noLength(start, end)) { finish(null, SAME_TIME); return }
 
         // A row needs a start. Typing the out time first is legitimate and
         // rare, so the draft holds it and waits rather than inventing one.
@@ -428,7 +463,10 @@ export default function TimesheetPage() {
             .maybeSingle()
 
         if (failed) return friendlyError(failed)
-        if (data) setActiveRestaurant(data)
+        // A write the rules turn away changes no row and comes back with no
+        // error, so it only counts as kept when the row comes back.
+        if (!data) return 'That could not be saved, so nothing has changed.'
+        setActiveRestaurant(data)
         return ''
     }
 
@@ -467,10 +505,12 @@ export default function TimesheetPage() {
         if (typed) stopTyping(id, typed)
     }
 
+    // Says whether it went, so something doing more than one thing can stop
+    // half way rather than carry on as though it had.
     async function remove(entry) {
         setSaving(true)
         const { error: failed } = await supabase.from('timesheet_entries').delete().eq('id', entry.id)
-        if (finish(failed)) { setRefresh(n => n + 1); return }
+        if (finish(failed)) { setRefresh(n => n + 1); return false }
         setEntries(was => was.filter(e => e.id !== entry.id))
         setTyping(was => {
             if (!was[entry.id]) return was
@@ -478,6 +518,7 @@ export default function TimesheetPage() {
             delete next[entry.id]
             return next
         })
+        return true
     }
 
     // A letter sets the state of the whole day. Holiday and off sick are
@@ -490,7 +531,46 @@ export default function TimesheetPage() {
         setError('')
 
         if (state.absence) {
-            for (const entry of cell.entries) await remove(entry)
+            // **A day with times on it asks first.** Marking it deletes them,
+            // and one letter is a small thing to delete a shift with: a stray
+            // s in a box, or a tap on the touch bar, which acts on the last box
+            // that had the cursor even after you have moved on. The x on a cell
+            // already asks before it deletes times, and settle() never deletes
+            // a till shift at all, so this was the one way round both.
+            //
+            // A day with only a comment, or a training mark and no times yet,
+            // has nothing on it the question would be about.
+            //
+            // A time still being typed goes first, and is never asked about.
+            // It is not saved, so there is nothing to delete, and the question
+            // takes the focus off its box, which would save it as a real clock
+            // in a moment before the day is marked.
+            forget(person, cell)
+            const saved = cell.entries.filter(e => e.id)
+            const timed = saved.filter(e => e.starts_at || e.ends_at)
+            if (timed.length) {
+                const label = state.label.toLowerCase()
+                const ok = await confirm({
+                    title: `Mark this day as ${label}?`,
+                    message: `${person.full_name}, ${fullDate(cell.date)}. `
+                        + (timed.some(cameFromTill)
+                            ? "The times from the till's report will be deleted, so this day will "
+                                + 'no longer match the report.'
+                            : timed.length === 1
+                                ? 'The clock in and out times will be deleted.'
+                                : 'All the times on this day will be deleted.'),
+                    confirmLabel: `Mark as ${label}`,
+                    tone: 'danger',
+                })
+                if (!ok) return
+            }
+
+            // Stops at the first one that will not go. Carrying on would leave
+            // the day half changed: the absence in and a shift still counted
+            // underneath it.
+            for (const entry of saved) {
+                if (!(await remove(entry))) return
+            }
             setSaving(true)
             const { data, error: failed } = await supabase.from('absences').insert({
                 restaurant_id: restaurantId,
@@ -769,9 +849,14 @@ export default function TimesheetPage() {
                                         ? `Saved at ${savedAt.toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}`
                                         : 'Saves as you type'}
                         </span>
+                        {/* The day it was sent here, read off the timestamp,
+                            and never the first ten characters of it: the
+                            database gives it back in UTC, so a send just after
+                            midnight in summer said the day before. The send
+                            dialog already reads it this way. */}
                         <span className="text-muted">
                             {' '}&middot;{' '}
-                            {filedAt ? `Sent ${shortDate(String(filedAt).slice(0, 10))}` : 'Not sent yet'}
+                            {filedAt ? `Sent ${shortDate(toISODate(new Date(filedAt)))}` : 'Not sent yet'}
                         </span>
                     </p>
                 </div>
@@ -794,21 +879,21 @@ export default function TimesheetPage() {
                         onClick={() => setSending(true)}
                         className={primaryButton('md', 'good')}
                     >
-                        Send the hours
+                        {sends ? 'Send the hours' : 'Download the hours'}
                     </button>
                 </div>
             </div>
 
-            {waiting.length > 0 && (
+            {(unsaid.length > 0 || changed.length > 0 || noClockOut.length > 0) && (
                 <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4 text-xs text-amber-800 space-y-1">
-                    {/* Two different things to answer, said separately because
-                        they want different answers. One is a shift nobody has
-                        accounted for; the other is a till time somebody moved
-                        and has not explained. */}
-                    {waiting.some(w => w.days.length) && (
+                    {/* Three different things to answer, said separately
+                        because they want different answers. A shift nobody
+                        has accounted for, a till time somebody moved and has
+                        not explained, and a clock in with no clock out. */}
+                    {unsaid.length > 0 && (
                         <p>
                             <strong className="font-bold">
-                                {names(waiting.filter(w => w.days.length))} {waiting.filter(w => w.days.length).length === 1
+                                {names(unsaid)} {unsaid.length === 1
                                     ? 'has a rostered shift' : 'have rostered shifts'} with nothing said about it.
                             </strong>{' '}
                             A report cannot be drafted for this week until each one has times, time
@@ -816,16 +901,27 @@ export default function TimesheetPage() {
                             press <strong className="font-bold">+ comment</strong> on the cell.
                         </p>
                     )}
-                    {waiting.some(w => w.changed.length) && (
+                    {changed.length > 0 && (
                         <p>
                             <strong className="font-bold">
-                                {names(waiting.filter(w => w.changed.length))} {waiting.filter(w => w.changed.length).length === 1
+                                {names(changed)} {changed.length === 1
                                     ? 'has hours' : 'have hours'} the till&apos;s report does not have, with nothing
                                 said about them.
                             </strong>{' '}
                             A time off the report that was moved, or a shift typed onto a day the
                             report says nothing about. Either way the accountant is reading a
                             different figure, so the week needs a comment saying why.
+                        </p>
+                    )}
+                    {noClockOut.length > 0 && (
+                        <p>
+                            <strong className="font-bold">
+                                {names(noClockOut)} {noClockOut.length === 1 ? 'has' : 'have'} a clock in
+                                with no clock out.
+                            </strong>{' '}
+                            It counts as no hours, so no report can be drafted and the hours
+                            cannot be sent until it has one. Type the clock out time, or clear the
+                            clock in and add a comment.
                         </p>
                     )}
                 </div>
@@ -916,6 +1012,7 @@ export default function TimesheetPage() {
                     period={period}
                     restaurant={activeRestaurant}
                     filedAt={filedAt}
+                    canSend={sends}
                     onClose={() => setSending(false)}
                     onKeepList={keepRecipients}
                     onSent={() => setRefresh(n => n + 1)}

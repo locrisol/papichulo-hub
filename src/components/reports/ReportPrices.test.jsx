@@ -172,6 +172,25 @@ describe('prices and suppliers on the report', () => {
         expect(screen.queryByRole('button', { name: 'Same thing, we usually buy both' })).toBeNull()
     })
 
+    // A claim on a delivery whose report had already gone out comes off the
+    // first week still open (his decision of 1 October). The week it lands in
+    // says which delivery it is from, or its food cost is lower for no reason
+    // anybody reading it could see.
+    it('says when a claim taken off this week is from an earlier delivery', () => {
+        const later = priceWeek({
+            weekStart: '2026-09-13', weekEnd: '2026-09-19',
+            claims: [{
+                id: 'k2', what: 'COKE ZERO 24X330ML', kind: 'short', amount: 22.34, credited_amount: 22.34,
+                status: 'settled', raised_on: '2026-09-11', counted_week: '2026-09-13', invoice_id: 'i0',
+            }],
+            invoices: [{ id: 'i0', invoice_date: '2026-09-11' }],
+        })
+        draw({ section: later })
+        expect(screen.getAllByText('From an earlier week').length).toBeGreaterThan(0)
+        expect(screen.getByText('From the delivery in the week of 6 Sept')).toBeInTheDocument()
+        expect(screen.getByText('€22.34 off for an earlier week')).toBeInTheDocument()
+    })
+
     it('draws nothing when there is no section to draw', () => {
         const { container } = render(<ReportPrices section={null} />)
         expect(container).toBeEmptyDOMElement()

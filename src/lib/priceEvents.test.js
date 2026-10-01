@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-    REASONS, acceptPrice, rejectPrice, movePreferred, typedPrice, codeRow,
+    REASONS, acceptPrice, rejectPrice, movePreferred, typedPrice, typedPriceEvent, codeRow,
     seenAgain, ignoreCode, ownedByAnother, costFromPaid, renumberPlan, alternatePlan, newGroupId,
 } from '@/lib/priceEvents'
 
@@ -191,6 +191,36 @@ describe('a price typed in', () => {
     it('is the first point on the graph and says it was typed', () => {
         expect(typedPrice(PRODUCT, PRICE, { ...WHO, first: true }).reason).toBe('created')
         expect(typedPrice(PRODUCT, PRICE, WHO).reason).toBe('by_hand')
+    })
+
+    it('says what it was before, when it was something', () => {
+        expect(typedPrice(PRODUCT, PRICE, { ...WHO, previous: { price_per_unit: 2.85 } }).previous_per_unit).toBe(2.85)
+        expect(typedPrice(PRODUCT, PRICE, WHO).previous_per_unit).toBeNull()
+    })
+})
+
+// Saved on the Prices page or the product form.
+describe('typedPriceEvent', () => {
+    const typed = { ...PRICE, price_per_case: 32.1, price_per_unit: 3.21 }
+
+    it('records a new figure on the preferred price, with what it was', () => {
+        expect(typedPriceEvent(PRODUCT, typed, { ...WHO, before: PRICE })).toMatchObject({
+            price_id: 'pr1', reason: 'by_hand', price_per_unit: 3.21, previous_per_unit: 3.03,
+            at: WHO.at, changed_by: 'u1',
+        })
+    })
+
+    it('records the first price a product is given as its first', () => {
+        expect(typedPriceEvent(PRODUCT, PRICE, WHO)).toMatchObject({ reason: 'created', previous_per_unit: null })
+    })
+
+    // The product form saves the preferred price again on every save.
+    it('records nothing when the price did not move', () => {
+        expect(typedPriceEvent(PRODUCT, { ...PRICE }, { ...WHO, before: PRICE })).toBeNull()
+    })
+
+    it('records nothing for a price the product is not costed from', () => {
+        expect(typedPriceEvent(PRODUCT, { ...typed, is_preferred: false }, { ...WHO, before: PRICE })).toBeNull()
     })
 })
 

@@ -63,10 +63,17 @@ export function statusNote(status) {
     switch (String(status ?? '').toLowerCase()) {
         case 'offsale':
             return { text: 'No longer on sale, so it has probably sold out', tone: 'warn' }
+        // Ticketmaster sends canceled, the American way. Only this one was
+        // known, so a show called off said nothing here either.
         case 'cancelled':
+        case 'canceled':
             return { text: 'Cancelled, so this is an ordinary night after all', tone: 'bad' }
         case 'postponed':
             return { text: 'Postponed, so the date may still move', tone: 'warn' }
+        // Ours, not Ticketmaster's: the feed stopped listing a night that is
+        // still to come. See offFor in lib/nearby.
+        case 'withdrawn':
+            return { text: 'No longer listed on Ticketmaster, so it may have been called off', tone: 'warn' }
         case 'rescheduled':
             return { text: 'Rescheduled, so check the date is still this one', tone: 'warn' }
         default:

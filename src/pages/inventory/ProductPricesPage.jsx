@@ -1,9 +1,11 @@
 import { useState, useEffect, Fragment, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
 import { fmtMoney, fmtUnitCost } from '@/lib/format'
 import { priceProblem, pricePayload } from '@/lib/productPrice'
+import { movePreferred, typedPriceEvent } from '@/lib/priceEvents'
 import PriceForm from '@/components/inventory/PriceForm'
 import Modal from '@/components/ui/Modal'
 import PriceCountUnitsEditor from '@/components/inventory/PriceCountUnitsEditor'
@@ -13,6 +15,7 @@ import { useConfirm } from '@/context/confirm'
 import BackButton from '@/components/ui/BackButton'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import ProductPriceHistory from '@/components/inventory/ProductPriceHistory'
+import { useSaveOnce } from '@/components/ui/useSaveOnce'
 
 // Every price we can buy one product at, for the restaurant you are working in.
 //
@@ -31,6 +34,7 @@ import ProductPriceHistory from '@/components/inventory/ProductPriceHistory'
 // and the margin differ by restaurant while the selling price does not.
 export default function ProductPricesPage() {
     const { id } = useParams()
+    const { user } = useAuth()
     const { activeRestaurant } = useRestaurant()
     const confirm = useConfirm()
 
@@ -51,6 +55,9 @@ export default function ProductPricesPage() {
     const [editingPrice, setEditingPrice] = useState(null)
     const [formData, setFormData] = useState(emptyForm())
     const [formatsForPriceId, setFormatsForPriceId] = useState(null)
+    // Bumped whenever a price moves here, so the chart above the rows reads
+    // its events again. See recordPrice.
+    const [historyVersion, setHistoryVersion] = useState(0)
 
     // The price the formats dialog is showing, looked up from the list rather
     // than kept as a second copy, so it cannot go stale if the list reloads.
@@ -82,16 +89,6 @@ export default function ProductPricesPage() {
         else setProduct(data)
         }, [id])
 
-    useEffect(() => {
-        // The fetch sets a loading state before it starts, which is one render
-        // this rule would rather avoid. The alternative is to leave it,
-        // and then a change of what is shown keeps the previous one's figures
-        // on screen under the new one's heading until the answer arrives.
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        fetchProduct()
-        fetchSuppliers()
-    }, [fetchProduct])
-
     async function fetchSuppliers() {
         const { data } = await supabase
             .from('suppliers')
@@ -101,6 +98,16 @@ export default function ProductPricesPage() {
 
         if (data) setSuppliers(data)
     }
+
+    useEffect(() => {
+        // The fetch sets a loading state before it starts, which is one render
+        // this rule would rather avoid. The alternative is to leave it,
+        // and then a change of what is shown keeps the previous one's figures
+        // on screen under the new one's heading until the answer arrives.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        fetchProduct()
+        fetchSuppliers()
+    }, [fetchProduct])
 
     const fetchPrices = useCallback(async () => {
         setLoading(true)
@@ -133,9 +140,17 @@ export default function ProductPricesPage() {
 
     const validate = () => priceProblem(formData)
 
-    async function handleSave(e) {
-        e.preventDefault()
+    // A second tap on Save while the first was on its way added the price
+    // twice, and a first price twice is two prices both marked preferred. See
+    // useSaveOnce.
+    const [saving, once] = useSaveOnce()
 
+    function handleSave(e) {
+        e.preventDefault()
+        return once(savePrice)
+    }
+
+    async function savePrice() {
         setFormProblem('')
 
         const newErrors = validate()
@@ -152,26 +167,58 @@ export default function ProductPricesPage() {
         }
 
         if (editingPrice) {
-            const { error } = await supabase
+            const { data: saved, error } = await supabase
                 .from('product_supplier_prices')
                 .update(payload)
                 .eq('id', editingPrice.id)
+                .select()
+                .single()
 
             if (error) handleSupabaseError(error)
-            else { fetchPrices(); resetForm() }
+            else {
+                await recordPrice(typedPriceEvent({ id }, saved, {
+                    ...who(), before: editingPrice,
+                }))
+                fetchPrices(); resetForm()
+            }
         } else {
             // First price link for this product+restaurant becomes preferred by default
             if (prices.length === 0) {
                 payload.is_preferred = true
             }
 
-            const { error } = await supabase
+            const { data: saved, error } = await supabase
                 .from('product_supplier_prices')
                 .insert(payload)
+                .select()
+                .single()
 
             if (error) handleSupabaseError(error)
-            else { fetchPrices(); resetForm() }
+            else {
+                await recordPrice(typedPriceEvent({ id }, saved, who()))
+                fetchPrices(); resetForm()
+            }
         }
+    }
+
+    // Who is changing a price, where, and when, for the event that says so.
+    function who() {
+        return { restaurantId: activeRestaurant.id, userId: user?.id, at: new Date().toISOString() }
+    }
+
+    // Writing down that what the Hub costs from has moved.
+    //
+    // The chart above the rows draws the product's own line from these
+    // events, and this page used to change prices without writing one, so
+    // the line stayed where an invoice last left it while every recipe had
+    // moved. Nothing is written when there is nothing to say (see
+    // typedPriceEvent). The price itself is saved by then, so a failure here
+    // says so on the page rather than undoing it.
+    async function recordPrice(event) {
+        if (!event) return
+        const { error } = await supabase.from('product_price_events').insert(event)
+        if (error) setError(`The price was saved, but the price history was not updated: ${friendlyError(error)}`)
+        setHistoryVersion(n => n + 1)
     }
 
     function handleSupabaseError(err) {
@@ -249,8 +296,18 @@ export default function ProductPricesPage() {
             .eq('restaurant_id', activeRestaurant.id)
             .neq('id', price.id)
 
-        if (e2) setError(friendlyError(e2))
-        else fetchPrices()
+        if (e2) { setError(friendlyError(e2)); return }
+
+        // Buying it somewhere else is the decision with no document behind
+        // it, so this is the only record the chart has of it. The row it
+        // moved from is named, which a row read with select('*') is not.
+        const before = prices.find(p => p.is_preferred && p.id !== price.id) || null
+        const move = movePreferred({ id }, price, {
+            ...who(),
+            from: before && { ...before, supplier_name: getSupplierName(before.supplier_id) },
+        })
+        await recordPrice(move.event)
+        fetchPrices()
     }
 
     async function removePrice(price) {
@@ -314,6 +371,7 @@ export default function ProductPricesPage() {
                 restaurantId={activeRestaurant?.id}
                 product={product}
                 suppliers={suppliers}
+                refresh={historyVersion}
             />
 
             <div className="bg-blue-50 text-blue-700 text-xs rounded-lg p-3 mb-4">
@@ -330,6 +388,7 @@ export default function ProductPricesPage() {
                         onSubmit={handleSave}
                         onCancel={resetForm}
                         submitLabel="Add Price"
+                        saving={saving}
                         errors={errors}
                         suppliers={suppliers}
                         unit={product?.unit}
@@ -527,6 +586,7 @@ export default function ProductPricesPage() {
                             onSubmit={handleSave}
                             onCancel={resetForm}
                             submitLabel="Save changes"
+                            saving={saving}
                             errors={errors}
                             suppliers={suppliers}
                             unit={product?.unit}

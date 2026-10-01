@@ -1,4 +1,4 @@
-import { AWAY_LOOK, KIND_LOOK, BANK_LOOK } from '@/lib/timesheet'
+import { AWAY_LOOK, KIND_LOOK, BANK_LOOK, COUNTED_DAYS, awayWords } from '@/lib/timesheet'
 import { periodWords } from '@/lib/payPeriod'
 import { addDays, weekRange, stampDateTime } from '@/lib/dates'
 import logo from '@/assets/PapiChuloLogoPrint.png?inline'
@@ -282,7 +282,9 @@ export async function timesheetPdf({
         if (person.trial > 0) marks.push([KIND_LOOK.trial, `Trial ${h(person.trial)} h`])
         if (person.training > 0) marks.push([KIND_LOOK.training, `Training ${h(person.training)} h`])
         if (person.sickDays > 0) marks.push([AWAY_LOOK.sick, `${plural(person.sickDays, 'day')} sick`])
+        if (person.sickParts > 0) marks.push([AWAY_LOOK.sick, `${plural(person.sickParts, 'part day')} sick`])
         if (person.unpaidDays > 0) marks.push([AWAY_LOOK.unpaid, `${plural(person.unpaidDays, 'day')} unpaid`])
+        if (person.unpaidParts > 0) marks.push([AWAY_LOOK.unpaid, `${plural(person.unpaidParts, 'part day')} unpaid`])
 
         const tall = marks.length ? 11.2 : 7.2
         room(tall)
@@ -343,6 +345,7 @@ export async function timesheetPdf({
         + 'Hours worked is the two weeks added together. Bank holiday hours are inside it and '
         + 'listed again on their own. Holiday is apart and is not inside anything. Days off sick '
         + 'and on unpaid leave are counted in days, because no hours are recorded against them. '
+        + 'Part of a day is counted as a part day, and any hours worked that day are inside hours worked. '
         + 'The extra entitlement for a public holiday is not worked out here. '
         + 'Every time below is what the clock recorded, to the second.'
     for (const line of pdf.splitTextToSize(note, right - marginX)) {
@@ -428,21 +431,31 @@ export async function timesheetPdf({
                 let x = marginX + 48
                 if (day.bankHoliday) x += drawMark(BANK_LOOK, null, x, y)
 
-                if (day.spans.length) {
-                    const times = day.spans
-                        .map(s => `${clock(s.starts_at)} to ${clock(s.ends_at)}`).join(',  ')
+                if (day.spans.length || day.open.length) {
+                    // A clock in with no clock out is said, never dropped:
+                    // the send is held for one, but the paper can still be
+                    // downloaded.
+                    const times = [
+                        ...day.spans.map(s => `${clock(s.starts_at)} to ${clock(s.ends_at)}`),
+                        ...day.open.map(at => `Clock in ${clock(at)}, no clock out`),
+                    ].join(',  ')
                     pdf.setTextColor(...INK)
                     pdf.setFont('helvetica', 'normal')
                     pdf.setFontSize(8)
                     pdf.text(times, x, y)
+                    let after = x + pdf.getTextWidth(times) + 3
                     const kinds = day.spans.map(s => s.kind).filter(k => k && KIND_LOOK[k])
-                    if (kinds.length) {
-                        drawMark(KIND_LOOK[kinds[0]], null, x + pdf.getTextWidth(times) + 3, y)
+                    if (kinds.length) after += drawMark(KIND_LOOK[kinds[0]], null, after, y)
+                    // A day with times that is also one of the two counted
+                    // kinds says so beside them, or the summary counts a day
+                    // nobody can find on the page.
+                    if (COUNTED_DAYS.includes(day.away)) {
+                        drawMark(AWAY_LOOK[day.away], awayWords(day), after, y)
                     }
                     pdf.setFont('helvetica', 'bold')
                     pdf.text(`${h(day.hours)} h`, right, y, { align: 'right' })
                 } else if (day.away && AWAY_LOOK[day.away]) {
-                    drawMark(AWAY_LOOK[day.away], null, x, y)
+                    drawMark(AWAY_LOOK[day.away], awayWords(day), x, y)
                 } else {
                     pdf.setFont('helvetica', 'italic')
                     pdf.setTextColor(...MUTED)

@@ -5,12 +5,58 @@ import { signInAs, anonClient, countVisible, writeRefused, changesRefused, crede
 // a page is a convenience. This is the part that actually protects the data.
 //
 // Nothing here creates a row. Reads are harmless, and a write that is meant to
-// be refused changes nothing by definition. That does leave one gap: we do not
-// prove an allowed write succeeds, because doing so would put rows into the
-// live sales data.
+// be refused changes nothing by definition. An allowed write is proved without
+// making one, by pointing it at something that cannot exist and seeing that
+// the rules let it through to fail on that instead: see wasteRefusal below.
 
 const run = credentialsPresent()
 const maybe = run ? describe : describe.skip
+
+// A write that points at something that cannot exist, so no row is ever
+// made. The rules are checked before the key is, which makes the code say
+// which of the two stopped it: the rules, or the missing key after the rules
+// had let it through. An allowed write proved without touching live rows.
+const REFUSED_BY_THE_RULES = '42501'
+const PAST_THE_RULES = '23503'
+
+// A waste entry for a product that cannot exist.
+async function wasteRefusal(client, restaurantId) {
+    const { error } = await client.from('waste_logs').insert({
+        restaurant_id: restaurantId,
+        product_id: NOBODY,
+        log_date: '2020-01-01',
+        quantity_wasted: 1,
+        reason: 'other',
+    })
+    return error?.code ?? null
+}
+
+// The same trick for an account: one for a login that cannot exist, so the
+// missing login is what stops it once the rules have let it through. Before
+// 031 an owner got that far with a store manager or an employee at their own
+// restaurant, and a store manager with an employee.
+async function accountRefusal(client, restaurantId, role) {
+    const { error } = await client.from('users').insert({
+        id: NOBODY,
+        full_name: 'RLS test account, should never exist',
+        role,
+        restaurant_id: restaurantId,
+    })
+    return error?.code ?? null
+}
+
+// The first and last day of the weeks My shifts opens: nine weeks either side
+// of today in Ireland. roster_colleagues, roster_away and roster_published
+// keep to them since 034.
+function myShiftsWeeks() {
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Dublin' })
+    const shift = days => {
+        const d = new Date(`${today}T12:00:00Z`)
+        d.setUTCDate(d.getUTCDate() + days)
+        return d.toISOString().slice(0, 10)
+    }
+    return [shift(-63), shift(63)]
+}
 
 if (!run) {
     console.warn('Skipping the database tests: the TEST_ credentials are not set in .env')
@@ -59,14 +105,91 @@ maybe('what each role can see and do', () => {
             expect(count).toBe(1)
         })
 
-        it('can read their own restaurant', async () => {
-            const { count } = await countVisible(employee, 'restaurants')
-            expect(count).toBe(1)
+        // Since 033 through staff_restaurants, and since 034 never the table.
+        // The row carries the cost targets, the default hourly rate and the
+        // addresses the report and the hours are mailed to, and a policy
+        // cannot hide a column, so the table gives them nothing at all.
+        it('can read their own restaurant, through the staff view', async () => {
+            const { data, error } = await employee.from('staff_restaurants').select('id')
+            expect(error).toBeNull()
+            expect((data || []).map(r => r.id)).toEqual([ownRestaurantId])
         })
 
-        it('can read the product catalogue', async () => {
+        it('cannot read the restaurants table itself', async () => {
+            const { count } = await countVisible(employee, 'restaurants')
+            expect(count).toBe(0)
+        })
+
+        it('is not given the cost targets, the default rate or the mail addresses', async () => {
+            const { data } = await employee.from('staff_restaurants').select('*').limit(1)
+            expect(data?.length, 'the employee read no restaurant at all').toBe(1)
+            const cols = Object.keys(data[0])
+            for (const hidden of [
+                'food_cost_target', 'labour_cost_target', 'packaging_cost_target', 'hourly_rate',
+                'report_recipients', 'timesheet_recipients', 'mail_from', 'pay_period_start',
+            ]) {
+                expect(cols, `staff_restaurants is handing over ${hidden}`).not.toContain(hidden)
+            }
+
+            const asked = await employee.from('restaurants')
+                .select('food_cost_target, labour_cost_target, packaging_cost_target, hourly_rate, report_recipients, timesheet_recipients')
+            expect(asked.data || []).toHaveLength(0)
+        })
+
+        // What My shifts draws the week with, and what the calendar names the
+        // sites with. Losing either would be quiet: an empty week, or every
+        // entry saying No restaurant.
+        it('still reads what My shifts and the calendar need', async () => {
+            const { data, error } = await employee.from('staff_restaurants')
+                .select('id, name, sort_order, opening_hours, break_rules, roster_rules, watch_city_events')
+                .eq('id', ownRestaurantId).maybeSingle()
+            expect(error).toBeNull()
+            expect(data?.name).toBeTruthy()
+        })
+
+        // Since 034. The row carries what they cost per hour and whatever a
+        // manager wrote about them in Notes, so not even their own comes back.
+        // Asked for by id, so a pass means their row is there and was refused,
+        // not that the test account has no row on the team at all. Shown as
+        // skipped, not passed, when it has none.
+        it('cannot read their own pay rate or the notes about them', async ({ skip }) => {
+            const { data: id, error } = await employee.rpc('get_my_employee_id')
+            expect(error).toBeNull()
+            skip(!id, 'the test employee is not joined to anybody on the team')
+            const { data } = await employee.from('employees').select('id, hourly_rate, notes').eq('id', id)
+            expect(data || [], 'an employee read their own row of the employees table').toHaveLength(0)
+        })
+
+        // What My shifts reads instead to find their own name on the roster.
+        it('still finds themselves on the roster', async ({ skip }) => {
+            const { data: id, error } = await employee.rpc('get_my_employee_id')
+            expect(error).toBeNull()
+            skip(!id, 'the test employee is not joined to anybody on the team')
+            const { data: me } = await employee.from('roster_colleagues')
+                .select('id, restaurant_id, full_name, position_id')
+                .eq('id', id).maybeSingle()
+            expect(me?.full_name, 'My shifts would say Not on the team list').toBeTruthy()
+            expect(me.restaurant_id).toBe(ownRestaurantId)
+        })
+
+        // Since 033 through staff_products, and since 034 never the table.
+        // The notes, the weight loss, what one piece weighs and how often it
+        // is counted are for the Products page. Every product, switched off
+        // ones included, so today's waste still has a name on it.
+        it('can read the product catalogue, through the staff view', async () => {
+            const { data, error } = await employee.from('staff_products').select('*')
+            expect(error?.message || '', 'staff_products is missing, so 033 has not been run').toBe('')
+            expect(data.length).toBeGreaterThan(0)
+            expect(Object.keys(data[0]).sort()).toEqual([
+                'also_in', 'batch_yield', 'category', 'held_for', 'id', 'is_active', 'is_mix', 'name', 'section', 'unit',
+            ])
+            const { count: all } = await manager.from('products').select('id', { count: 'exact', head: true })
+            expect(data.length).toBe(all)
+        })
+
+        it('cannot read the products table itself', async () => {
             const { count } = await countVisible(employee, 'products')
-            expect(count).toBeGreaterThan(0)
+            expect(count, 'an employee can read products').toBe(0)
         })
 
         it('can read suppliers', async () => {
@@ -74,9 +197,61 @@ maybe('what each role can see and do', () => {
             expect(count).toBeGreaterThan(0)
         })
 
+        // Since 034. The Suppliers page and Delivery problems only ever
+        // offered staff the ones still in use. Passes trivially on a database
+        // with nothing switched off, so the manager test below says whether
+        // there was anything to hide.
+        it('cannot read suppliers that were switched off', async () => {
+            const { data, error } = await employee.from('suppliers').select('id, is_active')
+            expect(error).toBeNull()
+            expect((data || []).filter(s => s.is_active !== true), 'an employee read a switched off supplier').toEqual([])
+        })
+
         it('can read stock takes', async () => {
             const { error } = await countVisible(employee, 'stock_takes')
             expect(error).toBeNull()
+        })
+
+        // Since 034. A closed count carries what the stock was worth, and no
+        // staff screen opens one: the history is managers only. The lines of
+        // an old count go with it. Passes on a day nothing is closed, so the
+        // manager test below says whether there was anything to hide.
+        it('reads only the count in progress, never a closed one or its lines', async () => {
+            const { data: takes, error } = await employee.from('stock_takes').select('id, status, total_value')
+            expect(error).toBeNull()
+            expect((takes || []).filter(t => t.status !== 'in_progress'), 'an employee read a closed stock take').toEqual([])
+
+            const open = (takes || []).map(t => t.id)
+            const { data: lines } = await employee.from('stock_take_lines').select('stock_take_id')
+            expect((lines || []).filter(l => !open.includes(l.stock_take_id)), 'an employee read the lines of a closed stock take')
+                .toEqual([])
+        })
+
+        // What Stock Takes and the count itself read. Shown as skipped when
+        // nothing is being counted.
+        it('still reads the count in progress and every line on it', async ({ skip }) => {
+            const { data: open } = await manager.from('stock_takes').select('id')
+                .eq('restaurant_id', ownRestaurantId).eq('status', 'in_progress').maybeSingle()
+            skip(!open, 'no stock take is open')
+            const { data: take } = await employee.from('stock_takes').select('id').eq('id', open.id).maybeSingle()
+            expect(take?.id, 'an employee cannot read the count in progress').toBe(open.id)
+
+            const [{ count: theirs }, { count: all }] = await Promise.all([
+                employee.from('stock_take_lines').select('id', { count: 'exact', head: true }).eq('stock_take_id', open.id),
+                manager.from('stock_take_lines').select('id', { count: 'exact', head: true }).eq('stock_take_id', open.id),
+            ])
+            expect(theirs).toBe(all)
+        })
+
+        // Staff read prices and stock take values on purpose since 1 October,
+        // but only their own restaurant's.
+        it('reads prices and stock takes from their own restaurant only', async () => {
+            for (const table of ['product_supplier_prices', 'stock_takes']) {
+                const { data, error } = await employee.from(table).select('restaurant_id')
+                expect(error).toBeNull()
+                const strays = (data || []).filter(r => r.restaurant_id !== ownRestaurantId)
+                expect(strays, `${table} leaked rows from another restaurant`).toHaveLength(0)
+            }
         })
 
         // The money. None of this is any of their business.
@@ -161,11 +336,189 @@ maybe('what each role can see and do', () => {
         })
 
         // Since 022. A MIX is valued from its recipe, and without it every
-        // MIX an employee counted or wasted was saved at nothing.
+        // MIX an employee counted or wasted was saved at nothing. Since 033
+        // through staff_mix_recipes, and since 034 never the table: what goes
+        // in and how much, not the notes beside each line.
         it('can read MIX recipes, which value what they count and waste', async () => {
-            const { count, error } = await countVisible(employee, 'mix_recipes')
+            const { data, error } = await employee.from('staff_mix_recipes').select('*')
+            expect(error?.message || '', 'staff_mix_recipes is missing, so 033 has not been run').toBe('')
+            expect(data.length).toBeGreaterThan(0)
+            expect(Object.keys(data[0]).sort()).toEqual(['id', 'ingredient_product_id', 'mix_product_id', 'quantity'])
+            const { count: all } = await manager.from('mix_recipes').select('id', { count: 'exact', head: true })
+            expect(data.length).toBe(all)
+        })
+
+        it('cannot read the recipes table itself, with its notes', async () => {
+            const { count } = await countVisible(employee, 'mix_recipes')
+            expect(count, 'an employee can read mix_recipes').toBe(0)
+        })
+
+        // Today's, so two people do not log the same thing twice, and since
+        // 031 today is the date in Ireland, which is the date the app writes.
+        // On a day nobody has logged waste there is nothing to look at and it
+        // passes, so it only stops the rule getting wider. Which date counts
+        // as today is pinned in src/test/schema.test.js.
+        it('sees only the waste logged today in Ireland', async () => {
+            const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Dublin' })
+            const { data, error } = await employee.from('waste_logs').select('log_date, restaurant_id')
             expect(error).toBeNull()
-            expect(count).toBeGreaterThan(0)
+            expect((data || []).filter(w => w.log_date !== today || w.restaurant_id !== ownRestaurantId)).toEqual([])
+        })
+
+        // Since 034. The table carries every colleague's shift note and every
+        // draft. My shifts reads roster_published, which gives each person the
+        // note on their own shifts and the week as it went out.
+        it('cannot read the roster table, only the week as it went out', async () => {
+            const { count } = await countVisible(employee, 'roster_shifts')
+            expect(count, 'an employee can read roster_shifts').toBe(0)
+        })
+
+        // What My shifts shows under their own shift. Shown as skipped when
+        // nothing of theirs in the weeks My shifts opens has a note. Only
+        // those weeks: since 034 the view gives no shift outside them, so an
+        // older note would fail with nothing wrong.
+        it('still reads the note on their own shifts', async ({ skip }) => {
+            const { data: me } = await employee.rpc('get_my_employee_id')
+            skip(!me, 'the test employee is not joined to anybody on the team')
+            const [from, to] = myShiftsWeeks()
+            const { data: noted } = await manager.from('roster_shifts').select('id, note')
+                .eq('employee_id', me).not('published_at', 'is', null).not('note', 'is', null)
+                .gte('shift_date', from).lte('shift_date', to).limit(1)
+            skip(!noted?.length, 'none of their shifts in the weeks My shifts opens has a note')
+            const { data } = await employee.from('roster_published').select('id, note').eq('id', noted[0].id).maybeSingle()
+            expect(data?.note).toBe(noted[0].note)
+        })
+
+        // Since 034. What is on comes from staff_diary, without where each
+        // entry is on Google, which the calendar function acts on, or who
+        // wrote it. Their own private entries, if they ever kept one as a
+        // manager, are all the table still gives them.
+        it('reads what is on without the Google ids or who wrote it', async () => {
+            const { data: shared, error } = await employee.from('diary_entries').select('id, scope')
+            expect(error).toBeNull()
+            expect((shared || []).filter(e => e.scope !== 'private'), 'an employee read the diary table').toEqual([])
+
+            const { data, error: viewError } = await employee.from('staff_diary').select('*')
+            expect(viewError?.message || '', 'staff_diary is missing, so 033 has not been run').toBe('')
+            if (data?.length) {
+                for (const hidden of ['google_event_ids', 'created_by']) {
+                    expect(Object.keys(data[0]), `staff_diary is handing over ${hidden}`).not.toContain(hidden)
+                }
+            }
+
+            // Everything for the group and for their own restaurant, as before.
+            const { data: all } = await superadmin.from('diary_entries').select('id')
+                .or(`scope.eq.all_sites,and(scope.eq.sites,restaurant_ids.cs.{${ownRestaurantId}})`)
+            expect((data || []).filter(e => e.scope !== 'private').map(e => e.id).sort())
+                .toEqual((all || []).map(e => e.id).sort())
+        })
+
+        // Since 034. What is on near us: a place's name and size through
+        // staff_places, not its page address, Ticketmaster id or reading
+        // settings; their own restaurant's pairings; and only the listings
+        // at places it watches that nobody dismissed.
+        it('reads what is on near us without how each place is set up', async () => {
+            const { count } = await countVisible(employee, 'places')
+            expect(count, 'an employee can read the places table').toBe(0)
+
+            const { data: places, error } = await employee.from('staff_places').select('*')
+            expect(error?.message || '', 'staff_places is missing, so 033 has not been run').toBe('')
+            if (places?.length) expect(Object.keys(places[0]).sort()).toEqual(['capacity', 'id', 'name', 'short_name'])
+
+            const { data: pairings } = await employee.from('restaurant_places')
+                .select('restaurant_id, place_id, is_active, place:staff_places(id, name)')
+            expect((pairings || []).filter(p => p.restaurant_id !== ownRestaurantId), 'an employee read the other restaurant pairings')
+                .toEqual([])
+            expect((pairings || []).filter(p => !p.place), 'a pairing came back with no place').toEqual([])
+
+            const watched = (pairings || []).filter(p => p.is_active).map(p => p.place_id)
+            const { data: events } = await employee.from('events').select('place_id, review')
+            expect((events || []).filter(e => e.review === 'dismissed'), 'an employee read a dismissed listing').toEqual([])
+            expect((events || []).filter(e => !watched.includes(e.place_id)), 'an employee read a listing from a place they do not watch')
+                .toEqual([])
+
+            // Every other listing at a place they watch, as before.
+            const { count: theirs } = await manager.from('events').select('id', { count: 'exact', head: true })
+                .neq('review', 'dismissed').in('place_id', watched.length ? watched : [NOBODY])
+            expect((events || []).length).toBe(theirs)
+        })
+
+        // Since 034. A swap between two other people is theirs: who asked
+        // whom, the hours and the message. My shifts reads their own whole,
+        // and of everybody else's only which shifts were asked about, from
+        // roster_asks.
+        it('reads only the swap requests they are part of', async ({ skip }) => {
+            const { data: me } = await employee.rpc('get_my_employee_id')
+            skip(!me, 'the test employee is not joined to anybody on the team')
+            const { data, error } = await employee.from('shift_requests').select('from_employee_id, to_employee_id, message')
+            expect(error).toBeNull()
+            expect((data || []).filter(r => r.from_employee_id !== me && r.to_employee_id !== me),
+                'an employee read a swap between two other people').toEqual([])
+
+            const { count: theirs } = await manager.from('shift_requests').select('id', { count: 'exact', head: true })
+                .eq('restaurant_id', ownRestaurantId).or(`from_employee_id.eq.${me},to_employee_id.eq.${me}`)
+            expect((data || []).length, 'an employee cannot read a request they are part of').toBe(theirs)
+        })
+
+        it('sees which shifts somebody has asked about, and nothing else of the ask', async () => {
+            const { data, error } = await employee.from('roster_asks').select('*')
+            expect(error?.message || '', 'roster_asks is missing, so 033 has not been run').toBe('')
+            if (data?.length) expect(Object.keys(data[0]).sort()).toEqual(['give_shift_id', 'status', 'take_shift_id'])
+
+            // Every live ask at their restaurant, and only those.
+            const { data: live } = await manager.from('shift_requests').select('give_shift_id, take_shift_id')
+                .eq('restaurant_id', ownRestaurantId).in('status', ['asked', 'accepted'])
+            const key = r => `${r.give_shift_id}/${r.take_shift_id}`
+            expect((data || []).map(key).sort()).toEqual((live || []).map(key).sort())
+        })
+
+        // Since 034. Once a manager matches a note from the door to a line it
+        // carries what it was worth and what came back, and no staff screen
+        // shows a euro of it. Delivery problems reads my_claims instead, and
+        // the cost view, which reads the table as the person asking, goes
+        // empty with it.
+        it('cannot read the money on their own delivery problems', async () => {
+            for (const table of ['invoice_line_claims', 'invoice_cost_by_category']) {
+                const { count } = await countVisible(employee, table)
+                expect(count, `an employee can read ${table}`).toBe(0)
+            }
+            const { data, error } = await employee.from('my_claims').select('*').limit(1)
+            expect(error?.message || '', 'my_claims is missing, so 033 has not been run').toBe('')
+            if (data?.length) {
+                for (const hidden of ['amount', 'credited_amount', 'invoice_id', 'invoice_line_id', 'credit_invoice_id']) {
+                    expect(Object.keys(data[0]), `my_claims is handing over ${hidden}`).not.toContain(hidden)
+                }
+            }
+        })
+
+        // What Delivery problems lists for them: theirs, and nobody else's.
+        // Shown as skipped when the test employee has never logged one.
+        it('still reads the delivery problems they logged, and only those', async ({ skip }) => {
+            const { data: auth } = await employee.auth.getUser()
+            const { data: raised } = await manager.from('invoice_line_claims').select('id')
+                .eq('raised_by', auth.user.id).eq('restaurant_id', ownRestaurantId)
+            const { data, error } = await employee.from('my_claims').select('id, restaurant_id, status, what')
+            expect(error).toBeNull()
+            expect((data || []).map(c => c.id).sort()).toEqual((raised || []).map(c => c.id).sort())
+            skip(!raised?.length, 'the test employee has never logged a delivery problem')
+        })
+
+        // Since 034. Every dish's selling price, its VAT and how much of each
+        // thing goes into it. No staff screen reads them, and the allergen
+        // page reads the public_ views, which leave all of that out.
+        it('cannot read the menu, what goes into each dish or the allergen tables', async () => {
+            for (const table of ['menu_items', 'menu_item_components', 'product_allergens', 'menu_categories']) {
+                const { count } = await countVisible(employee, table)
+                expect(count, `an employee can read ${table}`).toBe(0)
+            }
+        })
+
+        it('still reads the allergen page the way a customer does', async () => {
+            for (const view of ['public_menu_items', 'public_menu_item_components', 'public_product_allergens']) {
+                const { count, error } = await countVisible(employee, view)
+                expect(error).toBeNull()
+                expect(count, `an employee cannot read ${view}`).toBeGreaterThan(0)
+            }
         })
 
         it('is refused when writing a MIX recipe', async () => {
@@ -249,6 +602,23 @@ maybe('what each role can see and do', () => {
             expect(refused).toBe(true)
         })
 
+        // The Team page and the roster cost a week from these.
+        it('still reads the team list in full, rates and notes included', async () => {
+            const { data, error } = await manager.from('employees').select('id, hourly_rate, notes')
+            expect(error).toBeNull()
+            expect(data.length).toBeGreaterThan(0)
+        })
+
+        // Theirs in full, unlike staff. The cost dashboard, the timesheet and
+        // the settings page all read these straight off the row.
+        it('still reads the whole of their own restaurant row', async () => {
+            const { data, error } = await manager.from('restaurants')
+                .select('food_cost_target, labour_cost_target, packaging_cost_target, hourly_rate, report_recipients, timesheet_recipients, pay_period_start')
+                .eq('id', ownRestaurantId).single()
+            expect(error).toBeNull()
+            expect(data.food_cost_target).not.toBeUndefined()
+        })
+
         it('reads when the allergen sheet was printed and how often it is due', async () => {
             const { data, error } = await manager.from('restaurants')
                 .select('allergen_sheet_printed_at, allergen_sheet_every_months')
@@ -258,9 +628,136 @@ maybe('what each role can see and do', () => {
             expect(data.allergen_sheet_every_months).toBeLessThanOrEqual(24)
         })
 
+        // Since 032. What the allergen answer is worked out from cannot be
+        // left empty: an empty allergen read as not present, and an empty
+        // is_mix kept a MIX's ingredients out of the dish. Every write here is
+        // refused either way, so nothing is ever created on live: before 032
+        // by something else (a product or category that does not exist, a
+        // section that is not one, a name already taken), after it by the
+        // empty column, which is the code checked for.
+        it('cannot leave empty what the allergen answer is worked out from', async () => {
+            const EMPTY = '23502'
+
+            const { error: allergen } = await manager.from('product_allergens')
+                .insert({ product_id: NOBODY, gluten: null })
+            expect(allergen?.code, 'an allergen can be left empty').toBe(EMPTY)
+
+            const { error: product } = await manager.from('products').insert({
+                name: 'RLS test product, should never exist', section: 'Nowhere', unit: 'KG', is_mix: null,
+            })
+            expect(product?.code, 'whether a product is a MIX can be left empty').toBe(EMPTY)
+
+            const { error: dish } = await manager.from('menu_items').insert({
+                name: 'RLS test dish, should never exist', category_id: NOBODY, is_active: null,
+            })
+            expect(dish?.code, 'whether a dish is on can be left empty').toBe(EMPTY)
+
+            const { data: taken } = await manager.from('menu_categories').select('name').limit(1)
+            if (taken?.length) {
+                const { error: category } = await manager.from('menu_categories')
+                    .insert({ name: taken[0].name, is_active: null })
+                expect(category?.code, 'whether a category is on can be left empty').toBe(EMPTY)
+            }
+        })
+
+        // Show inactive on the Suppliers page, and the names on old invoices.
+        it('still reads switched off suppliers', async ({ skip }) => {
+            const { data, error } = await manager.from('suppliers').select('id').not('is_active', 'is', true)
+            expect(error).toBeNull()
+            skip(!data?.length, 'nothing is switched off, so there is nothing to look for')
+            expect(data.length).toBeGreaterThan(0)
+        })
+
+        // The Products page, the invoices and the report read every column.
+        it('still reads the whole product row', async () => {
+            const { data, error } = await manager.from('products')
+                .select('notes, weight_loss_pct, piece_weight, count_frequency').limit(1)
+            expect(error).toBeNull()
+            expect(data.length).toBeGreaterThan(0)
+        })
+
+        // The calendar's Edit, and the Google ids the calendar function keeps.
+        it('still reads the diary table, the Google ids included', async () => {
+            const { error } = await manager.from('diary_entries').select('id, google_event_ids, created_by').limit(1)
+            expect(error).toBeNull()
+        })
+
+        // Settings, the feed notice and the delete rule read every place,
+        // every pairing and every listing, dismissed ones included.
+        it('still reads every place, every pairing and every listing', async () => {
+            const { error } = await manager.from('places').select('page_url, ticketmaster_venue_id, feed_problem').limit(1)
+            expect(error).toBeNull()
+            const { count: pairings } = await manager.from('restaurant_places').select('id', { count: 'exact', head: true })
+            const { count: all } = await superadmin.from('restaurant_places').select('id', { count: 'exact', head: true })
+            expect(pairings).toBe(all)
+            const { count: events } = await manager.from('events').select('id', { count: 'exact', head: true })
+            const { count: every } = await superadmin.from('events').select('id', { count: 'exact', head: true })
+            expect(events).toBe(every)
+        })
+
+        // The recipe page, the menu and the report read every line, notes
+        // included.
+        it('still reads the recipes with their notes', async () => {
+            const { data, error } = await manager.from('mix_recipes').select('id, quantity, notes').limit(1)
+            expect(error).toBeNull()
+            expect(data.length).toBeGreaterThan(0)
+        })
+
+        // The roster itself, drafts and every note included.
+        it('still reads the roster table, drafts and notes included', async () => {
+            const { error } = await manager.from('roster_shifts').select('id, note, published_at').limit(1)
+            expect(error).toBeNull()
+        })
+
+        // The request desk on the roster answers every swap at the restaurant.
+        it('still reads every swap request at their restaurant', async () => {
+            const { data, error } = await manager.from('shift_requests').select('restaurant_id, message')
+            expect(error).toBeNull()
+            expect((data || []).filter(r => r.restaurant_id !== ownRestaurantId)).toEqual([])
+            const { count } = await superadmin.from('shift_requests').select('id', { count: 'exact', head: true })
+                .eq('restaurant_id', ownRestaurantId)
+            expect((data || []).length).toBe(count)
+        })
+
+        // Delivery problems, the invoices and the report all work with what a
+        // claim was worth and what came back.
+        it('still reads the money on delivery problems', async () => {
+            const { error } = await manager.from('invoice_line_claims').select('id, amount, credited_amount').limit(1)
+            expect(error).toBeNull()
+            const { error: viewError } = await manager.from('invoice_cost_by_category').select('amount').limit(1)
+            expect(viewError).toBeNull()
+        })
+
+        // The history on Stock Takes, and the summary of each closed count.
+        it('still reads every closed stock take, what it was worth and its lines', async ({ skip }) => {
+            const { data, error } = await manager.from('stock_takes').select('id, total_value')
+                .eq('restaurant_id', ownRestaurantId).eq('status', 'completed').limit(1)
+            expect(error).toBeNull()
+            skip(!data?.length, 'nothing has been closed, so there is nothing to look for')
+            const { error: linesError } = await manager.from('stock_take_lines').select('id').eq('stock_take_id', data[0].id)
+            expect(linesError).toBeNull()
+            expect(data[0].total_value).not.toBeUndefined()
+        })
+
+        // The menu pages, the allergen pages and the preview of the customer
+        // page all read these straight off the tables.
+        it('still reads the menu, its prices and what goes into each dish', async () => {
+            for (const table of ['menu_items', 'menu_item_components', 'product_allergens', 'menu_categories']) {
+                const { count, error } = await countVisible(manager, table)
+                expect(error).toBeNull()
+                expect(count, `a manager cannot read ${table}`).toBeGreaterThan(0)
+            }
+        })
+
         it('cannot stamp the other restaurant allergen sheet as printed', async () => {
             const { error } = await manager.rpc('allergen_sheet_printed', { restaurant: otherRestaurantId })
             expect(error, 'a manager stamped the other restaurant allergen sheet').not.toBeNull()
+        })
+
+        // Since 031. Accounts are a super admin job; a store manager links a
+        // login to a person on Team, which writes the person.
+        it('cannot add or change an employee account', async () => {
+            expect(await accountRefusal(manager, ownRestaurantId, 'employee')).toBe(REFUSED_BY_THE_RULES)
         })
 
         it('only sees users from their own restaurant', async () => {
@@ -307,12 +804,37 @@ maybe('what each role can see and do', () => {
             expect(refused).toBe(true)
         })
 
+        it('still reads the whole of their own restaurant row', async () => {
+            const { data, error } = await owner.from('restaurants')
+                .select('food_cost_target, hourly_rate, report_recipients, timesheet_recipients')
+                .eq('id', ownRestaurantId).single()
+            expect(error).toBeNull()
+            expect(data.food_cost_target).not.toBeUndefined()
+        })
+
         it('is refused when creating a restaurant', async () => {
             const refused = await writeRefused(owner, 'restaurants', {
                 name: 'RLS test restaurant, should never exist',
                 location: 'nowhere',
             })
             expect(refused).toBe(true)
+        })
+
+        // Since 031. Making an employee a store manager through the API
+        // opened the takings and everybody's pay rate to them.
+        it('cannot add or change a store manager or an employee account', async () => {
+            expect(await accountRefusal(owner, ownRestaurantId, 'store_manager')).toBe(REFUSED_BY_THE_RULES)
+            expect(await accountRefusal(owner, ownRestaurantId, 'employee')).toBe(REFUSED_BY_THE_RULES)
+        })
+
+        // Choosing your own landing page goes through its own function, so
+        // it keeps working with the account rule closed. Set to what it
+        // already is, so nothing changes.
+        it('can still choose their own landing page', async () => {
+            const { data: auth } = await owner.auth.getUser()
+            const { data: me } = await owner.from('users').select('landing_page').eq('id', auth.user.id).single()
+            const { error } = await owner.rpc('set_my_landing_page', { page: me.landing_page })
+            expect(error).toBeNull()
         })
     })
 
@@ -340,15 +862,52 @@ maybe('what each role can see and do', () => {
             // Only meaningful once both restaurants have sales in them.
             expect(restaurants.size).toBeGreaterThan(0)
         })
+
+        // Since 031. A super admin works at whichever restaurant they have
+        // switched to, and waste was the one table that held them to their
+        // own.
+        it('logs waste at a restaurant that is not their own', async () => {
+            const { data: auth } = await superadmin.auth.getUser()
+            const { data: me } = await superadmin
+                .from('users').select('restaurant_id').eq('id', auth.user.id).single()
+            const { data: restaurants } = await superadmin.from('restaurants').select('id')
+            const elsewhere = restaurants.find(r => r.id !== me.restaurant_id).id
+
+            expect(await wasteRefusal(superadmin, elsewhere), 'the rules refused a super admin waste elsewhere')
+                .toBe(PAST_THE_RULES)
+        })
+
+        // The one role the account rule still lets through.
+        it('is not stopped by the rules when adding an account', async () => {
+            expect(await accountRefusal(superadmin, ownRestaurantId, 'employee')).toBe(PAST_THE_RULES)
+        })
     })
 
-    // roster_colleagues and roster_away read past row level security on
-    // purpose, because a policy picks rows and cannot pick columns, and these
-    // exist to show a colleague's name and position without their pay rate,
-    // date of birth or immigration status. That makes the where clause written
-    // inside each view the only wall between the two restaurants, and nothing
-    // was checking it was still there.
-    describe('the two staff views', () => {
+    describe('waste at the other restaurant', () => {
+        it('is refused for a store manager', async () => {
+            expect(await wasteRefusal(manager, otherRestaurantId)).toBe(REFUSED_BY_THE_RULES)
+        })
+
+        it('is refused for an owner', async () => {
+            expect(await wasteRefusal(owner, otherRestaurantId)).toBe(REFUSED_BY_THE_RULES)
+        })
+
+        // And their own still goes past the rules, so the two above are
+        // refused for the restaurant and not for the role.
+        it('is not what stops a store manager at their own', async () => {
+            expect(await wasteRefusal(manager, ownRestaurantId)).toBe(PAST_THE_RULES)
+        })
+    })
+
+    // roster_colleagues, roster_away and roster_published read past row level
+    // security on purpose, because a policy picks rows and cannot pick
+    // columns, and these exist to show a colleague's name and position without
+    // their pay rate, date of birth or immigration status, and the week as it
+    // went out rather than the draft. staff_restaurants is the same kind, for
+    // the restaurant row. That makes the where clause written inside each view
+    // the only wall between the two restaurants, and nothing was checking it
+    // was still there.
+    describe('the staff views', () => {
         it('roster_colleagues never hands over pay or personal details', async () => {
             const { data } = await employee.from('roster_colleagues').select('*').limit(1)
             if (data?.length) {
@@ -362,6 +921,62 @@ maybe('what each role can see and do', () => {
             }
         })
 
+        // Since 034. Staff see the team and its time off for the weeks My
+        // shifts opens, nine weeks either side of today and no further:
+        // nobody who left long before, no time off from long ago, and no
+        // leaving date or start date that matters to no week they can see.
+        it('roster_colleagues and roster_away keep to the weeks My shifts opens', async () => {
+            const [from, to] = myShiftsWeeks()
+            const { data: me } = await employee.rpc('get_my_employee_id')
+
+            const { data: team, error } = await employee.from('roster_colleagues').select('id, started_on, ended_on')
+            expect(error).toBeNull()
+            for (const person of team || []) {
+                if (person.id === me) continue
+                if (person.ended_on) expect(person.ended_on >= from && person.ended_on <= to, `a leaving date of ${person.ended_on}`).toBe(true)
+                if (person.started_on) expect(person.started_on >= from && person.started_on <= to, `a start date of ${person.started_on}`).toBe(true)
+            }
+            const { data: gone } = await manager.from('employees').select('id')
+                .eq('restaurant_id', ownRestaurantId).lt('ended_on', from)
+            const shown = (team || []).map(p => p.id)
+            expect((gone || []).filter(p => shown.includes(p.id) && p.id !== me), 'roster_colleagues names somebody who left long ago')
+                .toEqual([])
+
+            const { data: away } = await employee.from('roster_away').select('starts_on, ends_on')
+            expect((away || []).filter(a => a.ends_on < from || a.starts_on > to), 'roster_away gives time off outside the weeks')
+                .toEqual([])
+        })
+
+        // And everything inside the weeks is still there. A window written the
+        // wrong way round would leave staff only their own row and pass the
+        // test above, so this asks the manager, who reads both tables whole,
+        // who and what should be on it.
+        it('roster_colleagues and roster_away still give the team and its time off for those weeks', async () => {
+            const [from, to] = myShiftsWeeks()
+            const { data: me } = await employee.rpc('get_my_employee_id')
+
+            const { data: everyone, error: teamError } = await manager.from('employees')
+                .select('id, started_on, ended_on').eq('restaurant_id', ownRestaurantId)
+            expect(teamError).toBeNull()
+            const inWeeks = (everyone || [])
+                .filter(p => (!p.started_on || p.started_on <= to) && (!p.ended_on || p.ended_on >= from))
+                .map(p => p.id)
+            const { data: team, error } = await employee.from('roster_colleagues').select('id')
+            expect(error).toBeNull()
+            expect((team || []).map(p => p.id).sort(), 'roster_colleagues leaves out somebody on the team in those weeks')
+                .toEqual([...new Set([...inWeeks, ...(me ? [me] : [])])].sort())
+
+            const { count: off, error: offError } = await manager.from('absences')
+                .select('id', { count: 'exact', head: true })
+                .eq('restaurant_id', ownRestaurantId).eq('status', 'approved')
+                .gte('ends_on', from).lte('starts_on', to)
+            expect(offError).toBeNull()
+            const { count: seen, error: awayError } = await employee.from('roster_away')
+                .select('employee_id', { count: 'exact', head: true })
+            expect(awayError).toBeNull()
+            expect(seen, 'roster_away leaves out time off in those weeks').toBe(off)
+        })
+
         it('roster_away says when, never why', async () => {
             const { data } = await employee.from('roster_away').select('*').limit(1)
             if (data?.length) {
@@ -371,16 +986,73 @@ maybe('what each role can see and do', () => {
             }
         })
 
-        it('neither view shows the other restaurant', async () => {
-            for (const view of ['roster_colleagues', 'roster_away']) {
+        // The week as it went out, which My shifts and nothing else reads.
+        it('roster_published is there to read', async () => {
+            const { error } = await employee.from('roster_published').select('id').limit(1)
+            expect(error?.message || '', 'roster_published is missing, so 029 has not been run').toBe('')
+        })
+
+        // A shift's note is the manager's word about that person, and no
+        // staff screen shows a colleague's. The view gives each person their
+        // own and nobody else's.
+        it('roster_published gives an employee the notes on their own shifts only', async () => {
+            const { data: me } = await employee.rpc('get_my_employee_id')
+            const { data, error } = await employee.from('roster_published').select('employee_id, note')
+            expect(error?.message || '', 'roster_published is missing, so 029 has not been run').toBe('')
+            const told = (data || []).filter(r => r.employee_id !== me && r.note !== null)
+            expect(told, 'roster_published hands an employee the notes on other shifts').toHaveLength(0)
+        })
+
+        // Since 034. The shifts as they went out, for the same weeks as the
+        // team and its time off: nothing from rosters long gone, nothing
+        // months ahead. By the day as it went out, which is the shift_date
+        // the view hands over.
+        it('roster_published keeps to the weeks My shifts opens', async () => {
+            const [from, to] = myShiftsWeeks()
+
+            const { data, error } = await employee.from('roster_published').select('shift_date')
+            expect(error).toBeNull()
+            expect((data || []).filter(s => s.shift_date < from || s.shift_date > to), 'roster_published gives shifts outside the weeks')
+                .toEqual([])
+        })
+
+        // And every shift inside them is still there. A window written the
+        // wrong way round would leave nothing and pass the test above, so the
+        // manager, who reads the table whole, counts what should be: shifts
+        // published as they stand, and shifts changed since by the day they
+        // went out on. Counts, because a busy restaurant passes a thousand.
+        it('roster_published still gives every shift that went out in those weeks', async () => {
+            const [from, to] = myShiftsWeeks()
+
+            const { count: standing, error: e1 } = await manager.from('roster_shifts')
+                .select('id', { count: 'exact', head: true })
+                .eq('restaurant_id', ownRestaurantId).not('published_at', 'is', null)
+                .gte('shift_date', from).lte('shift_date', to)
+            const { count: changed, error: e2 } = await manager.from('roster_shifts')
+                .select('id', { count: 'exact', head: true })
+                .eq('restaurant_id', ownRestaurantId).is('published_at', null).not('published_as', 'is', null)
+                .gte('published_as->>shift_date', from).lte('published_as->>shift_date', to)
+            expect(e1).toBeNull()
+            expect(e2).toBeNull()
+
+            const { count: seen, error } = await employee.from('roster_published')
+                .select('id', { count: 'exact', head: true })
+            expect(error).toBeNull()
+            expect(seen, 'roster_published does not give exactly the shifts that went out in those weeks').toBe(standing + changed)
+        })
+
+        it('no view shows the other restaurant', async () => {
+            for (const view of ['roster_colleagues', 'roster_away', 'roster_published', 'my_claims']) {
                 const { data } = await employee.from(view).select('restaurant_id')
                 const strays = (data || []).filter(r => r.restaurant_id !== ownRestaurantId)
                 expect(strays, `${view} leaked rows from another restaurant`).toHaveLength(0)
             }
+            const { data } = await employee.from('staff_restaurants').select('id').eq('id', otherRestaurantId)
+            expect(data || [], 'staff_restaurants leaked the other restaurant').toHaveLength(0)
         })
 
-        it('neither view answers to somebody not signed in', async () => {
-            for (const view of ['roster_colleagues', 'roster_away']) {
+        it('no view answers to somebody not signed in', async () => {
+            for (const view of ['roster_colleagues', 'roster_away', 'roster_published', 'staff_restaurants', 'my_claims', 'roster_asks', 'staff_products', 'staff_diary', 'staff_places', 'staff_mix_recipes']) {
                 const { count } = await countVisible(anon, view)
                 expect(count, `${view} is readable by anybody`).toBe(0)
             }
@@ -389,11 +1061,30 @@ maybe('what each role can see and do', () => {
         // roster_away reads one table, so the database would write through
         // it as its owner. Until 021 any employee could delete or move a
         // colleague's approved holiday this way.
-        it('neither view can be written through', async () => {
+        //
+        // roster_published reads one table too. Through it an employee could
+        // otherwise delete any shift at their restaurant.
+        it('no view can be written through', async () => {
             expect(await changesRefused(employee, 'roster_away', 'employee_id', { starts_on: '2026-01-01' }),
                 'roster_away can be changed by an employee').toBe(true)
             expect(await changesRefused(employee, 'roster_colleagues', 'id', { full_name: 'x' }),
                 'roster_colleagues can be changed by an employee').toBe(true)
+            expect(await changesRefused(employee, 'roster_published', 'id', { restaurant_id: NOBODY }),
+                'roster_published can be changed by an employee').toBe(true)
+            expect(await changesRefused(employee, 'staff_restaurants', 'id', { name: 'x' }),
+                'staff_restaurants can be changed by an employee').toBe(true)
+            expect(await changesRefused(employee, 'my_claims', 'id', { what: 'x' }),
+                'my_claims can be changed by an employee').toBe(true)
+            expect(await changesRefused(employee, 'roster_asks', 'give_shift_id', { status: 'approved' }),
+                'roster_asks can be changed by an employee').toBe(true)
+            expect(await changesRefused(employee, 'staff_products', 'id', { name: 'x' }),
+                'staff_products can be changed by an employee').toBe(true)
+            expect(await changesRefused(employee, 'staff_diary', 'id', { title: 'x' }),
+                'staff_diary can be changed by an employee').toBe(true)
+            expect(await changesRefused(employee, 'staff_places', 'id', { name: 'x' }),
+                'staff_places can be changed by an employee').toBe(true)
+            expect(await changesRefused(employee, 'staff_mix_recipes', 'id', { quantity: 1 }),
+                'staff_mix_recipes can be changed by an employee').toBe(true)
         })
     })
 
@@ -441,6 +1132,14 @@ maybe('what each role can see and do', () => {
             const { data: places } = await anon.from('public_restaurants').select('*').limit(1)
             if (places?.length) {
                 expect(Object.keys(places[0]).sort()).toEqual(['id', 'name', 'slug'])
+            }
+
+            // Since 032, the section, so the page can tell a food product
+            // nobody entered allergens for from a dip pot. Nothing about
+            // buying or counting it.
+            const { data: products } = await anon.from('public_products').select('*').limit(1)
+            if (products?.length) {
+                expect(Object.keys(products[0]).sort()).toEqual(['id', 'is_mix', 'name', 'section'])
             }
         })
 

@@ -225,6 +225,31 @@ describe('the Cleaning section of the weekly report', () => {
         expect(cleaningWords(line)).toBe(`Ended on Friday ${shortDate('2026-09-25')} by Ciara with 2 not done.`)
     })
 
+    // The end dialog tells staff what was left comes back on the next round,
+    // so starting again straight away is what is meant to happen. The ended
+    // round is still the one the sentence is about.
+    describe('a round ended early and started again in the same week', () => {
+        const ended = { id: 'r1', checklist_id: 'L1', started_at: at('2026-09-21'), ended_at: at('2026-09-23'), ended_by: 'u1', ended_by_name: 'Ciara' }
+        const again = { id: 'r2', checklist_id: 'L1', started_at: at('2026-09-24'), ended_at: null }
+        const firstTicks = [tick('r1', 't2', '2026-09-21'), tick('r1', 't3', '2026-09-22')]
+
+        it('says what the ended round left, and how the new one is going', () => {
+            const { lines } = cleaning([ended, again], [...firstTicks, tick('r2', 't4', '2026-09-24')]).lists[0]
+            expect(lines[0]).toMatchObject({ state: 'ended', by: 'Ciara', done: 2, total: 3, warn: true })
+            expect(lines[0].words).toBe(`Ended on Wednesday ${shortDate('2026-09-23')} by Ciara with 1 not done.`)
+            expect(lines[0].left.map(t => [t.label, t.again])).toEqual([['Mop the floor', false]])
+            expect(lines[1]).toMatchObject({ state: 'started_again', done: 1, total: 3, warn: false })
+            expect(lines[1].words).toBe(`Started again on Thursday ${shortDate('2026-09-24')}: 1 of 3 done so far.`)
+        })
+
+        it('does not mark anything as missed twice when the new round has nothing ticked yet', () => {
+            const { lines } = cleaning([ended, again], firstTicks).lists[0]
+            expect(lines[0].words).toBe(`Ended on Wednesday ${shortDate('2026-09-23')} by Ciara with 1 not done.`)
+            expect(lines[0].left.some(t => t.again)).toBe(false)
+            expect(lines[1].words).toBe(`Started again on Thursday ${shortDate('2026-09-24')}: 0 of 3 done so far.`)
+        })
+    })
+
     const MONTHLY = { ...WEEKLY, id: 'L1', repeats: 'monthly', every_weeks: null }
 
     it('only says how far a monthly list has got in the middle of the month', () => {

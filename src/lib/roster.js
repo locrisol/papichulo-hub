@@ -5,6 +5,25 @@
 // worth, what break it earns, and what a week costs.
 
 import { isBankHoliday } from '@/lib/bankHolidays'
+import { weekStartOf, addDays } from '@/lib/dates'
+
+// How far My shifts steps either way from this week. Eight weeks back is
+// four pay periods, for checking hours against a payslip. Eight ahead is past
+// any roster that has gone out, and far enough to see who is already off
+// before asking for a day.
+//
+// roster_colleagues and roster_away give staff the team and its time off for
+// nine weeks either side of today and nothing outside it: nobody who left long
+// ago, no time off from last year, and no leaving date months before it
+// matters. A week more than the page opens, so the furthest week is never cut
+// short whatever day it is. schema.test.js checks the two still agree.
+export const STAFF_WEEKS = 8
+
+// The first and last week My shifts opens on, as the Sunday each one starts.
+export function staffWeekRange(today) {
+    const now = weekStartOf(today)
+    return { first: addDays(now, -STAFF_WEEKS * 7), last: addDays(now, STAFF_WEEKS * 7) }
+}
 
 // The ladder every restaurant starts with.
 //
@@ -60,6 +79,31 @@ export function shiftMinutes(startsAt, endsAt) {
     const to = toMinutes(endsAt)
     if (from < 0 || to < 0) return 0
     return to > from ? to - from : to + 1440 - from
+}
+
+// When a shift ends, in minutes from the start of the day it began on.
+//
+// Every comparison of an end time goes through this rather than toMinutes on
+// its own. A shift dragged to the right edge of the day view ends at 00:00,
+// and read as nought that is a shift finishing before it starts: the roster
+// printed its finishing time instead of Closing, the calendar feed had it
+// ending that morning, and a swap beside it lost somebody's evening. Measured
+// from the start, the way shiftMinutes already measures a shift's length, it
+// ends at 1440, which is midnight that night.
+export function endMinutes(shift) {
+    const from = toMinutes(shift?.starts_at)
+    if (from < 0) return -1
+    return from + shiftMinutes(shift.starts_at, shift.ends_at)
+}
+
+// When the store shuts, the same way. A late night for a concert can be saved
+// as closing at 00:00 or 01:00, which is that night and not that morning, and
+// read as the morning every shift that day ran past it.
+export function closeMinutes(dayHours) {
+    const open = toMinutes(dayHours?.open)
+    const close = toMinutes(dayHours?.close)
+    if (open < 0 || close < 0) return -1
+    return close <= open ? close + 1440 : close
 }
 
 // What a shift is worth, in hours.
@@ -131,11 +175,16 @@ export function hoursForDay(openingHours, date) {
 // Both are worth marking. An opening shift is somebody letting themselves in to
 // a dark building, and a closing shift is the one that runs long, which is the
 // whole reason the end time is not printed.
+//
+// The finish and the close are both read as the night they belong to, so a
+// shift to midnight closes a store that shuts at eleven. The calendar feed and
+// the swap mails each have their own copy of this, in roster-calendar/ics.js
+// and roster-email/hours.js, and a test in ics.test.js runs all three.
 export function shiftEdges(shift, dayHours) {
     if (!dayHours) return { opening: false, closing: false }
     return {
         opening: toMinutes(shift.starts_at) < toMinutes(dayHours.open),
-        closing: toMinutes(shift.ends_at) > toMinutes(dayHours.close),
+        closing: endMinutes(shift) > closeMinutes(dayHours),
     }
 }
 

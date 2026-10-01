@@ -1,12 +1,21 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useId } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/context/auth'
-import { supabase } from '@/lib/supabase'
+import { supabase, everyRow } from '@/lib/supabase'
 import { useRestaurant } from '@/context/restaurant'
 import BackToTop from '@/components/layout/BackToTop'
 import { ScrollProvider } from '@/context/ScrollContext'
 import { can, MANAGERS } from '@/lib/access'
 import { navItems, navTarget } from '@/lib/nav'
+import { noAllergensDeclared } from '@/lib/allergens'
+import { everyReadArrived } from '@/lib/allergenSheet'
+import { onAllergensChanged } from '@/lib/allergensChanged'
+import { navBadge, menuDot } from '@/lib/controlStyles'
+import { cannotAnswer } from '@/lib/timeOff'
+
+// Whoever can open Products is whoever gets its count, read off the nav so the
+// two cannot drift apart.
+const PRODUCTS = navItems.find(n => n.path === '/catalogue/products')
 
 
 // Heroicons outline paths, referenced by the `icon` key on each nav item.
@@ -52,7 +61,14 @@ export default function AppLayout({ children }) {
     //
     // Counted rather than listed, and read again whenever the page changes, so
     // it goes back down as soon as it has been dealt with.
+    //
+    // Only what this person can answer. A store manager's own holiday or day
+    // off is an owner's (see cannotAnswer), and counted it told them there was
+    // something to do when the Roster had nothing for them to press.
     const [waitingCount, setWaitingCount] = useState(0)
+    // Who they are on the team, asked once per account rather than on every
+    // page change, since it does not change while they are signed in.
+    const onTheTeam = useRef({ account: null, employee: null })
 
     useEffect(() => {
         let live = true
@@ -61,21 +77,121 @@ export default function AppLayout({ children }) {
                 if (live) setWaitingCount(0)
                 return
             }
+            if (user.role === 'store_manager' && onTheTeam.current.account !== user.id) {
+                const { data, error } = await supabase.rpc('get_my_employee_id')
+                if (!error) onTheTeam.current = { account: user.id, employee: data || null }
+            }
+            const me = onTheTeam.current.account === user.id ? onTheTeam.current.employee : null
+            // The requests themselves rather than a count of them, to ask each
+            // one the same question the Roster asks. A handful at most.
             const [swaps, off] = await Promise.all([
                 supabase.from('shift_requests')
                     .select('id', { count: 'exact', head: true })
                     .eq('restaurant_id', activeRestaurant.id)
                     .eq('status', 'accepted'),
                 supabase.from('absences')
-                    .select('id', { count: 'exact', head: true })
+                    .select('employee_id, can_work_from, can_work_to')
                     .eq('restaurant_id', activeRestaurant.id)
                     .eq('status', 'requested'),
             ])
-            if (live) setWaitingCount((swaps.count || 0) + (off.count || 0))
+            const theirs = (off.data || []).filter(a => !cannotAnswer(a, me, user.role))
+            if (live) setWaitingCount((swaps.count || 0) + theirs.length)
         }
         count()
         return () => { live = false }
-    }, [activeRestaurant?.id, user?.role, location.pathname])
+    }, [activeRestaurant?.id, user?.id, user?.role, location.pathname])
+
+    // Products with no allergens set, counted on Products in red. Until one is
+    // answered, the customer sheet asks people to see staff about every dish
+    // it is in. Forty three of them had built up by 1 October 2026 with
+    // nothing anywhere saying so, and this is so that cannot happen again.
+    //
+    // Products are shared by both restaurants, so it does not wait on which
+    // one is picked.
+    const [noAllergens, setNoAllergens] = useState(0)
+    // The same question the sidebar asks before it shows Products at all.
+    const seesProducts = can(user, PRODUCTS.roles)
+
+    // When it is worked out again. Not on every page change like the roster's
+    // two quick counts: this is five whole tables, and a manager opening the
+    // Roster on a phone should not be downloading the product list to do it.
+    //
+    // So on the first load, and whenever this changes, which is going into the
+    // catalogue, moving around inside it, or coming out of it. That is where
+    // products, recipes and dishes are changed. Between two pages outside it
+    // nothing that counts here can have moved.
+    const cataloguePage = location.pathname.startsWith('/catalogue/') ? location.pathname : null
+    // And straight away when allergens are saved. Saving does not change the
+    // page, so without this the count stayed one too high until it did.
+    const [allergensSaved, setAllergensSaved] = useState(0)
+    useEffect(() => onAllergensChanged(() => setAllergensSaved(n => n + 1)), [])
+
+    useEffect(() => {
+        let live = true
+        async function count() {
+            if (!seesProducts) {
+                if (live) setNoAllergens(0)
+                return
+            }
+            // Only the columns the rule reads. Whether a product has an
+            // allergen row is all that matters, not what is in it.
+            //
+            // Every row, a page at a time, each in an order that cannot tie.
+            // Read short, the answered products past the first thousand would
+            // all count as missing, and a switched off one in a dish past the
+            // first thousand lines would not count at all.
+            const reads = await Promise.all([
+                everyRow(() => supabase.from('products')
+                    .select('id, section, is_mix, is_active, held_for').order('id')),
+                everyRow(() => supabase.from('product_allergens').select('product_id').order('product_id')),
+                everyRow(() => supabase.from('mix_recipes')
+                    .select('id, mix_product_id, ingredient_product_id').order('id')),
+                everyRow(() => supabase.from('menu_items').select('id, is_active').order('id')),
+                everyRow(() => supabase.from('menu_item_components')
+                    .select('id, menu_item_id, product_id').order('id')),
+            ])
+            // A failed read keeps the last number. A failed read of the
+            // allergens would otherwise look like nobody having entered any,
+            // and the count would jump to every food product there is.
+            if (!live || !everyReadArrived(reads)) return
+            const [products, allergens, recipeLines, menuItems, components] = reads.map(r => r.data)
+            setNoAllergens(noAllergensDeclared({ products, allergens, recipeLines, menuItems, components }).length)
+        }
+        count()
+        return () => { live = false }
+    }, [seesProducts, cataloguePage, allergensSaved])
+
+    // The count at the end of an item, if it has one, and the words a screen
+    // reader says for it instead of a bare number.
+    function countOn(path) {
+        if (path === '/roster' && waitingCount > 0) {
+            return {
+                count: waitingCount,
+                tone: 'waiting',
+                words: `${waitingCount} ${waitingCount === 1 ? 'request' : 'requests'} waiting for an answer`,
+            }
+        }
+        if (path === PRODUCTS.path && noAllergens > 0) {
+            return {
+                count: noAllergens,
+                tone: 'urgent',
+                words: `Allergens not set for ${noAllergens} ${noAllergens === 1 ? 'product' : 'products'}`,
+            }
+        }
+        return null
+    }
+
+    // On a phone the sidebar is a drawer, so its counts are out of sight until
+    // it is opened. A dot on the menu button says there is something in there:
+    // red while any product has no allergens set, otherwise amber while the
+    // roster has something waiting. A screen reader hears every count it
+    // stands for, as the button's description, so its name stays the same.
+    const behindMenu = [countOn(PRODUCTS.path), countOn('/roster')].filter(Boolean)
+    const dot = behindMenu.length > 0
+        ? { tone: behindMenu[0].tone, words: behindMenu.map(c => c.words).join('. ') }
+        : null
+    const dotWords = useId()
+
     const [sidebarOpen, setSidebarOpen] = useState(false)
     // Two, because which one scrolls depends on the screen. On a computer the
     // header stays put and main scrolls under it; on a phone the header goes up
@@ -151,6 +267,7 @@ export default function AppLayout({ children }) {
                             </p>
                             {visibleItems.filter(n => n.section === section).map(item => {
                                 const isActive = location.pathname === item.path
+                                const counted = countOn(item.path)
                                 return (
                                     <button
                                         key={item.path}
@@ -164,9 +281,10 @@ export default function AppLayout({ children }) {
                                             <path d={icons[item.icon]} />
                                         </svg>
                                         <span className="flex-1 text-left">{item.label}</span>
-                                        {item.path === '/roster' && waitingCount > 0 && (
-                                            <span className="bg-amber-500 text-white text-[0.65rem] font-bold min-w-[1.15rem] h-[1.15rem] px-1 rounded-full grid place-items-center flex-shrink-0">
-                                                {waitingCount}
+                                        {counted && (
+                                            <span className={navBadge(counted.tone)}>
+                                                <span aria-hidden="true">{counted.count}</span>
+                                                <span className="sr-only">{counted.words}</span>
                                             </span>
                                         )}
                                     </button>
@@ -222,11 +340,17 @@ export default function AppLayout({ children }) {
                             onClick={() => setSidebarOpen(!sidebarOpen)}
                             aria-label={sidebarOpen ? 'Close the menu' : 'Open the menu'}
                             aria-expanded={sidebarOpen}
-                            className="md:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-100"
+                            aria-describedby={dot ? dotWords : undefined}
+                            className="relative md:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-100"
                         >
                             <svg aria-hidden="true" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                 <path d="M4 6h16M4 12h16M4 18h16" />
                             </svg>
+                            {dot && (
+                                <span className={menuDot(dot.tone)}>
+                                    <span id={dotWords} className="sr-only">{dot.words}</span>
+                                </span>
+                            )}
                         </button>
                         <h1 className="font-serif text-xl font-bold text-gray-900">{pageTitle}</h1>
                     </div>

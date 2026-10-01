@@ -95,6 +95,26 @@ describe('changedFields', () => {
         expect(changedFields(entry).map(f => f.field)).not.toContain('updated_at')
     })
 
+    // The roster keeps the copy of a shift that went out on the row itself,
+    // eight values long. It moves on the first change after a week is
+    // published and again when it is published, and what changed is already
+    // said by the times and the published date beside it.
+    it('leaves out the copy of a shift that went out', () => {
+        const copy = {
+            employee_id: '8c1f2a44-1111-2222-3333-444455556666', shift_date: '2026-10-10',
+            starts_at: '09:00:00', ends_at: '17:00:00', position_id: null,
+            break_minutes: 30, note: null, published_at: '2026-10-01T09:00:00Z',
+        }
+        expect(changedFields({
+            changes: {
+                starts_at: { from: '09:00:00', to: '10:00:00' },
+                published_as: { from: null, to: copy },
+            },
+        }).map(f => f.field)).toEqual(['starts_at'])
+        expect(deletedFields({ deleted_row: { id: 's1', starts_at: '10:00:00', published_as: copy } })
+            .map(f => f.field)).toEqual(['starts_at'])
+    })
+
     it('opens up a column that holds a set of values', () => {
         // Without this the whole entry reads "Platform sales: a set of values
         // to a set of values", which is the log keeping the numbers and then

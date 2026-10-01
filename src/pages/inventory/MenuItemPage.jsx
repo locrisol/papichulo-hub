@@ -1,19 +1,20 @@
 import { useState, useEffect, useRef, Fragment, useCallback } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useRestaurant } from '@/context/restaurant'
-import { calculateMixCost, menuItemCost } from '@/lib/mixCost'
-import { deriveMenuItemAllergens, ALLERGEN_KEYS } from '@/lib/allergens'
+import { menuItemCost, costInside, deactivatedIn, missingIn } from '@/lib/mixCost'
+import { deriveMenuItemAllergens, neverEnteredInDish, ALLERGEN_KEYS } from '@/lib/allergens'
 import { friendlyError } from '@/lib/errors'
 import { canBeMenuComponent } from '@/lib/products'
-import { tableHeadRow, badge, card, rowButton, secondaryButton, cardEdge, cardHeader, checkbox, labelClass, pageTitle, primaryButton } from '@/lib/controlStyles'
+import { productsWithARow, optionsWithoutARow, everyReadArrived } from '@/lib/allergenSheet'
+import { tableHeadRow, badge, card, rowButton, secondaryButton, cardEdge, cardHeader, checkbox, labelClass, pageTitle, primaryButton, warningNote } from '@/lib/controlStyles'
 import { useConfirm } from '@/context/confirm'
 import Modal from '@/components/ui/Modal'
 import AddOptions from '@/components/inventory/AddOptions'
 import ProductSelect from '@/components/ui/ProductSelect'
 import QuantityInUnit from '@/components/ui/QuantityInUnit'
 import { numberField } from '@/lib/numberInput'
-import { fmtMoney, fmtUnitCost } from '@/lib/format'
+import { fmtMoney, fmtUnitCost, namesList } from '@/lib/format'
 import BackButton from '@/components/ui/BackButton'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 
@@ -104,6 +105,11 @@ export default function MenuItemPage() {
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  // A read that failed, as against a save that did not go through. Nothing
+  // about the dish is shown then, because a list worked out from half of it
+  // looks whole.
+  const [loadFailed, setLoadFailed] = useState(false)
+  const [pricesFailed, setPricesFailed] = useState('')
   // Kept apart from the page's error above. That one is for something that
   // would not load; these two are for a save that would not go through, and
   // each belongs beside its own button. The component one matters most: its
@@ -148,7 +154,12 @@ export default function MenuItemPage() {
     ] = await Promise.all([
       supabase.from('menu_items').select('*').eq('id', id).single(),
       supabase.from('menu_categories').select('*').order('sort_order'),
-      supabase.from('products').select('*').eq('is_active', true).order('name'),
+      // Every product, switched off or not. A deactivated one stays on every
+      // recipe that used it, so its allergens are still in the dish, and the
+      // customer sheet counts them. Reading only the active ones dropped them
+      // from the panel below without a word. The pickers leave them out
+      // instead, further down.
+      supabase.from('products').select('*').order('name'),
       supabase.from('menu_item_components').select('*').eq('menu_item_id', id),
       supabase.from('mix_recipes').select('*'),
       supabase.from('product_allergens').select('*'),
@@ -156,17 +167,31 @@ export default function MenuItemPage() {
       supabase.from('menu_item_components').select('*'),
     ])
 
-    if (itemRes.error) { setError(friendlyError(itemRes.error)); setLoading(false); return }
+    // All of it or none of it. supabase-js hands a failed read back rather
+    // than throwing it, and this kept whatever did arrive: a failed read of
+    // the allergens left every component with none, and the panel at the
+    // bottom said Not Present for all fourteen. So one failed read shows the
+    // failure and nothing else, the same as the customer page.
+    const reads = [categoriesRes, productsRes, componentsRes, recipesRes, allergensRes, allItemsRes, allComponentsRes]
+    if (itemRes.error || !itemRes.data || !everyReadArrived(reads)) {
+      const failed = itemRes.error || reads.find(r => r.error)?.error
+      setError(`This menu item could not be loaded in full. ${friendlyError(failed) || 'Check your connection and try again.'}`)
+      setLoadFailed(true)
+      setLoading(false)
+      return
+    }
+    setLoadFailed(false)
+    setError('')
+
     setItem(itemRes.data)
     setHeaderForm(emptyHeaderForm(itemRes.data))
-
-    if (categoriesRes.data) setCategories(categoriesRes.data)
-    if (productsRes.data) setProducts(productsRes.data)
-    if (componentsRes.data) setComponents(componentsRes.data)
-    if (recipesRes.data) setRecipeLines(recipesRes.data)
-    if (allergensRes.data) setAllergens(allergensRes.data)
-    if (allItemsRes.data) setAllMenuItems(allItemsRes.data)
-    if (allComponentsRes.data) setAllComponents(allComponentsRes.data)
+    setCategories(categoriesRes.data)
+    setProducts(productsRes.data)
+    setComponents(componentsRes.data)
+    setRecipeLines(recipesRes.data)
+    setAllergens(allergensRes.data)
+    setAllMenuItems(allItemsRes.data)
+    setAllComponents(allComponentsRes.data)
 
     setLoading(false)
     }, [id])
@@ -180,13 +205,23 @@ export default function MenuItemPage() {
     fetchAll()
   }, [fetchAll])
 
+  // A failed read is said as one. Left empty, it read as a dish with no
+  // prices set, and the note under the cost blamed the components.
   const fetchPrices = useCallback(async () => {
-    const { data } = await supabase
+    const { data, error: priceError } = await supabase
       .from('product_supplier_prices')
       .select('*')
       .eq('restaurant_id', activeRestaurant.id)
       .eq('is_preferred', true)
-    if (data) setPrices(data)
+    if (priceError || !data) {
+      setPricesFailed(`The prices could not be read, so the cost and margin are not shown. ${friendlyError(priceError)}`.trim())
+      // Not the last restaurant's either. Kept, they went on costing this
+      // one under the banner saying nothing was costed.
+      setPrices([])
+      return
+    }
+    setPricesFailed('')
+    setPrices(data)
     }, [activeRestaurant])
 
   useEffect(() => {
@@ -397,9 +432,14 @@ export default function MenuItemPage() {
   // dish. Drinks and packaging stay: a can of Coke is a real line on a menu and
   // a container is a real cost on one, which is where this differs from a
   // recipe, where the question is only what goes into something we make.
+  //
+  // A deactivated product is left out too: it cannot be picked for anything
+  // new. The line being edited still shows whatever it points at.
   const addingTo = (componentForm.choice_group || '').trim() || null
+  const pickable = products.filter(p => p.is_active !== false)
   const availableProducts = products.filter(p => {
     if (editingComponent && editingComponent.product_id === p.id) return true
+    if (p.is_active === false) return false
     if (!canBeMenuComponent(p)) return false
     return !components.some(c =>
       c.product_id === p.id && (c.choice_group || null) === addingTo)
@@ -411,6 +451,17 @@ export default function MenuItemPage() {
 
   // Derived numbers
   const totalCost = menuItemCost(components, products, recipeLines, prices)
+
+  // What is deactivated and standing in the way of the cost, on the dish or
+  // inside a recipe it uses, named so somebody knows what to replace. Not the
+  // ones used but not measured, which add nothing to the cost either way.
+  const costed = components.filter(c => !c.no_quantity).map(c => c.product_id)
+  const deactivated = totalCost === null ? deactivatedIn(costed, products, recipeLines) : []
+  // And whether anything else is in the way too: a price or a recipe still to
+  // be set. Then replacing the deactivated ones would not bring the cost back,
+  // and the note must not say it would.
+  const stillUnset = totalCost === null
+    && missingIn(costed, products, recipeLines, prices).some(m => !deactivated.some(p => p.id === m))
 
   const grossPrice = item ? parseFloat(item.selling_price) : 0
   const vatRate = item ? parseFloat(item.vat_rate) : 0
@@ -426,18 +477,22 @@ export default function MenuItemPage() {
   }
 
   const derivedAllergens = deriveMenuItemAllergens(components, products, recipeLines, allergens)
+  // What nobody ever entered allergens for, which the derivation can only
+  // read as none. Named here, and none is then not known rather than Not
+  // Present, the same way the customer sheet asks people to see staff.
+  const notEntered = neverEnteredInDish(components, products, recipeLines, allergens)
 
   function getProduct(productId) {
     return products.find(p => p.id === productId)
   }
 
+  // Through the same rule as the total, so a deactivated line has no cost of
+  // its own either rather than a figure the total then refuses to add up.
   function getLineCost(component) {
     if (component.no_quantity) return null
-    const product = getProduct(component.product_id)
-    if (!product) return null
-    const result = calculateMixCost(product, products, recipeLines, prices)
-    if (result.cost === null) return null
-    return parseFloat(component.quantity) * result.cost
+    const unitCost = costInside(getProduct(component.product_id), products, recipeLines, prices)
+    if (unitCost === null) return null
+    return parseFloat(component.quantity) * unitCost
   }
 
   // The sheet names already in use in the category this item is in, and who is
@@ -495,6 +550,26 @@ export default function MenuItemPage() {
     }, new Map())]
     .sort((a, b) => a[0].localeCompare(b[0]))
 
+  // The options whose allergens would be on no row of the allergen sheet, the
+  // same question the sheet asks, so they are named here before a customer is
+  // sent to staff about this dish. Only while the dish is on the sheet at all.
+  //
+  // This item's own components are the fresh ones: ticking List it separately
+  // refetches those and not the list of every component.
+  const sheetCategoryIds = new Set(categories
+    .filter(c => c.is_active && c.on_allergen_sheet !== false)
+    .map(c => c.id))
+  const onSheet = Boolean(item?.is_active) && sheetCategoryIds.has(item?.category_id)
+  const withARow = onSheet
+    ? productsWithARow(
+      allMenuItems.filter(i => sheetCategoryIds.has(i.category_id)),
+      [...allComponents.filter(c => c.menu_item_id !== id), ...components],
+      products)
+    : null
+  const withoutARow = rows => (onSheet
+    ? optionsWithoutARow(rows, products, recipeLines, allergens, withARow)
+    : [])
+
   // The groups already used on this item, for the form to offer back.
   const existingGroups = [...new Set(
     components.map(c => c.choice_group).filter(Boolean),
@@ -524,12 +599,20 @@ export default function MenuItemPage() {
   })()
 
   function getIngredientUnitCost(product) {
-    if (!product) return null
-    const result = calculateMixCost(product, products, recipeLines, prices)
-    return result.cost
+    return costInside(product, products, recipeLines, prices)
   }
 
   if (loading) return <div className="text-sm text-gray-500">Loading menu item...</div>
+
+  if (loadFailed) {
+    return (
+      <div>
+        <BackButton to="/catalogue/menu-items" className="mb-4">Back to menu items</BackButton>
+        <ErrorBanner className="mb-4">{error}</ErrorBanner>
+        <button type="button" onClick={fetchAll} className={primaryButton()}>Try again</button>
+      </div>
+    )
+  }
 
   return (
     <div>
@@ -758,7 +841,15 @@ export default function MenuItemPage() {
             </div>
           )}
 
-          {choiceGroups.map(([groupName, rows]) => (
+          {choiceGroups.map(([groupName, rows]) => {
+            const unshown = withoutARow(rows)
+            // Ticking is only the answer for one that carries something. One
+            // nobody entered allergens for needs them entered: ticked, its own
+            // row would only send customers to staff as well.
+            const toTick = unshown.filter(o => o.carries).map(o => o.product)
+            const toEnter = [...new Map(unshown.flatMap(o => o.notEntered).map(p => [p.id, p])).values()]
+            const one = toTick.length === 1
+            return (
             <div key={groupName} className={`${cardEdge} bg-white overflow-hidden mb-6`}>
               <div className={`${cardHeader} flex flex-wrap items-baseline gap-x-3`}>
                 <span>{groupName}</span>
@@ -778,8 +869,34 @@ export default function MenuItemPage() {
                   onCancelEdit={resetComponentForm}
                   onRemove={removeComponent}
                 />
+              {/* An option is kept off the dish's own row, so its allergens
+                  reach the sheet only through a row of its own. Without one,
+                  the sheet asks customers to see staff about the whole dish. */}
+              {toTick.length > 0 && (
+                <p className={`${warningNote} m-3`}>
+                  {namesList(toTick.map(p => p.name))} {one ? 'has' : 'have'} no row of {one ? 'its' : 'their'} own
+                  on the allergen sheet, so the sheet asks customers to speak to a member of staff about this
+                  dish. Edit {one ? 'it' : 'each one'} and tick List it separately on the allergen sheet.
+                </p>
+              )}
+              {toEnter.length > 0 && (
+                <div className={`${warningNote} m-3`}>
+                  <p>
+                    Allergens have not been entered for {namesList(toEnter.map(p => p.name))}, so the allergen
+                    sheet asks customers to speak to a member of staff about this dish.
+                  </p>
+                  <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+                    {toEnter.map(p => (
+                      <Link key={p.id} to={`/catalogue/products/${p.id}/allergens`} className="font-semibold text-accent-ink underline">
+                        Enter allergens for {p.name}
+                      </Link>
+                    ))}
+                  </p>
+                </div>
+              )}
             </div>
-          ))}
+            )
+          })}
           {/* Last, because it is the part you look at least. On a burrito with
               two choices this used to sit second and push the interesting
               tables down the page.
@@ -847,9 +964,15 @@ export default function MenuItemPage() {
           <SummaryLine label={`VAT ${vatRate.toFixed(1)}%`} value={fmtMoney(grossPrice - netPrice)} muted />
           <SummaryLine label="Net price" value={fmtMoney(netPrice)} last />
         </div>
-        {totalCost === null && components.length > 0 && (
+        {pricesFailed && <ErrorBanner className="mt-3">{pricesFailed}</ErrorBanner>}
+        {!pricesFailed && totalCost === null && components.length > 0 && (
           <p className="text-xs text-amber-700 mt-3">
-            Some components have no preferred price (raw products) or no complete recipe (MIX products) for {activeRestaurant?.name}. The cost and margin cannot be calculated until all are configured.
+            {deactivated.length > 0
+              && `${namesList(deactivated.map(p => p.name))} ${deactivated.length === 1 ? 'is' : 'are'} deactivated. `
+                + `Replace ${deactivated.length === 1 ? 'it' : 'them'} on this dish, or in the recipe that uses `
+                + `${deactivated.length === 1 ? 'it' : 'them'}${stillUnset ? '. ' : ', to see the cost and margin.'}`}
+            {(deactivated.length === 0 || stillUnset)
+              && `Some components have no preferred price (raw products) or no complete recipe (MIX products) for ${activeRestaurant?.name}. The cost and margin cannot be calculated until all are configured.`}
           </p>
         )}
       </div>
@@ -860,6 +983,13 @@ export default function MenuItemPage() {
         <p className="text-xs text-gray-500 mb-4">
           Calculated automatically from the allergens set on each component (and recursively from the ingredients of any MIX component). To change, edit the allergens on the underlying products.
         </p>
+        {notEntered.length > 0 && (
+          <p className={`${warningNote} mb-4`}>
+            Allergens have not been entered for {namesList(notEntered.map(p => p.name))}, so the full
+            list for this dish is not known. Until they are, the allergen sheet asks customers to
+            speak to a member of staff.
+          </p>
+        )}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {ALLERGEN_KEYS.map(key => {
             const state = derivedAllergens[key]
@@ -868,7 +998,10 @@ export default function MenuItemPage() {
               : state === 'may_contain'
                 ? 'bg-amber-100 text-amber-800 border-amber-300'
                 : 'bg-gray-100 text-gray-500 border-gray-300'
-            const label = state === 'contains' ? 'Contains' : state === 'may_contain' ? 'May Contain' : 'Not Present'
+            // What is known is still said. What is not is not called absent.
+            const label = state === 'contains' ? 'Contains'
+              : state === 'may_contain' ? 'May Contain'
+                : notEntered.length > 0 ? 'Not known' : 'Not Present'
             return (
               // The name over the state on a phone, side by side from small up.
               // Two of these fit across a phone, and at that width Crustaceans
@@ -920,7 +1053,7 @@ export default function MenuItemPage() {
           menuCategories={categories.filter(c => c.is_active)}
           menuItems={allMenuItems}
           allComponents={allComponents}
-          products={products}
+          products={pickable}
           existingGroups={existingGroups}
           existing={components}
           onAdd={addSeveral}
@@ -1092,6 +1225,13 @@ function ComponentForm({
 function ComponentChips({ product, component }) {
   return (
     <>
+      {/* Still on the dish and its allergens still count, but it has no cost
+          and nobody can pick it for anything new, so it wants replacing. Its
+          name is shown rather than Missing product, which is kept for one
+          that cannot be found at all. */}
+      {product?.is_active === false && (
+        <span className={`${badge} ml-2 bg-red-200 text-red-800`}>Inactive</span>
+      )}
       {product?.is_mix && <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700">MIX</span>}
       {component.choice_group && (
         <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">

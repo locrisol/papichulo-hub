@@ -85,7 +85,11 @@ export default function EmployeesPage() {
         const [empRes, posRes, userRes, offRes] = await Promise.all([
             supabase.from('employees').select('*').eq('restaurant_id', restaurantId),
             supabase.from('positions').select('*').eq('restaurant_id', restaurantId).order('sort_order'),
-            supabase.from('users').select('id, full_name, role').eq('is_active', true).order('full_name'),
+            // This restaurant's accounts only. A super admin can read every
+            // one, and a person here linked to a login at the other
+            // restaurant would read one roster under the other's notes.
+            supabase.from('users').select('id, full_name, role')
+                .eq('is_active', true).eq('restaurant_id', restaurantId).order('full_name'),
             // Only what is current or coming. This list is read down to see
             // who is about, and every holiday anybody ever took would make it
             // slower every year for nothing.

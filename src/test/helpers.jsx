@@ -48,6 +48,19 @@ export function makeQuery(result = { data: [], error: null }) {
     return chain
 }
 
+// A write still on its way, for a test about what happens meanwhile: a refresh
+// that lands before the save does, or a second tap on Save on a slow phone. It
+// answers when release() is called.
+export function heldQuery(result = { data: null, error: null }) {
+    let release
+    const answered = new Promise(resolve => { release = () => resolve(result) })
+    const chain = makeQuery(result)
+    chain.then = (resolve, reject) => answered.then(resolve, reject)
+    chain.single = vi.fn(() => answered)
+    chain.maybeSingle = chain.single
+    return { chain, release: () => release() }
+}
+
 // A table that answers for the filters it was asked, the way the database
 // would, for a test about which rows a page asks for rather than what it does
 // with whatever comes back. Only eq and in narrow the rows; the rest of the

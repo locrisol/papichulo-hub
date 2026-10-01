@@ -1075,6 +1075,14 @@ export function pricesSection(section, f) {
             label: escapeHtml(o.what) + small(`${escapeHtml(o.label)}, since ${dayMonth(o.since)}`),
             value: o.money == null ? 'not priced' : money(o.money),
         })),
+        // Taken off this week for a delivery whose report had already gone
+        // out, with the week it is from. Absent on a report frozen before.
+        ...(p.earlier?.length ? [subHeading('From an earlier week')] : []),
+        ...(p.earlier || []).map(e => line({
+            inset: 14,
+            label: escapeHtml(e.what) + small(`${escapeHtml(e.label)}, from the delivery in the week of ${dayMonth(e.delivered)}`),
+            value: money(e.money),
+        })),
     ]
     const back = priceCard('Came back, and why', p.back.length ? money(t.back) : '', GREEN, backRows,
         'Nothing came back this week and nothing is owed.')
@@ -1139,6 +1147,10 @@ function pricesText(p) {
         out.push('  Still waiting on a credit')
         for (const o of p.owed) out.push(`    ${o.what}: ${o.money == null ? 'not priced' : money(o.money)}, since ${dayMonth(o.since)}`)
     }
+    if (p.earlier?.length) {
+        out.push('  From an earlier week')
+        for (const e of p.earlier) out.push(`    ${e.what}: ${money(e.money)}, ${e.label}, from the delivery in the week of ${dayMonth(e.delivered)}`)
+    }
     return out
 }
 
@@ -1162,9 +1174,7 @@ export function reportEmail({
 }) {
     const weekStart = report.week_start
     const place = restaurant?.name || 'The restaurant'
-    // Not > 0. This runs after the report has been published, so the first send
-    // arrives here with a count of one. Two is the first correction.
-    const correction = !isTest && (report.send_count || 0) > 1
+    const correction = correctionSend(report, isTest)
 
     // Which restaurant it is comes from the sender name, which is why the
     // subject does not carry it as well.
@@ -1436,6 +1446,35 @@ export function isJustTheGoodbye(err) {
 // column fails shut rather than open.
 export function switchedOff(account) {
     return account?.is_active !== true
+}
+
+// What a report mail is built from, or why it may not go.
+//
+// A published report is read off what was frozen onto it, whatever the browser
+// sent. The browser's figures are for a test of a draft and only for that,
+// because a draft has nothing frozen to read. A real send of a draft is
+// refused: the app never asks for one, since publishing freezes first, and one
+// that got through would mail the owners figures kept nowhere, which nobody
+// could ever look up again. Found by the audit of 28 September.
+export function whatToSend(report, { test = false, figures, charts } = {}) {
+    if (report?.status === 'published') return { figures: report.figures || {}, charts: report.charts || {} }
+    if (!test) return { refused: 'This report has not been published, so it cannot be sent.' }
+    return { figures: figures || {}, charts: charts || {} }
+}
+
+// Whether a send of a report is a correction of an earlier one.
+//
+// Not a count above nought. This runs after the report has been published, so
+// the first send arrives here with a count of one, and two is the first
+// correction. And only when an earlier send reached somebody: sent_to is read
+// before this send writes it, so it is still the list the last real mail went
+// to. Before 1 October the count went up on every publish, mail or no mail, so
+// a report whose first two sends both failed has a count of two and nobody
+// who ever got it, and the count alone told the owners this replaced a report
+// they never had. The browser asks the same before it publishes, in
+// isCorrection in src/lib/weeklyReport.js, and the two have to agree.
+export function correctionSend(report, isTest = false) {
+    return !isTest && (report?.send_count || 0) > 1 && report?.sent_to?.length > 0
 }
 
 // An address nobody can ever receive mail at.

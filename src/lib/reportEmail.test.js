@@ -3,7 +3,7 @@ import {
     reportEmail, money, negative, pct, withShare, weekWords, weekNumber, slashDate,
     escapeHtml, tidy, stars, starColour, costTone, senderFor, heldNotice, WIDTH, SIDE,
     renewalWords,
-    deliverable, isJustTheGoodbye, replyToFor, switchedOff,
+    deliverable, isJustTheGoodbye, replyToFor, switchedOff, whatToSend, correctionSend,
 } from '../../supabase/functions/weekly-report-email/email'
 import { readFileSync } from 'node:fs'
 import { MAIL_WIDTH } from '@/lib/reportChartImage'
@@ -297,9 +297,8 @@ describe('reportEmail, as a correction', () => {
         { ...figures, food: 5100, foodPct: 34.58 },
         figures,
     )
-    const mail = reportEmail({
-        ...base, report: { ...base.report, send_count: 2 }, changes,
-    })
+    const sent = { ...base.report, send_count: 2, sent_to: ['owner@papichulo.ie'] }
+    const mail = reportEmail({ ...base, report: sent, changes })
 
     it('says so in the subject', () => {
         expect(mail.subject).toContain('Corrected:')
@@ -312,10 +311,42 @@ describe('reportEmail, as a correction', () => {
     })
 
     it('still says it is a correction when nothing measurable moved', () => {
-        const quiet = reportEmail({
-            ...base, report: { ...base.report, send_count: 2 }, changes: [],
-        })
+        const quiet = reportEmail({ ...base, report: sent, changes: [] })
         expect(quiet.html).toContain('the same as the ones you already have')
+    })
+
+    // Before 1 October the count went up on every publish, mail or no mail. A
+    // report whose first two sends both failed has a count of two and nobody
+    // who ever got it, and sending it from Published, not sent would have told
+    // the owners it replaced a report they never had.
+    it('is not a correction when no earlier send reached anybody', () => {
+        const never = reportEmail({ ...base, report: { ...sent, sent_to: null }, changes })
+        expect(never.subject).not.toContain('Corrected')
+        expect(never.html).not.toContain('replaces the report sent earlier')
+        expect(reportEmail({ ...base, report: { ...sent, sent_to: [] } }).subject).not.toContain('Corrected')
+    })
+})
+
+// The function and the browser have to agree on this, or the manager is asked
+// to send a correction and the owners get a first mail, or the other way round.
+describe('correctionSend', () => {
+    it('needs a second send and an earlier one that reached somebody', () => {
+        expect(correctionSend({ send_count: 2, sent_to: ['owner@papichulo.ie'] })).toBe(true)
+        expect(correctionSend({ send_count: 1, sent_to: ['owner@papichulo.ie'] })).toBe(false)
+        expect(correctionSend({ send_count: 3, sent_to: null })).toBe(false)
+        expect(correctionSend({ send_count: 2, sent_to: [] })).toBe(false)
+    })
+
+    it('is never a test', () => {
+        expect(correctionSend({ send_count: 2, sent_to: ['owner@papichulo.ie'] }, true)).toBe(false)
+    })
+
+    it('is what the function asks, off a report read with who it went to', () => {
+        const source = readFileSync('supabase/functions/weekly-report-email/index.ts', 'utf8')
+        const read = source.slice(source.indexOf(".from('weekly_reports')"), source.indexOf("eq('id', reportId)"))
+        expect(read).toContain('sent_to')
+        expect(source).toMatch(/correctionSend\(report, test\)/)
+        expect(source).not.toMatch(/send_count \|\| 0\) > 1/)
     })
 })
 
@@ -1050,6 +1081,37 @@ describe('a login that is switched off', () => {
     })
 })
 
+// The browser's figures are for a test and only for a test. A real send of a
+// draft would have mailed the owners figures that were frozen nowhere, so
+// nobody could ever look up what they were sent.
+describe('what a send is built from', () => {
+    const posted = { figures: { net: 1 }, charts: { sales: 'https://x/s.png' } }
+    const frozen = { status: 'published', figures: { net: 14750 }, charts: { sales: 'https://x/frozen.png' } }
+    const draft = { status: 'draft', figures: null, charts: null }
+
+    it('reads a published report off what was frozen, whatever the browser sent', () => {
+        expect(whatToSend(frozen, { ...posted })).toEqual({ figures: frozen.figures, charts: frozen.charts })
+        expect(whatToSend(frozen, { ...posted, test: true })).toEqual({ figures: frozen.figures, charts: frozen.charts })
+    })
+
+    it('takes the browser\'s figures for a test of a draft', () => {
+        expect(whatToSend(draft, { ...posted, test: true })).toEqual({ figures: posted.figures, charts: posted.charts })
+    })
+
+    it('refuses a real send of a report that has not been published', () => {
+        expect(whatToSend(draft, { ...posted })).toEqual({ refused: expect.stringMatching(/not been published/) })
+        expect(whatToSend(draft, {})).toHaveProperty('refused')
+    })
+
+    it('is asked before anything is worked out for the mail', () => {
+        const source = readFileSync('supabase/functions/weekly-report-email/index.ts', 'utf8')
+        const asked = source.indexOf('whatToSend(report')
+        expect(asked).toBeGreaterThan(-1)
+        expect(asked).toBeLessThan(source.indexOf('changesSince('))
+        expect(source).not.toMatch(/\(posted \|\| \{\}\)/)
+    })
+})
+
 describe('deliverable', () => {
     // The one that started it: a real store manager on the live database whose
     // address can never receive, so every request to that restaurant tried it.
@@ -1392,6 +1454,28 @@ describe('prices and suppliers', () => {
         expect(mail.text).toContain('PRICES AND SUPPLIERS')
         expect(mail.text).toContain('Tomatoes: €11.75 to €8.60 a case, -26.8%, -€3.15')
         expect(mail.text.split('\n').every(l => l === l.replace(/\s+$/, ''))).toBe(true)
+    })
+
+    // His decision of 1 October: a claim on a delivery whose report had gone
+    // out comes off the first week still open, and says which delivery it is
+    // from. Absent on anything frozen before it existed.
+    it('says when a claim taken off this week is from an earlier delivery', () => {
+        const later = priceWeek({
+            weekStart: '2026-09-13', weekEnd: '2026-09-19',
+            claims: [{
+                id: 'k2', what: 'COKE ZERO 24X330ML', kind: 'short', amount: 22.34, credited_amount: 0,
+                status: 'open', raised_on: '2026-09-11', counted_week: '2026-09-13', invoice_id: 'i0',
+            }],
+            invoices: [{ id: 'i0', invoice_date: '2026-09-11' }],
+        })
+        const moved = reportEmail({ ...base, sections: withPrices, figures: { ...figures, prices: later } })
+        expect(moved.html).toContain('From an earlier week')
+        expect(moved.html).toContain('from the delivery in the week of 6 Sept')
+        expect(moved.text).toContain('  From an earlier week')
+        expect(moved.text).toContain('    COKE ZERO 24X330ML: €22.34, Short, from the delivery in the week of 6 Sept')
+
+        const old = reportEmail({ ...base, sections: withPrices, figures: { ...figures, prices: { ...prices, earlier: undefined } } })
+        expect(old.html).not.toContain('From an earlier week')
     })
 
     it('says so when a report went out without the prices read', () => {

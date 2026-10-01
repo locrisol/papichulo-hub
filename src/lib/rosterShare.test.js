@@ -332,6 +332,15 @@ describe('weekTable', () => {
         expect(t.extras[4][0].checked).toBe(false)
     })
 
+    // A night the feed stopped listing stays on the sheet and says so, the
+    // same as on screen. Ticketmaster did not say it was off; we worked it out.
+    it('says on the card when the feed stopped listing a night', () => {
+        const gone = { ...headline[0], off: 'withdrawn' }
+        expect(build({ nearby: [gone] }).headlines[0].perDay[4][0].name).toBe('Westlife (No longer listed)')
+        expect(build({ nearby: [{ ...gone, ownRow: false }] }).extras[4][0].name)
+            .toBe('Westlife [3Arena] (No longer listed)')
+    })
+
     it('adds each person and each day up', () => {
         const t = build()
         expect(t.people[0].hours).toBe('15.50')

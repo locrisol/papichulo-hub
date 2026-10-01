@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { todayISO, weekStartOf, addDays } from '@/lib/dates'
+import process from 'node:process'
+import { todayISO, weekStartOf, addDays, shortDate } from '@/lib/dates'
 
 // The page opens on last week, because a timesheet is filled in once the week
 // has finished and the till's report for it exists.
@@ -22,9 +23,12 @@ const rows = {
 const inserted = []
 const updated = []
 const deleted = []
-// Set by one test, which is about what the screen does when the database
-// refuses a write.
-const broken = { update: false }
+// Set by the tests about what the screen does when the database refuses a
+// write.
+const broken = { update: false, delete: false }
+// What the confirm dialog was asked, and what it answers.
+const asked = []
+const answer = { yes: true }
 
 function chain(table) {
     const result = Promise.resolve({ data: rows[table] || [], error: null })
@@ -33,6 +37,7 @@ function chain(table) {
         eq: () => self,
         gte: () => self,
         lte: () => self,
+        in: () => self,
         order: () => self,
         // The week's own row, which says whether the till's report has been
         // read in for it. Not set in these tests, so every week reads as one
@@ -47,6 +52,13 @@ function chain(table) {
         update: patch => ({
             eq: (_, id) => ({
                 select: () => {
+                    // The restaurant row, which an owner's rules never match:
+                    // no error and no row, the way the real API answers.
+                    if (table === 'restaurants') {
+                        updated.push({ table, id, patch })
+                        const answer = { data: null, error: null }
+                        return { maybeSingle: () => Promise.resolve(answer) }
+                    }
                     if (broken.update) return Promise.resolve({ data: null, error: { message: 'refused' } })
                     updated.push({ table, id, patch })
                     const was = (rows[table] || []).find(r => r.id === id) || {}
@@ -58,6 +70,7 @@ function chain(table) {
         }),
         delete: () => ({
             eq: (_, id) => {
+                if (broken.delete) return Promise.resolve({ error: { message: 'refused' } })
                 deleted.push({ table, id })
                 rows[table] = (rows[table] || []).filter(r => r.id !== id)
                 return Promise.resolve({ error: null })
@@ -68,12 +81,23 @@ function chain(table) {
     return self
 }
 
+// Who is signed in. A store manager unless a test says otherwise.
+const me = { id: 'u1', role: 'store_manager' }
+
 vi.mock('@/lib/supabase', () => ({ supabase: { from: table => chain(table) } }))
-vi.mock('@/context/auth', () => ({ useAuth: () => ({ user: { id: 'u1' } }) }))
-vi.mock('@/context/confirm', () => ({ useConfirm: () => () => Promise.resolve(true) }))
+vi.mock('@/context/auth', () => ({ useAuth: () => ({ user: me }) }))
+vi.mock('@/context/confirm', () => ({
+    useConfirm: () => question => {
+        asked.push(question)
+        return Promise.resolve(answer.yes)
+    },
+}))
 vi.mock('@/context/restaurant', () => ({
     useRestaurant: () => ({
-        activeRestaurant: { id: 'r1', hourly_rate: 15 },
+        activeRestaurant: {
+            id: 'r1', hourly_rate: 15, pay_period_start: '2026-01-04', timesheet_recipients: ['payroll@example.ie'],
+        },
+        setActiveRestaurant: () => {},
     }),
 }))
 
@@ -87,13 +111,19 @@ const off_the_till = {
 }
 
 beforeEach(() => {
+    me.role = 'store_manager'
     inserted.length = 0
     updated.length = 0
     deleted.length = 0
+    asked.length = 0
+    answer.yes = true
     broken.update = false
+    broken.delete = false
     rows.timesheet_entries = []
+    rows.absences = []
     rows.roster_shifts = []
     rows.sales_records = []
+    rows.timesheet_weeks = []
 })
 
 describe('typing into a cell with nothing in it', () => {
@@ -409,6 +439,153 @@ describe('changing a time the till gave', () => {
     })
 })
 
+describe('marking a day with times on it as holiday or off sick', () => {
+    // A stray s, or a tap on the touch bar landing on the wrong cell, used to
+    // delete the till's times and mark the day off sick without a word. The
+    // week then went to the accountant with a sick day and no hours, against
+    // the till's report she holds herself.
+    it('asks first, and says the times from the till go', async () => {
+        rows.timesheet_entries = [off_the_till]
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        await userEvent.type(boxes()[0], 's')
+
+        await waitFor(() => expect(asked).toHaveLength(1))
+        expect(asked[0].message).toContain("till's report")
+    })
+
+    it('leaves the times alone when the answer is no', async () => {
+        rows.timesheet_entries = [off_the_till]
+        answer.yes = false
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        await userEvent.type(boxes()[0], 's')
+
+        await waitFor(() => expect(asked).toHaveLength(1))
+        expect(deleted).toHaveLength(0)
+        expect(inserted).toHaveLength(0)
+    })
+
+    it('replaces them when the answer is yes', async () => {
+        rows.timesheet_entries = [off_the_till]
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        await userEvent.type(boxes()[0], 's')
+
+        await waitFor(() => expect(inserted).toHaveLength(1))
+        expect(deleted.map(d => d.id)).toEqual(['t1'])
+        expect(inserted[0]).toMatchObject({ table: 'absences', values: { kind: 'sick' } })
+    })
+
+    // Half done is worse than not done: the times gone and no absence, or the
+    // absence in and the times still counted under it.
+    it('stops when the times could not be deleted', async () => {
+        rows.timesheet_entries = [off_the_till]
+        broken.delete = true
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        await userEvent.type(boxes()[0], 's')
+
+        await waitFor(() => expect(screen.getByText('Not saved')).toBeInTheDocument())
+        expect(inserted).toHaveLength(0)
+    })
+
+    // A time half typed into an empty day is not saved yet, so there is
+    // nothing to ask about. Asking took the focus off the box, which saved
+    // the half time as a real clock in, and then the delete of the unsaved
+    // one failed and the day was never marked.
+    it('does not ask about a time still being typed', async () => {
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        await userEvent.type(boxes()[0], '09s')
+
+        await waitFor(() => expect(inserted).toHaveLength(1))
+        expect(inserted[0]).toMatchObject({ table: 'absences', values: { kind: 'sick' } })
+        expect(asked).toHaveLength(0)
+        expect(deleted).toHaveLength(0)
+    })
+
+    // Nothing to lose, so nothing to ask.
+    it('does not ask on an empty day', async () => {
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        await userEvent.type(boxes()[0], 'h')
+
+        await waitFor(() => expect(inserted).toHaveLength(1))
+        expect(asked).toHaveLength(0)
+    })
+})
+
+describe('a clock in with no clock out', () => {
+    const half = {
+        id: 't5', restaurant_id: 'r1', employee_id: 'e1', work_date: WEEK,
+        starts_at: '09:00:00', ends_at: null, kind: 'worked', source: 'typed',
+    }
+
+    // It used to come to nought hours, count as an answer and drop out of the
+    // payroll mail, with nothing on the screen but an empty box.
+    it('says so on the day and above the week', async () => {
+        rows.timesheet_entries = [half]
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        expect(screen.getAllByText('no clock out').length).toBeGreaterThan(0)
+        expect(screen.getByText(/has a clock in with no clock out/)).toBeInTheDocument()
+    })
+
+    // Every day typed by hand is one of these for a moment: the clock in is
+    // saved when its box is left, just before the clock out is typed. The
+    // warning above the week must not jump in and out on every cell.
+    it('does not warn above the week while the clock out is being typed', async () => {
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        await userEvent.type(boxes()[0], '0900')
+        await userEvent.tab()
+        await waitFor(() => expect(inserted).toHaveLength(1))
+
+        expect(screen.queryByText(/has a clock in with no clock out/)).not.toBeInTheDocument()
+    })
+})
+
+// An end at or before the start is the next morning, so a start and an end the
+// same were saved as 24 hours, which went to the accountant like any other.
+describe('a start and a finish at the same time', () => {
+    const SAID = 'A shift cannot start and finish at the same time.'
+
+    it('is not saved, and the figure goes back', async () => {
+        rows.timesheet_entries = [{ ...off_the_till, source: 'typed' }]
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        await userEvent.clear(boxes()[1])
+        await userEvent.type(boxes()[1], '090000')
+        await userEvent.tab()
+
+        await waitFor(() => expect(screen.getByText(SAID)).toBeInTheDocument())
+        expect(updated).toHaveLength(0)
+        expect(boxes()[1]).toHaveValue('17:00:00')
+    })
+
+    it('is not saved as a new row either', async () => {
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        await userEvent.type(boxes()[1], '0900')
+        await userEvent.type(boxes()[0], '0900')
+        await userEvent.tab()
+
+        await waitFor(() => expect(screen.getByText(SAID)).toBeInTheDocument())
+        expect(inserted).toHaveLength(0)
+    })
+})
+
 describe('saying that it saved', () => {
     // The same three words the report page uses, because it is the same
     // promise: no Save button on either, both write when you leave a box, and
@@ -449,6 +626,27 @@ describe('saying that it saved', () => {
     })
 })
 
+describe('when the hours were sent', () => {
+    // The database hands the time back in UTC. Sent at half past midnight
+    // Irish summer time on the 28th, it is still the 27th in UTC, and the line
+    // used to cut the date off that and say the 27th. Pinned to Irish time so
+    // the test means the same on any machine.
+    const was = process.env.TZ
+    beforeAll(() => { process.env.TZ = 'Europe/Dublin' })
+    afterAll(() => {
+        if (was === undefined) delete process.env.TZ
+        else process.env.TZ = was
+    })
+
+    it('says the day it was sent here, not the day it was in UTC', async () => {
+        rows.timesheet_weeks = [{ imported_at: null, filed_at: '2026-09-27T23:30:00+00:00' }]
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        expect(screen.getByText(`Sent ${shortDate('2026-09-28')}`, { exact: false })).toBeInTheDocument()
+    })
+})
+
 describe('the button that takes you home', () => {
     // Home here is last week, not this one, so the button that said "This week"
     // in the colour that means "you are here" was pointing at the week there is
@@ -480,5 +678,35 @@ describe('what the week cost as a share of what it took', () => {
         // Sunday, and as the week, since it is the only day that traded.
         await waitFor(() => expect(screen.getByText('Of sales')).toBeInTheDocument())
         expect(screen.getAllByText('26.4%')).toHaveLength(2)
+    })
+})
+
+describe('sending the hours', () => {
+    // The mail function refuses an owner, and the list it goes to lives on the
+    // restaurant, which an owner cannot change. Same as the report: a store
+    // manager sends it, and an owner still gets the PDF.
+    it('offers an owner the PDF rather than a send', async () => {
+        me.role = 'owner'
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        expect(screen.queryByRole('button', { name: 'Send the hours' })).not.toBeInTheDocument()
+        await userEvent.click(screen.getByRole('button', { name: 'Download the hours' }))
+        expect(await screen.findByRole('button', { name: 'Download the PDF' })).toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: 'Send it' })).not.toBeInTheDocument()
+    })
+
+    // A write the rules turn away changes no row and says nothing at all, so
+    // the address went off the screen and stayed on the list it sends to.
+    it('says so when the list was not kept, and puts it back', async () => {
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        await userEvent.click(screen.getByRole('button', { name: 'Send the hours' }))
+        await userEvent.click(await screen.findByRole('button', { name: 'Take payroll@example.ie off the list' }))
+
+        await waitFor(() => expect(updated.some(u => u.table === 'restaurants')).toBe(true))
+        expect(await screen.findByText('That could not be saved, so nothing has changed.')).toBeInTheDocument()
+        expect(screen.getByText('payroll@example.ie')).toBeInTheDocument()
     })
 })

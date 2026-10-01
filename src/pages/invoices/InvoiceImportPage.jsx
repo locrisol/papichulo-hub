@@ -13,7 +13,7 @@ import {
     documentTotal,
 } from '@/lib/invoiceImport'
 import { mainCategory } from '@/lib/invoiceCategories'
-import { creditSettles } from '@/lib/invoiceClaims'
+import { creditSettles, sentWeeks } from '@/lib/invoiceClaims'
 import { orderByUse, USE_WINDOW_DAYS } from '@/lib/supplierOrder'
 import { codeRow, seenAgain } from '@/lib/priceEvents'
 import {
@@ -382,6 +382,12 @@ export default function InvoiceImportPage() {
             .eq('status', 'open')
         if (e1) return friendlyError(e1)
 
+        // The weeks already sent, because money a credit brings in for a
+        // delivery whose report has gone out comes off the first week still
+        // open. See claimWeek.
+        const { weeks: sent, error: e5 } = await sentWeeks(supabase, where.restaurantId)
+        if (e5) return friendlyError(e5)
+
         const result = creditSettles({
             credit: { ...doc, id: invoice.id },
             lines: matched.map(row => ({
@@ -391,6 +397,7 @@ export default function InvoiceImportPage() {
             claims: (open || []).map(c => ({ ...c, code: c.invoice_lines?.supplier_code || null })),
             supplierId: where.supplierId,
             restaurantId: where.restaurantId,
+            sent,
         })
 
         for (const { id, patch } of result.settle) {

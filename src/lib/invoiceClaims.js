@@ -23,7 +23,7 @@
 // `creditLands` below.
 
 import { num } from '@/lib/format'
-import { weekStartOf } from '@/lib/dates'
+import { weekStartOf, addDays } from '@/lib/dates'
 import { similarWords, documentTotal, lineCost } from '@/lib/invoiceImport'
 
 // What can be wrong with a delivery.
@@ -197,8 +197,9 @@ export function doorClaimPayload(form, { restaurantId, raisedBy, today }) {
         raised_on: today,
         raised_by: raisedBy,
         status: 'open',
-        // The week it happened in. It stays put even if the credit arrives in
-        // the next one, because a week is open until its report is published.
+        // The week it was written down in, for now. With no money on it, it
+        // takes nothing off any week. Putting it against its line, or the
+        // credit that settles it, gives it its real week. See claimWeek.
         counted_week: weekStartOf(today),
     }
 }
@@ -320,6 +321,71 @@ export function claimMatch(claim, invoices) {
     return best
 }
 
+// Which week a claim's money comes off. Every place that gives a claim its
+// week asks this: putting a note against its line on Delivery problems, and a
+// credit note settling one on the import.
+//
+// The week the delivery landed in. A note is dated by the day it was written
+// down, so a Saturday delivery noted on the Sunday came off the week after,
+// and the report for the delivery's own week went out with the whole invoice
+// in it.
+//
+// Unless that week's report has already gone out. A week is closed once its
+// report is published, and money put into it then is in no report at all: the
+// one that went out never had it, and no later one counts it. So it comes off
+// the first week after it whose report has not gone out, and wherever it is
+// shown against that week it says which delivery it is from. His decision of
+// 1 October 2026. A week nobody has sent is open, gap or not.
+//
+// `sent` is the start of every week whose report is published (sentWeeks).
+export function claimWeek(deliveredOn, sent = []) {
+    const delivered = weekStartOf(deliveredOn)
+    const closed = new Set(sent || [])
+    let week = delivered
+    while (closed.has(week)) week = addDays(week, 7)
+    return { week, delivered, moved: week !== delivered }
+}
+
+// The claims coming off a week for a delivery in an earlier one, because that
+// delivery's report had already gone out (claimWeek). Whatever shows the week
+// says which delivery each is from, or its food cost is lower with nothing
+// saying why. The money is what the week takes off, by claimTakesOff.
+//
+// `invoices` are the documents the claims were put against, for the day each
+// delivery landed. A claim with none, money a credit brought that nobody
+// logged, is from the day it was raised.
+export function fromEarlierWeeks(claims, invoices, weekStart) {
+    const landed = new Map((invoices || []).map(i => [i.id, i.invoice_date]))
+    return (claims || [])
+        .filter(c => c.counted_week === weekStart && claimTakesOff(c) > 0)
+        .map(c => ({ claim: c, on: landed.get(c.invoice_id) || c.raised_on }))
+        .filter(({ on }) => !!on)
+        .map(({ claim, on }) => ({ claim, delivered: weekStartOf(on) }))
+        .filter(({ delivered }) => delivered < weekStart)
+        .map(({ claim, delivered }) => ({
+            id: claim.id,
+            what: claim.what || 'A delivery problem',
+            kind: claim.kind,
+            label: claimKind(claim.kind).label,
+            colour: claimKind(claim.kind).colour,
+            money: claimTakesOff(claim),
+            delivered,
+        }))
+        .sort((a, b) => a.delivered.localeCompare(b.delivered) || b.money - a.money)
+}
+
+// The weeks whose report has gone out, for claimWeek. Published is what
+// closes a week; a draft can still take the money. One row a week, so it is
+// a few dozen a year and never needs paging.
+export async function sentWeeks(db, restaurantId) {
+    const { data, error } = await db.from('weekly_reports')
+        .select('week_start')
+        .eq('restaurant_id', restaurantId)
+        .eq('status', 'published')
+    if (error) return { weeks: null, error }
+    return { weeks: (data || []).map(r => r.week_start), error: null }
+}
+
 // ---------------------------------------------------------------------------
 // The credit note, when it turns up
 // ---------------------------------------------------------------------------
@@ -345,7 +411,13 @@ export function claimMatch(claim, invoices) {
 // becomes a claim of its own, settled, with no reason given yet. Leaving it to
 // count on its own would take part of one credit note off in one week and the
 // rest in another.
-export function creditSettles({ credit, lines = [], against = null, claims = [], supplierId, restaurantId }) {
+//
+// **Which week, by claimWeek.** The credit often comes after the delivery's
+// report has gone out, so the claim it makes and a note from the door that
+// gets its first money here take the first week still open, the same as
+// putting a note against its line. A claim that already had money on it had
+// its week decided then, and keeps it. `sent` is sentWeeks' list.
+export function creditSettles({ credit, lines = [], against = null, claims = [], supplierId, restaurantId, sent = [] }) {
     const reference = credit.orderReference || null
     const mine = (claims || [])
         .filter(c => c.status === 'open' && (!supplierId || !c.supplier_id || c.supplier_id === supplierId))
@@ -399,6 +471,10 @@ export function creditSettles({ credit, lines = [], against = null, claims = [],
                     settled_on: done ? on : null,
                     credit_invoice_id: credit.id || null,
                     invoice_id: c.invoice_id || against?.id || null,
+                    // Its first money, so its week is decided now.
+                    ...(c.amount == null
+                        ? { counted_week: claimWeek(against?.invoice_date || c.raised_on || on, sent).week }
+                        : {}),
                 },
             }
         })
@@ -419,7 +495,7 @@ export function creditSettles({ credit, lines = [], against = null, claims = [],
         raised_on: on,
         settled_on: on,
         credit_invoice_id: credit.id || null,
-        counted_week: weekStartOf(against?.invoice_date || on),
+        counted_week: claimWeek(against?.invoice_date || on, sent).week,
         note: 'Nothing was logged at the door for this part of the credit.',
     } : null
 

@@ -28,9 +28,30 @@ export const FOOD_SECTIONS = ['Freezer', 'Cold Room', 'Dry']
 
 const byCountedAt = (a, b) => new Date(a.counted_at) - new Date(b.counted_at)
 
+// The products a count is read against: everything still stocked, and
+// anything counted on it, whatever has happened to it since.
+//
+// A product switched off after the count is still on the count. Left out, its
+// lines dropped out of every section, the food subtotal and the grand total, on
+// the screen and on the PDF, while the total saved at close still had them in.
+// One switched off and never counted is not part of it, or the Counted figure
+// would be out of every product ever retired.
+export function onThisCount(products, lines) {
+    const counted = new Set((lines || []).map(l => l.product_id))
+    return (products || []).filter(p => p && (p.is_active !== false || counted.has(p.id)))
+}
+
+// A line counted while its product had no price. It adds nothing to any total,
+// which is not the same as being worth nothing, so the screens say so rather
+// than leave the total to be read as complete. A line of none is not one: none
+// on the shelf is worth nothing whatever it costs.
+export function noPrice(line) {
+    return line.unit_cost == null && Number(line.quantity_counted || 0) > 0
+}
+
 // Every place that was counted, with the products counted there.
 //
-// [{ section, ink, items: [{ product, lines, qty, value, unitCost }] }]
+// [{ section, ink, items: [{ product, lines, qty, value, unitCost, unpriced }] }]
 //
 // Only places with something in them. A section nobody opened does not appear,
 // which is not the same as a section that came to zero.
@@ -60,6 +81,7 @@ export function bySection(products, lines) {
                     value: own.reduce((s, l) => s + Number(l.line_total || 0), 0),
                     // The cost the line saved on the day, not today's price.
                     unitCost: own.find(l => l.unit_cost != null)?.unit_cost ?? null,
+                    unpriced: own.some(noPrice),
                 }))
                 .sort((a, b) => compareForCount(a.product, b.product)),
         }))

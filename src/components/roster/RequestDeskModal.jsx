@@ -1,10 +1,10 @@
 import Modal from '@/components/ui/Modal'
 import { shortDate } from '@/lib/dates'
 import { dayName } from '@/lib/events'
-import { shortTime, endLabel, fmtHours, hoursForDate } from '@/lib/roster'
+import { fmtHours, hoursForDate } from '@/lib/roster'
 import { modalFooter, secondaryButton, rowButton, badge } from '@/lib/controlStyles'
 import {
-    windowOf, isWholeShift, hoursChange, weekAfter, newFindings, requestDate, shiftsMoved,
+    hoursWords, isWholeShift, hoursChange, weekAfter, newFindings, requestDate, shiftsMoved, windowsFit,
 } from '@/lib/shiftRequests'
 
 // What two people have agreed between them, waiting on somebody to say yes.
@@ -73,21 +73,23 @@ export default function RequestDeskModal({
                     // agreed. Approving moves whichever shift the request
                     // names, so it would hand over a shift that is not theirs.
                     const moved = here && shiftsMoved(request, findShift)
+                    // The hours asked for, against the shift as it is now
+                    // rather than as it was when they agreed. Approving keeps
+                    // whatever sits either side of them, so hours hanging off
+                    // the end of a shortened shift would be hours invented.
+                    const outside = here && !windowsFit(request, findShift)
                     const when = requestDate(request, findShift)
 
                     const half = (shiftId, from, to, takerId) => {
                         const shift = findShift(shiftId)
                         if (!shift) return null
-                        const window = windowOf(shift, from, to)
                         const whole = isWholeShift(shift, from, to)
                         return {
                             key: shiftId,
                             taker: nameOf(takerId),
                             owner: nameOf(shift.employee_id),
                             date: shift.shift_date,
-                            when: whole
-                                ? `${shortTime(shift.starts_at)} to ${endLabel(shift, hoursOn(shift.shift_date))}`
-                                : `${shortTime(window.from)} to ${shortTime(window.to)}`,
+                            when: hoursWords(shift, from, to, hoursOn(shift.shift_date)),
                             whole,
                         }
                     }
@@ -175,7 +177,7 @@ export default function RequestDeskModal({
                                 <div className="flex flex-wrap gap-2 mt-3">
                                     <button
                                         type="button"
-                                        disabled={saving || stops || moved}
+                                        disabled={saving || stops || moved || outside}
                                         onClick={() => onApprove(request)}
                                         className={rowButton('good')}
                                     >
@@ -192,6 +194,12 @@ export default function RequestDeskModal({
                                     {moved && (
                                         <span className="text-xs text-red-700 self-center">
                                             One of these shifts now belongs to somebody else, so this cannot
+                                            be approved.
+                                        </span>
+                                    )}
+                                    {outside && (
+                                        <span className="text-xs text-red-700 self-center">
+                                            The hours asked for are no longer within the shift, so this cannot
                                             be approved.
                                         </span>
                                     )}

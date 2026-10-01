@@ -14,6 +14,7 @@ import {
     carriedItems,
     sectionsFor,
     DEFAULT_OVERHEADS,
+    mailMissing,
 } from '@/lib/weeklyReport'
 import { personWeek, unanswered } from '@/lib/timesheet'
 import { can, RESTAURANT_CONFIG } from '@/lib/access'
@@ -70,6 +71,9 @@ function unansweredWords(waiting) {
     // carries a wage bill, and a figure the accountant's own copy disagrees
     // with is the one thing nobody reading it can see.
     const changed = waiting.filter(w => w.changed?.length)
+    // A clock in with no clock out. It comes to no hours, so the report's wage
+    // bill would be short by that shift with nothing on the page to say so.
+    const open = waiting.filter(w => w.open?.length)
 
     const said = []
     if (missing.length) {
@@ -79,6 +83,10 @@ function unansweredWords(waiting) {
     if (changed.length) {
         said.push(`${who(changed)} ${changed.length === 1 ? 'has hours' : 'have hours'} `
             + "the till's report does not have, with nothing said about them.")
+    }
+    if (open.length) {
+        said.push(`${who(open)} ${open.length === 1 ? 'has' : 'have'} a clock in with no clock out `
+            + 'on the timesheet.')
     }
     return said.join(' ')
 }
@@ -164,6 +172,11 @@ function StateBadge({ report }) {
             </span>
         )
     }
+    // Published, and the mail never went. It said Sent like any other, so the
+    // one place that knew was the page it was published from, until a reload.
+    if (mailMissing(report)) {
+        return <span className={`${badge} bg-accent-light text-accent-ink`}>Not sent</span>
+    }
     return (
         <span className={`${badge} bg-green-50 text-green-700`}>
             {report.send_count > 1 ? `Sent ${report.send_count} times` : 'Sent'}
@@ -207,7 +220,7 @@ export default function ReportsListPage() {
         const [reports, sales, tenders, team, entries, absences, shifts, labour, weekRows] = await Promise.all([
             supabase
                 .from('weekly_reports')
-                .select('id, week_start, status, published_at, send_count')
+                .select('id, week_start, status, published_at, send_count, sent_to')
                 .eq('restaurant_id', restaurantId)
                 .gte('week_start', from),
             supabase
@@ -232,7 +245,9 @@ export default function ReportsListPage() {
                 // by hand is the one thing on a week that has to say why, and
                 // without these two columns that rule was never checked on this
                 // page at all: it read every row as typed and unremarkable.
-                .select('employee_id, work_date, starts_at, ends_at, kind, source, note')
+                // The id is what tells a saved clock in from a draft, so
+                // without it a clock in with no clock out never held the week.
+                .select('id, employee_id, work_date, starts_at, ends_at, kind, source, note')
                 .eq('restaurant_id', restaurantId)
                 .gte('work_date', from).lte('work_date', to),
             supabase
@@ -309,8 +324,13 @@ export default function ReportsListPage() {
     }
 
     // The week before this one, with its sections and everything on them.
+    //
+    // The error comes back with it. A failed read used to look the same as no
+    // week before at all, so the week started as the restaurant's first: no
+    // overheads, no open actions, and the week after carrying on from this
+    // one, so they were gone for good.
     async function previousReport(weekStart) {
-        const { data } = await supabase
+        const { data, error: readError } = await supabase
             .from('weekly_reports')
             .select('id, week_start, report_sections(id, key, title, sort_order, report_items(*))')
             .eq('restaurant_id', restaurantId)
@@ -319,10 +339,13 @@ export default function ReportsListPage() {
             .limit(1)
             .maybeSingle()
 
-        if (!data) return null
+        if (readError) return { error: readError }
+        if (!data) return { data: null }
         return {
-            ...data,
-            sections: (data.report_sections || []).slice().sort((a, b) => a.sort_order - b.sort_order),
+            data: {
+                ...data,
+                sections: (data.report_sections || []).slice().sort((a, b) => a.sort_order - b.sort_order),
+            },
         }
     }
 
@@ -333,7 +356,9 @@ export default function ReportsListPage() {
         setStarting(weekStart)
         setError('')
 
-        const previous = await previousReport(weekStart)
+        // Nothing has been written yet, so giving up here leaves nothing behind.
+        const { data: previous, error: pErr } = await previousReport(weekStart)
+        if (pErr) { setError(friendlyError(pErr)); setStarting(null); return }
 
         const { data: report, error: rErr } = await supabase
             .from('weekly_reports')

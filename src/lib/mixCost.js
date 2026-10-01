@@ -21,6 +21,26 @@
 // nothing about it looks wrong. It just quietly makes the margin on that dish
 // look better than it is.
 
+// A deactivated product cannot be costed inside anything else.
+//
+// It stays on every recipe and dish that used it, and its allergens still
+// count, but nobody buys it any more, so the price still sitting on it is an
+// old one. Costing a dish from it is a margin that looks real and is not. So
+// a recipe or a dish with one in it has no cost until it is replaced, and the
+// screens name it so somebody knows what to replace.
+//
+// Here rather than in what each screen reads. The menu items list and the
+// products list read every product and costed it at the old price; the dish,
+// the recipe, the stock take and waste read only the active ones and could not
+// find it. The same dish had a margin on one screen and none on the next. Now
+// it is one answer whichever list a screen read.
+//
+// The product's own cost is still worked out. That is a question about the
+// product, not about something made with it.
+function switchedOff(product) {
+  return product?.is_active === false
+}
+
 export function calculateMixCost(product, allProducts, allRecipeLines, preferredPrices, visited = new Set()) {
   // Cycle detection: if we're already computing this product's cost
   // somewhere up the call stack, we have a loop and bail out.
@@ -63,7 +83,7 @@ export function calculateMixCost(product, allProducts, allRecipeLines, preferred
 
   for (const line of lines) {
     const ingredient = allProducts.find(p => p.id === line.ingredient_product_id)
-    if (!ingredient) {
+    if (!ingredient || switchedOff(ingredient)) {
       missing.push(line.ingredient_product_id)
       continue
     }
@@ -103,6 +123,60 @@ export function resolveUnitCost(product, allProducts, allRecipeLines, preferredP
 
   const perUnit = Number(price.price_per_unit)
   return isNaN(perUnit) ? null : perUnit
+}
+
+// What one unit of a product costs as a line in something else: a component
+// on a dish, or an ingredient on a recipe. Null when it cannot be costed,
+// including when it has been deactivated, so the line and the total it goes
+// into never disagree.
+export function costInside(product, allProducts, allRecipeLines, preferredPrices) {
+  if (!product || switchedOff(product)) return null
+  return calculateMixCost(product, allProducts, allRecipeLines, preferredPrices).cost
+}
+
+// The deactivated products standing in the way of a cost, however deep: on
+// the dish itself, or inside a recipe it uses. productIds are the lines to
+// start from, a dish's components or a recipe's ingredients. Each one once,
+// in the order met.
+//
+// A deactivated MIX is the thing to replace, so what is inside it is not
+// looked at. The same guard against a recipe that comes back round to itself
+// as the cost has.
+export function deactivatedIn(productIds, allProducts, allRecipeLines) {
+  const found = new Map()
+
+  function walk(id, above) {
+    const product = (allProducts || []).find(p => p.id === id)
+    if (!product) return
+    if (switchedOff(product)) { found.set(product.id, product); return }
+    if (!product.is_mix || above.has(product.id)) return
+
+    const next = new Set(above).add(product.id)
+    for (const line of allRecipeLines || []) {
+      if (line.mix_product_id === product.id) walk(line.ingredient_product_id, next)
+    }
+  }
+
+  for (const id of productIds || []) walk(id, new Set())
+  return [...found.values()]
+}
+
+// Everything standing in the way of a cost made of these lines, by product id:
+// what calculateMixCost hands back as missing for one recipe, for a dish's
+// components too. A deactivated product is in it as itself, so whatever is
+// left once deactivatedIn's are taken out is a price or a recipe still to be
+// set. A screen can then say both, rather than promise the cost back once the
+// deactivated one is replaced when something else would still hold it up.
+export function missingIn(productIds, allProducts, allRecipeLines, preferredPrices) {
+  const missing = new Set()
+  for (const id of productIds || []) {
+    const product = (allProducts || []).find(p => p.id === id)
+    if (!product || switchedOff(product)) { missing.add(id); continue }
+
+    const result = calculateMixCost(product, allProducts, allRecipeLines, preferredPrices)
+    if (result.cost === null) for (const m of result.missing || [product.id]) missing.add(m)
+  }
+  return [...missing]
 }
 
 // What one portion of a menu item costs to make.
@@ -150,16 +224,15 @@ export function menuItemCost(components, allProducts, allRecipeLines, prices) {
       if (line.no_quantity) continue
 
       const product = (allProducts || []).find(p => p.id === line.product_id)
-      if (!product) return null
-
-      const result = calculateMixCost(product, allProducts, allRecipeLines, prices)
+      const unitCost = costInside(product, allProducts, allRecipeLines, prices)
       // All or nothing, and a group is stricter rather than looser: we cannot
       // say which option is dearest while one of them has no price, so an
       // unpriced alternative blanks the dish the same as an unpriced
-      // ingredient does.
-      if (result.cost === null) return null
+      // ingredient does. A deactivated one blanks it too, for the reason at
+      // the top of this file.
+      if (unitCost === null) return null
 
-      const cost = parseFloat(line.quantity) * result.cost
+      const cost = parseFloat(line.quantity) * unitCost
       if (dearest === null || cost > dearest) dearest = cost
     }
 

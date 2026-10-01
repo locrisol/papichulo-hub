@@ -22,7 +22,7 @@ import { num } from '@/lib/format'
 import { spanHours, toSeconds } from '@/lib/clock'
 import { toMinutes, shiftMinutes } from '@/lib/roster'
 import {
-    wholeDayOn, absenceDays, holidayHoursInWeek, kindOf as absenceKind,
+    wholeDayOn, absenceDays, holidayHoursInWeek, isPartDay, kindOf as absenceKind,
 } from '@/lib/absences'
 import { bankHolidayOn } from '@/lib/bankHolidays'
 
@@ -88,10 +88,12 @@ export function rateFor(person, restaurantRate) {
     return Number.isFinite(fallback) ? fallback : 0
 }
 
+// With the day it was worked, so the two nights the clocks change come to the
+// hours really worked, the same as the database's own figure.
 function hoursOf(entry) {
     if (!entry) return 0
     if (!kindOf(entry.kind).paid) return 0
-    return spanHours(entry.starts_at, entry.ends_at)
+    return spanHours(entry.starts_at, entry.ends_at, entry.work_date)
 }
 
 // One day for one person: everything a cell needs to draw itself, worked out
@@ -184,6 +186,15 @@ export function dayCell({
             !String(e.note || '').trim()
             && (e.source === 'corrected' || (imported && e.source === 'typed'))
         )),
+        // A clock in with no clock out. It comes to nought hours and the pay
+        // mail only carries a shift with both ends, so left alone the day
+        // reached the accountant as a day nobody worked. Its own question
+        // rather than part of `unanswered`: it matters on a day nobody
+        // rostered and on a week the till's report covers, and a comment does
+        // not answer it, because the clock in still never reaches her.
+        //
+        // Saved rows only. A draft is a box still being typed into.
+        open: asking && mine.some(e => e.id && e.starts_at && !e.ends_at),
     }
 }
 
@@ -361,7 +372,12 @@ export function unanswered(rows, covered) {
             .filter(d => d.unanswered && !already.has(d.date))
             .map(d => d.date)
         const changed = row.days.filter(d => d.unexplained).map(d => d.date)
-        if (days.length || changed.length) out.push({ person: row.person, days, changed })
+        // A clock in with no clock out. Not let off by the archive either: a
+        // half typed row is something somebody did on the timesheet itself.
+        const open = row.days.filter(d => d.open).map(d => d.date)
+        if (days.length || changed.length || open.length) {
+            out.push({ person: row.person, days, changed, open })
+        }
     }
     return out
 }
@@ -591,6 +607,14 @@ export const BANK_LOOK = { label: 'Bank holiday', ink: '#8A6A18', wash: '#FBF4E2
 // meant to be keyed into a payroll would be noise.
 export const COUNTED_DAYS = ['sick', 'unpaid']
 
+// What a day's mark says. A part day says so, or a day with six hours worked
+// on it reads as a day off sick. Copied into the function like the marks are.
+export function awayWords(day) {
+    const look = AWAY_LOOK[day?.away]
+    if (!look) return ''
+    return day.part ? `${look.label}, part of the day` : look.label
+}
+
 // The same fortnight the mail works out, worked out again here.
 //
 // **Deliberately a second implementation**, the same as the bank holidays are:
@@ -621,6 +645,13 @@ export function personPeriod({
                 .map(e => String(e.note || '').trim())
                 .filter(Boolean)
             const away = awayOn(person.id, date)
+            // A clock in nobody gave a clock out. The send is held while one
+            // is on the period, but a test still goes, and a day must never
+            // drop out as though nobody worked it.
+            const open = mine
+                .filter(e => e.work_date === date && e.starts_at && !e.ends_at)
+                .map(e => e.starts_at)
+                .sort()
 
             return {
                 date,
@@ -631,20 +662,25 @@ export function personPeriod({
                     hours: num(e.hours),
                     kind: e.kind,
                 })),
+                open,
                 notes: said,
                 hours: spans.reduce((t, e) => t + num(e.hours), 0),
                 bankHoliday: Boolean(bankHolidayOn(date)),
                 away: away ? away.kind : null,
+                part: isPartDay(away),
             }
-        }).filter(day => day.spans.length > 0 || day.notes.length > 0 || day.away)
+        }).filter(day => day.spans.length > 0 || day.open.length > 0 || day.notes.length > 0 || day.away)
 
         const inWeek = w => days.reduce((t, d) => (d.week === w ? t + d.hours : t), 0)
         const ofKind = kind => days.reduce((t, d) => (
             t + d.spans.reduce((n, s) => (s.kind === kind ? n + num(s.hours) : n), 0)
         ), 0)
-        const daysOf = kind => dates.filter(d => {
+        // Whole days and part days apart. Somebody who worked until three and
+        // went home sick was paid for six hours and was sick for part of one
+        // day, and counting that as a day sick tells payroll she lost the lot.
+        const daysOf = (kind, part) => dates.filter(d => {
             const away = awayOn(person.id, d)
-            return away && away.kind === kind
+            return away && away.kind === kind && isPartDay(away) === part
         }).length
 
         const week = [inWeek(0), inWeek(1)]
@@ -661,8 +697,10 @@ export function personPeriod({
             holiday: holidayHoursInWeek(absences, person.id, dates),
             trial: ofKind('trial'),
             training: ofKind('training'),
-            sickDays: daysOf('sick'),
-            unpaidDays: daysOf('unpaid'),
+            sickDays: daysOf('sick', false),
+            unpaidDays: daysOf('unpaid', false),
+            sickParts: daysOf('sick', true),
+            unpaidParts: daysOf('unpaid', true),
         }
     }).filter(person => person.days.length > 0 || person.holiday > 0)
 }

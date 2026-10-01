@@ -173,9 +173,11 @@ There are four roles. The rules are stored directly in the database as row level
 | What is on nearby | See it on the calendar and the roster | Everything, including which places we watch and keeping what was found | Everything | Everything |
 | Sales, invoices, labour, costs | No access | Everything | Everything | Everything |
 | Restaurant settings | No | Yes | No | Yes |
-| Users | No | Employees at their restaurant | Managers and employees at their restaurants | Everyone, and restaurants |
+| Users | No | See the accounts at their restaurant | See the accounts at their restaurants | Everyone, and restaurants |
 
 An Owner sees their restaurants but does not configure one, which is why restaurant settings is a Store Manager job.
+
+Accounts are a Super Admin job. A manager links a login to somebody on Team, and switches it off by giving them a last day.
 
 An employee can start counting but cannot open or close a stock take session, and can modify their own count lines but not the ones other employees have created.
 

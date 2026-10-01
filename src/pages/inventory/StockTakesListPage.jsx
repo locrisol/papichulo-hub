@@ -72,9 +72,10 @@ export default function StockTakesListPage() {
     // If there's an active session, compute progress: how many products
     // have at least one line, vs total active products in the restaurant.
     if (active) {
+      // staff_products rather than the table, which staff cannot read.
       const [{ count: totalProducts }, { count: totalLines }] = await Promise.all([
         supabase
-          .from('products')
+          .from('staff_products')
           .select('id', { count: 'exact', head: true })
           .eq('is_active', true),
         supabase

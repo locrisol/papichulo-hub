@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
-import { supabase } from '@/lib/supabase'
-import { sheetRows, everyReadArrived } from '@/lib/allergenSheet'
+import { supabase, everyRow } from '@/lib/supabase'
+import { sheetRows, everyReadArrived, productsWithARow } from '@/lib/allergenSheet'
 import AllergenList from '@/components/allergens/AllergenList'
 import { card, primaryButton } from '@/lib/controlStyles'
 import { stampDate } from '@/lib/dates'
@@ -94,6 +94,13 @@ export default function PublicAllergensPage({ slugOverride }) {
     // the same thing to a customer and to a manager previewing it, without
     // having to ask for it twice.
     //
+    // Every row, a page at a time, each in an order that cannot tie. The
+    // database hands back a thousand rows at most and says nothing when it
+    // stops, and the lines of every dish ever set up, switched off ones too,
+    // pass that long before the menu does. A dish that lost one line past the
+    // thousandth kept the rest, and with those answered its row looked whole
+    // without the allergens the lost line carried.
+    //
     // Products are still deliberately unfiltered, and that is now true rather
     // than merely intended. They are not a list on screen, they are what the
     // allergens are worked out from, and a dish can contain a product that has
@@ -105,12 +112,12 @@ export default function PublicAllergensPage({ slugOverride }) {
       // a customer cannot read. The view of the allergens has no date on it,
       // and this used to print today's date on every visit instead.
       supabase.rpc('allergens_changed_at'),
-      supabase.from('public_menu_categories').select('*').order('sort_order'),
-      supabase.from('public_menu_items').select('*').order('name'),
-      supabase.from('public_menu_item_components').select('*'),
-      supabase.from('public_products').select('*').order('name'),
-      supabase.from('public_mix_recipes').select('*'),
-      supabase.from('public_product_allergens').select('*'),
+      everyRow(() => supabase.from('public_menu_categories').select('*').order('sort_order').order('id')),
+      everyRow(() => supabase.from('public_menu_items').select('*').order('name').order('id')),
+      everyRow(() => supabase.from('public_menu_item_components').select('*').order('id')),
+      everyRow(() => supabase.from('public_products').select('*').order('name').order('id')),
+      everyRow(() => supabase.from('public_mix_recipes').select('*').order('id')),
+      everyRow(() => supabase.from('public_product_allergens').select('*').order('product_id')),
     ])
 
     // All of them or none of them. A failed read of the allergens used to
@@ -161,16 +168,27 @@ export default function PublicAllergensPage({ slugOverride }) {
   // something handed over beside it gets a row of its own. Worked out in
   // lib/allergenSheet so the printed sheet cannot come out saying anything
   // different from this.
-  const itemsByCategory = categories
-    // A category can be kept off the sheet: cans and bottled water carry none
-    // of the fourteen and fill it with rows saying so. Older rows have no
-    // answer here, and no answer means shown.
-    .filter(c => c.on_allergen_sheet !== false)
+  //
+  // A category can be kept off the sheet: cans and bottled water carry none
+  // of the fourteen and fill it with rows saying so. Older rows have no
+  // answer here, and no answer means shown.
+  const sheetCategories = categories.filter(c => c.on_allergen_sheet !== false)
+
+  // Which products already have a row of their own anywhere on the sheet,
+  // asked once of the whole sheet. An option on a dish reaches the sheet only
+  // through one of those, and a dish with an option that has none says ask
+  // staff rather than leaving that option's allergens off every row.
+  const withARow = productsWithARow(
+    menuItems.filter(i => sheetCategories.some(c => c.id === i.category_id)),
+    components, products,
+  )
+
+  const itemsByCategory = sheetCategories
     .map(c => ({
       category: c,
       rows: sheetRows(
         menuItems.filter(i => i.category_id === c.id),
-        components, products, recipeLines, allergens,
+        components, products, recipeLines, allergens, withARow,
       ),
     }))
     .filter(group => group.rows.length > 0)

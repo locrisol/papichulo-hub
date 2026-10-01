@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
     TZID, colourFor, dayAfter, eventTimes, description, eventBody, calendarsFor, plan,
-    API, GONE, eventUrl, idsFrom, reachOf, carryOut, hubAddress, callerRefusal,
+    API, GONE, eventUrl, idsFrom, reachOf, carryOut, callerRefusal,
 } from '../../supabase/functions/diary-calendar/google'
 import { kindGoogleColour, KINDS } from './diary'
 
@@ -150,6 +150,7 @@ describe('the event as a whole', () => {
     it('carries a link back to the Hub', () => {
         expect(eventBody(entry, 'https://hub.example').source)
             .toEqual({ title: 'Open in Papi Chulo Hub', url: 'https://hub.example/calendar' })
+        expect(eventBody(entry, 'https://hub.example/').source.url).toBe('https://hub.example/calendar')
     })
 
     it('leaves the link out rather than making a broken one', () => {
@@ -240,13 +241,14 @@ const { writeToGoogle } = await import('@/lib/diaryGoogle')
 describe('asking the function to write it', () => {
     beforeEach(() => { invoke.mockClear(); invoke.mockImplementation(() => ({ data: { ok: true }, error: null })) })
 
-    it('sends the entry and where this Hub lives', async () => {
+    // Only which entry. Where the link on the event points is the function's
+    // own setting: the event sits on a calendar everybody shares long after
+    // whoever saved it closed the dev server or the preview build.
+    it('sends the entry and nothing about where the app is running', async () => {
         invoke.mockResolvedValue({ data: { ok: true, written: 1 }, error: null })
         await writeToGoogle('e1')
 
-        expect(invoke).toHaveBeenCalledWith('diary-calendar', expect.objectContaining({
-            body: expect.objectContaining({ entryId: 'e1', clear: false }),
-        }))
+        expect(invoke).toHaveBeenCalledWith('diary-calendar', { body: { entryId: 'e1', clear: false } })
     })
 
     it('says to clear when the entry is about to be removed', async () => {
@@ -272,6 +274,34 @@ describe('asking the function to write it', () => {
     // to send a request" tells nobody what to do about it.
     it('says the function is not deployed rather than something unreadable', async () => {
         invoke.mockResolvedValue({ data: null, error: new Error('Edge Function returned a non-2xx status code') })
+        expect((await writeToGoogle('e1')).reason).toContain('not deployed')
+    })
+
+    // The function refusing a person said the function was not deployed, which
+    // sent whoever read it looking for a problem that was not there.
+    const refusal = (status, body) => Object.assign(new Error('Edge Function returned a non-2xx status code'), {
+        context: { status, json: () => (body ? Promise.resolve(body) : Promise.reject(new Error('not json'))) },
+    })
+
+    it('says plainly when the person may not change it', async () => {
+        invoke.mockResolvedValue({ data: null, error: refusal(403, { error: 'Not allowed' }) })
+        const out = await writeToGoogle('e1', { clear: true })
+        expect(out).toMatchObject({ ok: false, refused: true })
+        expect(out.reason).toBe('You do not have permission to change this one.')
+    })
+
+    it('says when they have been signed out', async () => {
+        invoke.mockResolvedValue({ data: null, error: refusal(401, { error: 'Not signed in' }) })
+        expect((await writeToGoogle('e1')).reason).toMatch(/signed out/)
+    })
+
+    it('passes on what the function itself said about a missing entry', async () => {
+        invoke.mockResolvedValue({ data: null, error: refusal(404, { error: 'That entry is gone' }) })
+        expect((await writeToGoogle('e1')).reason).toBe('That entry is gone')
+    })
+
+    it('still says not deployed for a 404 the function never answered', async () => {
+        invoke.mockResolvedValue({ data: null, error: refusal(404) })
         expect((await writeToGoogle('e1')).reason).toContain('not deployed')
     })
 
@@ -505,26 +535,5 @@ describe('carrying out the plan', () => {
         expect(out.failed).toEqual([`${POINT}: Google said 403`])
         expect(out.ids).toEqual({ [DUN]: 'dl1' })
         expect(out.written).toBe(1)
-    })
-})
-
-// The link on the event says Open in Papi Chulo Hub to everybody who can see
-// the calendar, so where it points is not taken on the app's word alone. The
-// same rule roster-email follows.
-describe('where the link back to the Hub points', () => {
-    const where = { appUrl: 'https://papichulo-hub.vercel.app', also: 'http://localhost:5173, https://preview.vercel.app/' }
-
-    it('is the real site unless told otherwise', () => {
-        expect(hubAddress('', where)).toBe('https://papichulo-hub.vercel.app')
-        expect(hubAddress('https://somewhere-else.example', where)).toBe('https://papichulo-hub.vercel.app')
-    })
-
-    it('is where the app is being used from when that is on the list', () => {
-        expect(hubAddress('http://localhost:5173/', where)).toBe('http://localhost:5173')
-        expect(hubAddress('https://preview.vercel.app', where)).toBe('https://preview.vercel.app')
-    })
-
-    it('is nothing when nothing is set', () => {
-        expect(hubAddress('https://somewhere-else.example', {})).toBe('')
     })
 })

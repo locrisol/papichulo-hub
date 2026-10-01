@@ -7,7 +7,8 @@
 //
 // The one thing it does take from the browser is the figures and chart links
 // for a **test** send, and only for a test, because a draft has no frozen
-// figures to read. A test only ever goes to the person who asked for it.
+// figures to read. A send that is not a test, of a report that is not
+// published, is refused. A test never goes to the owners.
 //
 // Deploy it the ordinary way:
 //
@@ -42,7 +43,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { reportEmail } from './email.js'
 import { changesSince } from './changes.js'
-import { senderFor, heldNotice, deliverable, isJustTheGoodbye, replyToFor, switchedOff } from './email.js'
+import { senderFor, heldNotice, deliverable, isJustTheGoodbye, replyToFor, switchedOff, whatToSend, correctionSend } from './email.js'
 import { timesheetEmail, personPeriod, addDays, hoursPdfPath } from './timesheet.js'
 import { base64, mimeParts, headersFor } from './mime.js'
 
@@ -312,7 +313,7 @@ Deno.serve(async (req) => {
         // ---- the report ----
         const { data: report, error: reportError } = await admin
             .from('weekly_reports')
-            .select('id, restaurant_id, week_start, status, figures, previous_figures, charts, send_count, published_by')
+            .select('id, restaurant_id, week_start, status, figures, previous_figures, charts, send_count, sent_to, published_by')
             .eq('id', reportId).maybeSingle()
 
         if (reportError) throw reportError
@@ -357,9 +358,11 @@ Deno.serve(async (req) => {
         //
         // A published report reads what was frozen onto it. A draft has nothing
         // frozen, so a test reads what the browser was showing, which is the
-        // point of a test: it is the report as it stands right now.
-        const figures = report.status === 'published' ? (report.figures || {}) : (posted || {})
-        const charts = report.status === 'published' ? (report.charts || {}) : (postedCharts || {})
+        // point of a test: it is the report as it stands right now. A real send
+        // of a draft is refused. See whatToSend in email.js.
+        const chosen = whatToSend(report, { test, figures: posted, charts: postedCharts })
+        if (chosen.refused) return json({ error: chosen.refused }, 409)
+        const { figures, charts } = chosen
 
         if (!figures.net && figures.net !== 0) {
             return json({ error: 'This report has no figures on it yet.' }, 400)
@@ -369,7 +372,7 @@ Deno.serve(async (req) => {
         //
         // Worked out here rather than taken from the browser, off the copy of
         // the last mail's figures the report keeps for exactly this.
-        const changes = (!test && (report.send_count || 0) > 1)
+        const changes = correctionSend(report, test)
             ? changesSince(report.previous_figures, figures)
             : []
 
@@ -616,8 +619,10 @@ async function sendTimesheet({
             .select('employee_id, work_date, starts_at, ends_at, hours, kind, note')
             .eq('restaurant_id', forRestaurant)
             .gte('work_date', period).lte('work_date', periodEnd),
+        // The two part day times as well, or somebody who worked until three
+        // and went home sick reads as a whole day off sick.
         admin.from('absences')
-            .select('employee_id, kind, status, starts_on, ends_on, hours')
+            .select('employee_id, kind, status, starts_on, ends_on, hours, can_work_from, can_work_to')
             .eq('restaurant_id', forRestaurant)
             .lte('starts_on', periodEnd).gte('ends_on', period),
     ])

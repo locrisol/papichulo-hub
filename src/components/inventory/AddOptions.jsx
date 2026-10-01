@@ -34,7 +34,14 @@ export default function AddOptions({
     const [group, setGroup] = useState(existingGroups?.[0] || '')
     const [categoryId, setCategoryId] = useState('')
     const [search, setSearch] = useState('')
-    const [listSeparately, setListSeparately] = useState(false)
+    // Whether the options get rows of their own on the allergen sheet.
+    //
+    // An option is kept off the dish's own row, so its allergens reach the
+    // sheet only through a row of its own. Something out of All products is
+    // not sold on its own and has no row anywhere else, so for those the box
+    // starts ticked; a menu category's items already have rows, so for those
+    // it starts off. Once somebody changes it, it stays the way they set it.
+    const [listChoice, setListChoice] = useState(null)
     const [everyQuantity, setEveryQuantity] = useState('')
     // Ticked, and how much of each. Kept apart from the list itself so ticking
     // something, filtering it away and filtering it back does not lose it.
@@ -48,6 +55,7 @@ export default function AddOptions({
     // product, and a recipe made in house is only ever a product too. Without
     // this there was no way to offer either of them at all.
     const fromProducts = categoryId === PRODUCTS
+    const listSeparately = listChoice ?? fromProducts
 
     const inCategory = fromProducts || !categoryId
         ? []
@@ -181,7 +189,7 @@ export default function AddOptions({
                     <input
                         type="checkbox"
                         checked={listSeparately}
-                        onChange={e => setListSeparately(e.target.checked)}
+                        onChange={e => setListChoice(e.target.checked)}
                         className={`${checkbox} mt-0.5`}
                     />
                     <span className="text-sm text-gray-700">

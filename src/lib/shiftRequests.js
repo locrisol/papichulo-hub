@@ -8,7 +8,9 @@
 // Nothing here writes anything. It works out what the week would look like, and
 // the manager's screen is the only thing allowed to make it true.
 
-import { toMinutes, shiftHours, breakFor } from '@/lib/roster'
+import {
+    toMinutes, endMinutes, shiftHours, shiftMinutes, breakFor, shortTime, endLabel,
+} from '@/lib/roster'
 import { wholeDayOn } from '@/lib/absences'
 
 export const REQUEST_STATES = {
@@ -45,20 +47,99 @@ export function isWholeShift(shift, from, to) {
         && toMinutes(window.to) === toMinutes(shift.ends_at)
 }
 
+// The hours a request is about, the way the roster prints them: a finish after
+// closing says Closing, for part of a shift as much as for the whole of one.
+// The cards on My shifts and the desk printed the time for part of a shift,
+// the number the roster never shows and the swap mails no longer do.
+export function hoursWords(shift, from, to, dayHours) {
+    const window = windowOf(shift, from, to)
+    const piece = { starts_at: window.from, ends_at: window.to }
+    return `${shortTime(piece.starts_at)} to ${endLabel(piece, dayHours)}`
+}
+
+// What is wrong with the hours a request names, or nothing.
+//
+// Part of a shift has to be part of it. Nothing used to check, and approving
+// keeps whatever sits either side of the hours named: Ana on 12:00 to 17:00
+// giving 15:00 to 19:00 came out as Ana 12:00 to 15:00 and Ben 15:00 to 19:00,
+// seven hours where there had been five.
+//
+// Measured in minutes from the shift's own start rather than from midnight, so
+// a shift that runs to midnight or past it is measured the way it runs, and
+// its last hours are inside it. A finish at the shift's start is a whole day
+// later, which is never inside anything.
+//
+//   outside   the hours start or finish beyond the shift
+//   order     they finish before they start
+export function windowProblem(shift, from, to) {
+    const window = windowOf(shift, from, to)
+    if (!window) return 'outside'
+
+    const start = toMinutes(shift.starts_at)
+    const a = toMinutes(window.from)
+    const b = toMinutes(window.to)
+    if (start < 0 || a < 0 || b < 0) return 'outside'
+
+    const runs = shiftMinutes(shift.starts_at, shift.ends_at)
+    const into = t => (t - start + 1440) % 1440
+    const begins = into(a)
+    const ends = into(b) || 1440
+
+    if (begins >= runs || ends > runs) return 'outside'
+    if (ends <= begins) return 'order'
+    return ''
+}
+
+export function windowFits(shift, from, to) {
+    return windowProblem(shift, from, to) === ''
+}
+
+// Whether both halves of a request still name hours inside their shifts.
+//
+// Asked again on the desk and when approving, not only when the ask is sent,
+// because a manager can change a shift after the two of them agreed and a
+// window that fitted then can hang off the end of it now. A whole shift has
+// nothing to check, and a shift not in hand says nothing either way, the same
+// as shiftsMoved.
+export function windowsFit(request, findShift) {
+    const fits = (id, from, to) => {
+        if (!id || (!from && !to)) return true
+        const shift = findShift(id)
+        return !shift || windowFits(shift, from, to)
+    }
+    return fits(request?.give_shift_id, request?.give_from, request?.give_to)
+        && fits(request?.take_shift_id, request?.take_from, request?.take_to)
+}
+
+// A stretch of hours as minutes from the start of its day, with a finish at or
+// before the start read as that night. 17:00 to 00:00 is 1020 to 1440, not
+// 1020 to nought, which is a stretch that finishes before it starts. See
+// endMinutes, which does the same for a shift.
+function span(from, to) {
+    const start = toMinutes(from)
+    return [start, start + shiftMinutes(from, to)]
+}
+
 function overlaps(a, b) {
-    return toMinutes(a.from) < toMinutes(b.to) && toMinutes(b.from) < toMinutes(a.to)
+    const [aFrom, aTo] = span(a.from, a.to)
+    const [bFrom, bTo] = span(b.from, b.to)
+    return aFrom < bTo && bFrom < aTo
 }
 
 // What is left of a shift once a window is taken out of it. Nothing, one piece,
 // or two if the window was somewhere in the middle.
+//
+// The window is placed on the shift's own night, so the last hours of a shift
+// that runs past midnight are after its start rather than before it.
 function pieces(shift, window) {
+    const [start, end] = span(shift.starts_at, shift.ends_at)
+    let from = toMinutes(window.from)
+    if (from < start) from += 1440
+    const to = from + shiftMinutes(window.from, window.to)
+
     const out = []
-    if (toMinutes(window.from) > toMinutes(shift.starts_at)) {
-        out.push({ starts_at: shift.starts_at, ends_at: window.from })
-    }
-    if (toMinutes(window.to) < toMinutes(shift.ends_at)) {
-        out.push({ starts_at: window.to, ends_at: shift.ends_at })
-    }
+    if (from > start) out.push({ starts_at: shift.starts_at, ends_at: window.from })
+    if (to < end) out.push({ starts_at: window.to, ends_at: shift.ends_at })
     return out
 }
 
@@ -90,10 +171,13 @@ function joinUp(rows, breakRules, keepIds) {
     if (keepIds?.size) spare.sort((a, b) => (keepIds.has(b) ? 1 : 0) - (keepIds.has(a) ? 1 : 0))
     const out = []
 
+    // Finishes compared as the night they belong to. As plain minutes a shift
+    // to midnight finished at nought, so joining it to the afternoon before it
+    // kept the afternoon's finish and the evening was gone.
     for (const row of rows) {
         const last = out[out.length - 1]
-        if (last && toMinutes(row.starts_at) <= toMinutes(last.ends_at)) {
-            if (toMinutes(row.ends_at) > toMinutes(last.ends_at)) last.ends_at = row.ends_at
+        if (last && toMinutes(row.starts_at) <= endMinutes(last)) {
+            if (endMinutes(row) > endMinutes(last)) last.ends_at = row.ends_at
             continue
         }
         out.push({ ...row, id: null })
@@ -226,7 +310,12 @@ export function hoursChange(request, shifts, breakRules) {
 //
 //   finishing   in that day and free for the hours you are giving
 //   free        nothing on at all
-//   cannot      already working those hours, or down as away
+//   cannot      already working those hours, down as away, or with no account
+//
+// No account is in there because only the person asked can answer, and
+// somebody who cannot sign in never will: the request sat at waiting on them
+// for good and nobody was told. has_login comes from roster_colleagues, and
+// until the database says false nobody is ruled out for it.
 export function shortlist({ date, window, employees, shifts, absences, askerId }) {
     const groups = { finishing: [], free: [], cannot: [] }
 
@@ -237,13 +326,14 @@ export function shortlist({ date, window, employees, shifts, absences, askerId }
             .filter(s => s.employee_id === person.id && s.shift_date === date)
             .sort((a, b) => toMinutes(a.starts_at) - toMinutes(b.starts_at))
 
+        const noLogin = person.has_login === false
         const away = !!wholeDayOn(absences, person.id, date)
         const clash = window
             ? theirs.some(s => overlaps({ from: s.starts_at, to: s.ends_at }, window))
             : false
 
-        if (away || clash) {
-            groups.cannot.push({ person, shifts: theirs, why: away ? 'away' : 'clash' })
+        if (noLogin || away || clash) {
+            groups.cannot.push({ person, shifts: theirs, why: noLogin ? 'no_login' : away ? 'away' : 'clash' })
         } else if (theirs.length === 0) {
             groups.free.push({ person, shifts: theirs })
         } else {
@@ -262,10 +352,11 @@ export function shortlist({ date, window, employees, shifts, absences, askerId }
 // means their shift and the offer meet.
 export function gapTo(shifts, window) {
     if (!window || !shifts?.length) return Infinity
+    const [from, to] = span(window.from, window.to)
     let best = Infinity
     for (const s of shifts) {
-        const before = toMinutes(window.from) - toMinutes(s.ends_at)
-        const after = toMinutes(s.starts_at) - toMinutes(window.to)
+        const before = from - endMinutes(s)
+        const after = toMinutes(s.starts_at) - to
         const gap = Math.min(before >= 0 ? before : Infinity, after >= 0 ? after : Infinity)
         if (gap < best) best = gap
     }

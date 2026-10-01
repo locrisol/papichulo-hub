@@ -5,11 +5,13 @@ import { supabase } from '@/lib/supabase'
 import { useRestaurant } from '@/context/restaurant'
 import { useConfirm } from '@/context/confirm'
 import { menuItemCost } from '@/lib/mixCost'
-import { deriveMenuItemAllergens, summariseAllergens } from '@/lib/allergens'
+import { deriveMenuItemAllergens, neverEnteredInDish, summariseAllergens } from '@/lib/allergens'
 import CategoryManagerModal from '@/components/inventory/CategoryManagerModal'
 import { useKeepScroll } from '@/context/scroll'
+import { useSaveOnce } from '@/components/ui/useSaveOnce'
 import ArrangeList from '@/components/ui/ArrangeList'
 import { friendlyError } from '@/lib/errors'
+import { everyReadArrived, productsWithARow, optionsWithoutARow } from '@/lib/allergenSheet'
 import { secondaryButton, tableHeadRow, tableHeadCell, tableCard, badge, card, rowButton, labelClass, pageTitle, primaryButton } from '@/lib/controlStyles'
 import { numberField } from '@/lib/numberInput'
 import ErrorBanner from '@/components/ui/ErrorBanner'
@@ -51,6 +53,10 @@ export default function MenuItemsPage() {
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  // A read that failed, as against a change that did not go through. No list
+  // is shown then, because one worked out from half the menu looks whole.
+  const [loadFailed, setLoadFailed] = useState(false)
+  const [pricesFailed, setPricesFailed] = useState('')
   // Kept apart from the page's error above. That one is for something that
   // would not load, which belongs at the top of the page because there is
   // nothing else up there to read. This is for a save that would not go
@@ -110,25 +116,49 @@ export default function MenuItemsPage() {
       supabase.from('product_allergens').select('*'),
     ])
 
-    if (menuItemsRes.error) setError(friendlyError(menuItemsRes.error))
-    else setMenuItems(menuItemsRes.data)
+    // All of it or none of it. supabase-js hands a failed read back rather
+    // than throwing it, and this kept whatever did arrive: a failed read of
+    // the allergens put None against every dish on the menu, and a failed
+    // read of the components made every dish look empty. So one failed read
+    // shows the failure and no list, the same as the customer page.
+    const reads = [menuItemsRes, categoriesRes, componentsRes, productsRes, recipeLinesRes, allergensRes]
+    if (!everyReadArrived(reads)) {
+      const failed = reads.find(r => r.error)?.error
+      setError(`The menu items could not be loaded in full. ${friendlyError(failed) || 'Check your connection and try again.'}`)
+      setLoadFailed(true)
+      setLoading(false)
+      return
+    }
+    setLoadFailed(false)
+    setError('')
 
-    if (categoriesRes.data) setCategories(categoriesRes.data)
-    if (componentsRes.data) setComponents(componentsRes.data)
-    if (productsRes.data) setProducts(productsRes.data)
-    if (recipeLinesRes.data) setRecipeLines(recipeLinesRes.data)
-    if (allergensRes.data) setAllergens(allergensRes.data)
+    setMenuItems(menuItemsRes.data)
+    setCategories(categoriesRes.data)
+    setComponents(componentsRes.data)
+    setProducts(productsRes.data)
+    setRecipeLines(recipeLinesRes.data)
+    setAllergens(allergensRes.data)
 
     setLoading(false)
   }
 
+  // A failed read is said as one. Left empty, every dish read as Incomplete,
+  // the same as a dish with a price missing.
   const fetchPrices = useCallback(async () => {
-    const { data } = await supabase
+    const { data, error: priceError } = await supabase
       .from('product_supplier_prices')
       .select('*')
       .eq('restaurant_id', activeRestaurant.id)
       .eq('is_preferred', true)
-    if (data) setPrices(data)
+    if (priceError || !data) {
+      setPricesFailed(`The prices could not be read, so costs and margins are not shown. ${friendlyError(priceError)}`.trim())
+      // Not the last restaurant's either. Kept, they went on costing this
+      // one under the banner saying nothing was costed.
+      setPrices([])
+      return
+    }
+    setPricesFailed('')
+    setPrices(data)
     }, [activeRestaurant])
 
   useEffect(() => {
@@ -156,8 +186,16 @@ export default function MenuItemsPage() {
     return e
   }
 
-  async function handleSave(e) {
+  // A second tap on Create while the first is on its way made the dish twice,
+  // and both went on the customer page. See useSaveOnce.
+  const [saving, once] = useSaveOnce()
+
+  function handleSave(e) {
     e.preventDefault()
+    return once(saveMenuItem)
+  }
+
+  async function saveMenuItem() {
     setFormProblem('')
     const v = validate()
     if (Object.keys(v).length) { setErrors(v); return }
@@ -236,6 +274,17 @@ export default function MenuItemsPage() {
       else lines.set(c.menu_item_id, [c])
     }
 
+    // The allergen sheet, the way the dish page and the sheet itself work it
+    // out: the dishes switched on in a category that is on it, and which
+    // products already have a row of their own there.
+    const sheetCategories = new Set(categories
+      .filter(c => c.is_active && c.on_allergen_sheet !== false)
+      .map(c => c.id))
+    const withARow = productsWithARow(
+      menuItems.filter(i => i.is_active && sheetCategories.has(i.category_id)),
+      components,
+      products)
+
     const out = new Map()
     for (const item of menuItems) {
       const mine = lines.get(item.id) || []
@@ -252,6 +301,15 @@ export default function MenuItemsPage() {
           marginPct: net > 0 ? ((net - cost) / net) * 100 : null,
         },
         allergens: deriveMenuItemAllergens(mine, products, recipeLines, allergens),
+        // Something in it nobody ever entered allergens for, which the line
+        // above can only read as none.
+        notEntered: neverEnteredInDish(mine, products, recipeLines, allergens).length > 0,
+        // An option with no row of its own on the sheet that carries
+        // something or was never answered. The two lines above leave options
+        // out, and the sheet then sends customers to staff about the whole
+        // dish, so on its own the column said None for it.
+        asksStaff: Boolean(item.is_active) && sheetCategories.has(item.category_id)
+          && optionsWithoutARow(mine, products, recipeLines, allergens, withARow).length > 0,
         // The options are not ingredients. A burrito with eleven ingredients
         // and a choice of five salsas is not a sixteen ingredient burrito:
         // only one of the five is ever in it. Counting them together made it
@@ -263,15 +321,14 @@ export default function MenuItemsPage() {
       })
     }
     return out
-  }, [menuItems, components, products, recipeLines, allergens, prices])
+  }, [menuItems, categories, components, products, recipeLines, allergens, prices])
 
-  const EMPTY = { components: [], cost: null, net: NaN, margin: null, allergens: null, counts: { components: 0, choices: 0 } }
+  const EMPTY = { components: [], cost: null, net: NaN, margin: null, allergens: null, notEntered: false, asksStaff: false, counts: { components: 0, choices: 0 } }
   const forItem = id => byItem.get(id) || EMPTY
 
 
   const countsFor = itemId => forItem(itemId).counts
   const getItemCost = item => forItem(item.id).cost
-  const getItemAllergens = item => forItem(item.id).allergens
   const getNet = item => forItem(item.id).net
   const getMargin = item => forItem(item.id).margin
 
@@ -336,12 +393,26 @@ export default function MenuItemsPage() {
     )
   }
 
-  // How the allergen count reads. Both layouts show the same thing, so it is
-  // worked out here rather than written twice.
-  function allergenText(item) {
-    const s = summariseAllergens(getItemAllergens(item))
-    if (s.contains === 0 && s.mayContain === 0) return null
-    return s
+  // What the Allergens column says. Both layouts show the same thing, so it is
+  // written once here rather than once in each.
+  //
+  // None only when everything in the dish was answered. A dish with something
+  // in it nobody entered allergens for has a list that only looks whole.
+  function allergenSummary(item) {
+    const entry = forItem(item.id)
+    if (entry.notEntered) return <span className="text-amber-700">Not all entered</span>
+    // Instead of None or the counts, the same as the dish's row on the sheet,
+    // which shows only the ask staff note. Not Not all entered: an option
+    // that carries something has been entered, it only has no row.
+    if (entry.asksStaff) return <span className="text-amber-700">Sheet says ask staff</span>
+    const s = summariseAllergens(entry.allergens || {})
+    if (s.contains === 0 && s.mayContain === 0) return 'None'
+    return (
+      <>
+        {s.contains > 0 && <span className="text-red-600 mr-2">{s.contains} contains</span>}
+        {s.mayContain > 0 && <span className="text-amber-700">{s.mayContain} may</span>}
+      </>
+    )
   }
 
   // Every category is its own table, so without this each one sizes its columns
@@ -408,6 +479,9 @@ export default function MenuItemsPage() {
 
       {error && (
         <ErrorBanner className="mb-4">{error}</ErrorBanner>
+      )}
+      {!loadFailed && pricesFailed && (
+        <ErrorBanner className="mb-4">{pricesFailed}</ErrorBanner>
       )}
 
       {showForm && (
@@ -482,9 +556,10 @@ export default function MenuItemsPage() {
             <div className="flex gap-3">
               <button
                 type="submit"
+                disabled={saving}
                 className={primaryButton()}
               >
-                Create & Edit Components
+                {saving ? 'Saving...' : 'Create & Edit Components'}
               </button>
               <button
                 type="button"
@@ -500,6 +575,8 @@ export default function MenuItemsPage() {
 
       {loading ? (
         <div className="text-sm text-gray-500">Loading menu items...</div>
+      ) : loadFailed ? (
+        <button type="button" onClick={() => fetchAll()} className={primaryButton()}>Try again</button>
       ) : itemsByCategory.every(g => g.items.length === 0) ? (
         <div className={`${card} p-8 text-center`}>
           <p className="text-sm text-gray-500">No menu items yet. Click "+ Add Menu Item" to add your first.</p>
@@ -553,7 +630,6 @@ export default function MenuItemsPage() {
                   {items.map(item => {
                     const cost = getItemCost(item)
                     const m = getMargin(item)
-                    const allergens = allergenText(item)
                     const counts = countsFor(item.id)
 
                     return (
@@ -621,16 +697,7 @@ export default function MenuItemsPage() {
                           <div className="flex items-baseline justify-between gap-3">
                             <dt className="text-gray-500">Allergens</dt>
                             <dd className={`text-right text-xs ${item.is_active ? 'text-gray-600' : 'text-muted'}`}>
-                              {!allergens ? 'None' : (
-                                <>
-                                  {allergens.contains > 0 && (
-                                    <span className="text-red-600 mr-2">{allergens.contains} contains</span>
-                                  )}
-                                  {allergens.mayContain > 0 && (
-                                    <span className="text-amber-700">{allergens.mayContain} may</span>
-                                  )}
-                                </>
-                              )}
+                              {allergenSummary(item)}
                             </dd>
                           </div>
                         </dl>
@@ -664,7 +731,6 @@ export default function MenuItemsPage() {
                       {items.map((item, i) => {
                         const cost = getItemCost(item)
                         const m = getMargin(item)
-                        const allergenSummary = summariseAllergens(getItemAllergens(item))
                         const counts = countsFor(item.id)
 
                         return (
@@ -710,18 +776,7 @@ export default function MenuItemsPage() {
                               )}
                             </td>
                             <td className={`px-4 py-3 text-xs ${item.is_active ? 'text-gray-600' : 'text-muted'}`}>
-                              {allergenSummary.contains === 0 && allergenSummary.mayContain === 0 ? (
-                                'None'
-                              ) : (
-                                <>
-                                  {allergenSummary.contains > 0 && (
-                                    <span className="text-red-600 mr-2">{allergenSummary.contains} contains</span>
-                                  )}
-                                  {allergenSummary.mayContain > 0 && (
-                                    <span className="text-amber-700">{allergenSummary.mayContain} may</span>
-                                  )}
-                                </>
-                              )}
+                              {allergenSummary(item)}
                             </td>
                             <td className="px-4 py-3">
                               <div className="flex flex-wrap gap-2">{rowActions(item)}</div>

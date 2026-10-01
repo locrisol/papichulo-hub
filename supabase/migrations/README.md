@@ -1,6 +1,12 @@
 # Migrations
 
-**`001` to `027` are in here. `001` to `022` are run on live, `023` to `027` are not yet, and the next one is `028`.**
+**`001` to `034` are in here. `001` to `027` are run on live, `028` to `034` are not yet, and the next one is `035`.**
+
+The order for `028` to `034`, which come in together: `028` to `033` before the
+branch is merged into development, in number order. `034` waits until
+development has been merged into main and papichulo-hub.vercel.app shows the
+new site. Merging into development only updates the development address,
+which staff cannot open. Each one's note below says why.
 
 The numbers started again at `001` on 20 September, because the folder was
 empty then. They were only ever there to put the files in order. Everything
@@ -76,33 +82,157 @@ through them as their owner, past row level security, and anybody with the
 website's key held write access to them. Reading does not change.
 `022` is run on live. It lets employees read MIX recipes, so what they
 count or log as waste is valued. Writing a recipe stays with managers.
-`023` is **not run yet**. It gives the allergen sheet a real date and a
+`023` is run on live. It gives the allergen sheet a real date and a
 reminder to print it again: `allergens_changed_at()`, the newest change that
 alters what the sheet says, for the customer page and the PDF, with an index
 so it stays quick; two columns on `restaurants` for when it was last printed
 and how many months it stays up; and `allergen_sheet_printed()`, which the PDF
 button calls, because an owner can print but cannot write the restaurant row.
-**Run it before the branch is merged.** Merging is what deploys the site, and
-until it is run the PDF button will not print the allergen sheet at all.
-`024` is **not run yet**. It guards a swap request from the moment it is sent:
+`024` is run on live. It guards a swap request from the moment it is sent:
 it starts as asked, gives the asker's own shift and takes one of the person
 asked, and after that the two of them can only answer it or take it back.
 Before, a hand written call could send one already agreed, or change it after
 the other person said yes.
-`025` is **not run yet**. It makes where a diary entry is on Google the
+`025` is run on live. It makes where a diary entry is on Google the
 calendar function's to write: a person saving an entry can no longer change
 the Google event ids, which a store manager could use to delete an owner's
 event from the group calendar. And a manager can no longer delete a place
 somebody watches or has listings from, nor delete a listing, which took the
 other restaurant's pairing and listings with it. A super admin still can.
-`026` is **not run yet**. It gives each delivery platform a key that never
+`026` is run on live. It gives each delivery platform a key that never
 changes, starting as the name it has now, and its figures are kept under
 that, so renaming or retiring a platform no longer loses its past weeks. Not
-one stored figure moves. It can go before or after the new app, which falls
-back to the name without it, but a rename only keeps its figures once it is run.
-`027` is **not run yet**. The nightly job keeps the photos of a checklist
+one stored figure moves.
+`027` is run on live. The nightly job keeps the photos of a checklist
 round still going, so a tick submitted days after its photo was taken still
 has it, and a tick is refused if its photo is no longer in storage.
+`028` is **not run yet**. It gives each place three columns saying how its
+last Ticketmaster sync went: when the feed last answered, how many it listed,
+and what went wrong if anything did, and a fourth saying what went wrong the
+last time a page was read. The roster and the calendar tell a manager when a
+feed has stopped answering, instead of it looking like a quiet fortnight.
+Redeploy `nearby-events` and `read-listings` after it.
+`029` is **not run yet**. It is the roster, swaps and time off after the
+second round of the audit. A swap for part of a shift has to name hours
+inside that shift, because approving one that did not invented hours. A swap
+cannot be asked of somebody with no account, who could never answer it, and
+`roster_colleagues` says who has one. Time off is answered by
+`answer_time_off()`, which frees the shifts and writes the answer together,
+and only for a request still waiting. A store manager can no longer answer
+their own holiday or day off; an owner or the super admin does. Their own part
+of a day stays theirs, the same as the mail, which tells nobody about it. A shift changed after
+its week went out stays on that person's My shifts and phone calendar as it
+went out, until the week is published again: `roster_shifts.published_as`
+keeps that copy and the `roster_published` view serves it, with a shift's note
+only for that person and the managers. A shift or a timesheet row can no
+longer start and finish at the same time, which came to 24 hours. If one is
+already saved, 029 stops and says so; `select * from timesheet_entries where
+starts_at = ends_at`, and the same on `roster_shifts`, finds it to put right
+first. **Run it before the branch is merged**: the roster calls that function
+to answer time off, and until it exists the answer buttons only show an error. My shifts reads `roster_published`, so
+without 029 every employee's home page fails to load as well. Redeploy
+`roster-calendar` and `roster-email` only after 029 is run, never before:
+both read `published_as`, and without it the phone calendars come back empty
+and the time off mail stops saying when somebody is rostered. Deploy the
+calendar as `npx supabase functions deploy roster-calendar --no-verify-jwt`,
+then open somebody's plain calendar address (Team, calendar link, Copy the
+plain address) in a browser: it should download a file starting
+`BEGIN:VCALENDAR`, not say 401. Once 029 is
+run, publish again any week that says "Changed since it went out". A shift
+changed before 029 has no copy kept, so it stays off My shifts and the phone
+until its week goes out again.
+`030` is **not run yet**. It works a timesheet row's hours out in real time
+from the date, so a shift on the night the clocks go back or forward comes to
+the hours really worked rather than what the clock face says. Every other
+night is exactly as before and no saved figure moves. It needs Postgres 17,
+which is what `set expression` arrived in.
+`031` is **not run yet**. A super admin can log and delete waste at any
+restaurant, the same as on every other table, rather than only at their own.
+And the waste an employee sees is today's in Ireland rather than the server's
+UTC date, so what they log after midnight in summer stays on their list. And
+only a super admin can change an account: an owner or a store manager could
+change the accounts below them through the API, role included, which nothing
+in the app offers.
+`032` is **not run yet**. It gives `public_products` the section, so the
+customer allergen page can tell a food product nobody entered allergens for
+(it asks the customer to see staff) from a dip pot, which has nothing to
+declare, and the sheet's date counts a product moving section. And it makes
+the columns the allergen answer is worked out from not null: the fourteen on
+`product_allergens`, `is_mix` and `is_active` on `products`, and `is_active`
+on `menu_items` and `menu_categories`. It checks first, and if any of them is
+empty it stops, names the table and changes nothing. **Run it before the
+branch is merged**, or the new page asks customers to see staff about every
+dish that comes in a pot.
+`033` is **not run yet**. It adds the views the new site reads instead of
+the tables 034 closes to staff. Nothing in it breaks the site as it is, so
+**run it any time before merging**:
+
+- `staff_restaurants`, their restaurant with the name, opening hours, break
+  and roster rules and nothing else;
+- `my_claims`, the delivery problems they logged, without what each was worth;
+- `roster_asks`, which shifts somebody has asked about, for the mark on My
+  shifts, without who asked whom or the message;
+- `staff_products`, the products as a count and the Waste page use them,
+  without the notes, the weight loss, the piece weight or the count frequency;
+- `staff_diary`, what is on, without where each entry is on Google or who
+  wrote it;
+- `staff_places`, a place nearby with its name and size, without its page
+  address, Ticketmaster id or reading settings;
+- `staff_mix_recipes`, what goes into each MIX and how much, without the
+  notes.
+
+`034` is **not run yet**. It takes away from staff what no staff screen
+uses, now that the new site reads only what it needs:
+
+- the restaurants table, which carries the cost targets, the default hourly
+  rate and the report and payroll addresses;
+- their own row on the team list, which carries their hourly rate and the
+  managers' notes;
+- the menu: every dish's selling price, VAT and what goes into it, and the
+  allergen rows (the customer page uses the `public_` views);
+- the suppliers that were switched off;
+- every stock take but the one being counted, with what each was worth. A
+  stock take reopened before this still holds its old value, and 034 clears
+  it. From then on the database clears it whenever one is reopened;
+- `invoice_line_claims`, which carries what a delivery problem was worth once
+  matched to a line, and what came back. They read `my_claims` instead, and
+  still log one the same way;
+- swap requests between two other people. They read their own, whole, and
+  `roster_asks` for the rest;
+- `roster_shifts`, which carries every colleague's shift note and every
+  draft. My shifts reads `roster_published` (029), which gives each person
+  the note on their own shifts and nobody else's;
+- the products table. A count and the Waste page read `staff_products`;
+- the group's and their restaurant's diary entries on the table, which carry
+  the Google event ids. The calendar and My shifts read `staff_diary`. It
+  also stops a switched off account reading its own private diary entries;
+  nobody still working loses anything;
+- the team, its time off and the published shifts outside the weeks My
+  shifts opens. `roster_colleagues`, `roster_away` and `roster_published`
+  give nine weeks either side of today, so nobody who left long ago, no old
+  holidays, no leaving date months before it matters, and no shifts from
+  rosters long gone. My shifts steps eight weeks either way;
+- the places table, the other restaurant's pairings, and listings that were
+  dismissed or are at a place their restaurant does not watch. Only the
+  employee side narrows: the rule on deleting a place reads the pairings and
+  the listings as the manager, so managers keep all of them;
+- `mix_recipes`, with its notes. A count and the Waste page read
+  `staff_mix_recipes`, so a MIX is valued the same as before.
+
+**Run it only after development has been merged into main** and Vercel shows
+the deployment of that merge to papichulo-hub.vercel.app as Ready. Merging the
+branch into development is not enough: that only updates the development
+address, which staff cannot open, and papichulo-hub.vercel.app goes on running
+main, which reads these tables. Run before then, staff would be told the Hub
+cannot open, My shifts would say they are not on the team list, Delivery
+problems would be empty, Waste and Stock Takes would have no products and the
+calendar would have no diary. Afterwards, sign in there as a staff account and
+open My shifts to check.
+
+Anybody who had the Hub open from before the release has to reload it once
+after 034 runs. Until they do, staff see "We cannot open the Hub for you", and
+signing out and in again on that same page does not fix it, so tell anybody
+with a staff login to close the Hub and open it again.
 
 ## What was here before
 

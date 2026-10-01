@@ -83,8 +83,14 @@ export default function usePriceWeek({ restaurantId, weekStart, threshold, enabl
             if (failed) { setError(friendlyError(failed)); return }
 
             // The invoices the credits are against, to tell a whole delivery
-            // sent back from a line or two.
-            const against = [...new Set((credits.data || []).map(c => c.credit_of_invoice_id).filter(Boolean))]
+            // sent back from a line or two. And the ones this week's claims
+            // were put against, for the day each delivery landed: a claim
+            // whose delivery's report had already gone out comes off this
+            // week, and says which week it is from. See fromEarlierWeeks.
+            const against = [...new Set([
+                ...(credits.data || []).map(c => c.credit_of_invoice_id),
+                ...(claims.data || []).filter(c => c.counted_week === weekStart).map(c => c.invoice_id),
+            ].filter(Boolean))]
             const invoices = against.length
                 ? await supabase.from('invoices')
                     .select('id, invoice_number, invoice_date, total_amount')

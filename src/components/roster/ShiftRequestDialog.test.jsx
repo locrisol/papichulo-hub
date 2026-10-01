@@ -79,3 +79,83 @@ describe('changing who to ask', () => {
         }))
     })
 })
+
+// Only the person asked can answer, so asking somebody with no account left
+// the request waiting on them for good with nobody told.
+describe('somebody with no account', () => {
+    const people = PEOPLE.map(p => ({ ...p, has_login: p.id !== 'cal' }))
+
+    it('is offered under Cannot, and cannot be picked', () => {
+        const onSend = vi.fn()
+        render(
+            <ShiftRequestDialog
+                mine={ANA_WED} theirs={null} meId="ana" weekShifts={WEEK} employees={people}
+                absences={[]} dayNotes={[]} openingHours={null} breakRules={null}
+                onSend={onSend} onClose={() => {}} saving={false}
+            />,
+        )
+        const cal = screen.getByRole('button', { name: /Cal Byrne/ })
+        expect(cal).toBeDisabled()
+        expect(cal).toHaveTextContent('No account')
+    })
+
+    it('cannot be asked for their shift, and says to ask a manager', () => {
+        const onSend = vi.fn()
+        render(
+            <ShiftRequestDialog
+                mine={null} theirs={WEEK[2]} meId="ana" weekShifts={WEEK} employees={people}
+                absences={[]} dayNotes={[]} openingHours={null} breakRules={null}
+                onSend={onSend} onClose={() => {}} saving={false}
+            />,
+        )
+        expect(screen.getByText('Cal Byrne does not have an account, so they cannot answer. Ask a manager instead.'))
+            .toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Send the ask' })).toBeDisabled()
+    })
+})
+
+// Part of a shift has to be part of it. Approving keeps whatever is either
+// side of the hours named, so hours typed outside the shift became hours
+// nobody had been rostered for.
+describe('giving part of a shift', () => {
+    const pick = (label, value) => fireEvent.change(screen.getAllByLabelText(label)[0], { target: { value } })
+
+    it('will not send hours that run past the end of the shift', () => {
+        const onSend = draw()
+        fireEvent.click(screen.getByRole('button', { name: 'Part of it' }))
+        pick('From', '19:00')
+        pick('To', '23:00')
+        fireEvent.click(screen.getByRole('button', { name: /Ben Walsh/ }))
+
+        expect(screen.getByText('The hours you are giving must be within the shift.')).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Send the ask' })).toBeDisabled()
+        send()
+        expect(onSend).not.toHaveBeenCalled()
+    })
+
+    it('sends hours inside it', () => {
+        const onSend = draw()
+        fireEvent.click(screen.getByRole('button', { name: 'Part of it' }))
+        pick('From', '19:00')
+        pick('To', '21:00')
+        fireEvent.click(screen.getByRole('button', { name: /Ben Walsh/ }))
+        send()
+
+        expect(onSend).toHaveBeenCalledWith(expect.objectContaining({
+            give_from: '19:00', give_to: '21:00',
+        }))
+    })
+
+    it('checks the hours asked for back the same way', () => {
+        const onSend = draw()
+        fireEvent.click(screen.getByRole('button', { name: /Ben Walsh/ }))
+        fireEvent.click(screen.getByRole('button', { name: /09:00 to 17:00/ }))
+        fireEvent.click(screen.getAllByRole('button', { name: 'Part of it' })[1])
+        pick('From', '16:00')
+        pick('To', '18:00')
+
+        expect(screen.getByText('The hours you are asking for must be within the shift.')).toBeInTheDocument()
+        send()
+        expect(onSend).not.toHaveBeenCalled()
+    })
+})

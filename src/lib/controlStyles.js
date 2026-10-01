@@ -96,6 +96,19 @@ export const compactField =
     'w-full bg-white border border-border rounded-lg px-2 py-2 text-sm text-gray-900 '
     + 'focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent'
 
+// A box that is filled in and cannot be typed in: a field locked until Edit is
+// pressed, or a figure that comes from somewhere else, like the total of an
+// invoice read in from the supplier's document.
+//
+// The same box greyed, rather than the value as loose text, so it reads as the
+// field it is. LockedField and the invoice form each had this written out and
+// each said it matched the other, which is the second copy.
+//
+// No width, padding or text size. The caller adds those to match the boxes
+// beside it, and two classes for one property on an element are settled by
+// stylesheet order, not by the order they are written.
+export const lockedField = 'border border-border rounded-lg bg-app-bg text-muted cursor-not-allowed'
+
 // Something went wrong.
 //
 // Red 700 rather than 600, which is what the majority already used and the one
@@ -117,6 +130,15 @@ export const errorBanner = 'text-sm text-red-700 bg-red-50 rounded-lg p-3'
 // padding, so they move over as each screen is next worked on rather than all
 // at once. No margin, for the same reason as errorBanner.
 export const warningNote = 'text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-lg p-3'
+
+// The same note in red, for something already wrong that a customer could be
+// told, like products with allergens not set. Not an error: nothing failed,
+// so it is not errorBanner and carries no alert. Red 800 on the pale red is
+// about 7.7 to 1.
+//
+// The roster and the invoice documents each have one of these written out by
+// hand. They can move over when those screens are next worked on.
+export const urgentNote = 'text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg p-3'
 
 export const labelClass = 'text-xs text-gray-500 mb-1 block'
 
@@ -293,6 +315,57 @@ export function rowButton(tone = 'plain') {
 // top, since what the colour means is different every time.
 export const badge =
     'inline-block px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap'
+
+// The little count at the end of an item in the sidebar: requests waiting on
+// Roster, products with allergens not set on Products.
+//
+// The roster's was written inside AppLayout, and a second one was coming, with
+// more planned after it. Here so they are one size and one shape, and only the
+// colour says which kind it is.
+//
+//   waiting   amber, something waiting on you. Its white number is about 2.1
+//             to 1, which fails for text this size. Kept as it was for now;
+//             the plan for the rest of the sidebar counts gives it a dark
+//             number instead.
+//   urgent    red, something already wrong that a customer could be told.
+//             red-600 is the one that works both ways: the white number on it
+//             is 4.8 to 1, and the disc is 3 to 1 against the sidebar green.
+//             red-700 makes a better number and a disc that sinks into the
+//             green at 2.2.
+//
+// relative because the count carries words for a screen reader beside the
+// number, and those are absolutely placed. Without a positioned parent they
+// are placed against the whole page, and a sidebar item low enough down can
+// stretch it.
+export function navBadge(tone = 'waiting') {
+    const colour = {
+        waiting: 'bg-amber-500 text-white',
+        urgent: 'bg-red-600 text-white',
+    }[tone] || 'bg-amber-500 text-white'
+
+    return `relative ${colour} text-[0.65rem] font-bold min-w-[1.15rem] h-[1.15rem] px-1 `
+        + 'rounded-full grid place-items-center flex-shrink-0'
+}
+
+// The same counts as a dot on the menu button, for a phone. The sidebar is a
+// drawer there, so none of its counts show until it is opened, and this says
+// there is something in it. The tones are navBadge's, and the most urgent one
+// present wins.
+//
+// A shape with no number, so it needs 3 to 1 against what is around it, which
+// is the white ring. red-600 is 4.8. The roster count's own amber-500 is about
+// 2.1, so waiting is one step darker here: amber-600 is 3.2 and still reads as
+// the same amber. The ring keeps it apart from the lines of the icon under it.
+//
+// The button it sits on has to be relative, and carries the words for it.
+export function menuDot(tone = 'waiting') {
+    const colour = {
+        waiting: 'bg-amber-600',
+        urgent: 'bg-red-600',
+    }[tone] || 'bg-amber-600'
+
+    return `absolute top-1 right-1 w-2.5 h-2.5 rounded-full ring-2 ring-white ${colour}`
+}
 
 // "This week" and "Today", which jump back to now. They read as selected when
 // you are already there, so they need an on and an off state.

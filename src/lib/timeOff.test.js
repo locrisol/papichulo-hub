@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
     NOTICE_DEFAULT, noticeDays, noticeBlocks, daysBefore, noticeProblem,
     isPartDay, requestLabel, partWords, hitsShift, shiftsHit, partDaySpans,
-    isCovered, openGaps, waiting, askedOff,
+    isCovered, openGaps, waiting, askedOff, cannotAnswer,
 } from '@/lib/timeOff'
 
 const TODAY = '2026-09-04'
@@ -114,6 +114,14 @@ describe('which shifts it lands on', () => {
     it('is not bothered by a day outside the dates', () => {
         expect(hitsShift(week, shift('2026-09-21', '09:00', '17:00'))).toBe(false)
     })
+
+    // A shift to midnight ends that night. Read as nought, it finished before
+    // twenty past anything and never clashed with anybody leaving early.
+    it('sees a shift to midnight run past somebody finishing at eight', () => {
+        const part = ask({ kind: 'day_off', starts_on: '2026-09-26', ends_on: '2026-09-26', can_work_to: '20:00' })
+        expect(hitsShift(part, shift('2026-09-26', '17:00', '00:00:00'))).toBe(true)
+        expect(hitsShift(part, shift('2026-09-26', '17:00', '01:30'))).toBe(true)
+    })
 })
 
 describe('what a freed day leaves behind', () => {
@@ -144,6 +152,18 @@ describe('what a freed day leaves behind', () => {
             [shift('2026-09-14', '11:00', '15:00', 'e2')])).toBe(true)
     })
 
+    it('counts a shift to midnight as covering the evening', () => {
+        expect(isCovered({ date: '2026-09-26', starts_at: '18:00', ends_at: '22:00' },
+            [shift('2026-09-26', '17:00', '00:00', 'e2')])).toBe(true)
+    })
+
+    it('counts the evening of a gap that ran to midnight as still there to cover', () => {
+        expect(isCovered({ date: '2026-09-26', starts_at: '17:00', ends_at: '00:00' },
+            [shift('2026-09-26', '21:00', '23:00', 'e2')])).toBe(true)
+        expect(isCovered({ date: '2026-09-26', starts_at: '17:00', ends_at: '00:00' },
+            [shift('2026-09-26', '09:00', '13:00', 'e2')])).toBe(false)
+    })
+
     it('does not count a shift that finished before the gap started', () => {
         expect(isCovered({ date: '2026-09-14', starts_at: '15:00', ends_at: '23:00' },
             [shift('2026-09-14', '08:30', '15:00', 'e2')])).toBe(false)
@@ -155,6 +175,30 @@ describe('what a freed day leaves behind', () => {
 
     it('says nothing about a request nobody has answered yet', () => {
         expect(openGaps([{ ...approved, status: 'requested' }], [], [])).toEqual([])
+    })
+})
+
+// A manager's own holiday is an owner's to say yes to. The mail already went
+// to the owners and the roster still offered the manager Answer it.
+describe('who cannot answer a request', () => {
+    const mine = ask({ employee_id: 'e7' })
+
+    it('is a store manager, about their own request', () => {
+        expect(cannotAnswer(mine, 'e7', 'store_manager')).toBe(true)
+    })
+
+    // Part of a day stays theirs, the same as the mail: nobody is told when a
+    // manager asks to leave at three, so nobody else would ever answer it.
+    it('is not a store manager about their own part of a day', () => {
+        expect(cannotAnswer(ask({ employee_id: 'e7', can_work_to: '15:00' }), 'e7', 'store_manager')).toBe(false)
+        expect(cannotAnswer(ask({ employee_id: 'e7', can_work_from: '12:00' }), 'e7', 'store_manager')).toBe(false)
+    })
+
+    it('is nobody else', () => {
+        expect(cannotAnswer(mine, 'e1', 'store_manager')).toBe(false)
+        expect(cannotAnswer(mine, 'e7', 'owner')).toBe(false)
+        expect(cannotAnswer(mine, 'e7', 'super_admin')).toBe(false)
+        expect(cannotAnswer(mine, null, 'store_manager')).toBe(false)
     })
 })
 

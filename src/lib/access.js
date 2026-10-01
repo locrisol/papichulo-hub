@@ -45,9 +45,11 @@ export function homeFor(user) {
 
 // Whether one person can turn another person's account on or off.
 //
-// This follows the same rule the database uses: you can only act on someone
-// below your own level, and only at your own restaurant. Super Admin is the
-// exception and can act on anyone.
+// Only a super admin, and the database says the same. The Users page has been
+// the super admin's alone since 8 September, and the account rule in the
+// database was narrowed to match it. An owner or a store manager switches
+// somebody off on Team instead, by giving them a last day, and the login goes
+// off the night after it.
 //
 // Without this the buttons show for everyone and simply do nothing when
 // pressed, because the database refuses the change.
@@ -57,16 +59,5 @@ export function canManageUser(actor, target) {
     // Nobody deactivates themselves.
     if (actor.id === target.id) return false
 
-    if (actor.role === 'super_admin') return true
-
-    // Everyone else is limited to their own restaurant.
-    if (actor.restaurant_id !== target.restaurant_id) return false
-
-    if (actor.role === 'owner') {
-        return target.role === 'store_manager' || target.role === 'employee'
-    }
-    if (actor.role === 'store_manager') {
-        return target.role === 'employee'
-    }
-    return false
+    return actor.role === 'super_admin'
 }

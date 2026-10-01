@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { shortDate } from '@/lib/dates'
 import {
     CITY_CAPACITY,
     WALKABLE_MINUTES,
@@ -38,6 +39,14 @@ import {
     sourceKeyFor,
     samePlace,
     couldBeSamePlace,
+    offFor,
+    offWords,
+    markedWords,
+    forRoster,
+    feedWords,
+    feedTrouble,
+    placeToFill,
+    rosterNearby,
 } from '@/lib/nearby'
 
 const arena = { id: 'p1', name: '3Arena', short_name: '3Arena', ticketmaster_venue_id: 'KovZ9177WYV' }
@@ -648,6 +657,26 @@ describe('when a page was last read', () => {
     it('says nothing about a place with no page', () => {
         expect(readWords(arena, '2026-11-19')).toBe('')
     })
+
+    // A page that failed every Monday only left an old date, with nothing
+    // saying why. What went wrong comes first, then the last read that worked.
+    it('says what went wrong the last time, and when it last worked', () => {
+        const failing = {
+            ...odeon, last_read_at: '2026-11-10T06:00:00', last_read_count: 4,
+            read_problem: 'Gemini was busy. It will try again at the next read.',
+        }
+        expect(readWords(failing, '2026-11-19'))
+            .toBe(`Gemini was busy. It will try again at the next read. Last read on ${shortDate('2026-11-10')}.`)
+        expect(readWords({ ...odeon, read_problem: 'The page could not be reached.' }, '2026-11-19'))
+            .toBe('The page could not be reached. Never read.')
+    })
+
+    // What went wrong is a sentence, and one saved before it was always one
+    // still reads as one.
+    it('ends what went wrong with a full stop, whether it was saved with one or not', () => {
+        expect(readWords({ ...odeon, read_problem: 'The page could not be read' }, '2026-11-19'))
+            .toBe('The page could not be read. Never read.')
+    })
 })
 
 describe('finding the next restaurant its places', () => {
@@ -808,5 +837,175 @@ describe('a row keeps its colour on a week with nothing on', () => {
         const big = { ...arena, capacity: 82300 }
         const rows = nearbyRows([gig], [{ ...pair[0], place: big }], {})
         expect(ownRows(rows, [big])[0].kind).toBe('city')
+    })
+})
+
+// A 3Arena show called off kept its purple chip on the roster, the picture
+// sent to the group and every My shifts. Ticketmaster spells it canceled, and
+// only cancelled was known anywhere.
+describe('a night that is not going ahead', () => {
+    const off = { ...gig, id: 'e9', status: 'canceled' }
+
+    it('knows both spellings, in any case', () => {
+        expect(offFor({ status: 'canceled' })).toBe('cancelled')
+        expect(offFor({ status: 'Cancelled' })).toBe('cancelled')
+        expect(offFor({ status: 'onsale' })).toBe('')
+        expect(offFor({ status: 'postponed' })).toBe('')
+        expect(offFor({})).toBe('')
+    })
+
+    it('has words for the calendar', () => {
+        expect(offWords('cancelled')).toBe('Cancelled')
+        expect(offWords('withdrawn')).toBe('No longer listed')
+        expect(offWords('')).toBe('')
+    })
+
+    // Ours, written by the sync when a whole answer no longer lists a night
+    // still to come. It is something we worked out rather than something we
+    // were told, so it stays on the roster and says so. Taken off, a show
+    // still on would leave that night looking quiet with nothing to say why.
+    it('keeps a night the feed no longer lists on the roster, marked', () => {
+        const gone = { ...gig, id: 'e6', status: 'withdrawn' }
+        expect(offFor(gone)).toBe('withdrawn')
+        const rows = forRoster(nearbyRows([gig, gone], pairs, {}))
+        expect(rows.map(r => r.event.id)).toEqual(['e1', 'e6'])
+        expect(markedWords(rows[1], { withPlace: false })).toBe('Kings of Leon (No longer listed)')
+        expect(markedWords(rows[0], { withPlace: false })).toBe('Kings of Leon')
+    })
+
+    // The calendar shares nearbyRows, and it is the one screen that keeps the
+    // night so it can say it is off.
+    it('stays in the rows the calendar draws, marked', () => {
+        const rows = nearbyRows([gig, off], pairs, {})
+        expect(rows.map(r => r.event.id)).toEqual(['e1', 'e9'])
+        expect(rows.map(r => r.off)).toEqual(['', 'cancelled'])
+    })
+
+    it('comes off the roster', () => {
+        const rows = forRoster(nearbyRows([gig, off, { ...gig, id: 'e8', status: 'cancelled' }], pairs, {}))
+        expect(rows.map(r => r.event.id)).toEqual(['e1'])
+    })
+
+    // Postponed with the old date kept may still go ahead, and the modal says
+    // so. Off sale is usually sold out, which is the opposite of off.
+    it('keeps a postponed night and a sold out one', () => {
+        const rows = forRoster(nearbyRows([
+            { ...gig, status: 'postponed' }, { ...gig, id: 'e7', status: 'offsale' },
+        ], pairs, {}))
+        expect(rows).toHaveLength(2)
+    })
+
+    // The Arena's row is drawn from the pairings, so on that night it reads as
+    // the ordinary night it now is rather than vanishing.
+    it('leaves the headline row in place', () => {
+        const rows = forRoster(nearbyRows([off], pairs, {}))
+        expect(ownRows(rows, headlinePlaces(pairs, {}))).toEqual([
+            { place: arena, kind: 'arena', rows: [] },
+        ])
+    })
+})
+
+// What the last sync of a feed said, on the settings row and wherever a
+// manager plans the week. A revoked key looked exactly like a quiet fortnight.
+describe('how the feed last went', () => {
+    const NOW = new Date('2026-10-01T12:00:00')
+    const fine = { ...arena, feed_synced_at: '2026-10-01T05:15:00', feed_count: 75, feed_problem: null }
+    // What nearby-events keeps on the place when Ticketmaster refuses the key.
+    const REFUSED = "Ticketmaster did not accept the Hub's key. Whoever set up the Hub needs to check it."
+
+    it('says when and how many on the settings row', () => {
+        expect(feedWords(fine, '2026-10-01')).toBe('checked today, 75 listed')
+        expect(feedWords({ ...fine, feed_count: 0 }, '2026-10-01')).toBe('checked today, nothing listed')
+        expect(feedWords(arena, '2026-10-01')).toBe('not checked yet')
+        expect(feedWords(odeon, '2026-10-01')).toBe('')
+    })
+
+    it('says what went wrong instead, when it did', () => {
+        expect(feedWords({ ...fine, feed_problem: REFUSED }, '2026-10-01'))
+            .toBe(REFUSED)
+    })
+
+    it('tells the week planners about a refusal', () => {
+        const broke = { ...fine, feed_synced_at: '2026-09-14T05:15:00', feed_problem: REFUSED }
+        const out = feedTrouble([{ ...pairs[0], place: broke }], {}, NOW)
+        expect(out).toHaveLength(1)
+        expect(out[0].words).toBe(`3Arena: ${REFUSED} Last updated ${shortDate('2026-09-14')}.`)
+    })
+
+    // The schedule stopping, or the function failing before it reached any
+    // place, writes nothing at all. Two days without an answer is the sign.
+    it('tells them when nothing has come in for two days', () => {
+        const old = { ...fine, feed_synced_at: '2026-09-28T05:15:00' }
+        expect(feedTrouble([{ ...pairs[0], place: old }], {}, NOW)[0].words)
+            .toBe(`3Arena: not updated since ${shortDate('2026-09-28')}.`)
+    })
+
+    it('says nothing about a feed that is fine, or one never asked yet', () => {
+        expect(feedTrouble([{ ...pairs[0], place: fine }], {}, NOW)).toEqual([])
+        expect(feedTrouble(pairs, {}, NOW)).toEqual([])
+    })
+
+    it('leaves out a place nobody is watching', () => {
+        const broke = { ...arena, feed_problem: REFUSED }
+        expect(feedTrouble([{ ...pairs[0], place: broke, is_active: false }], {}, NOW)).toEqual([])
+    })
+})
+
+// Watching a venue the search turned up fills in the place we already have
+// when it is the same building. It used to fill in any place with a matching
+// name, venue id or not, so a second Ticketmaster venue called "The Convention
+// Centre Dublin Auditorium" re-pointed the Convention Centre we already had.
+describe('which place a venue from the search fills in', () => {
+    const ccd = { id: 'p5', name: 'Convention Centre Dublin', ticketmaster_venue_id: null }
+    const ccdFed = { ...ccd, ticketmaster_venue_id: 'A' }
+
+    it('fills in the place with the same venue id', () => {
+        expect(placeToFill([ccdFed, arena], { ticketmaster_venue_id: 'KovZ9177WYV', name: '3Arena Dublin' }))
+            .toBe(arena)
+    })
+
+    // The case the merge was built for: on the list with a page and no feed.
+    it('fills in a place of the same name that has no venue id yet', () => {
+        expect(placeToFill([ccd], { ticketmaster_venue_id: 'A', name: 'The Convention Centre Dublin' }))
+            .toBe(ccd)
+    })
+
+    it('never re-points a place that already has a different venue id', () => {
+        expect(placeToFill([ccdFed], { ticketmaster_venue_id: 'B', name: 'The Convention Centre Dublin Auditorium' }))
+            .toBe(null)
+    })
+
+    it('prefers the venue id to a name', () => {
+        const auditorium = { id: 'p9', name: 'The Auditorium', ticketmaster_venue_id: 'B' }
+        expect(placeToFill([ccd, auditorium], { ticketmaster_venue_id: 'B', name: 'Convention Centre Dublin' }))
+            .toBe(auditorium)
+    })
+})
+
+// The roster and My shifts read the listings and the pairings beside the
+// shifts, and looked at neither answer. A failed read of the listings with the
+// pairings fine drew the Arena row with a dash on every day: a quiet week that
+// nobody had checked, looking exactly like one somebody had.
+describe('what the roster gets from the two reads', () => {
+    const ok = data => ({ data, error: null })
+    const failed = { data: null, error: { message: 'Failed to fetch' } }
+
+    it('hands over the rows going ahead and the headline places', () => {
+        const out = rosterNearby(ok([gig, { ...gig, id: 'e9', status: 'canceled' }]), ok(pairs), {})
+        expect(out.rows.map(r => r.event.id)).toEqual(['e1'])
+        expect(out.places).toEqual([arena])
+        expect(out.pairings).toBe(pairs)
+        expect(out.failed).toBe(null)
+    })
+
+    // No headline row at all, and the failure to say why, rather than a row
+    // of dashes that reads as checked.
+    it('draws no headline row when the listings could not be read', () => {
+        const out = rosterNearby(failed, ok(pairs), {})
+        expect(out).toMatchObject({ rows: [], places: [], failed: failed.error })
+    })
+
+    it('draws nothing when the places could not be read either', () => {
+        expect(rosterNearby(ok([gig]), failed, {})).toMatchObject({ rows: [], places: [], failed: failed.error })
     })
 })

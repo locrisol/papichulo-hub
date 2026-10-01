@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest'
 import {
     csvRows, longDate, stamp, fileHeader, readTimesheet, fileFits, insideWeek,
-    isoStamp, BREAK_KIND,
+    isoStamp, sameTimeWho, BREAK_KIND,
 } from '@/lib/timesheetImport'
 
 // The real export's shape, with invented people.
@@ -310,5 +310,54 @@ describe('a file that covers more than the week', () => {
         const mine = insideWeek({ shifts: [{ work_date: '2026-09-15' }], breaks: [] }, '2026-09-13', '2026-09-19')
         expect(mine.outside).toBe(0)
         expect(mine.outsideWeeks).toEqual([])
+    })
+})
+
+// A clock in and a clock out on the same second is no work at all. Kept as a
+// shift it came to 24 hours, because an end at or before the start is read as
+// the next morning, and the database refuses one now, so it is set aside on
+// the way in rather than failing the whole upload.
+describe('a clock in and out at the same time', () => {
+    it('is not a shift', () => {
+        const read = readTimesheet([
+            line('QUINN Aoife', 'Shift', '06/09/2026', '11:58:04', '20:03:12', '8.09', '133.49'),
+            line('Rosa', 'Shift', '07/09/2026', '09:00:00', '09:00:00', '0.00', '0.00'),
+        ].join('\n'))
+
+        expect(read.shifts.map(s => s.name)).toEqual(['QUINN Aoife'])
+        expect(read.sameTime).toHaveLength(1)
+        expect(read.sameTime[0]).toMatchObject({ name: 'Rosa', work_date: '2026-09-07' })
+    })
+
+    it('is not a shift in the XML either', () => {
+        const read = readTimesheet(XML.replace('2026-09-14T17:16:16', '2026-09-14T08:30:03'))
+
+        expect(read.shifts.map(s => s.work_date)).toEqual(['2026-09-20'])
+        expect(read.sameTime).toHaveLength(1)
+    })
+
+    it('is counted for the week on screen only', () => {
+        const mine = insideWeek({
+            shifts: [],
+            breaks: [],
+            sameTime: [{ work_date: '2026-09-15' }, { work_date: '2026-09-22' }],
+        }, '2026-09-13', '2026-09-19')
+
+        expect(mine.sameTime).toHaveLength(1)
+    })
+
+    // One may be a real shift the till never caught the end of, so the screen
+    // says whose and which day, not only how many.
+    it('is named, with the day and the time', () => {
+        expect(sameTimeWho([
+            { name: 'Rosa', work_date: '2026-09-07', starts_at: '09:00:00' },
+            { name: 'QUINN Aoife', work_date: '2026-09-08', starts_at: '17:30:12' },
+        ])).toBe('Rosa, Mon 7 Sept at 09:00; QUINN Aoife, Tue 8 Sept at 17:30')
+        expect(sameTimeWho([])).toBe('')
+    })
+
+    it('is nothing to mention in a file without one', () => {
+        expect(readTimesheet(FILE).sameTime).toEqual([])
+        expect(insideWeek({ shifts: [], breaks: [] }, '2026-09-13', '2026-09-19').sameTime).toEqual([])
     })
 })

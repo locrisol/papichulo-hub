@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { lockedField } from '@/lib/controlStyles'
 
 // A field that is filled in already, shown locked until somebody says otherwise.
 //
@@ -51,8 +52,7 @@ export default function LockedField({ value, display, children, label }) {
                 disabled
                 readOnly
                 aria-label={label ? `${label}, locked` : 'Locked'}
-                className="flex-1 min-w-[7rem] border border-border rounded-lg px-3 py-2 text-sm
-                    bg-app-bg text-muted cursor-not-allowed"
+                className={`${lockedField} flex-1 min-w-[7rem] px-3 py-2 text-sm`}
             />
             <button
                 type="button"

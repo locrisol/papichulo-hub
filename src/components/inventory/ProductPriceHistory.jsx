@@ -18,7 +18,11 @@ import PriceHistoryChart from '@/components/inventory/PriceHistoryChart'
 // A voided invoice is left out. A delivery that was reversed in full the next
 // day is not evidence of what anything costs, and three of those turned up in
 // the one month this was designed against.
-export default function ProductPriceHistory({ productId, restaurantId, product, suppliers }) {
+//
+// refresh is bumped by the page whenever it moves a price, so the chart above
+// the rows follows the change straight away. What is drawn stays until the new
+// answer replaces it, so the chart does not blink out and back.
+export default function ProductPriceHistory({ productId, restaurantId, product, suppliers, refresh = 0 }) {
     const [data, setData] = useState(null)
     const [error, setError] = useState('')
 
@@ -74,7 +78,7 @@ export default function ProductPriceHistory({ productId, restaurantId, product, 
 
         load()
         return () => { alive = false }
-    }, [productId, restaurantId])
+    }, [productId, restaurantId, refresh])
 
     const series = useMemo(
         () => (data ? seriesFor({ ...data, suppliers }) : null),

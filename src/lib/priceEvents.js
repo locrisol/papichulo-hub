@@ -182,17 +182,35 @@ export function movePreferred(product, to, { restaurantId, userId, from = null, 
 // **It is the first point on the graph, marked as typed rather than dressed up
 // as a document.** Eight months of prices were entered by hand and they are
 // real, they just cannot be opened and looked at.
-export function typedPrice(product, price, { restaurantId, userId, at = null, first = false } = {}) {
+export function typedPrice(product, price, { restaurantId, userId, at = null, first = false, previous = null } = {}) {
     return {
         restaurant_id: restaurantId,
         product_id: product.id,
         price_id: price.id,
         at,
         price_per_unit: to4(price.price_per_unit),
-        previous_per_unit: null,
+        previous_per_unit: to4(previous?.price_per_unit),
         reason: first ? 'created' : 'by_hand',
         changed_by: userId || null,
     }
+}
+
+// What saving a price by hand puts on the graph, if anything.
+//
+// The Prices page and the product form wrote prices straight in and recorded
+// nothing, so the product's own line stayed on whatever an invoice last said
+// while every recipe had moved on. `before` is the row as it was, or nothing
+// for a new one.
+//
+// **Only the preferred price gets one.** The product's line is what the Hub
+// costs from, and an event on a second supplier's price would pull the line
+// onto a price nothing is costed from. **And only when the price per unit
+// moved**, because the product form saves the preferred price again every time
+// the product itself is saved.
+export function typedPriceEvent(product, saved, { before = null, restaurantId, userId, at = null } = {}) {
+    if (!saved?.is_preferred) return null
+    if (before && to4(before.price_per_unit) === to4(saved.price_per_unit)) return null
+    return typedPrice(product, saved, { restaurantId, userId, at, first: !before, previous: before })
 }
 
 // What a code now means, once somebody has said.

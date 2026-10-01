@@ -14,6 +14,7 @@ import { useState as useLocalState } from 'react'
 import {
     reportFigures, sectionKey, publishCheck, figuresToStore, platformShare,
     deliveryRows, deliveryBlockers, deliveryCost, platformTaken, statementWeek, statementWords, platformWeeks,
+    isCorrection, mailMissing,
 } from '@/lib/weeklyReport'
 import { keyedPlatforms, platformsToShow } from '@/lib/salesTenders'
 import { paperworkFor } from '@/lib/reportPeople'
@@ -65,6 +66,9 @@ import ErrorBanner from '@/components/ui/ErrorBanner'
 // uses one, because a food cost moving by a tenth of a point is a real
 // change on a week's turnover and gets argued about.
 const pct2 = v => fmtPct(v, 2)
+
+// What stands in the way of Publish while part of the week could not be read.
+const UNREAD = 'Part of this week could not be read, so it cannot go out yet. Reload the page to try again.'
 
 const TONE = {
     green: 'text-green-700',
@@ -119,6 +123,15 @@ export default function ReportPage() {
     const [history, setHistory] = useState([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
+    // Why the last read of the week stopped short, or empty when it did not.
+    //
+    // Every read used to fall back to nothing when it failed. No platforms
+    // meant no delivery costs, so the week's earnings went up by all of them;
+    // no team meant the paperwork said there was nobody to check. Publish then
+    // froze that and mailed it. So a read that fails stops the load, says so,
+    // and holds Publish until a read of the whole week works. It is kept apart
+    // from `error`, which any write also sets and clears.
+    const [readFailed, setReadFailed] = useState('')
     // Bumped after every write. The page reloads rather than each section
     // keeping its own copy of the truth, which is how two parts of a screen
     // end up disagreeing about what was just saved.
@@ -211,6 +224,10 @@ export default function ReportPage() {
     // list, the same one every week until somebody changes it.
     const [owners, setOwners] = useState([])
     const [extras, setExtras] = useState([])
+    // Whether the standing list was read. Read as empty when it was not, and
+    // adding one address then saved a list of one over the whole of it, which
+    // dropped the accountant from every week after without a word.
+    const [extrasRead, setExtrasRead] = useState(false)
     // reprintDue's answer for this restaurant's allergen sheet: null while a
     // new one is not due, and undefined until it could be worked out.
     const [allergenSheet, setAllergenSheet] = useState(undefined)
@@ -220,6 +237,19 @@ export default function ReportPage() {
 
         async function load() {
             setError('')
+            // readFailed is not cleared here but at the very end, once every
+            // read has come back. Cleared here, a reload after a write lifted
+            // the hold the moment it started, and for the seconds the year of
+            // history takes, Publish froze what the failed read had left.
+
+            // A read that failed. Said, and Publish held, rather than the
+            // week drawn and frozen with that part missing.
+            const stop = err => {
+                const said = friendlyError(err)
+                setError(said)
+                setReadFailed(said)
+                setLoading(false)
+            }
 
             const { data: head, error: hErr } = await supabase
                 .from('weekly_reports')
@@ -227,7 +257,9 @@ export default function ReportPage() {
                 .eq('id', id)
                 .single()
 
-            if (hErr) { setError(friendlyError(hErr)); setLoading(false); return }
+            // Held too: on a reload the page still has the last read's week,
+            // and that is not what was just saved.
+            if (hErr) return stop(hErr)
 
             // Switching restaurant while a report is open leaves the page
             // for the list rather than staying put.
@@ -279,6 +311,7 @@ export default function ReportPage() {
                     .eq('restaurant_id', head.restaurant_id)
                     .gte('sale_date', weekStart).lte('sale_date', addDays(end, 1)),
             ])
+            if (plats.error || days2.error) return stop(plats.error || days2.error)
 
             // The active ones, and any retired since that took money in these
             // days, the same as the week grid shows. Retiring one mid week
@@ -314,7 +347,7 @@ export default function ReportPage() {
                 ])
 
                 const failed = days.error || spend.error || labour.error
-                if (failed) { setError(friendlyError(failed)); setLoading(false); return }
+                if (failed) return stop(failed)
 
                 const all = (head.report_sections || []).flatMap(s => s.report_items || [])
                 // What each platform cost in our week, from its statement and
@@ -352,6 +385,8 @@ export default function ReportPage() {
                 // line in the paperwork saying a new one is due.
                 supabase.rpc('allergens_changed_at'),
             ])
+            setExtrasRead(!place.error)
+            if (ownerRows.error || place.error) return stop(ownerRows.error || place.error)
             setOwners(ownerRows.data || [])
             setExtras(place.data?.report_recipients || [])
 
@@ -418,6 +453,10 @@ export default function ReportPage() {
                     .eq('restaurant_id', head.restaurant_id)
                     .gte('week_start', yearFrom).lte('week_start', weekStart),
             ])
+            // The charts go out as pictures, so a year that did not come back
+            // would be mailed as a line along the bottom.
+            const lost = hDays.error || hSpend.error || hLabour.error || hReports.error
+            if (lost) return stop(lost)
 
             const trading = (hDays.data || []).filter(d => !d.is_closed)
             const netWeeks = byWeek(trading, 'sale_date', d => d.net_sales)
@@ -504,19 +543,21 @@ export default function ReportPage() {
             // The team, for the paperwork lines. Only the fields the
             // section reads, so a mail built from this cannot carry anything
             // else about anybody.
-            const { data: team } = await supabase
+            const { data: team, error: teamError } = await supabase
                 .from('employees')
                 .select('id, full_name, started_on, ended_on, on_trial, food_safety_expires, work_permission, work_permission_expires, permission_renewal_applied')
                 .eq('restaurant_id', head.restaurant_id)
+            if (teamError) return stop(teamError)
             setEmployees(team || [])
 
             // Targets are looked up for the week being reported on rather than
             // taken from today's settings, so a target changed in September
             // does not change how an August week is judged.
-            const { data: overrides } = await supabase
+            const { data: overrides, error: targetError } = await supabase
                 .from('cost_target_overrides')
                 .select('*')
                 .eq('restaurant_id', head.restaurant_id)
+            if (targetError) return stop(targetError)
 
             setTargets({
                 food: resolveTarget(overrides || [], 'food', weekStart, num(activeRestaurant?.food_cost_target)),
@@ -524,6 +565,7 @@ export default function ReportPage() {
                 packaging: resolveTarget(overrides || [], 'packaging', weekStart, num(activeRestaurant?.packaging_cost_target)),
             })
 
+            setReadFailed('')
             setLoading(false)
         }
 
@@ -744,10 +786,11 @@ export default function ReportPage() {
 
     async function publish() {
         const check = publishCheck(sections, figures, deliveryHeld)
-        if (check.blockers.length > 0) return
+        if (readFailed || check.blockers.length > 0) return
         if (stillReading()) return
 
-        const first = (report.send_count || 0) === 0
+        // First unless an earlier send reached somebody. See isCorrection.
+        const first = !isCorrection(report)
         const ok = await confirm({
             title: first ? 'Send this report?' : 'Send a correction?',
             message: first
@@ -771,7 +814,7 @@ export default function ReportPage() {
             // What the last mail said, kept so the next one can say what
             // changed. Only from the second send on: the first has nothing to
             // be a correction of.
-            const previous = (report.send_count || 0) > 0 ? report.figures : null
+            const previous = first ? null : report.figures
 
             const { error: saveError } = await supabase.from('weekly_reports').update({
                 status: 'published',
@@ -780,13 +823,15 @@ export default function ReportPage() {
                 charts,
                 published_at: new Date().toISOString(),
                 published_by: user.id,
-                send_count: (report.send_count || 0) + 1,
+                // One again when nobody got the last one, because the mail
+                // calls anything past one a correction.
+                send_count: first ? 1 : (report.send_count || 0) + 1,
             }).eq('id', report.id)
             if (saveError) throw saveError
 
             // Frozen first, sent second, and deliberately in that order. A
-            // report that was frozen but not mailed can be sent again by
-            // re-opening it. One that was mailed off figures nothing kept is a
+            // report that was frozen but not mailed says so and can be sent
+            // from the bar. One that was mailed off figures nothing kept is a
             // week nobody can ever look up again.
             try {
                 const result = await sendReport({ reportId: report.id })
@@ -810,6 +855,7 @@ export default function ReportPage() {
     // confirmed, since it is silent otherwise: nothing happens until Monday,
     // and by Monday nobody remembers doing it.
     async function changeRecipients(list) {
+        if (!extrasRead) return
         const gone = extras.filter(a => !list.includes(a))
         if (gone.length > 0) {
             const ok = await confirm({
@@ -843,6 +889,9 @@ export default function ReportPage() {
     // sends a test to whoever is logged in, which is a rule a browser cannot
     // talk it out of.
     async function testSend() {
+        // A test goes to the list too, so one built from half a week is not
+        // sent either.
+        if (readFailed) { setError(UNREAD); return }
         if (stillReading()) return
         setMailed(null)
         setSaving(true)
@@ -861,13 +910,47 @@ export default function ReportPage() {
         }
     }
 
-    // Re-opening does not clear published_at or send_count. What went out went
-    // out, and the next mail has to know it is the second.
+    // Sending one that was published and never went.
+    //
+    // The report as it was frozen, mailed for the first time. Nothing is
+    // written to it here: the figures and charts are the ones already on it,
+    // and the count stays where it is, so the mail is not a correction. The
+    // function writes who it went to once it has gone, which is what turns
+    // this bar back into Sent.
+    async function sendUnsent() {
+        const ok = await confirm({
+            title: 'Send this report?',
+            message: 'It goes to everyone on the list below, with the figures as they were frozen.',
+            confirmLabel: 'Send it',
+        })
+        if (!ok) return
+
+        setMailed(null)
+        setSaving(true)
+        try {
+            const result = await sendReport({ reportId: report.id })
+            setMailed(sendWords(result))
+            setRefresh(n => n + 1)
+        } catch (err) {
+            setMailed(`The mail did not go out: ${err.message}`)
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    // Re-opening does not clear published_at, send_count or sent_to. What went
+    // out went out, and the next mail has to know whether it is a correction,
+    // which it is only when the last one reached somebody. A report whose mail
+    // never went can be re-opened too, and publishing that one again sends it
+    // for the first time, so it is not told otherwise. See isCorrection.
     async function reopen() {
         const ok = await confirm({
             title: 'Re-open this report?',
-            message: 'It goes back to a draft and the figures go live again. Nothing is unsent: publishing it '
-                + 'a second time mails a correction to everyone who got the first.',
+            message: isCorrection(report)
+                ? 'It goes back to a draft and the figures go live again. Nothing is unsent: publishing it '
+                    + 'a second time mails a correction to everyone who got the first.'
+                : 'It goes back to a draft and the figures go live again. Nobody got it the first time, so '
+                    + 'publishing it sends it as the first mail, not a correction.',
             confirmLabel: 'Re-open it',
         })
         if (!ok) return
@@ -1138,10 +1221,15 @@ export default function ReportPage() {
         return <p className="text-sm text-muted">Loading the week.</p>
     }
 
-    if (!report) {
+    // No figures means the first read of the week failed before they came
+    // back, and there is no week to draw. It used to try, and fell over on
+    // the first figure.
+    if (!report || !figures) {
         return (
             <div className="space-y-3">
-                <p className="text-sm text-red-700">{error || 'That report could not be found.'}</p>
+                <p className="text-sm text-red-700">
+                    {error || (report ? 'This week could not be read.' : 'That report could not be found.')}
+                </p>
                 <BackButton to="/reports">Back to reports</BackButton>
             </div>
         )
@@ -1150,6 +1238,7 @@ export default function ReportPage() {
     const week = report.week_start
     const salesCosts = sections.find(s => s.key === 'sales_costs')
     const check = publishCheck(sections, figures, deliveryHeld)
+    const blockers = readFailed ? [UNREAD, ...check.blockers] : check.blockers
 
     return (
         <div className="space-y-4">
@@ -1189,12 +1278,12 @@ export default function ReportPage() {
                                     : 'Saves as you type'}
                         </span>
                     )}
-                    <span className={`${badge} ${report.status === 'draft'
+                    <span className={`${badge} ${report.status === 'draft' || mailMissing(report)
                         ? 'bg-accent-light text-accent-ink'
                         : 'bg-green-50 text-green-700'}`}>
                         {report.status === 'draft'
                             ? (report.send_count > 0 ? 'Re-opened' : 'Draft')
-                            : 'Sent'}
+                            : mailMissing(report) ? 'Not sent' : 'Sent'}
                     </span>
                 </div>
             </div>
@@ -1207,7 +1296,7 @@ export default function ReportPage() {
 
             <PublishBar
                 report={report}
-                blockers={check.blockers}
+                blockers={blockers}
                 warnings={check.warnings}
                 canWrite={isStoreManager}
                 busy={saving}
@@ -1215,12 +1304,13 @@ export default function ReportPage() {
                 onPublish={publish}
                 onReopen={reopen}
                 onTest={testSend}
+                onSend={sendUnsent}
             />
 
             <Recipients
                 owners={owners}
                 extras={extras}
-                canEdit={isStoreManager}
+                canEdit={isStoreManager && extrasRead}
                 busy={saving}
                 onChange={changeRecipients}
             />

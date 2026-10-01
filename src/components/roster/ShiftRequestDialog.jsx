@@ -6,7 +6,7 @@ import { dayName } from '@/lib/events'
 import { shortTime, endLabel, fmtHours, hoursForDate } from '@/lib/roster'
 import { modalFooter, secondaryButton, rowButton, badge, labelClass, fieldClass } from '@/lib/controlStyles'
 import { NO_COLOUR } from '@/lib/team'
-import { windowOf, shortlist, hoursChange } from '@/lib/shiftRequests'
+import { windowOf, windowProblem, shortlist, hoursChange } from '@/lib/shiftRequests'
 
 // Asking somebody to take a shift, or asking for one of theirs.
 //
@@ -46,9 +46,6 @@ export default function ShiftRequestDialog({
 
     const giveWindow = giveShift
         ? windowOf(giveShift, givePart ? giveFrom : null, givePart ? giveTo : null)
-        : null
-    const takeWindow = takeShift
-        ? windowOf(takeShift, takePart ? takeFrom : null, takePart ? takeTo : null)
         : null
 
     // Who to ask, worked out from the hours actually being handed over rather
@@ -113,15 +110,27 @@ export default function ShiftRequestDialog({
         message: message.trim() || null,
     }
 
+    // Both halves, measured against their own shift. Hours outside it are
+    // hours approving would invent, and the database refuses them as well.
+    const windowSays = (on, shift, from, to, words) => {
+        if (!on || !shift) return ''
+        const wrong = windowProblem(shift, from, to)
+        if (wrong === 'order') return `The hours you are ${words} finish before they start.`
+        if (wrong) return `The hours you are ${words} must be within the shift.`
+        return ''
+    }
+
+    // Only they can answer, and without an account they never will. Opened off
+    // their shift the shortlist is never shown, so it is said here instead.
+    const askingNobody = employees.find(e => e.id === toEmployeeId)?.has_login === false
+
     const problem = (() => {
         if (!toEmployeeId) return 'Pick who you are asking.'
-        if (givePart && giveWindow && giveWindow.from >= giveWindow.to) {
-            return 'The hours you are giving finish before they start.'
+        if (askingNobody) {
+            return `${nameOf(toEmployeeId)} does not have an account, so they cannot answer. Ask a manager instead.`
         }
-        if (takePart && takeWindow && takeWindow.from >= takeWindow.to) {
-            return 'The hours you are asking for finish before they start.'
-        }
-        return ''
+        return windowSays(givePart, giveShift, giveFrom, giveTo, 'giving')
+            || windowSays(takePart, takeShift, takeFrom, takeTo, 'asking for')
     })()
 
     const change = toEmployeeId ? hoursChange(draft, weekShifts, breakRules) : []
@@ -208,7 +217,7 @@ export default function ShiftRequestDialog({
                         />
                         <Group
                             title="Cannot"
-                            hint="Already on those hours, or down as away."
+                            hint="Already on those hours, down as away, or with no account to answer with."
                             entries={list.cannot}
                             chosen={toEmployeeId}
                             onPick={pickWho}
@@ -383,6 +392,8 @@ function Group({ title, hint, entries, chosen, onPick, hoursOn, colourOf, shut =
                         <span className="ml-auto text-xs text-muted text-right">
                             {entry.why === 'away'
                                 ? <span className={`${badge} bg-gray-200 text-gray-700`}>Not available</span>
+                                : entry.why === 'no_login'
+                                ? <span className={`${badge} bg-gray-200 text-gray-700`}>No account</span>
                                 : entry.shifts.length === 0
                                     ? 'Nothing on'
                                     : entry.shifts.map(s => (

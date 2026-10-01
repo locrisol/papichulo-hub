@@ -17,10 +17,10 @@
 //   GOOGLE_SERVICE_ACCOUNT        the whole key JSON, as one line
 //   GOOGLE_ALL_SITES_CALENDAR_ID  the group calendar
 //   GOOGLE_IMPERSONATE            hub@papichulo.ie, and see below
-//   APP_URL, APP_URL_ALSO         where the event's link back to the Hub may
-//                                 point. The mail functions already read both,
-//                                 and function secrets are shared, so they are
-//                                 set already
+//   APP_URL                       where the event's link back to the Hub
+//                                 points, the real site. The mail functions
+//                                 already read it, and function secrets are
+//                                 shared, so it is set already
 //
 // There are two ways to let this write to the calendars, and the difference is
 // what the key can reach if it ever leaks.
@@ -42,7 +42,7 @@
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
-    eventBody, calendarsFor, plan, idsFrom, reachOf, carryOut, hubAddress, GONE, callerRefusal,
+    eventBody, calendarsFor, plan, idsFrom, reachOf, carryOut, GONE, callerRefusal,
 } from './google.js'
 
 const CORS = {
@@ -204,7 +204,7 @@ Deno.serve(async (request) => {
     const refused = callerRefusal(me)
     if (refused) return json({ error: refused }, 403)
 
-    let payload: { entryId?: string, origin?: string, clear?: boolean }
+    let payload: { entryId?: string, clear?: boolean }
     try { payload = await request.json() } catch { return json({ error: 'Bad request' }, 400) }
     if (!payload.entryId) return json({ error: 'No entry' }, 400)
 
@@ -254,10 +254,12 @@ Deno.serve(async (request) => {
         return json({ ok: false, reason: String((e as Error).message), written: 0 }, 200)
     }
 
-    const body = eventBody(entry, hubAddress(payload.origin, {
-        appUrl: Deno.env.get('APP_URL') || '',
-        also: Deno.env.get('APP_URL_ALSO') || '',
-    }))
+    // The link on the event is the real site and nothing the app sends. The
+    // mails take a preview build's address when it is on APP_URL_ALSO, which
+    // suits a test mail read once. An event stays on a calendar everybody
+    // shares long after the dev server or the preview has gone, so it gets
+    // the address that lasts.
+    const body = eventBody(entry, Deno.env.get('APP_URL') || '')
 
     // Every job is checked against the calendars this person may change before
     // Google hears of it, whatever the entry's stored ids say. See google.js.

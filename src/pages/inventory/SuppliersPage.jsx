@@ -1,4 +1,5 @@
 import { useState, useEffect, Fragment } from 'react'
+import { useSaveOnce } from '@/components/ui/useSaveOnce'
 import { useConfirm } from '@/context/confirm'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
@@ -92,9 +93,16 @@ export default function SuppliersPage() {
         setLoading(false)
     }
 
-    async function handleSave(e) {
-        e.preventDefault()
+    // A second tap on Save while the first is on its way added the supplier
+    // twice. See useSaveOnce.
+    const [saving, once] = useSaveOnce()
 
+    function handleSave(e) {
+        e.preventDefault()
+        return once(saveSupplier)
+    }
+
+    async function saveSupplier() {
         setFormProblem('')
 
         if (editingSupplier) {
@@ -218,6 +226,7 @@ export default function SuppliersPage() {
                             onSubmit={handleSave}
                             onCancel={resetForm}
                             submitLabel="Add supplier"
+                            saving={saving}
                         />
                     </div>
                 </div>
@@ -379,6 +388,7 @@ export default function SuppliersPage() {
                             onSubmit={handleSave}
                             onCancel={resetForm}
                             submitLabel="Save changes"
+                            saving={saving}
                         />
                     </div>
                 </Modal>

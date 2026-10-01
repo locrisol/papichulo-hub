@@ -10,7 +10,7 @@ import { numberField } from '@/lib/numberInput'
 import { friendlyError } from '@/lib/errors'
 import { can, MANAGERS } from '@/lib/access'
 import {
-    claimKind, doorClaimPayload, claimAmount, claimIsOpen,
+    claimKind, doorClaimPayload, claimAmount, claimIsOpen, claimWeek, sentWeeks, fromEarlierWeeks,
     claimCandidates, claimMatch, chasingList, isLate, LATE_AFTER_DAYS, bySupplier,
 } from '@/lib/invoiceClaims'
 import {
@@ -34,8 +34,8 @@ import DoorClaimModal from '@/components/invoices/DoorClaimModal'
 // so the forgotten ones are real money. This list is what makes them visible.
 //
 // Everybody can open it and everybody can log one, which is the whole point.
-// An employee sees their own notes and nothing else, here and in the database,
-// because a claim carries an amount once it is matched to a line.
+// An employee sees their own notes and none of the money, here and in the
+// database, because a claim carries an amount once it is matched to a line.
 
 const LOOK_BACK_DAYS = 60
 
@@ -70,12 +70,17 @@ export default function ClaimsPage() {
 
             const [sup, cl, inv] = await Promise.all([
                 supabase.from('suppliers').select('id, name').eq('is_active', true),
-                supabase.from('invoice_line_claims')
+                // An employee reads their own through my_claims, which has no
+                // euros: no amount, nothing credited, no invoice. With no
+                // amount a claim is still waiting for as long as it is open,
+                // which is what claimIsOpen says, and a credit that covers it
+                // in full closes it.
+                supabase.from(manager ? 'invoice_line_claims' : 'my_claims')
                     .select('*')
                     .eq('restaurant_id', restaurantId)
                     .gte('raised_on', from)
                     .order('raised_on', { ascending: false }),
-                // Only a manager can see what anything cost, so the documents
+                // Only a manager can see the invoices, so the documents
                 // are only asked for where they can be used.
                 manager
                     ? supabase.from('invoices')
@@ -141,18 +146,30 @@ export default function ClaimsPage() {
         setBusy(claim.id)
         setError('')
 
+        // Which weeks have gone out already, so the money lands in a report.
+        // See claimWeek.
+        const { weeks: sent, error: e0 } = await sentWeeks(supabase, restaurantId)
+        if (e0) { setBusy(''); setError(friendlyError(e0)); return }
+        const { week, delivered, moved } = claimWeek(invoice.invoice_date, sent)
+
         const { error: e1 } = await supabase.from('invoice_line_claims')
             .update({
                 invoice_id: invoice.id,
                 invoice_line_id: line.id,
                 amount,
                 supplier_id: invoice.supplier_id,
+                counted_week: week,
             })
             .eq('id', claim.id)
 
         setBusy('')
         if (e1) { setError(friendlyError(e1)); return }
-        setSaid(`${fmtMoney(amount)} is coming off the week that delivery landed in.`)
+        if (!moved) setSaid(`${fmtMoney(amount)} is coming off the week that delivery landed in.`)
+        else {
+            setSaid(`The report for the week of ${shortDate(delivered)} has already been sent, `
+                + `so ${fmtMoney(amount)} is coming off the week of ${shortDate(week)} instead, `
+                + `shown as from the delivery in the week of ${shortDate(delivered)}.`)
+        }
         setRefresh(n => n + 1)
     }
 
@@ -349,6 +366,10 @@ function ClaimRow({
         setPricing({ line, invoice, agreed: costingFrom == null ? '' : String(costingFrom) })
     }
 
+    // A claim whose delivery's report had already gone out comes off a later
+    // week (claimWeek). Said here so nobody looks for it in the wrong report.
+    const from = manager ? fromEarlierWeeks([claim], invoices, claim.counted_week)[0] : null
+
     // Offered rather than done, unless the docket number makes it exact.
     const suggestion = manager && !claim.invoice_line_id ? claimMatch(claim, invoices) : null
     const options = manager && !claim.invoice_line_id ? claimCandidates(claim, invoices).slice(0, 6) : []
@@ -371,6 +392,12 @@ function ClaimRow({
                         ].filter(Boolean).join(' and ')}
                     </p>
                     {claim.note && <p className="text-xs text-muted mt-1 italic">{claim.note}</p>}
+                    {from && (
+                        <p className="text-xs text-muted mt-1">
+                            Comes off the week of {shortDate(claim.counted_week)}, from the delivery in the week
+                            of {shortDate(from.delivered)}.
+                        </p>
+                    )}
                 </div>
 
                 <div className="text-right">

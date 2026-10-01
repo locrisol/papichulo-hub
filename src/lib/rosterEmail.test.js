@@ -99,6 +99,16 @@ describe('somebody asked', () => {
         expect(mail.text).not.toContain('rostered on')
     })
 
+    // Changing a shift after the week went out takes it back to a draft, and
+    // the function only looked at published shifts, so moving somebody's
+    // Saturday an hour told the managers they were not rostered that day.
+    it('counts a shift changed since the week went out', () => {
+        const source = readFileSync('supabase/functions/roster-email/index.ts', 'utf8')
+        const clashes = source.slice(source.indexOf('const { data: clashes }'), source.indexOf('const mail = requestEmail('))
+        expect(clashes).toContain(".or('published_at.not.is.null,published_as.not.is.null')")
+        expect(clashes).not.toContain(".not('published_at', 'is', null)")
+    })
+
     it('carries their note through escaped', () => {
         const mail = requestEmail({
             ...base,
@@ -471,6 +481,46 @@ describe('one half, read out', () => {
         const [half] = swapHalves(cover(), [SAT])
         expect(halfWords(half, nameOf, 'geo'))
             .toBe('You take Sat 26 Sept 2026, 09:00 to 21:00, from Majo')
+    })
+})
+
+// The roster never prints a closing shift's finishing time, because somebody
+// would leave on it. The mail printed it.
+describe('a closing shift in a swap mail', () => {
+    const closing = { ...SAT, starts_at: '17:00:00', ends_at: '23:40:00' }
+    const saturday = { open: '12:00', close: '23:00' }
+    const hoursOn = () => saturday
+
+    it('says Closing rather than the time, the same as the roster', () => {
+        const [half] = swapHalves(cover(), [closing], hoursOn)
+        expect(halfWords(half, nameOf, 'geo'))
+            .toBe('You take Sat 26 Sept 2026, 17:00 to Closing, from Majo')
+    })
+
+    it('is still the whole shift and not part of it', () => {
+        const [half] = swapHalves(cover(), [closing], hoursOn)
+        expect(half.whole).toBe(true)
+    })
+
+    it('says Closing for the end of a shift given in part', () => {
+        const [half] = swapHalves(cover({ give_from: '20:00', give_to: '23:40' }), [closing], hoursOn)
+        expect(halfWords(half, nameOf))
+            .toBe("Georgiana takes Sat 26 Sept 2026, 20:00 to Closing, part of Majo's shift")
+    })
+
+    it('reads a shift to midnight as closing too', () => {
+        const [half] = swapHalves(cover(), [{ ...closing, ends_at: '00:00:00' }], hoursOn)
+        expect(halfWords(half, nameOf, 'geo')).toContain('17:00 to Closing')
+    })
+
+    it('prints the time of a shift that finishes before closing', () => {
+        const [half] = swapHalves(cover(), [{ ...closing, ends_at: '22:00:00' }], hoursOn)
+        expect(halfWords(half, nameOf, 'geo')).toContain('17:00 to 22:00')
+    })
+
+    it('prints the time when it does not know the hours', () => {
+        const [half] = swapHalves(cover(), [closing])
+        expect(halfWords(half, nameOf, 'geo')).toContain('17:00 to 23:40')
     })
 })
 

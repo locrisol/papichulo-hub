@@ -23,7 +23,9 @@
 //                               review: keeping the old price is "not now",
 //                               never "do not tell me".
 //   Came back, and why          every credit note, with the reason logged at
-//                               the door, and what is still owed.
+//                               the door, what is still owed, and any claim
+//                               this week takes off for an earlier delivery
+//                               whose report had already gone out.
 //
 // The usual version is the one recipes cost from: the code on the preferred
 // price. After three deliveries in a row of something else, the report asks
@@ -33,13 +35,13 @@
 // so it is plain figures and words, nothing the mail would have to work out
 // again. The mail cannot import anything from the app.
 
-import { num, fmtMoney, fmtQty } from '@/lib/format'
+import { num, fmtMoney, fmtQty, namesList } from '@/lib/format'
 import { renumberPlan } from '@/lib/priceEvents'
 import { addDays, dayMonth } from '@/lib/dates'
 import { samePrice, sameWords, SAME_WORDS, byPieceWeight } from '@/lib/invoiceImport'
 import { readPackSize, mend } from '@/lib/invoiceSysco'
 import {
-    claimBalance, claimIsOpen, claimKind, NOT_LOGGED, voidedBy, sentBack,
+    claimBalance, claimIsOpen, claimKind, NOT_LOGGED, voidedBy, sentBack, fromEarlierWeeks,
 } from '@/lib/invoiceClaims'
 
 // How far back a code's last delivery is looked for. Half a year covers the
@@ -818,9 +820,6 @@ const docCount = (invoices, credits) => [
     credits ? `${credits} credit ${credits === 1 ? 'note' : 'notes'}` : '',
 ].filter(Boolean).join(' and ')
 
-const namesList = names => (names.length < 2 ? names.join('')
-    : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`)
-
 export function readFrom(documents = []) {
     const read = new Map()
     const typed = new Map()
@@ -871,6 +870,9 @@ export function priceWeek({
     const suggestions = usualSuggestions(all, scope)
     const back = cameBack(credits, claims, { weekStart, weekEnd, invoices })
     const owed = stillOwed(claims)
+    // `invoices` also carries the documents this week's claims were put
+    // against, so each one knows the day its delivery landed.
+    const earlier = fromEarlierWeeks(claims, invoices, weekStart)
     const fresh = newCodes(all, scope)
 
     const section = {
@@ -886,6 +888,7 @@ export function priceWeek({
         suggestions,
         back,
         owed,
+        earlier,
         newCodes: fresh,
         reasons: reasonsOf(back),
         totals: {
@@ -898,6 +901,8 @@ export function priceWeek({
             back: r2(back.reduce((t, b) => t + b.money, 0)),
             owed: r2(owed.reduce((t, o) => t + num(o.money), 0)),
             owedCount: owed.length,
+            earlier: r2(earlier.reduce((t, e) => t + e.money, 0)),
+            earlierCount: earlier.length,
             newCodes: fresh.length,
         },
     }
@@ -968,7 +973,7 @@ const moneyWay = (n, against) => (Math.abs(num(n)) < 0.005
 export function priceWords(section) {
     const out = []
     const {
-        moves = [], doubtful = [], switches = [], recipes = [], back = [], owed = [], totals = {},
+        moves = [], doubtful = [], switches = [], recipes = [], back = [], owed = [], earlier = [], totals = {},
     } = section || {}
 
     if (moves.length) {
@@ -1018,6 +1023,20 @@ export function priceWords(section) {
         out.push(priced.length
             ? `Still owed: ${fmtMoney(totals.owed)} on ${plural(owed.length, 'claim', 'claims')}.`
             : `Still owed: ${plural(owed.length, 'claim', 'claims')} waiting on a credit.`)
+    }
+
+    // Money this week takes off for a delivery in an earlier one, because
+    // that week's report had already gone out (claimWeek). Said with the week
+    // it is from, his condition of 1 October for moving it at all.
+    if (earlier.length) {
+        const weeks = [...new Set(earlier.map(e => e.delivered))].sort()
+        const one = weeks.length === 1
+        out.push(earlier.length === 1
+            ? `From an earlier week: ${fmtMoney(earlier[0].money)} on ${earlier[0].what}, from the delivery in the week of `
+                + `${dayMonth(earlier[0].delivered)}, whose report had already gone out.`
+            : `From earlier weeks: ${fmtMoney(totals.earlier)} on ${plural(earlier.length, 'claim', 'claims')}, `
+                + `from the deliveries in the week${one ? '' : 's'} of ${listed(weeks.map(w => dayMonth(w)), weeks.length)}, `
+                + `whose report${one ? '' : 's'} had already gone out.`)
     }
 
     if (!out.length) out.push('Nothing moved on prices this week and nothing came back.')

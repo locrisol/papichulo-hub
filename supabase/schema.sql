@@ -250,10 +250,10 @@ CREATE TABLE IF NOT EXISTS "public"."products" (
     "name" character varying(255) NOT NULL,
     "section" character varying(20) NOT NULL,
     "unit" character varying(10) NOT NULL,
-    "is_mix" boolean DEFAULT false,
+    "is_mix" boolean DEFAULT false NOT NULL,
     "weight_loss_pct" numeric(5,2) DEFAULT 0,
     "notes" "text",
-    "is_active" boolean DEFAULT true,
+    "is_active" boolean DEFAULT true NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"(),
     "batch_yield" numeric(10,4),
     "count_frequency" "text",
@@ -343,23 +343,27 @@ ALTER TABLE ONLY "public"."mix_recipes"
 CREATE INDEX "idx_mix_recipes_mix" ON "public"."mix_recipes" USING "btree" ("mix_product_id");
 CREATE INDEX "idx_mix_recipes_ingredient" ON "public"."mix_recipes" USING "btree" ("ingredient_product_id");
 
+-- One row per product, and each of the fourteen always says something. Not
+-- null since 032: an empty one read as Not Present, which nobody had said. No
+-- row at all is a different thing, the answer never entered, and the app asks
+-- the customer to see staff about it.
 CREATE TABLE IF NOT EXISTS "public"."product_allergens" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "product_id" "uuid" NOT NULL,
-    "gluten" character varying(15) DEFAULT 'none'::character varying,
-    "crustaceans" character varying(15) DEFAULT 'none'::character varying,
-    "eggs" character varying(15) DEFAULT 'none'::character varying,
-    "fish" character varying(15) DEFAULT 'none'::character varying,
-    "peanuts" character varying(15) DEFAULT 'none'::character varying,
-    "soybeans" character varying(15) DEFAULT 'none'::character varying,
-    "milk" character varying(15) DEFAULT 'none'::character varying,
-    "nuts" character varying(15) DEFAULT 'none'::character varying,
-    "celery" character varying(15) DEFAULT 'none'::character varying,
-    "mustard" character varying(15) DEFAULT 'none'::character varying,
-    "sesame" character varying(15) DEFAULT 'none'::character varying,
-    "sulphites" character varying(15) DEFAULT 'none'::character varying,
-    "lupin" character varying(15) DEFAULT 'none'::character varying,
-    "molluscs" character varying(15) DEFAULT 'none'::character varying,
+    "gluten" character varying(15) DEFAULT 'none'::character varying NOT NULL,
+    "crustaceans" character varying(15) DEFAULT 'none'::character varying NOT NULL,
+    "eggs" character varying(15) DEFAULT 'none'::character varying NOT NULL,
+    "fish" character varying(15) DEFAULT 'none'::character varying NOT NULL,
+    "peanuts" character varying(15) DEFAULT 'none'::character varying NOT NULL,
+    "soybeans" character varying(15) DEFAULT 'none'::character varying NOT NULL,
+    "milk" character varying(15) DEFAULT 'none'::character varying NOT NULL,
+    "nuts" character varying(15) DEFAULT 'none'::character varying NOT NULL,
+    "celery" character varying(15) DEFAULT 'none'::character varying NOT NULL,
+    "mustard" character varying(15) DEFAULT 'none'::character varying NOT NULL,
+    "sesame" character varying(15) DEFAULT 'none'::character varying NOT NULL,
+    "sulphites" character varying(15) DEFAULT 'none'::character varying NOT NULL,
+    "lupin" character varying(15) DEFAULT 'none'::character varying NOT NULL,
+    "molluscs" character varying(15) DEFAULT 'none'::character varying NOT NULL,
     "updated_at" timestamp with time zone DEFAULT "now"(),
     CONSTRAINT "product_allergens_celery_check" CHECK (("celery" IN ('contains', 'may_contain', 'none'))),
     CONSTRAINT "product_allergens_crustaceans_check" CHECK (("crustaceans" IN ('contains', 'may_contain', 'none'))),
@@ -396,7 +400,7 @@ CREATE TABLE IF NOT EXISTS "public"."menu_categories" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "name" character varying(100) NOT NULL,
     "sort_order" integer DEFAULT 0 NOT NULL,
-    "is_active" boolean DEFAULT true,
+    "is_active" boolean DEFAULT true NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"(),
     "on_allergen_sheet" boolean DEFAULT true NOT NULL
 );
@@ -413,7 +417,7 @@ CREATE TABLE IF NOT EXISTS "public"."menu_items" (
     "category_id" "uuid" NOT NULL,
     "selling_price" numeric(10,2) DEFAULT 0 NOT NULL,
     "vat_rate" numeric(5,2) DEFAULT 0 NOT NULL,
-    "is_active" boolean DEFAULT true,
+    "is_active" boolean DEFAULT true NOT NULL,
     "notes" "text",
     "created_at" timestamp with time zone DEFAULT "now"(),
     "sheet_name" "text",
@@ -933,10 +937,17 @@ CREATE TABLE IF NOT EXISTS "public"."timesheet_entries" (
     -- report block means by "times or a reason".
     "starts_at" time without time zone,
     "ends_at" time without time zone,
+    -- Real hours, not the clock face: worked out from the date in Irish time,
+    -- so eight to two on the night the clocks go back is seven hours and on
+    -- the night they go forward is five. src/lib/clock.js does the same sum
+    -- for the screen, and the two have to agree.
     "hours" numeric(6,2) GENERATED ALWAYS AS (
-        CASE WHEN "ends_at" IS NULL THEN NULL ELSE
-            EXTRACT(epoch FROM ("ends_at" - "starts_at"
-                + CASE WHEN "ends_at" <= "starts_at" THEN interval '24 hours' ELSE interval '0 hours' END
+        CASE WHEN "ends_at" IS NULL OR "starts_at" IS NULL THEN NULL ELSE
+            EXTRACT(epoch FROM (
+                (("work_date" + "ends_at"
+                    + CASE WHEN "ends_at" <= "starts_at" THEN interval '1 day' ELSE interval '0 hours' END
+                ) AT TIME ZONE 'Europe/Dublin')
+                - (("work_date" + "starts_at") AT TIME ZONE 'Europe/Dublin')
             )) / 3600
         END
     ) STORED,
@@ -960,6 +971,13 @@ CREATE TABLE IF NOT EXISTS "public"."timesheet_entries" (
         OR ("btrim"(COALESCE("note", ''::"text")) <> ''::"text")
         OR ("kind" <> 'worked'::"text")
         OR ("source" = 'corrected'::"text")
+    ),
+    -- Never the same time at both ends. An end at or before the start is the
+    -- next morning, so 09:00 to 09:00 typed by mistake, or a till stamping in
+    -- and out on the same second, was worth 24 hours in the hours column, the
+    -- labour cost and the pay mail. An empty end passes.
+    CONSTRAINT "timesheet_entries_not_zero_length" CHECK (
+        ("starts_at" IS NULL) OR ("ends_at" IS NULL) OR ("starts_at" <> "ends_at")
     )
 );
 
@@ -970,6 +988,7 @@ CREATE INDEX "idx_timesheet_entries_employee" ON "public"."timesheet_entries" US
 
 COMMENT ON TABLE "public"."timesheet_entries" IS 'One person, one span of a day, to the second. A split shift is two rows. Holiday and off sick are not here: they live in absences, which already has them with an approval and a colour.';
 COMMENT ON COLUMN "public"."timesheet_entries"."source" IS 'typed by somebody, taken from the roster with one key, read from the till, or corrected: a till time changed by hand afterwards. It decides what an import may quietly replace, and a corrected row is never replaced quietly because it was changed away from that file on purpose. A corrected row with no note is what the week is blocked on.';
+COMMENT ON COLUMN "public"."timesheet_entries"."hours" IS 'What the span came to, in real hours. Worked out from the date and the two times in Irish time, so a shift on the night the clocks go back or forward is the hours really worked, not what the clock face says. An end at or before the start is the next morning.';
 COMMENT ON COLUMN "public"."timesheet_entries"."person_name" IS 'Only for somebody with no employees row here, which today means borrowed from the other restaurant. The rules see one restaurant at a time, so their real record cannot be read from this one.';
 COMMENT ON COLUMN "public"."timesheet_entries"."note" IS 'Why a figure is what it is, in the manager''s own words, and it goes out with the week. On a row with no times it is the reason nothing was worked, which is what the report block means by "times or a reason". Nothing about the roster ever goes in one: the accountant does not see the roster and has no use for a plan she cannot check.';
 
@@ -1276,14 +1295,20 @@ CREATE TABLE IF NOT EXISTS "public"."roster_shifts" (
     "published_at" timestamp with time zone,
     "created_by" "uuid",
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "published_as" "jsonb",
+    -- The same as on the timesheet: an end at or before the start is the next
+    -- morning, so a shift that starts and finishes at the same time was 24
+    -- hours. The dialog refuses one, and this is for whatever else writes here.
+    CONSTRAINT "roster_shifts_not_zero_length" CHECK (("starts_at" <> "ends_at"))
 );
 
 COMMENT ON TABLE "public"."roster_shifts" IS 'One row per shift. The whole roster is this table read a week at a time.';
+COMMENT ON COLUMN "public"."roster_shifts"."published_as" IS 'The shift as staff were last shown it, while it has changes nobody has been told about: who, the day, the times, the position, the break and the note. Kept by a trigger when a published shift is changed and cleared when it is published again. Null when the row is what went out, or it never went out. roster_published serves it, so a changed shift does not vanish from somebody''s week and phone.';
 COMMENT ON COLUMN "public"."roster_shifts"."break_is_manual" IS 'True once somebody has typed a different break. After that, changing the times leaves it alone rather than quietly putting the ladder value back over the top of a deliberate decision.';
 COMMENT ON COLUMN "public"."roster_shifts"."break_minutes" IS 'What the ladder gave this shift, worked out when it was saved rather than every time it is read. A restaurant that changes its ladder in June does not rewrite what was printed in March. Paid and never deducted.';
 COMMENT ON COLUMN "public"."roster_shifts"."ends_at" IS 'Kept as a real time even when it is after closing. The screen and everything shared out of it print "Closing" instead, so nobody reads a time off a roster and leaves on it, but the number underneath is what the hours and the cost are worked out from and it has to be exact.';
-COMMENT ON COLUMN "public"."roster_shifts"."published_at" IS 'When this shift became visible to staff. Null means it is still a draft and only managers can see it. Stamped on every shift in the week when the week is published, so a shift added afterwards is unpublished on its own and the screen can say there are changes nobody has been told about.';
+COMMENT ON COLUMN "public"."roster_shifts"."published_at" IS 'When this shift became visible to staff. Null means it is a draft, or has been changed since the week went out, and only managers can see it as it stands; staff go on seeing published_as. Stamped on every shift in the week when the week is published, so a shift added afterwards is unpublished on its own and the screen can say there are changes nobody has been told about.';
 COMMENT ON COLUMN "public"."roster_shifts"."shift_date" IS 'The day the shift starts. A shift that runs past midnight belongs to the day it began on, which is how anybody working one would describe it. It has never happened here and it costs nothing to handle.';
 ALTER TABLE ONLY "public"."roster_shifts"
     ADD CONSTRAINT "roster_shifts_pkey" PRIMARY KEY ("id");
@@ -1501,6 +1526,10 @@ CREATE TABLE IF NOT EXISTS "public"."places" (
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "reading_key" "text" DEFAULT 'date'::"text" NOT NULL,
     "page_depth" integer DEFAULT 1 NOT NULL,
+    "feed_synced_at" timestamp with time zone,
+    "feed_count" integer,
+    "feed_problem" "text",
+    "read_problem" "text",
     CONSTRAINT "places_has_a_name" CHECK (("btrim"("name") <> ''::"text")),
     CONSTRAINT "places_page_url_is_a_url" CHECK ((("page_url" IS NULL) OR ("page_url" ~ '^https?://[^ ]+$'::"text"))),
     CONSTRAINT "places_capacity_is_a_number_of_people" CHECK ((("capacity" IS NULL) OR ("capacity" > 0))),
@@ -1510,9 +1539,12 @@ CREATE TABLE IF NOT EXISTS "public"."places" (
 
 COMMENT ON TABLE "public"."places" IS 'Somewhere near a restaurant that holds things: an arena, a theatre, a cinema, a harbour, a council that runs festivals. The place itself and nothing about who is near it, because the same place can be near more than one restaurant and would otherwise be typed twice.';
 COMMENT ON COLUMN "public"."places"."capacity" IS 'How many people it holds, typed by hand because no API publishes it. Only used by the city rule: something over about twenty thousand people a few kilometres away fills the hotels beside us even though nobody walks from it. Null means nobody has said, and the rule then leaves it out rather than guessing.';
+COMMENT ON COLUMN "public"."places"."feed_problem" IS 'What went wrong the last time the feed was asked, in a sentence the function wrote, or null when the last sync worked. Never the error itself: a failed fetch names its address, which carries the key, and every manager can read this row.';
+COMMENT ON COLUMN "public"."places"."feed_synced_at" IS 'When the Ticketmaster feed last answered for this place, with feed_count saying how many it listed. Shown in settings, and on the roster and the calendar when it is more than two days old, because a feed that stops answering looks exactly like a quiet fortnight.';
 COMMENT ON COLUMN "public"."places"."last_read_at" IS 'When a page here was last read, with last_read_count saying what that found. Both are shown in settings, because a page that changes its layout goes quiet rather than going wrong, and a run of zeroes is the only way anybody would notice.';
 COMMENT ON COLUMN "public"."places"."page_depth" IS 'How many pages deep to read, when the address carries {page}. One is the ordinary case and means the address is the whole of it. Only worth raising for a site that hands over a few events at a time, and worth keeping small: every page is a fetch and a slice of what gets sent to be read.';
 COMMENT ON COLUMN "public"."places"."page_url" IS 'A public listings page. Read on a schedule and turned into events, which then wait for somebody to keep them. Null means this place has no page worth reading and whatever it has comes from a feed instead. It may carry {month} or {page}, which are replaced before it is fetched: some sites hand over one calendar month or six events at a time, and reading only the first response is reading a fraction and calling it a week.';
+COMMENT ON COLUMN "public"."places"."read_problem" IS 'What went wrong the last time a page here was read, in a sentence read-listings wrote, or null when the last read worked. Shown in settings beside last_read_at, because a page that keeps failing otherwise only shows an old date. Never the error itself, which can name an address and every manager can read this row.';
 COMMENT ON COLUMN "public"."places"."reading_key" IS 'What makes a reading off this page the same reading twice. date is the ordinary case, where a thing is itself on a given day. title is for a page that lists the same thing over and over, a cinema being the one that forced it: the same film showing for a month is one thing that happened once, so the first sighting is kept and every later one is ignored.';
 COMMENT ON COLUMN "public"."places"."short_name" IS 'What the place is called on a roster cell about fifty pixels wide, where the full name would cost a line of height on every chip. Null falls back to the name, which is what a place with a short name already has.';
 COMMENT ON COLUMN "public"."places"."ticketmaster_venue_id" IS 'The Discovery API venue id, when it sells through Ticketmaster. Null is the ordinary case: a harbour, a college and a shopping centre all hold things and none of them sells a ticket.';
@@ -1613,7 +1645,7 @@ COMMENT ON COLUMN "public"."events"."last_seen_at" IS 'The last sync that still 
 COMMENT ON COLUMN "public"."events"."review" IS 'trusted came from a feed and goes everywhere with nobody asked. found came off a page somebody read and shows on the calendar marked not checked, and stays off the roster until it is kept. kept is one somebody kept. dismissed is one somebody said no to, and it stays in the table precisely so the next read of the same page does not offer it again.';
 COMMENT ON COLUMN "public"."events"."source" IS 'Where the row came from. A feed is trusted because it is the venue itself saying so. A page is a reading of something written for people, which is a different kind of fact and is marked as one.';
 COMMENT ON COLUMN "public"."events"."source_key" IS 'What makes a page read the same event twice, since only a feed hands out an id. Built from the place, the date and a flattened title, so a second read lands on the row that is already there and a dismissal is remembered.';
-COMMENT ON COLUMN "public"."events"."status" IS 'Ticketmaster sale status: onsale, offsale, cancelled, postponed, rescheduled. Off sale well before the date usually means sold out.';
+COMMENT ON COLUMN "public"."events"."status" IS 'Ticketmaster sale status: onsale, offsale, canceled, postponed, rescheduled. Off sale well before the date usually means sold out. withdrawn is ours rather than Ticketmaster''s: a night still to come that a whole answer from the feed no longer lists, which the roster and the calendar mark as no longer listed until a later answer lists it again and writes its real status back.';
 ALTER TABLE ONLY "public"."events"
     ADD CONSTRAINT "events_pkey" PRIMARY KEY ("id");
 ALTER TABLE ONLY "public"."events"
@@ -2090,13 +2122,13 @@ $$;
 
 -- Saving your own landing page without being able to save anything else.
 --
--- users_write is deliberately one sided: you may write the rows below you and
--- never your own, which is right and is also why nobody could save their own
--- preference. A policy works on rows, so it cannot say "this column only", and
--- widening users_write to include your own row would let anybody make
--- themselves a super admin. A function that writes one column of one row can.
--- The id comes from the session rather than from a parameter, so there is
--- nothing to pass it that would reach somebody else.
+-- Only a super admin may write an account row, and nobody else may write even
+-- their own, because that row is where their role is: opening users_write to
+-- your own row would let anybody make themselves a super admin. A policy works
+-- on rows, so it cannot say "this column only", which is why nobody could save
+-- their own preference. A function that writes one column of one row can. The
+-- id comes from the session rather than from a parameter, so there is nothing
+-- to pass it that would reach somebody else.
 CREATE OR REPLACE FUNCTION "public"."set_my_landing_page"("page" "text") RETURNS "void"
     LANGUAGE "sql" SECURITY DEFINER
     SET "search_path" TO 'public', 'pg_temp'
@@ -2160,6 +2192,17 @@ begin
   return new;
 end;
 $$;
+
+-- A count reopened is one staff can read again, so what it was worth when it
+-- closed goes as it opens, however it is reopened. Closing works it out again.
+CREATE OR REPLACE FUNCTION "public"."stock_take_reopened_clears_value"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    SET "search_path" TO 'public', 'pg_temp'
+    AS $$
+begin
+    new.total_value := null;
+    return new;
+end $$;
 
 CREATE OR REPLACE FUNCTION "public"."restaurant_settings_guard"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
@@ -2242,10 +2285,12 @@ $$;
 
 -- A swap request says what the two people agreed, and only that. A new one
 -- starts as asked, gives a shift of the asker's own and takes one of the
--- person asked. After that the two of them can answer it or take it back and
--- nothing else. Whose shift is whose is checked when it is made and never at
--- approval, because approving moves the shifts before it marks the request
--- approved; the manager's desk checks it before offering Approve.
+-- person asked, who has an account to answer with, and any part of a shift it
+-- names is inside that shift. After that the two of them can answer it or take
+-- it back and nothing else. Whose shift is whose is checked when it is made
+-- and never at approval, because approving moves the shifts before it marks
+-- the request approved; the manager's desk checks it, and the hours, before
+-- offering Approve.
 CREATE OR REPLACE FUNCTION "public"."shift_request_transition_guard"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public', 'pg_temp'
@@ -2253,6 +2298,10 @@ CREATE OR REPLACE FUNCTION "public"."shift_request_transition_guard"() RETURNS "
 declare
     me uuid;
     manager boolean;
+    part record;
+    runs integer;
+    begins integer;
+    ends integer;
 begin
     -- Same as restaurant_settings_guard: only what comes through the API is
     -- guarded, so the database can still maintain its own rows.
@@ -2293,12 +2342,43 @@ begin
             raise exception 'You can only ask for a shift of the person you are asking';
         end if;
 
+        -- Part of a shift has to be part of it, in minutes from the shift's
+        -- own start. A finish at the start itself is a whole day later.
+        for part in
+            select s.starts_at, s.ends_at, w.from_at, w.to_at, w.words
+              from (values (new.give_shift_id, new.give_from, new.give_to, 'giving'),
+                           (new.take_shift_id, new.take_from, new.take_to, 'asking for'))
+                   as w(shift_id, from_at, to_at, words)
+              join public.roster_shifts s on s.id = w.shift_id
+             where w.from_at is not null or w.to_at is not null
+        loop
+            runs := mod(floor(extract(epoch from part.ends_at - part.starts_at) / 60)::integer + 1440, 1440);
+            begins := mod(floor(extract(epoch from coalesce(part.from_at, part.starts_at) - part.starts_at) / 60)::integer + 1440, 1440);
+            ends := mod(floor(extract(epoch from coalesce(part.to_at, part.ends_at) - part.starts_at) / 60)::integer + 1440, 1440);
+            if ends = 0 then
+                ends := 1440;
+            end if;
+            if begins >= runs or ends > runs or ends <= begins then
+                raise exception 'The hours you are % must be within the shift', part.words;
+            end if;
+        end loop;
+
         if not exists (
             select 1 from public.employees e
              where e.id = new.to_employee_id
                and e.restaurant_id = new.restaurant_id
         ) then
             raise exception 'You can only ask somebody at your own restaurant';
+        end if;
+
+        -- Only the person asked can answer, and somebody with no account
+        -- never will, so the request would wait on them for good.
+        if not exists (
+            select 1 from public.employees e
+              join public.users u on u.id = e.user_id and u.is_active
+             where e.id = new.to_employee_id
+        ) then
+            raise exception 'They do not have an account, so they cannot answer. Ask a manager instead.';
         end if;
 
         return new;
@@ -2340,6 +2420,126 @@ begin
     end if;
 
     raise exception 'A swap is approved by a manager, not by the people in it';
+end $$;
+
+-- Answering a request for time off, in one go. The request is locked and has
+-- to still be waiting, and the shifts it frees go and the answer is written
+-- together or not at all. It was two writes from the browser, and the second
+-- matched nothing when the request had been taken back in between, so the
+-- shifts were gone with no record of them; two managers answering was last
+-- write wins. Security invoker, so the caller's own rules apply to every row.
+CREATE OR REPLACE FUNCTION "public"."answer_time_off"("request_id" "uuid", "answer" "text", "clear_shift_ids" "uuid"[] DEFAULT '{}'::"uuid"[]) RETURNS "public"."absences"
+    LANGUAGE "plpgsql"
+    SET "search_path" TO 'public', 'pg_temp'
+    AS $$
+declare
+    asked public.absences;
+    cleared jsonb;
+begin
+    if answer is null or answer not in ('approved', 'declined') then
+        raise exception 'A request is approved or declined';
+    end if;
+
+    if not coalesce(public.get_my_role() in ('super_admin', 'owner', 'store_manager'), false) then
+        raise exception 'Only a manager can answer time off';
+    end if;
+
+    select * into asked from public.absences where id = request_id for update;
+    if not found or asked.status <> 'requested' then
+        raise exception 'This request has already been answered or was taken back';
+    end if;
+
+    -- Only their shifts, and only inside the dates asked for, whatever was
+    -- sent. What goes is written down as it was, so the week can go on asking
+    -- for cover until somebody is on those hours.
+    if answer = 'approved' and coalesce(cardinality(clear_shift_ids), 0) > 0 then
+        with gone as (
+            delete from public.roster_shifts s
+             where s.id = any(clear_shift_ids)
+               and s.employee_id = asked.employee_id
+               and s.shift_date between asked.starts_on and asked.ends_on
+            returning s.shift_date, s.starts_at, s.ends_at
+        )
+        select jsonb_agg(jsonb_build_object('date', g.shift_date, 'starts_at', g.starts_at, 'ends_at', g.ends_at)
+                         order by g.shift_date, g.starts_at)
+          into cleared
+          from gone g;
+    end if;
+
+    update public.absences
+       set status = answer,
+           decided_by = auth.uid(),
+           decided_at = now(),
+           cleared_shifts = cleared
+     where id = request_id
+    returning * into asked;
+
+    return asked;
+end $$;
+
+-- A store manager does not answer their own request for time off. Their
+-- holiday is an owner's to say yes to, which is why the mail about it goes to
+-- the owners, and the roster used to offer them Answer it anyway. Only the
+-- answer is guarded: a manager typing in their own sick day, or a holiday on
+-- the timesheet, writes a row that is approved from the start, which is how
+-- those have always worked. Their own part of a day stays theirs to answer,
+-- the same as the mail, which tells nobody about it.
+CREATE OR REPLACE FUNCTION "public"."absence_answer_guard"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public', 'pg_temp'
+    AS $$
+begin
+    -- Same as the other guards: only what comes through the API is guarded.
+    if current_setting('request.jwt.claims', true) is null then
+        return new;
+    end if;
+
+    -- A part of a day is left to them, the same as the mail: nobody is told
+    -- when a manager asks to leave at three, so nobody else would answer it.
+    if old.status = 'requested'
+       and new.status is distinct from old.status
+       and public.get_my_role() = 'store_manager'
+       and old.employee_id = public.get_my_employee_id()
+       and old.can_work_from is null
+       and old.can_work_to is null then
+        raise exception 'You cannot answer your own request. An owner has to.';
+    end if;
+
+    return new;
+end $$;
+
+-- What staff were last shown of a shift, kept while it has changes nobody has
+-- been told about. Changing a published shift takes it back to a draft, so
+-- the roster can say the week has changed since it went out, and staff could
+-- only read published rows, so the shift vanished from their week and their
+-- phone until the week was published again. Now the old version is kept on
+-- the row and roster_published serves it. Not only for the API: it is the
+-- row describing itself, so it holds however the row is changed.
+CREATE OR REPLACE FUNCTION "public"."roster_shift_keeps_what_went_out"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    SET "search_path" TO 'public', 'pg_temp'
+    AS $$
+begin
+    if tg_op = 'INSERT' or new.published_at is not null then
+        -- New, or published as it stands: the row is what staff see.
+        new.published_as := null;
+    elsif old.published_at is not null then
+        -- Published until this change, so what went out is the old row.
+        new.published_as := jsonb_build_object(
+            'employee_id', old.employee_id,
+            'shift_date', old.shift_date,
+            'starts_at', old.starts_at,
+            'ends_at', old.ends_at,
+            'position_id', old.position_id,
+            'break_minutes', old.break_minutes,
+            'note', old.note,
+            'published_at', old.published_at
+        );
+    else
+        -- Changed again before going out again. What went out has not moved.
+        new.published_as := old.published_as;
+    end if;
+    return new;
 end $$;
 
 CREATE OR REPLACE FUNCTION "public"."record_logins"() RETURNS integer
@@ -2727,7 +2927,7 @@ CREATE OR REPLACE FUNCTION "public"."audit_skips"() RETURNS "text"[]
 CREATE OR REPLACE FUNCTION "public"."audit_ignored_columns"() RETURNS "text"[]
     LANGUAGE "sql" IMMUTABLE
     SET "search_path" TO 'public', 'pg_temp'
-    AS $$ select array['updated_at', 'last_seen_at'] $$;
+    AS $$ select array['updated_at', 'last_seen_at', 'feed_synced_at', 'feed_count', 'last_read_at', 'last_read_count'] $$;
 
 CREATE OR REPLACE FUNCTION "public"."row_label"("tbl" "text", "row_data" "jsonb") RETURNS "text"
     LANGUAGE "plpgsql" SECURITY DEFINER
@@ -3025,8 +3225,10 @@ $$;
 
 -- The newest change that alters what the allergen sheet says: allergens,
 -- dishes, what is in them and their categories, recipes, and a product
--- renamed, switched on or off, or made a MIX. A price, the VAT, a quantity or
--- a note does not count. The customer page is not signed in and cannot read
+-- renamed, switched on or off, made a MIX, or moved section. The section
+-- counts since 032, because a food product with no allergens entered sends
+-- the customer to staff and packaging does not. A price, the VAT, a quantity
+-- or a note does not count. The customer page is not signed in and cannot read
 -- the change log, so this reads it for them and hands back one date.
 --
 -- Listed by what does not count rather than by what does, on every table but
@@ -3053,7 +3255,7 @@ create or replace function public.allergens_changed_at() returns timestamp with 
             -- with still counts, as an insert on product_allergens.
             when l.table_name = 'products' and l.action = 'insert' then false
             when l.action <> 'update' then true
-            when l.table_name = 'products' then l.changes ?| array['name', 'is_active', 'is_mix']
+            when l.table_name = 'products' then l.changes ?| array['name', 'is_active', 'is_mix', 'section']
             when l.table_name = 'menu_items' then exists (
                 select 1 from jsonb_object_keys(l.changes) k
                  where k <> all (array['selling_price', 'vat_rate', 'notes']))
@@ -3103,7 +3305,8 @@ begin
 end $$;
 
 COMMENT ON FUNCTION "public"."allergen_sheet_printed"("restaurant" "uuid") IS 'Stamps now() as when the allergen sheet was last printed for a restaurant. Managers and owners for their own restaurant, the super admin for any. Returns the stamp.';
-COMMENT ON FUNCTION "public"."allergens_changed_at"() IS 'When anything on the allergen sheet last changed, from the change log: allergens, dishes, what is in them, their categories, recipes, and a product renamed, switched on or off, or made a MIX. Not prices, VAT, quantities or notes. Null when the log holds no such change.';
+COMMENT ON FUNCTION "public"."allergens_changed_at"() IS 'When anything on the allergen sheet last changed, from the change log: allergens, dishes, what is in them, their categories, recipes, and a product renamed, switched on or off, made a MIX or moved section. Not prices, VAT, quantities or notes. Null when the log holds no such change.';
+COMMENT ON FUNCTION "public"."answer_time_off"("request_id" "uuid", "answer" "text", "clear_shift_ids" "uuid"[]) IS 'Approves or declines a request for time off that is still waiting, and on approval takes off the roster those of the given shifts that are theirs and inside the dates, recording them in cleared_shifts. All in one transaction. Managers only, under their own row rules. Returns the answered row.';
 COMMENT ON FUNCTION "public"."audit_ignored_columns"() IS 'Columns the change log does not treat as a change. Housekeeping stamps only: if one of these is all that moved, nothing is written.';
 COMMENT ON FUNCTION "public"."checklist_left"("round" "uuid") IS 'How many things at the bottom of the list a round has not ticked yet, counting what is on the list now.';
 COMMENT ON FUNCTION "public"."checklist_photos_due"() IS 'The photos the nightly job deletes: rounds older than a list''s last finished one, a once off list two weeks after it finished, a guide picture no task in use points at, and a photo never submitted once its round has ended. Nothing younger than a day.';
@@ -3117,10 +3320,14 @@ COMMENT ON FUNCTION "public"."sales_platform_key"() IS 'Gives a platform added w
 COMMENT ON FUNCTION "public"."unwatched_tables"() IS 'Public tables with no change_log trigger. The RLS suite fails when this is not empty.';
 COMMENT ON FUNCTION "public"."watch_changes"() IS 'Puts the change_log trigger on every public table that has not got it. Idempotent, and normally called by the event trigger rather than by hand.';
 
+revoke all on function "public"."absence_answer_guard"() from public, anon, authenticated, service_role;
+grant execute on function "public"."absence_answer_guard"() to service_role;
 revoke all on function "public"."allergen_sheet_printed"("restaurant" "uuid") from public, anon, authenticated, service_role;
 grant execute on function "public"."allergen_sheet_printed"("restaurant" "uuid") to authenticated;
 revoke all on function "public"."allergens_changed_at"() from public, anon, authenticated, service_role;
 grant execute on function "public"."allergens_changed_at"() to anon, authenticated;
+revoke all on function "public"."answer_time_off"("request_id" "uuid", "answer" "text", "clear_shift_ids" "uuid"[]) from public, anon, authenticated, service_role;
+grant execute on function "public"."answer_time_off"("request_id" "uuid", "answer" "text", "clear_shift_ids" "uuid"[]) to authenticated;
 revoke all on function "public"."checklist_photos_due"() from public, anon, authenticated, service_role;
 grant execute on function "public"."checklist_photos_due"() to service_role;
 revoke all on function "public"."checklist_photos_removed"("names" "text"[]) from public, anon, authenticated, service_role;
@@ -3151,12 +3358,16 @@ revoke all on function "public"."record_truncate"() from public, anon, authentic
 grant execute on function "public"."record_truncate"() to service_role;
 revoke all on function "public"."restaurant_settings_guard"() from public, anon, authenticated, service_role;
 grant execute on function "public"."restaurant_settings_guard"() to service_role;
+revoke all on function "public"."roster_shift_keeps_what_went_out"() from public, anon, authenticated, service_role;
+grant execute on function "public"."roster_shift_keeps_what_went_out"() to service_role;
 revoke all on function "public"."row_label"("tbl" "text", "row_data" "jsonb") from public, anon, authenticated, service_role;
 grant execute on function "public"."row_label"("tbl" "text", "row_data" "jsonb") to service_role;
 revoke all on function "public"."sales_platform_key"() from public, anon, authenticated, service_role;
 grant execute on function "public"."sales_platform_key"() to service_role;
 revoke all on function "public"."shift_request_transition_guard"() from public, anon, authenticated, service_role;
 grant execute on function "public"."shift_request_transition_guard"() to service_role;
+revoke all on function "public"."stock_take_reopened_clears_value"() from public, anon, authenticated, service_role;
+grant execute on function "public"."stock_take_reopened_clears_value"() to service_role;
 revoke all on function "public"."switch_off_leavers"() from public, anon, authenticated, service_role;
 grant execute on function "public"."switch_off_leavers"() to service_role;
 revoke all on function "public"."unwatched_tables"() from public, anon, authenticated, service_role;
@@ -3177,7 +3388,15 @@ grant execute on function "public"."watch_changes"() to service_role;
 --
 -- The shape repeats. A super admin sees everything. An owner or a store
 -- manager sees their own restaurant. An employee sees the parts of it they
--- need to do the job and none of the money.
+-- need to do the job. Sales, invoices, labour, cost targets and anybody's pay
+-- stay closed to them.
+--
+-- Some money does reach an employee, on purpose: their restaurant's supplier
+-- prices, the values on a stock take and today's waste. A count and the
+-- Waste page cost each line as it is entered, and the euros on Waste catch
+-- 5 kg typed for 0.5 kg. His decision on 1 October 2026, in his words: "they
+-- need to see them while doing Waste or Stock Take, I don't see a way to hide
+-- this that doesn't harm us."
 
 
 -- -- The restaurants, and the people who work in them ------------------
@@ -3186,9 +3405,10 @@ ALTER TABLE "public"."restaurants" ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "restaurants_all_super_admin" ON "public"."restaurants" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text")) WITH CHECK ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text"));
 
+-- No employee reads this table. The row carries the cost targets, the
+-- default cost per hour and the addresses the report and the hours are
+-- mailed to, so staff read staff_restaurants instead (with the views, below).
 CREATE POLICY "restaurants_select" ON "public"."restaurants" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("id" = ( SELECT "public"."get_my_restaurant_id"() )))));
-
-CREATE POLICY "restaurants_select_own" ON "public"."restaurants" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'employee'::"text") AND ("id" = ( SELECT "public"."get_my_restaurant_id"() ))));
 
 CREATE POLICY "restaurants_update_own" ON "public"."restaurants" FOR UPDATE TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'store_manager'::"text") AND ("id" = ( SELECT "public"."get_my_restaurant_id"() )))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'store_manager'::"text") AND ("id" = ( SELECT "public"."get_my_restaurant_id"() ))));
 
@@ -3198,7 +3418,12 @@ CREATE POLICY "users_select" ON "public"."users" FOR SELECT TO "authenticated" U
 
 CREATE POLICY "users_select_own" ON "public"."users" FOR SELECT TO "authenticated" USING ((("id" = ( SELECT "auth"."uid"() )) AND "is_active"));
 
-CREATE POLICY "users_write" ON "public"."users" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = 'owner'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND ("role" IN ('store_manager', 'employee'))) OR ((( SELECT "public"."get_my_role"() ) = 'store_manager'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND (("role")::"text" = 'employee'::"text")))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = 'owner'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND ("role" IN ('store_manager', 'employee'))) OR ((( SELECT "public"."get_my_role"() ) = 'store_manager'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND (("role")::"text" = 'employee'::"text"))));
+-- Only a super admin changes an account, the same as the Users page, which has
+-- been theirs alone since 8 September. An owner or a store manager reads the
+-- accounts at their restaurant, to link one to a person on Team, which writes
+-- the person and not the account. Your own landing page and the nightly
+-- switch off of leavers are functions that run as the owner of the table.
+CREATE POLICY "users_write" ON "public"."users" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text")) WITH CHECK ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text"));
 
 ALTER TABLE "public"."positions" ENABLE ROW LEVEL SECURITY;
 
@@ -3206,22 +3431,30 @@ CREATE POLICY "positions_all" ON "public"."positions" TO "authenticated" USING (
 
 ALTER TABLE "public"."employees" ENABLE ROW LEVEL SECURITY;
 
+-- Managers and above, and nobody below that, not even for their own row. It
+-- carries what they cost per hour and whatever a manager wrote about them in
+-- Notes. My shifts finds the person through get_my_employee_id and
+-- roster_colleagues instead.
 CREATE POLICY "employees_all" ON "public"."employees" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
-
-CREATE POLICY "employees_read_own" ON "public"."employees" FOR SELECT TO "authenticated" USING (("user_id" = ( SELECT "auth"."uid"() )));
 
 
 -- -- The catalogue -----------------------------------------------------
 
 ALTER TABLE "public"."suppliers" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "suppliers_select" ON "public"."suppliers" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text", 'employee'::"text"])));
+-- Staff see only the suppliers still in use, to ring the rep about a
+-- delivery. A switched off one's old contacts and notes are no use on the
+-- floor, and an empty is_active reads as switched off, the same as in the app.
+CREATE POLICY "suppliers_select" ON "public"."suppliers" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])) OR ((( SELECT "public"."get_my_role"() ) = 'employee'::"text") AND ("is_active" IS TRUE))));
 
 CREATE POLICY "suppliers_write" ON "public"."suppliers" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
 ALTER TABLE "public"."products" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "products_select" ON "public"."products" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text", 'employee'::"text"])));
+-- Managers and above. Staff read staff_products (with the views, below),
+-- which has what a count and the Waste page use and not the notes, the
+-- weight loss, what one piece weighs or how often it is counted.
+CREATE POLICY "products_select" ON "public"."products" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
 CREATE POLICY "products_write" ON "public"."products" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
@@ -3252,35 +3485,43 @@ CREATE POLICY "product_aliases_write" ON "public"."product_aliases" TO "authenti
 ALTER TABLE "public"."mix_recipes" ENABLE ROW LEVEL SECURITY;
 
 -- Employees read recipes too: a MIX is valued from its recipe, and counting
--- stock and logging waste are their job. Writing one stays with managers.
-CREATE POLICY "mix_recipes_select" ON "public"."mix_recipes" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text", 'employee'::"text"])));
+-- stock and logging waste are their job. They read them through
+-- staff_mix_recipes (with the views, below), which has what goes in and how
+-- much and not the notes. Writing one stays with managers.
+CREATE POLICY "mix_recipes_select" ON "public"."mix_recipes" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
 CREATE POLICY "mix_recipes_write" ON "public"."mix_recipes" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
 ALTER TABLE "public"."product_allergens" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "product_allergens_select" ON "public"."product_allergens" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text", 'employee'::"text"])));
+-- Managers only, like the menu below. The customer page, and staff looking
+-- at it, read public_product_allergens instead.
+CREATE POLICY "product_allergens_select" ON "public"."product_allergens" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
 CREATE POLICY "product_allergens_write" ON "public"."product_allergens" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
 
 -- -- The menu ----------------------------------------------------------
+--
+-- Managers only. These carry every dish's selling price, its VAT and how
+-- much of each thing goes into it, and no staff screen reads any of them.
+-- The customer page reads the public_ views, which leave all of that out.
 
 ALTER TABLE "public"."menu_categories" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "menu_categories_select" ON "public"."menu_categories" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text", 'employee'::"text"])));
+CREATE POLICY "menu_categories_select" ON "public"."menu_categories" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
 CREATE POLICY "menu_categories_write" ON "public"."menu_categories" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
 ALTER TABLE "public"."menu_items" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "menu_items_select" ON "public"."menu_items" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text", 'employee'::"text"])));
+CREATE POLICY "menu_items_select" ON "public"."menu_items" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
 CREATE POLICY "menu_items_write" ON "public"."menu_items" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
 ALTER TABLE "public"."menu_item_components" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "menu_item_components_select" ON "public"."menu_item_components" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text", 'employee'::"text"])));
+CREATE POLICY "menu_item_components_select" ON "public"."menu_item_components" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
 CREATE POLICY "menu_item_components_write" ON "public"."menu_item_components" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
@@ -3344,7 +3585,7 @@ CREATE POLICY "invoice_lines_write" ON "public"."invoice_lines" TO "authenticate
 
 -- Everything that hangs off an invoice follows the invoice's own rule:
 -- managers and above, their own restaurant. An employee has no business
--- reading what anything costs.
+-- reading an invoice.
 ALTER TABLE "public"."supplier_accounts" ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "supplier_accounts_all" ON "public"."supplier_accounts" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
@@ -3365,18 +3606,17 @@ CREATE POLICY "supplier_documents_all" ON "public"."supplier_documents" TO "auth
 -- point of taking the note at the door: the person signing for it knows within
 -- a minute and has forgotten by Friday.
 --
--- They may raise one and read back the ones they raised. They may not read
--- anybody else's, because a claim carries an amount once it has been matched to
--- a line and what things cost is not an employee's business. They may not
--- change one afterwards either: a note taken at the door is a record of what
--- was said at the door.
+-- They may raise one. They read back the ones they raised through my_claims
+-- (with the views, below), and not the table, even for their own: a claim
+-- carries an amount once it has been matched to a line, and what came back,
+-- and what things cost is not an employee's business. They may not change one
+-- afterwards either: a note taken at the door is a record of what was said at
+-- the door.
 ALTER TABLE "public"."invoice_line_claims" ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "invoice_line_claims_manage" ON "public"."invoice_line_claims" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
 CREATE POLICY "invoice_line_claims_raise" ON "public"."invoice_line_claims" FOR INSERT TO "authenticated" WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'employee'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND ("raised_by" = ( SELECT "auth"."uid"() )) AND ("amount" IS NULL) AND ("credited_amount" = (0)::numeric) AND ("status" = 'open'::"text") AND ("invoice_line_id" IS NULL) AND ("credit_invoice_id" IS NULL)));
-
-CREATE POLICY "invoice_line_claims_read_own" ON "public"."invoice_line_claims" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'employee'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND ("raised_by" = ( SELECT "auth"."uid"() ))));
 
 ALTER TABLE "public"."labour_entries" ENABLE ROW LEVEL SECURITY;
 
@@ -3405,22 +3645,36 @@ CREATE POLICY "cost_target_overrides_select" ON "public"."cost_target_overrides"
 
 CREATE POLICY "cost_target_overrides_write" ON "public"."cost_target_overrides" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
+-- Waste is logged by whoever threw it out, so anybody at the restaurant can
+-- add to it, and only a manager can change or delete what is there. A super
+-- admin can do either at any restaurant, as everywhere else, because they work
+-- at whichever one they have switched to. The last policy covers every action,
+-- so its check counts for a new entry too and the two have to agree.
+--
+-- An employee sees what was logged today, so two people do not log the same
+-- dropped tray twice. Today is the date in Ireland, because that is the date
+-- the app writes: the database's own is UTC, and from midnight to one in the
+-- morning in summer an entry vanished from the list the moment it was saved.
 ALTER TABLE "public"."waste_logs" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "waste_logs_insert" ON "public"."waste_logs" FOR INSERT TO "authenticated" WITH CHECK (((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text", 'employee'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))));
+CREATE POLICY "waste_logs_insert" ON "public"."waste_logs" FOR INSERT TO "authenticated" WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text", 'employee'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
 CREATE POLICY "waste_logs_select" ON "public"."waste_logs" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
-CREATE POLICY "waste_logs_select_today" ON "public"."waste_logs" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'employee'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND ("log_date" = CURRENT_DATE)));
+CREATE POLICY "waste_logs_select_today" ON "public"."waste_logs" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'employee'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND ("log_date" = (("now"() AT TIME ZONE 'Europe/Dublin'::"text"))::"date")));
 
-CREATE POLICY "waste_logs_update_delete" ON "public"."waste_logs" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))));
+CREATE POLICY "waste_logs_update_delete" ON "public"."waste_logs" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
 
 -- -- Counting the stock ------------------------------------------------
 
 ALTER TABLE "public"."stock_takes" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "stock_takes_select" ON "public"."stock_takes" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text", 'employee'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+-- An employee reads only the count in progress, the one they can open. A
+-- closed count carries what the stock was worth and the history is managers
+-- only. The lines of an old count close with it, because the rules on
+-- stock_take_lines below ask this table as the person asking.
+CREATE POLICY "stock_takes_select" ON "public"."stock_takes" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))) OR ((( SELECT "public"."get_my_role"() ) = 'employee'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND (("status")::"text" = 'in_progress'::"text"))));
 
 CREATE POLICY "stock_takes_write" ON "public"."stock_takes" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
@@ -3509,9 +3763,11 @@ CREATE POLICY "checklist_ticks_insert" ON "public"."checklist_ticks" FOR INSERT 
 
 ALTER TABLE "public"."roster_shifts" ENABLE ROW LEVEL SECURITY;
 
+-- Managers and above only. Staff read the week as it went out through
+-- roster_published (with the views, below), which gives the note a manager
+-- writes on a shift only to the person it is on. The table has every note
+-- and every draft.
 CREATE POLICY "roster_shifts_all" ON "public"."roster_shifts" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
-
-CREATE POLICY "roster_shifts_read_published" ON "public"."roster_shifts" FOR SELECT TO "authenticated" USING ((("published_at" IS NOT NULL) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))));
 
 ALTER TABLE "public"."day_notes" ENABLE ROW LEVEL SECURITY;
 
@@ -3535,7 +3791,10 @@ CREATE POLICY "shift_requests_answer" ON "public"."shift_requests" FOR UPDATE TO
 
 CREATE POLICY "shift_requests_ask" ON "public"."shift_requests" FOR INSERT TO "authenticated" WITH CHECK ((("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND ("from_employee_id" = ( SELECT "public"."get_my_employee_id"() ))));
 
-CREATE POLICY "shift_requests_read" ON "public"."shift_requests" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))));
+-- The two people in it and the managers. A swap between two other people is
+-- theirs: who asked whom, the hours and the message. The mark on a
+-- colleague's shift on My shifts comes from roster_asks instead.
+CREATE POLICY "shift_requests_read" ON "public"."shift_requests" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR (("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) OR ("from_employee_id" = ( SELECT "public"."get_my_employee_id"() )) OR ("to_employee_id" = ( SELECT "public"."get_my_employee_id"() ))))));
 
 
 -- -- The weekly report -------------------------------------------------
@@ -3576,9 +3835,11 @@ CREATE POLICY "report_items_write" ON "public"."report_items" TO "authenticated"
 
 -- -- What is on near us ------------------------------------------------
 --
--- Everybody working a concert night needs to know it is happening, so all
--- three read to any signed in account. Only a manager decides which places
--- we watch, and only for their own restaurant.
+-- Everybody working a concert night needs to know it is happening. Staff
+-- read the listings at places their restaurant watches, their own
+-- restaurant's pairings, and the places through staff_places. Managers read
+-- all three in full. Only a manager decides which places we watch, and only
+-- for their own restaurant.
 --
 -- A place is shared, so any manager may add one or correct one: it is the
 -- venue itself, and both restaurants see the same page and the same feed. What
@@ -3591,7 +3852,10 @@ CREATE POLICY "report_items_write" ON "public"."report_items" TO "authenticated"
 
 ALTER TABLE "public"."places" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "places_select" ON "public"."places" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) IS NOT NULL));
+-- Managers and above. Staff read staff_places (with the views, below): a
+-- place's name and size, not its page address, Ticketmaster id or how it is
+-- read, which are for Settings.
+CREATE POLICY "places_select" ON "public"."places" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
 CREATE POLICY "places_write" ON "public"."places" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
@@ -3603,7 +3867,11 @@ CREATE POLICY "places_delete_only_when_unused" ON "public"."places" AS RESTRICTI
 
 ALTER TABLE "public"."restaurant_places" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "restaurant_places_select" ON "public"."restaurant_places" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) IS NOT NULL));
+-- Every pairing for a manager, and that is not to be narrowed: the delete
+-- rule above reads this table as the manager deleting, and one who could not
+-- see the other restaurant's pairing could delete a place it watches. Staff
+-- read their own restaurant's.
+CREATE POLICY "restaurant_places_select" ON "public"."restaurant_places" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])) OR ((( SELECT "public"."get_my_role"() ) = 'employee'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
 CREATE POLICY "restaurant_places_write" ON "public"."restaurant_places" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
@@ -3611,7 +3879,13 @@ ALTER TABLE "public"."events" ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "events_select" ON "public"."events" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
-CREATE POLICY "events_select_all_staff" ON "public"."events" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) IS NOT NULL));
+-- Staff read the listings at places their restaurant watches, and not the
+-- ones somebody dismissed, which stay in the table only so the next read of
+-- the page does not offer them again. Managers read every listing, for the
+-- same delete rule.
+CREATE POLICY "events_select_staff" ON "public"."events" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'employee'::"text") AND ("review" <> 'dismissed'::"text") AND (EXISTS ( SELECT 1
+   FROM "public"."restaurant_places" "rp"
+  WHERE (("rp"."place_id" = "events"."place_id") AND ("rp"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND "rp"."is_active")))));
 
 CREATE POLICY "events_write" ON "public"."events" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
@@ -3623,9 +3897,13 @@ CREATE POLICY "events_delete_super_admin_only" ON "public"."events" AS RESTRICTI
 ALTER TABLE "public"."diary_entries" ENABLE ROW LEVEL SECURITY;
 
 -- Everybody who works here reads what is on, because a catering job matters
--- most to the person who has to make it. Private is the exception and answers
--- only to the person who wrote it.
-CREATE POLICY "diary_entries_select" ON "public"."diary_entries" FOR SELECT TO "authenticated" USING (((("scope" = 'all_sites'::"text") AND (( SELECT "public"."get_my_role"() ) IS NOT NULL)) OR (("scope" = 'sites'::"text") AND ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR (( SELECT "public"."get_my_restaurant_id"() ) = ANY ("restaurant_ids")))) OR (("scope" = 'private'::"text") AND ("created_by" = ( SELECT "auth"."uid"() )))));
+-- most to the person who has to make it. Staff read it through staff_diary
+-- (with the views, below), which leaves out where each entry is on Google and
+-- who wrote it, so the group's and the restaurant's entries answer here only
+-- to managers. Private is the exception and answers only to the person who
+-- wrote it, and only while their account is switched on, the same as every
+-- other rule.
+CREATE POLICY "diary_entries_select" ON "public"."diary_entries" FOR SELECT TO "authenticated" USING (((("scope" = 'all_sites'::"text") AND (( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) OR (("scope" = 'sites'::"text") AND ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND (( SELECT "public"."get_my_restaurant_id"() ) = ANY ("restaurant_ids"))))) OR (("scope" = 'private'::"text") AND ("created_by" = ( SELECT "auth"."uid"() )) AND (( SELECT "public"."get_my_role"() ) IS NOT NULL))));
 
 -- Managers and above write. A store manager or an owner can only put an entry
 -- on their own restaurant, so restaurant_ids has to be contained by the one
@@ -3653,17 +3931,39 @@ CREATE POLICY "change_log_select" ON "public"."change_log" FOR SELECT TO "authen
 -- Two kinds, and both exist because row level security picks rows and cannot
 -- pick columns.
 --
+-- The staff views are what staff read instead of a table, because the table
+-- has columns no staff screen uses. His rule of 1 October 2026: the database
+-- sends staff a cut-down of only what they need to see.
+--
 -- roster_colleagues and roster_away let staff see who they are working with
 -- and who is off, without their pay rate, date of birth, immigration status,
--- or the reason somebody is away. They read past row level security on
--- purpose and their own where clause is the wall between the two
--- restaurants, which is covered by the database tests.
+-- or the reason somebody is away. roster_published is the week as it went
+-- out, so a shift changed since is shown to staff as it was rather than as
+-- the draft the manager is working on, and a shift's note only to the person
+-- it is on and to the managers. staff_restaurants gives them their own
+-- restaurant without its cost targets, its default cost per hour or the
+-- addresses its mail goes to. my_claims gives them the delivery problems they
+-- logged without what each was worth, and roster_asks which shifts somebody
+-- has asked about, without the request. staff_products gives them the
+-- products without the notes or the weight loss, staff_diary what is on
+-- without where each entry is on Google, staff_places a place nearby without
+-- how it is set up, and staff_mix_recipes the recipes without their notes.
+-- They read past row level security on purpose and their own where clause is
+-- the wall between the two restaurants, which is covered by the database
+-- tests.
 --
 -- The public_ views are what a customer scanning the QR code is given. The
 -- tables behind them answer to nobody who is not signed in. No quantity
 -- appears in any of them: how much coriander is in the slaw is not something
 -- a customer needs in order to be told it contains celery.
 
+-- The weeks My shifts opens and one more: nine either side of today in
+-- Ireland. Nobody who left before them or starts after them, and a start or
+-- leaving date outside them is left empty, which reads the same on every week
+-- staff can open. Your own row whatever its dates, since My shifts finds you by
+-- it. STAFF_WEEKS in lib/roster.js is the page's half, and schema.test.js
+-- checks the two agree. has_login stays last: a column can only be added to a
+-- view at the end.
 CREATE OR REPLACE VIEW "public"."roster_colleagues" AS
  SELECT "e"."id",
     "e"."restaurant_id",
@@ -3672,12 +3972,23 @@ CREATE OR REPLACE VIEW "public"."roster_colleagues" AS
     "p"."name" AS "position_name",
     "p"."colour" AS "position_colour",
     "e"."sort_order",
-    "e"."started_on",
-    "e"."ended_on"
+        CASE
+            WHEN ("e"."started_on" >= ((("now"() AT TIME ZONE 'Europe/Dublin'::"text"))::"date" - 63)) THEN "e"."started_on"
+            ELSE NULL::"date"
+        END AS "started_on",
+        CASE
+            WHEN ("e"."ended_on" <= ((("now"() AT TIME ZONE 'Europe/Dublin'::"text"))::"date" + 63)) THEN "e"."ended_on"
+            ELSE NULL::"date"
+        END AS "ended_on",
+    (EXISTS ( SELECT 1
+           FROM "public"."users" "u"
+          WHERE (("u"."id" = "e"."user_id") AND "u"."is_active"))) AS "has_login"
    FROM ("public"."employees" "e"
      LEFT JOIN "public"."positions" "p" ON (("p"."id" = "e"."position_id")))
-  WHERE (("e"."restaurant_id" = "public"."get_my_restaurant_id"()) OR ("public"."get_my_role"() = 'super_admin'::"text"));
+  WHERE ((("e"."restaurant_id" = "public"."get_my_restaurant_id"()) OR ("public"."get_my_role"() = 'super_admin'::"text")) AND (("e"."id" = "public"."get_my_employee_id"()) OR ((("e"."started_on" IS NULL) OR ("e"."started_on" <= ((("now"() AT TIME ZONE 'Europe/Dublin'::"text"))::"date" + 63))) AND (("e"."ended_on" IS NULL) OR ("e"."ended_on" >= ((("now"() AT TIME ZONE 'Europe/Dublin'::"text"))::"date" - 63))))));
 
+-- The same weeks: time off that touches them, and none from long ago or
+-- months ahead.
 CREATE OR REPLACE VIEW "public"."roster_away" AS
  SELECT "employee_id",
     "restaurant_id",
@@ -3687,7 +3998,161 @@ CREATE OR REPLACE VIEW "public"."roster_away" AS
     "can_work_from",
     "can_work_to"
    FROM "public"."absences" "a"
-  WHERE (("status" = 'approved'::"text") AND (("restaurant_id" = "public"."get_my_restaurant_id"()) OR ("public"."get_my_role"() = 'super_admin'::"text")));
+  WHERE (("status" = 'approved'::"text") AND (("restaurant_id" = "public"."get_my_restaurant_id"()) OR ("public"."get_my_role"() = 'super_admin'::"text")) AND ("ends_on" >= ((("now"() AT TIME ZONE 'Europe/Dublin'::"text"))::"date" - 63)) AND ("starts_on" <= ((("now"() AT TIME ZONE 'Europe/Dublin'::"text"))::"date" + 63)));
+
+-- And the shifts, the same weeks, by the day each one was when it went out.
+-- Every published shift there ever was is history no staff screen shows. The
+-- edge functions read roster_shifts with their own key, so this is My shifts
+-- only, for a manager on the roster as much as for staff.
+CREATE OR REPLACE VIEW "public"."roster_published" AS
+ SELECT "s"."id",
+    "s"."restaurant_id",
+        CASE
+            WHEN ("s"."published_at" IS NOT NULL) THEN "s"."employee_id"
+            ELSE (("s"."published_as" ->> 'employee_id'::"text"))::"uuid"
+        END AS "employee_id",
+        CASE
+            WHEN ("s"."published_at" IS NOT NULL) THEN "s"."shift_date"
+            ELSE (("s"."published_as" ->> 'shift_date'::"text"))::"date"
+        END AS "shift_date",
+        CASE
+            WHEN ("s"."published_at" IS NOT NULL) THEN "s"."starts_at"
+            ELSE (("s"."published_as" ->> 'starts_at'::"text"))::time without time zone
+        END AS "starts_at",
+        CASE
+            WHEN ("s"."published_at" IS NOT NULL) THEN "s"."ends_at"
+            ELSE (("s"."published_as" ->> 'ends_at'::"text"))::time without time zone
+        END AS "ends_at",
+        CASE
+            WHEN ("s"."published_at" IS NOT NULL) THEN "s"."position_id"
+            ELSE (("s"."published_as" ->> 'position_id'::"text"))::"uuid"
+        END AS "position_id",
+        CASE
+            WHEN ("s"."published_at" IS NOT NULL) THEN "s"."break_minutes"
+            ELSE (("s"."published_as" ->> 'break_minutes'::"text"))::integer
+        END AS "break_minutes",
+        CASE
+            WHEN ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])) OR (
+            CASE
+                WHEN ("s"."published_at" IS NOT NULL) THEN "s"."employee_id"
+                ELSE (("s"."published_as" ->> 'employee_id'::"text"))::"uuid"
+            END = ( SELECT "public"."get_my_employee_id"() ))) THEN
+            CASE
+                WHEN ("s"."published_at" IS NOT NULL) THEN "s"."note"
+                ELSE ("s"."published_as" ->> 'note'::"text")
+            END
+            ELSE NULL::"text"
+        END AS "note",
+    COALESCE("s"."published_at", (("s"."published_as" ->> 'published_at'::"text"))::timestamp with time zone) AS "published_at"
+   FROM "public"."roster_shifts" "s"
+  WHERE ((("s"."published_at" IS NOT NULL) OR ("s"."published_as" IS NOT NULL)) AND (("s"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) OR (( SELECT "public"."get_my_role"() ) = 'super_admin'::"text")) AND (
+        CASE
+            WHEN ("s"."published_at" IS NOT NULL) THEN "s"."shift_date"
+            ELSE (("s"."published_as" ->> 'shift_date'::"text"))::"date"
+        END >= ((("now"() AT TIME ZONE 'Europe/Dublin'::"text"))::"date" - 63)) AND (
+        CASE
+            WHEN ("s"."published_at" IS NOT NULL) THEN "s"."shift_date"
+            ELSE (("s"."published_as" ->> 'shift_date'::"text"))::"date"
+        END <= ((("now"() AT TIME ZONE 'Europe/Dublin'::"text"))::"date" + 63)));
+
+-- Only open restaurants, the same as the switcher has always shown, so the
+-- app does not ask and the view has no is_active to be asked about.
+CREATE OR REPLACE VIEW "public"."staff_restaurants" AS
+ SELECT "r"."id",
+    "r"."name",
+    "r"."sort_order",
+    "r"."opening_hours",
+    "r"."break_rules",
+    "r"."roster_rules",
+    "r"."watch_city_events"
+   FROM "public"."restaurants" "r"
+  WHERE (("r"."is_active" = true) AND (("r"."id" = "public"."get_my_restaurant_id"()) OR ("public"."get_my_role"() = 'super_admin'::"text")));
+
+-- Live asks only, the ones still waiting on somebody, which is all the mark
+-- on the week is about.
+CREATE OR REPLACE VIEW "public"."roster_asks" AS
+ SELECT "r"."give_shift_id",
+    "r"."take_shift_id",
+    "r"."status"
+   FROM "public"."shift_requests" "r"
+  WHERE (("r"."status" = ANY (ARRAY['asked'::"text", 'accepted'::"text"])) AND ("r"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )));
+
+-- Every product, switched off ones included, because today's waste and the
+-- lines of a count can name one switched off since. Anybody signed in and
+-- switched on, the same as the table's own rule for managers.
+CREATE OR REPLACE VIEW "public"."staff_products" AS
+ SELECT "p"."id",
+    "p"."name",
+    "p"."section",
+    "p"."also_in",
+    "p"."unit",
+    "p"."category",
+    "p"."is_mix",
+    "p"."batch_yield",
+    "p"."held_for",
+    "p"."is_active"
+   FROM "public"."products" "p"
+  WHERE (( SELECT "public"."get_my_role"() ) IS NOT NULL);
+
+-- The same entries the table gave staff before 034: the group's, their
+-- restaurant's and their own private ones, and nothing for an account
+-- switched off.
+CREATE OR REPLACE VIEW "public"."staff_diary" AS
+ SELECT "d"."id",
+    "d"."kind",
+    "d"."title",
+    "d"."scope",
+    "d"."restaurant_ids",
+    "d"."starts_on",
+    "d"."ends_on",
+    "d"."starts_at",
+    "d"."ends_at",
+    "d"."location",
+    "d"."contact_name",
+    "d"."contact_detail",
+    "d"."note",
+    "d"."status",
+    "d"."labels",
+    "d"."google_synced_at"
+   FROM "public"."diary_entries" "d"
+  WHERE ((("d"."scope" = 'all_sites'::"text") AND (( SELECT "public"."get_my_role"() ) IS NOT NULL)) OR (("d"."scope" = 'sites'::"text") AND (( SELECT "public"."get_my_restaurant_id"() ) = ANY ("d"."restaurant_ids"))) OR (("d"."scope" = 'private'::"text") AND ("d"."created_by" = ( SELECT "auth"."uid"() )) AND (( SELECT "public"."get_my_role"() ) IS NOT NULL)));
+
+-- Every place, since which of them a restaurant watches is restaurant_places'
+-- to say, and anybody signed in and switched on.
+CREATE OR REPLACE VIEW "public"."staff_places" AS
+ SELECT "p"."id",
+    "p"."name",
+    "p"."short_name",
+    "p"."capacity"
+   FROM "public"."places" "p"
+  WHERE (( SELECT "public"."get_my_role"() ) IS NOT NULL);
+
+-- Every recipe, since a MIX can contain a MIX and the products are shared.
+-- Anybody signed in and switched on.
+CREATE OR REPLACE VIEW "public"."staff_mix_recipes" AS
+ SELECT "r"."id",
+    "r"."mix_product_id",
+    "r"."ingredient_product_id",
+    "r"."quantity"
+   FROM "public"."mix_recipes" "r"
+  WHERE (( SELECT "public"."get_my_role"() ) IS NOT NULL);
+
+-- Yours and at your restaurant, so an account switched off reads nothing,
+-- the same as every rule that asks get_my_role.
+CREATE OR REPLACE VIEW "public"."my_claims" AS
+ SELECT "c"."id",
+    "c"."restaurant_id",
+    "c"."supplier_id",
+    "c"."docket_number",
+    "c"."what",
+    "c"."kind",
+    "c"."cases",
+    "c"."units",
+    "c"."status",
+    "c"."raised_on",
+    "c"."note"
+   FROM "public"."invoice_line_claims" "c"
+  WHERE (("c"."raised_by" = ( SELECT "auth"."uid"() )) AND ("c"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )));
 
 -- What labour cost, per day, for everything that asks: the cost dashboard, the
 -- report and the weekly report. None of them has to know the answer comes from
@@ -3744,11 +4209,14 @@ COMMENT ON VIEW "public"."labour_by_day" IS 'What labour cost, per day, for ever
 -- printed.
 --
 -- The third arm is the claims, and **the claim is the one place money coming
--- back is taken off, always in the week the delivery happened**: the whole ask
--- while it is open, what actually came back once it is settled. A credit note
--- that settles a claim is kept and matched and does not count on its own, which
--- is what counts_in_cost is for. It comes off once, and it never moves between
--- weeks because the credit happened to be dated the Monday after.
+-- back is taken off, in the week the delivery happened**: the whole ask while
+-- it is open, what actually came back once it is settled. A credit note that
+-- settles a claim is kept and matched and does not count on its own, which is
+-- what counts_in_cost is for. It comes off once, and it never moves between
+-- weeks because the credit happened to be dated the Monday after. The one
+-- exception is a delivery whose week's report had already gone out when the
+-- claim got its money: it comes off the first week still open instead, or it
+-- would be in no report at all (claimWeek in lib/invoiceClaims.js).
 --
 -- security_invoker on purpose, the same case as labour_by_day: everything
 -- underneath already decides who sees what by restaurant and the view has
@@ -3838,10 +4306,14 @@ CREATE OR REPLACE VIEW "public"."public_product_allergens" AS
     "molluscs"
    FROM "public"."product_allergens" "a";
 
+-- The section is here so the page can tell food from packaging. A food product
+-- nobody entered allergens for is not known, and the page asks the customer to
+-- see staff; a dip pot has nothing to declare and is not a gap. Since 032.
 CREATE OR REPLACE VIEW "public"."public_products" AS
  SELECT "id",
     "name",
-    "is_mix"
+    "is_mix",
+    "section"
    FROM "public"."products" "p";
 
 CREATE OR REPLACE VIEW "public"."public_restaurants" AS
@@ -3851,8 +4323,16 @@ CREATE OR REPLACE VIEW "public"."public_restaurants" AS
    FROM "public"."restaurants" "r"
   WHERE ("is_active" = true);
 
-COMMENT ON VIEW "public"."roster_away" IS 'The days somebody is not there, with no reason attached, the hours they can still work when it is only part of a day, and the shifts a freed day left going spare. The kind, the note and the hours stay on the absences table, which nobody below a manager can read. This is what the staff week greys out, and it reads Not available the same way the picture that goes to the WhatsApp group does.';
-COMMENT ON VIEW "public"."roster_colleagues" IS 'Who works at your restaurant, as far as anybody below a manager is allowed to know: a name, a position and its colour. The employees table itself stays closed, because it carries the hourly rate, the date of birth and the work permission, and a row policy cannot hide a column.';
+COMMENT ON VIEW "public"."roster_published" IS 'The week as it went out to staff, at your restaurant: every published shift as it stands, and a shift changed since the week went out as it was then, from published_as. Changing a shift takes it back to a draft so the roster can say so, and without this it vanished from somebody''s week and phone until the week was published again. The note is there only for the person the shift is on and for the managers. Only shifts from nine weeks before today to nine after, by the day as it went out: the weeks My shifts opens and one more. My shifts reads this rather than roster_shifts.';
+COMMENT ON VIEW "public"."roster_asks" IS 'Which shifts at your restaurant somebody has asked about and is still waiting on, for the mark on My shifts: the shift given, the shift asked for and the status. Not who asked whom, the hours or the message, which only the two people in it and the managers read on shift_requests.';
+COMMENT ON VIEW "public"."roster_away" IS 'The days somebody is not there, with no reason attached, the hours they can still work when it is only part of a day, and the shifts a freed day left going spare. Only time off that touches the weeks from nine before today to nine after, the weeks My shifts opens and one more. The kind, the note and the hours stay on the absences table, which nobody below a manager can read. This is what the staff week greys out, and it reads Not available the same way the picture that goes to the WhatsApp group does.';
+COMMENT ON VIEW "public"."roster_colleagues" IS 'Who works at your restaurant, as far as anybody below a manager is allowed to know: a name, a position and its colour, and whether they have an account to answer a swap with. It is also how somebody finds their own name on the roster. Only people on the team at some point from nine weeks before today to nine weeks after, the weeks My shifts opens and one more, and a start or leaving date only when it falls inside them. The employees table itself stays closed, even for their own row, because it carries the hourly rate, the date of birth, the work permission and what a manager wrote in Notes, and a row policy cannot hide a column.';
+COMMENT ON VIEW "public"."my_claims" IS 'The delivery problems you logged at the door, at your restaurant, as Delivery problems shows them to staff: what it was, how many, the docket and whether it is still waiting. Not what it was worth, what came back or the invoice it was matched to, which stay on invoice_line_claims for the managers. A switched off account reads nothing.';
+COMMENT ON VIEW "public"."staff_diary" IS 'What is on, as the calendar and My shifts show it to staff: the group''s entries, your restaurant''s and your own private ones, with who to contact and whether it is on Google. Not where each one is on Google or who wrote it, which stay on diary_entries for the managers and the calendar function. A switched off account reads nothing.';
+COMMENT ON VIEW "public"."staff_mix_recipes" IS 'What goes into each MIX and how much, which is what values a MIX that staff count or log as waste. Not the notes beside each line, which stay on mix_recipes for the managers. A switched off account reads nothing.';
+COMMENT ON VIEW "public"."staff_places" IS 'A place near us, as the roster and the calendar draw it for staff: the name, the short name and how many it holds. Not the page address, the Ticketmaster id, how the page is read or how the last read and sync went, which stay on places for the managers. A switched off account reads nothing.';
+COMMENT ON VIEW "public"."staff_products" IS 'The products, as far as a count and the Waste page need them: the name, where it is kept, its unit, whether it is a MIX and what a batch makes, whose it is and whether it is still in use. Not the notes, the weight loss, what one piece weighs or how often it is counted, which stay on the products table for the managers. A switched off account reads nothing.';
+COMMENT ON VIEW "public"."staff_restaurants" IS 'Your restaurant, as far as anybody below a manager needs it: the name, the opening hours, the break and roster rules, and whether city events are watched. The restaurants table itself is closed to staff, because it carries the cost targets, the default cost per hour and the addresses the report and the hours are mailed to, and a row policy cannot hide a column.';
 
 -- The day each thing on a checklist was last done. The third kind, and the
 -- opposite of the two above: it is a security invoker view, so it reads
@@ -3877,11 +4357,27 @@ COMMENT ON VIEW "public"."checklist_last_done" IS 'When each task was last ticke
 -- lines here.
 revoke all on public.roster_colleagues        from anon, authenticated, public;
 revoke all on public.roster_away              from anon, authenticated, public;
+revoke all on public.roster_published         from anon, authenticated, public;
+revoke all on public.staff_restaurants        from anon, authenticated, public;
+revoke all on public.my_claims                from anon, authenticated, public;
+revoke all on public.roster_asks              from anon, authenticated, public;
+revoke all on public.staff_products           from anon, authenticated, public;
+revoke all on public.staff_diary              from anon, authenticated, public;
+revoke all on public.staff_places             from anon, authenticated, public;
+revoke all on public.staff_mix_recipes        from anon, authenticated, public;
 revoke all on public.checklist_last_done      from anon, authenticated, public;
 revoke all on public.labour_by_day            from anon, authenticated, public;
 revoke all on public.invoice_cost_by_category from anon, authenticated, public;
 grant select on public.roster_colleagues        to authenticated;
 grant select on public.roster_away              to authenticated;
+grant select on public.roster_published         to authenticated;
+grant select on public.staff_restaurants        to authenticated;
+grant select on public.my_claims                to authenticated;
+grant select on public.roster_asks              to authenticated;
+grant select on public.staff_products           to authenticated;
+grant select on public.staff_diary              to authenticated;
+grant select on public.staff_places             to authenticated;
+grant select on public.staff_mix_recipes        to authenticated;
 grant select on public.checklist_last_done      to authenticated;
 grant select on public.labour_by_day            to authenticated;
 grant select on public.invoice_cost_by_category to authenticated;
@@ -4095,6 +4591,7 @@ CREATE OR REPLACE TRIGGER "product_supplier_prices_updated_at" BEFORE UPDATE ON 
 CREATE OR REPLACE TRIGGER "product_allergens_updated_at" BEFORE UPDATE ON "public"."product_allergens" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "sales_platforms_key" BEFORE INSERT OR UPDATE ON "public"."sales_platforms" FOR EACH ROW EXECUTE FUNCTION "public"."sales_platform_key"();
 CREATE OR REPLACE TRIGGER "roster_shifts_updated_at" BEFORE UPDATE ON "public"."roster_shifts" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
+CREATE OR REPLACE TRIGGER "roster_shifts_keep_what_went_out" BEFORE INSERT OR UPDATE ON "public"."roster_shifts" FOR EACH ROW EXECUTE FUNCTION "public"."roster_shift_keeps_what_went_out"();
 CREATE OR REPLACE TRIGGER "timesheet_entries_updated_at" BEFORE UPDATE ON "public"."timesheet_entries" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "timesheet_weeks_updated_at" BEFORE UPDATE ON "public"."timesheet_weeks" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "day_notes_updated_at" BEFORE UPDATE ON "public"."day_notes" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
@@ -4102,6 +4599,7 @@ CREATE OR REPLACE TRIGGER "diary_entries_updated_at" BEFORE UPDATE ON "public"."
 CREATE OR REPLACE TRIGGER "diary_entries_calendar_ids_guard" BEFORE INSERT OR UPDATE ON "public"."diary_entries" FOR EACH ROW EXECUTE FUNCTION "public"."diary_calendar_ids_guard"();
 CREATE OR REPLACE TRIGGER "places_updated_at" BEFORE UPDATE ON "public"."places" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "shift_requests_transition_guard" BEFORE INSERT OR UPDATE ON "public"."shift_requests" FOR EACH ROW EXECUTE FUNCTION "public"."shift_request_transition_guard"();
+CREATE OR REPLACE TRIGGER "absences_answer_guard" BEFORE UPDATE ON "public"."absences" FOR EACH ROW EXECUTE FUNCTION "public"."absence_answer_guard"();
 CREATE OR REPLACE TRIGGER "weekly_reports_touch" BEFORE UPDATE ON "public"."weekly_reports" FOR EACH ROW EXECUTE FUNCTION "public"."touch_weekly_report"();
 CREATE OR REPLACE TRIGGER "checklists_updated_at" BEFORE UPDATE ON "public"."checklists" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "checklist_tasks_guard" BEFORE INSERT OR UPDATE ON "public"."checklist_tasks" FOR EACH ROW EXECUTE FUNCTION "public"."checklist_task_guard"();
@@ -4109,6 +4607,7 @@ CREATE OR REPLACE TRIGGER "checklist_tasks_moved" AFTER UPDATE OF "category_id" 
 CREATE OR REPLACE TRIGGER "checklist_rounds_guard" BEFORE INSERT OR UPDATE ON "public"."checklist_rounds" FOR EACH ROW EXECUTE FUNCTION "public"."checklist_round_guard"();
 CREATE OR REPLACE TRIGGER "checklist_ticks_guard" BEFORE INSERT OR UPDATE ON "public"."checklist_ticks" FOR EACH ROW EXECUTE FUNCTION "public"."checklist_tick_guard"();
 CREATE OR REPLACE TRIGGER "checklist_ticks_finish" AFTER INSERT ON "public"."checklist_ticks" FOR EACH ROW EXECUTE FUNCTION "public"."checklist_tick_finishes"();
+CREATE OR REPLACE TRIGGER "stock_takes_reopened_clears_value" BEFORE UPDATE OF "status" ON "public"."stock_takes" FOR EACH ROW WHEN (((("new"."status")::"text" = 'in_progress'::"text") AND (("old"."status")::"text" IS DISTINCT FROM 'in_progress'::"text"))) EXECUTE FUNCTION "public"."stock_take_reopened_clears_value"();
 
 -- These two are on auth.users, not in public, so a dump of public never shows
 -- them and the comparison with live cannot see them. They went missing from

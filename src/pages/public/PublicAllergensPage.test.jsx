@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
-import { mockSupabase, renderWithRouter } from '@/test/helpers'
+import { makeQuery, mockSupabase, renderWithRouter } from '@/test/helpers'
 
 // The page a customer opens from the QR code, when one of its reads fails.
 //
@@ -14,7 +14,11 @@ import { mockSupabase, renderWithRouter } from '@/test/helpers'
 // them. One failed read now means no rows at all.
 
 const db = mockSupabase({})
-vi.mock('@/lib/supabase', () => ({ supabase: new Proxy({}, { get: (_, k) => db[k] }) }))
+// The real everyRow, paging through the mock the way it pages through the API.
+vi.mock('@/lib/supabase', async importOriginal => ({
+    everyRow: (await importOriginal()).everyRow,
+    supabase: new Proxy({}, { get: (_, k) => db[k] }),
+}))
 
 const { default: PublicAllergensPage } = await import('./PublicAllergensPage')
 
@@ -33,15 +37,10 @@ const WHOLE = {
 
 const FAILED = { data: null, error: { message: 'Failed to fetch' } }
 
+// Each read answers the way the API does: a thousand rows at most, or the
+// page asked for. See makeQuery.
 function answer(tables) {
-    db.from.mockImplementation(table => {
-        const chain = {}
-        for (const step of ['select', 'eq', 'order']) chain[step] = vi.fn(() => chain)
-        const result = tables[table] || { data: [], error: null }
-        chain.maybeSingle = vi.fn(() => Promise.resolve(result))
-        chain.then = (res, rej) => Promise.resolve(result).then(res, rej)
-        return chain
-    })
+    db.from.mockImplementation(table => makeQuery(tables[table] || { data: [], error: null }))
 }
 
 // When anything on the sheet last changed, as allergens_changed_at() answers.
@@ -55,6 +54,37 @@ beforeEach(() => {
 })
 
 const ASK_STAFF = /We cannot show allergen information right now\. Please ask a member of staff before ordering\./
+
+// A thousand lines for one dish and two for another, one at each end. The
+// database hands back a thousand rows at most and says nothing when it stops,
+// so the cheese past the first thousand was lost, and with the rice answered
+// the row looked whole with no milk on it.
+const PAST_A_THOUSAND = {
+    ...WHOLE,
+    public_menu_items: { data: [
+        { id: 'm1', name: 'Plain Rice', category_id: 'c1' },
+        { id: 'm2', name: 'Cheesy Rice', category_id: 'c1' },
+    ], error: null },
+    public_menu_item_components: { data: [
+        { id: 'a', menu_item_id: 'm2', product_id: 'p1' },
+        ...Array.from({ length: 1000 }, (_, i) => ({ id: `f${i}`, menu_item_id: 'm1', product_id: 'p1' })),
+        { id: 'z', menu_item_id: 'm2', product_id: 'p2' },
+    ], error: null },
+    public_products: { data: [
+        { id: 'p1', name: 'Rice', is_mix: false },
+        { id: 'p2', name: 'Grated Cheese', is_mix: false },
+    ], error: null },
+    public_product_allergens: { data: [{ product_id: 'p1' }, { product_id: 'p2', milk: 'contains' }], error: null },
+}
+
+describe('a menu past a thousand lines', () => {
+    it('reads every line, so the milk past the first thousand is on the row', async () => {
+        answer(PAST_A_THOUSAND)
+        renderWithRouter(<PublicAllergensPage slugOverride="point-campus" />)
+        const row = (await screen.findByText('Cheesy Rice')).closest('button')
+        expect(within(row).getByText('Milk')).toBeInTheDocument()
+    })
+})
 
 describe('the allergen page when everything arrives', () => {
     // The control. Without it the tests below could pass on a page that never
@@ -130,6 +160,89 @@ describe('a dish with nothing in it yet', () => {
         await me.click(await screen.findByRole('button', { name: /Plain Rice/ }))
 
         expect(screen.getAllByText('Not present')).toHaveLength(15)
+    })
+})
+
+// Nothing ever entered for what is in it. A product with no allergen row used
+// to read as none of the fourteen, which is the one answer nobody gave.
+describe('a dish with something in it nobody answered for', () => {
+    it('tells the customer to ask staff rather than saying it has none', async () => {
+        answer({ ...WHOLE, public_product_allergens: { data: [], error: null } })
+        renderWithRouter(<PublicAllergensPage slugOverride="point-campus" />)
+
+        expect(await screen.findByText('Plain Rice')).toBeInTheDocument()
+        expect(screen.getByText('Please ask a member of staff')).toBeInTheDocument()
+        expect(screen.queryByText('No declared allergens')).toBeNull()
+    })
+
+    // A pot has nothing to declare. The view says which section a product is
+    // in so the page can tell the two apart.
+    it('still vouches for a dish whose only unanswered part is its pot', async () => {
+        answer({
+            ...WHOLE,
+            public_menu_item_components: { data: [
+                { id: 'k1', menu_item_id: 'm1', product_id: 'p1' },
+                { id: 'k2', menu_item_id: 'm1', product_id: 'pot' },
+            ], error: null },
+            public_products: { data: [
+                { id: 'p1', name: 'Rice', is_mix: false, section: 'Dry' },
+                { id: 'pot', name: 'Dip Pot', is_mix: false, section: 'Packaging' },
+            ], error: null },
+        })
+        renderWithRouter(<PublicAllergensPage slugOverride="point-campus" />)
+
+        expect(await screen.findByText('No declared allergens')).toBeInTheDocument()
+        expect(screen.queryByText('Please ask a member of staff')).toBeNull()
+    })
+})
+
+// A burrito with a choice of salsa. The salsa is kept off the burrito's own
+// row, and reaches the sheet through its own row in the Salsa category.
+describe('an option in a choice', () => {
+    const SALSA_SHEET = {
+        ...WHOLE,
+        public_menu_categories: { data: [
+            { id: 'c1', name: 'Burritos', sort_order: 0 },
+            { id: 'c2', name: 'Salsas', sort_order: 1 },
+        ], error: null },
+        public_menu_items: { data: [
+            { id: 'm1', name: 'Beef Burrito', category_id: 'c1' },
+            { id: 'm2', name: 'Chipotle Salsa', category_id: 'c2' },
+        ], error: null },
+        public_menu_item_components: { data: [
+            { id: 'k1', menu_item_id: 'm1', product_id: 'p1' },
+            { id: 'k2', menu_item_id: 'm1', product_id: 'chipotle', choice_group: 'Salsa' },
+            { id: 'k3', menu_item_id: 'm2', product_id: 'chipotle' },
+            { id: 'k4', menu_item_id: 'm2', product_id: 'pot' },
+        ], error: null },
+        public_products: { data: [
+            { id: 'p1', name: 'Rice', is_mix: false, section: 'Dry' },
+            { id: 'chipotle', name: 'Chipotle', is_mix: false, section: 'Cold Room' },
+            { id: 'pot', name: 'Dip Pot', is_mix: false, section: 'Packaging' },
+        ], error: null },
+        public_product_allergens: { data: [
+            { product_id: 'p1' },
+            { product_id: 'chipotle', celery: 'contains' },
+        ], error: null },
+    }
+
+    it('leaves the dish alone when the option has a row of its own', async () => {
+        answer(SALSA_SHEET)
+        renderWithRouter(<PublicAllergensPage slugOverride="point-campus" />)
+        expect(await screen.findByText('Beef Burrito')).toBeInTheDocument()
+        expect(screen.queryByText('Please ask a member of staff')).toBeNull()
+    })
+
+    // The salsa taken off the menu, so its row is gone and its celery is on
+    // no row at all. The burrito used to say No declared allergens.
+    it('tells the customer to ask staff when the option is on no row at all', async () => {
+        answer({
+            ...SALSA_SHEET,
+            public_menu_items: { data: [{ id: 'm1', name: 'Beef Burrito', category_id: 'c1' }], error: null },
+        })
+        renderWithRouter(<PublicAllergensPage slugOverride="point-campus" />)
+        expect(await screen.findByText('Beef Burrito')).toBeInTheDocument()
+        expect(screen.getByText('Please ask a member of staff')).toBeInTheDocument()
     })
 })
 

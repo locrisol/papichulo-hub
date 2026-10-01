@@ -2,6 +2,7 @@ import { agendaRows, dayName } from '@/lib/events'
 import {
     kindChip, kindTag, kindLabel, scopeLabel, timeLabel, layerOf, labelsOf,
 } from '@/lib/diary'
+import { offWords } from '@/lib/nearby'
 
 // What have I got coming up, and when.
 //
@@ -22,6 +23,10 @@ function Row({ item, restaurants, onOpen, canEdit }) {
     const entry = item.source === 'diary' ? item.entry : null
     const edge = kindChip(item.kind).split(' ').find(c => c.startsWith('border-l-')) || 'border-l-gray-400'
     const tint = kindTag(item.kind)
+    // A listing that is not going ahead says so the way a diary entry's own
+    // status does, beside the kind. Only a cancelled one is struck through: one
+    // the feed stopped listing may still be on. See DiaryChip.
+    const off = offWords(item.off)
 
     const inside = (
         <div className="flex items-start gap-3 w-full text-left">
@@ -35,7 +40,7 @@ function Row({ item, restaurants, onOpen, canEdit }) {
             </div>
 
             <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-gray-900 break-words">{item.title}</p>
+                <p className={`text-sm font-bold text-gray-900 break-words ${item.off === 'cancelled' ? 'line-through' : ''}`}>{item.title}</p>
                 <p className="text-xs text-muted mt-0.5">
                     {entry ? timeLabel(entry) : (item.time || 'All day')}
                     {entry?.location && ` · ${entry.location}`}
@@ -71,6 +76,11 @@ function Row({ item, restaurants, onOpen, canEdit }) {
                 {entry && entry.status !== 'confirmed' && (
                     <span className="text-[0.65rem] font-bold text-accent-ink uppercase tracking-wider">
                         {entry.status}
+                    </span>
+                )}
+                {off && (
+                    <span className="text-[0.65rem] font-bold text-accent-ink uppercase tracking-wider whitespace-nowrap">
+                        {off}
                     </span>
                 )}
                 {entry && entry.scope !== 'private' && (

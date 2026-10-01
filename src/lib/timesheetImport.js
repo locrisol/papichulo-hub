@@ -10,7 +10,8 @@
 // a fixed offset after a marker rather than under a column. The marker is the
 // literal "Reference #:" that follows every employee name.
 
-import { weekStartOf } from '@/lib/dates'
+import { weekStartOf, dayLabel } from '@/lib/dates'
+import { noLength, shortClock } from '@/lib/clock'
 
 // A CSV reader, because there is not one in the project and this file is the
 // only thing that needs one. Quoted fields, doubled quotes inside them, and
@@ -135,6 +136,7 @@ export function readTimesheetCsv(text) {
 
     const shifts = []
     const breaks = []
+    const sameTime = []
 
     for (const row of rows) {
         for (let i = 0; i < row.length; i++) {
@@ -159,6 +161,10 @@ export function readTimesheetCsv(text) {
             }
 
             if (kind === BREAK_KIND || line.hours < 0) breaks.push(line)
+            // In and out on the same second. See noLength: the database
+            // refuses one, so it would fail the whole upload, and it is
+            // counted on the screen instead, the same as the break lines.
+            else if (noLength(line.starts_at, line.ends_at)) sameTime.push(line)
             else shifts.push(line)
         }
     }
@@ -170,6 +176,7 @@ export function readTimesheetCsv(text) {
         // Said out loud rather than left as a difference somebody has to work
         // out. The upload reports both numbers.
         breakHours: Math.round(breaks.reduce((t, b) => t + Math.abs(b.hours || 0), 0) * 100) / 100,
+        sameTime,
         names: [...new Set(shifts.map(s => s.name))].sort(),
     }
 }
@@ -267,6 +274,7 @@ export function readTimesheetXml(text) {
 
     const shifts = []
     const breaks = []
+    const sameTime = []
 
     // One group per person, with the shifts inside it. The name belongs to the
     // group, so a row does not have to carry it and cannot lose it.
@@ -292,6 +300,8 @@ export function readTimesheetXml(text) {
             }
 
             if (kind === BREAK_KIND || line.hours < 0) breaks.push(line)
+            // In and out on the same second, set aside as in the CSV.
+            else if (noLength(line.starts_at, line.ends_at)) sameTime.push(line)
             else shifts.push(line)
         }
     }
@@ -303,6 +313,7 @@ export function readTimesheetXml(text) {
         shifts,
         breaks,
         breakHours: Math.round(breaks.reduce((t, b) => t + Math.abs(b.hours || 0), 0) * 100) / 100,
+        sameTime,
         names: [...new Set(shifts.map(s => s.name))].sort(),
     }
 }
@@ -315,7 +326,17 @@ export function isoStamp(text) {
 }
 
 function empty() {
-    return { restaurant: null, from: null, to: null, shifts: [], breaks: [], breakHours: 0, names: [] }
+    return { restaurant: null, from: null, to: null, shifts: [], breaks: [], breakHours: 0, sameTime: [], names: [] }
+}
+
+// The lines dropped for a clock in and out at the same time, named. One may be
+// somebody whose real shift the till never caught the end of, and a count
+// alone does not say who to go and ask. The name is the till's own, because
+// these lines never reach the step that matches a name to somebody here.
+export function sameTimeWho(lines) {
+    return (lines || [])
+        .map(line => `${line.name}, ${dayLabel(line.work_date)} at ${shortClock(line.starts_at)}`)
+        .join('; ')
 }
 
 // Only the days of the week that is open.
@@ -327,12 +348,14 @@ export function insideWeek(read, weekStart, weekEnd) {
     const mine = line => line.work_date >= weekStart && line.work_date <= weekEnd
     const shifts = (read?.shifts || []).filter(mine)
     const breaks = (read?.breaks || []).filter(mine)
+    const sameTime = (read?.sameTime || []).filter(mine)
 
     return {
         ...read,
         shifts,
         breaks,
         breakHours: Math.round(breaks.reduce((t, b) => t + Math.abs(b.hours || 0), 0) * 100) / 100,
+        sameTime,
         names: [...new Set(shifts.map(s => s.name))].sort(),
         // Said out loud so the screen can mention it rather than quietly
         // dropping rows somebody exported on purpose.

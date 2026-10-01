@@ -28,9 +28,10 @@ if (!run) {
 }
 
 const NOT_RUN = 'the guard did not answer, so 024 has not been run on this project'
+const NOT_RUN_029 = 'the guard did not answer, so 029 has not been run on this project'
 
 maybe('what the people in a swap can do to it', () => {
-    let employee, restaurantId, me, colleagueShift, mine
+    let employee, restaurantId, me, colleagueShift, ownShift, mine
 
     beforeAll(async () => {
         employee = await signInAs('employee')
@@ -46,10 +47,19 @@ maybe('what the people in a swap can do to it', () => {
         me = id || NOBODY
 
         // A published shift of somebody else's, the only kind an employee
-        // can see that is not their own.
+        // can see that is not their own. Through roster_published, the week
+        // as it went out, because since 034 staff cannot read the table. A
+        // shift changed since it went out comes back as it was, while the
+        // guard checks the table as it is now. Only a shift moved to another
+        // person or other hours since would make the two disagree.
         const { data: shifts } = await employee
-            .from('roster_shifts').select('id').neq('employee_id', me).limit(1)
+            .from('roster_published').select('id').neq('employee_id', me).limit(1)
         colleagueShift = shifts?.[0]?.id || null
+
+        // One of their own, for the check on the hours of part of a shift.
+        const { data: own } = await employee
+            .from('roster_published').select('id, starts_at, ends_at').eq('employee_id', me).limit(1)
+        ownShift = own?.[0] || null
 
         // A request they are part of, for the checks on changing one.
         const { data: asks } = await employee
@@ -96,6 +106,48 @@ maybe('what the people in a swap can do to it', () => {
             take_shift_id: colleagueShift,
         }))
         expect(answer, NOT_RUN).toMatch(/shift of the person you are asking/)
+    })
+
+    // Approving keeps whatever sits either side of the hours named, so hours
+    // outside the shift were hours invented. From its end back to its start
+    // is outside it however long the shift is.
+    it('refuses part of a shift that is not inside the shift', async () => {
+        if (!ownShift) return console.warn('The test employee has no shift of their own to try it with.')
+        const answer = await said(employee.from('shift_requests').insert({
+            restaurant_id: restaurantId,
+            from_employee_id: me,
+            to_employee_id: me,
+            give_shift_id: ownShift.id,
+            give_from: ownShift.ends_at,
+            give_to: ownShift.starts_at,
+        }))
+        expect(answer, NOT_RUN_029).toMatch(/must be within the shift/)
+    })
+
+    // Only the person asked can answer, and somebody with no account never
+    // will. No shift is named, so even without the guard it could never be
+    // saved.
+    it('refuses asking somebody with no account', async () => {
+        const { data, error } = await employee
+            .from('roster_colleagues').select('id, has_login').eq('has_login', false).limit(1)
+        expect(error?.message || '', NOT_RUN_029).toBe('')
+        const nobody = data?.[0]
+        if (!nobody) return console.warn('Everybody at the test restaurant has an account.')
+
+        const answer = await said(employee.from('shift_requests').insert({
+            restaurant_id: restaurantId,
+            from_employee_id: me,
+            to_employee_id: nobody.id,
+        }))
+        expect(answer, NOT_RUN_029).toMatch(/do not have an account/)
+    })
+
+    it('tells staff whether a colleague has an account, and nothing about the account', async () => {
+        const { data, error } = await employee.from('roster_colleagues').select('*').limit(1)
+        expect(error).toBeNull()
+        if (!data?.length) return console.warn('No colleagues to look at.')
+        expect(Object.keys(data[0]), NOT_RUN_029).toContain('has_login')
+        expect(Object.keys(data[0])).not.toContain('user_id')
     })
 
     it('refuses asking somebody who does not work here', async () => {

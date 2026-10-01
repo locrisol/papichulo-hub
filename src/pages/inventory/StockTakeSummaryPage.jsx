@@ -8,10 +8,10 @@ import { fmtMoney, fmtQty } from '@/lib/format'
 import { monthYearOf, stampDateTime } from '@/lib/dates'
 import { sectionColour } from '@/lib/sections'
 import { countName } from '@/lib/products'
-import { bySection, summarise } from '@/lib/stockTakeSummary'
+import { bySection, summarise, onThisCount, noPrice } from '@/lib/stockTakeSummary'
 import StockTakeValue from '@/components/inventory/StockTakeValue'
 import { friendlyError } from '@/lib/errors'
-import { card } from '@/lib/controlStyles'
+import { badge, card, warningNote } from '@/lib/controlStyles'
 import BackButton from '@/components/ui/BackButton'
 import Modal from '@/components/ui/Modal'
 import { can, MANAGERS } from '@/lib/access'
@@ -91,7 +91,6 @@ export default function StockTakeSummaryPage() {
       setLoading(false)
       return
     }
-    setSession(sessionData)
 
     // Look up display names for started_by / reopened_by
     const userIds = [sessionData.started_by, sessionData.reopened_by].filter(Boolean)
@@ -102,12 +101,24 @@ export default function StockTakeSummaryPage() {
       setReopener((usersData || []).find(u => u.id === sessionData.reopened_by) || null)
     }
 
-    const { data: productsData } = await supabase
-      .from('products').select('*').eq('is_active', true).order('name')
-    setProducts(productsData || [])
-
-    const { data: linesData } = await supabase
+    // Every product, not only the active ones, narrowed to the ones this count
+    // is about. A product switched off since it was counted is still on the
+    // count, and leaving it out took its lines off the summary and the PDF
+    // while the headline kept them. See onThisCount.
+    const { data: productsData, error: productsErr } = await supabase
+      .from('products').select('*').order('name')
+    const { data: linesData, error: linesErr } = await supabase
       .from('stock_take_lines').select('*').eq('stock_take_id', id)
+    if (productsErr || linesErr) {
+      setError(friendlyError(productsErr || linesErr))
+      setLoading(false)
+      return
+    }
+    // The session last, once everything under it has been read. Set first, it
+    // showed the page over a read that had failed: Counted 0/0, no sections,
+    // and a Download PDF that printed an empty sheet.
+    setSession(sessionData)
+    setProducts(onThisCount(productsData, linesData))
     setLines(linesData || [])
 
     setLoading(false)
@@ -155,6 +166,14 @@ export default function StockTakeSummaryPage() {
   const summary = useMemo(() => summarise(products, lines), [products, lines])
   const rowFor = useMemo(() => new Map(summary.sections.map(s => [s.section, s])), [summary])
 
+  // Products counted while they had no price. The total leaves them out, so
+  // it is said above the total and marked on each one, rather than the total
+  // being read as the whole count. See noPrice.
+  const unpricedCount = useMemo(() => {
+    const known = new Set(products.map(p => p.id))
+    return new Set(lines.filter(l => noPrice(l) && known.has(l.product_id)).map(l => l.product_id)).size
+  }, [products, lines])
+
   function sessionTitle() {
     return titleOf(session)
   }
@@ -183,10 +202,14 @@ export default function StockTakeSummaryPage() {
     setReopening(true)
     setError('')
 
+    // The value goes with it. Once counts can change again the old total no
+    // longer stands, and closing it works the value out afresh. It also keeps
+    // a closed count's worth away from staff, who can read the open one.
     const { error: updateErr } = await supabase
       .from('stock_takes')
       .update({
         status: 'in_progress',
+        total_value: null,
         reopened_at: new Date().toISOString(),
         reopened_by: user.id,
         reopen_reason: reopenReason.trim() || null,
@@ -311,6 +334,14 @@ export default function StockTakeSummaryPage() {
           and a total, and those are what anybody opening a finished count came
           for. Same block, same figures and the same order as the first page of
           the PDF. */}
+      {unpricedCount > 0 && (
+        <p className={`${warningNote} mb-6`}>
+          {unpricedCount === 1
+            ? '1 product was counted with no price, so it is not in the total value.'
+            : `${unpricedCount} products were counted with no price, so they are not in the total value.`}
+        </p>
+      )}
+
       {lines.length > 0 && (
         <div className={`${card} p-4 sm:p-5 mb-6`}>
           <StockTakeValue summary={summary} />
@@ -356,7 +387,7 @@ export default function StockTakeSummaryPage() {
                 </div>
               )}
               <div className={`${colour.bg} border ${colour.border} rounded-xl overflow-hidden`}>
-                {items.map(({ product, lines: productLines, qty: total, value }, i) => {
+                {items.map(({ product, lines: productLines, qty: total, value, unpriced }, i) => {
                   return (
                     <div key={`${section}-${product.id}`} className={`px-4 py-3 ${i < items.length - 1 ? 'border-b border-border' : ''}`}>
                       {/* The name above the numbers on a phone, side by side
@@ -375,6 +406,9 @@ export default function StockTakeSummaryPage() {
                             <span className="ml-2 align-middle inline-block px-1.5 py-0.5 rounded-full bg-amber-500 text-white text-[0.65rem] font-bold tracking-wide">
                               MIX
                             </span>
+                          )}
+                          {unpriced && (
+                            <span className={`${badge} ml-2 align-middle bg-amber-100 text-amber-800`}>No price</span>
                           )}
                           <span className="text-xs text-muted ml-2">{product.unit}</span>
                         </p>

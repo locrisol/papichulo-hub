@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { calculateMixCost, resolveUnitCost, menuItemCost } from '@/lib/mixCost'
+import { calculateMixCost, resolveUnitCost, menuItemCost, costInside, deactivatedIn, missingIn } from '@/lib/mixCost'
 
 // --- Test fixtures shaped like real rows ---------------------------------
 
@@ -237,5 +237,97 @@ describe('menuItemCost', () => {
   it('has nothing to add up on an empty item', () => {
     expect(menuItemCost([], products, [], prices)).toBe(null)
     expect(menuItemCost(null, products, [], prices)).toBe(null)
+  })
+})
+
+// A product deactivated while something still uses it. Its price row is still
+// there, so a screen that read every product used to cost it at that old price
+// and a screen that read only active ones could not find it: the same dish had
+// a margin on the list and none on its own page. One answer now, whichever
+// list a screen read.
+describe('a deactivated product inside something', () => {
+  const oldLime = { id: 'p-old-lime', is_mix: false, is_active: false }
+  const salsa = { id: 'p-salsa', is_mix: true, batch_yield: 1, is_active: true }
+  const catalogue = [chicken, lime, oldLime, salsa]
+  const recipe = [
+    { mix_product_id: 'p-salsa', ingredient_product_id: 'p-lime', quantity: 1 },
+    { mix_product_id: 'p-salsa', ingredient_product_id: 'p-old-lime', quantity: 1 },
+  ]
+  const prices = [...preferredPrices, { product_id: 'p-old-lime', price_per_unit: '0.40' }]
+
+  it('cannot be costed in a recipe, even with a price still on it', () => {
+    const result = calculateMixCost(salsa, catalogue, recipe, prices)
+    expect(result.cost).toBeNull()
+    expect(result.missing).toEqual(['p-old-lime'])
+  })
+
+  it('gives the same answer when the screen read only active products', () => {
+    const active = catalogue.filter(p => p.is_active !== false)
+    expect(calculateMixCost(salsa, active, recipe, prices))
+      .toEqual(calculateMixCost(salsa, catalogue, recipe, prices))
+  })
+
+  it('cannot be costed on a dish', () => {
+    const dish = [
+      { product_id: 'p-chicken', quantity: '0.1' },
+      { product_id: 'p-old-lime', quantity: '1' },
+    ]
+    expect(menuItemCost(dish, catalogue, recipe, prices)).toBeNull()
+  })
+
+  it('blanks a dish through the recipe it is in', () => {
+    expect(menuItemCost([{ product_id: 'p-salsa', quantity: '1' }], catalogue, recipe, prices)).toBeNull()
+  })
+
+  it('still adds nothing when it is only used, not measured', () => {
+    const dish = [
+      { product_id: 'p-chicken', quantity: '0.1' },
+      { product_id: 'p-old-lime', no_quantity: true },
+    ]
+    expect(menuItemCost(dish, catalogue, recipe, prices)).toBeCloseTo(0.6)
+  })
+
+  it('has no cost as a line on a dish or a recipe', () => {
+    expect(costInside(oldLime, catalogue, recipe, prices)).toBeNull()
+    expect(costInside(lime, catalogue, recipe, prices)).toBeCloseTo(0.5)
+    expect(costInside(undefined, catalogue, recipe, prices)).toBeNull()
+  })
+
+  // Its own row on the products list still says what it costs. The rule is
+  // about something else being made with it.
+  it('still has a cost of its own', () => {
+    expect(calculateMixCost(oldLime, catalogue, recipe, prices).cost).toBeCloseTo(0.4)
+    expect(resolveUnitCost(oldLime, catalogue, recipe, prices)).toBeCloseTo(0.4)
+  })
+
+  it('is named, however deep it sits, so it can be replaced', () => {
+    const wrap = { id: 'p-wrap', is_mix: true, batch_yield: 1, is_active: true }
+    const deeper = [...recipe, { mix_product_id: 'p-wrap', ingredient_product_id: 'p-salsa', quantity: 1 }]
+    const found = deactivatedIn(['p-chicken', 'p-wrap'], [...catalogue, wrap], deeper)
+    expect(found.map(p => p.id)).toEqual(['p-old-lime'])
+    expect(deactivatedIn(['p-chicken', 'p-lime'], catalogue, recipe)).toEqual([])
+  })
+
+  it('does not go round a recipe that points back at itself', () => {
+    const a = { id: 'a', is_mix: true, is_active: true }
+    const b = { id: 'b', is_mix: true, is_active: true }
+    const loop = [
+      { mix_product_id: 'a', ingredient_product_id: 'b', quantity: 1 },
+      { mix_product_id: 'b', ingredient_product_id: 'a', quantity: 1 },
+    ]
+    expect(deactivatedIn(['a'], [a, b], loop)).toEqual([])
+  })
+
+  // A dish can be held up by a deactivated product and by an ordinary missing
+  // price at once. Naming only the first promised the cost back once it was
+  // replaced, and the cost would still not have been there.
+  it('is in what stands in the way of a cost, beside anything else that does', () => {
+    const pepper = { id: 'p-pepper', is_mix: false, is_active: true }
+    const withPepper = [...recipe, { mix_product_id: 'p-salsa', ingredient_product_id: 'p-pepper', quantity: 1 }]
+    expect(missingIn(['p-chicken', 'p-salsa'], [...catalogue, pepper], withPepper, prices).sort())
+      .toEqual(['p-old-lime', 'p-pepper'])
+    expect(missingIn(['p-chicken', 'p-old-lime'], catalogue, recipe, prices)).toEqual(['p-old-lime'])
+    expect(missingIn(['p-gone'], catalogue, recipe, prices)).toEqual(['p-gone'])
+    expect(missingIn(['p-chicken', 'p-lime'], catalogue, recipe, prices)).toEqual([])
   })
 })

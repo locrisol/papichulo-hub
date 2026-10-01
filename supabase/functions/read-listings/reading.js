@@ -205,6 +205,13 @@ export function joinPages(texts) {
 //
 // Nothing about us goes in it. Not the restaurant, not the place, not why we
 // are asking. The page is public and the question is about the page.
+//
+// **The day of the week is copied, never worked out.** It is there to be
+// checked against the date (see dayOfWeek), and a day the model worked out for
+// itself would only ever agree with its own date, right or wrong.
+const WEEKDAY_RULE = '- If the page gives the day of the week, copy it into weekday exactly as written, '
+    + 'such as Sat. Never work it out yourself.'
+
 export function promptFor(text, { from, to, today, key = 'date' } = {}) {
     if (key === 'title') return filmPrompt(text, { from, to, today })
 
@@ -221,6 +228,7 @@ export function promptFor(text, { from, to, today, key = 'date' } = {}) {
         '  being available are not events, however many days they are listed on.',
         '- Use the date the event happens, not the date it goes on sale.',
         '- Dates are YYYY-MM-DD. Times are 24 hour, HH:MM, and only if one is stated.',
+        WEEKDAY_RULE,
         '- If several start times are listed for one day, use the earliest.',
         '- If something runs over several days, give the first day and the last day.',
         '- Use the name as written on the page. Do not summarise it.',
@@ -254,6 +262,7 @@ function filmPrompt(text, { from, to, today }) {
         '- The date is the first day that film is listed as showing.',
         '- The time is its earliest showing on that first day, if one is stated.',
         '- Dates are YYYY-MM-DD. Times are 24 hour, HH:MM.',
+        WEEKDAY_RULE,
         '- Use the title as written. Do not add the year, the rating or the format.',
         '- If a film has no date against it anywhere, leave it out.',
         '- Leave ends and where empty.',
@@ -278,12 +287,90 @@ export const SCHEMA = {
                     ends: { type: 'string' },
                     time: { type: 'string' },
                     where: { type: 'string' },
+                    weekday: {
+                        type: 'string',
+                        description: 'The day of the week exactly as the page writes it, or empty if it does not.',
+                    },
                 },
                 required: ['name', 'date'],
             },
         },
     },
     required: ['events'],
+}
+
+// What to send Gemini, as a fetch takes it.
+//
+// **The key goes in a header, never in the address.** It used to go on the end
+// of the address, and a fetch that fails on the network, a dropped connection or
+// a name that will not look up, puts the whole address in its message. So a bad
+// minute at Google wrote the key into the function's log. Found by the audit of
+// 28 September.
+export function geminiRequest(key, prompt, model = MODEL) {
+    return {
+        url: endpoint(model),
+        init: {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+            body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: {
+                    // JSON out, held to the shape above. That takes care of
+                    // the shape and none of the sense, which is what the
+                    // checks in eventsFrom are for.
+                    responseMimeType: 'application/json',
+                    responseSchema: SCHEMA,
+                    // As close to no invention as the dial goes. This is a
+                    // reading job and there is nothing here worth being
+                    // creative about.
+                    temperature: 0,
+                },
+            }),
+        },
+    }
+}
+
+// Something that failed, said without the address it was going to.
+//
+// The kind of error and the host are enough to tell a timeout from a refusal
+// and Google from anywhere else, and neither can carry a key. The message is
+// left out on purpose, because the message is where the address is.
+export function failedWords(what, err, address) {
+    let host = ''
+    try { host = new URL(address).host } catch { /* not an address, so none to name */ }
+    const kind = (err && typeof err === 'object' && err.name) || 'Error'
+    return `${what} failed (${host ? `${kind} at ${host}` : kind})`
+}
+
+// A failure carrying a sentence that is safe to keep on the place, beside the
+// detail, which only ever goes to the log.
+export function readError(sentence, detail = sentence) {
+    return Object.assign(new Error(detail), { readProblem: sentence })
+}
+
+// What Gemini refusing comes to, said for a manager on the settings row. The
+// status goes to the log. A refused key never mends itself; anything else
+// usually does by the next read.
+export function geminiWords(status) {
+    if (status === 401 || status === 403) {
+        return "Gemini did not accept the Hub's key. Whoever set up the Hub needs to check it."
+    }
+    if (status === 429 || status === 503) return 'Gemini was busy. It will try again at the next read.'
+    return 'Gemini had a problem. It will try again at the next read.'
+}
+
+// What went wrong, in words that can be kept on the place as read_problem.
+//
+// **Never the error itself.** Every manager can read a place. A failed
+// fetch names the address it was sending to, and a status or a connection
+// error for an address somebody typed is how you find out what answers inside
+// a network (see fetching.js). So only a sentence this function wrote is ever
+// kept, and the most it names is Google's host. Anything else gets a sentence
+// that says nothing about it.
+export function readProblem(err) {
+    const said = err?.readProblem
+    if (typeof said === 'string' && said) return said
+    return 'Something went wrong reading the page.'
 }
 
 // The text Gemini put in its answer, wherever it decided to put it.
@@ -303,14 +390,67 @@ function realDate(value) {
     return d.toISOString().slice(0, 10) === value
 }
 
+// The day of the week a page wrote, 0 for Sunday as getUTCDay counts, or null.
+//
+// Checked against the date because a date can be real, inside the window and
+// still wrong. A page still showing last year's "Sat 4th Oct" with no year on
+// it is read as this year's 4 October, which is a Sunday, and the model's own
+// sums can slip the same way on "Fri" or "tomorrow". The weekday is the one
+// thing on the page that can catch either.
+//
+// Only one day named is a day that can be checked. "Tomorrow" names none, and
+// "Fri to Sun" names the last day as well as the first, so neither is judged
+// and the row stands on its date as it did before.
+const WEEKDAYS = [
+    /^sun(day)?$/, /^mon(day)?$/, /^tue(s|sday)?$/, /^wed(s|nesday)?$/,
+    /^thu(r|rs|rsday)?$/, /^fri(day)?$/, /^sat(urday)?$/,
+]
+
+function dayOfWeek(text) {
+    const named = new Set(
+        String(text || '').toLowerCase().split(/[^a-z]+/)
+            .map(word => WEEKDAYS.findIndex(day => day.test(word)))
+            .filter(n => n >= 0),
+    )
+    return named.size === 1 ? [...named][0] : null
+}
+
+// A time, and only one whole time.
+//
+// The prompt asks for 24 hour times and this does not take that on trust. Irish
+// listings pages write 7:30pm, and a model that copied it across rather than
+// turning it into 19:30 used to have it filed as half past seven in the
+// morning, because only the start of the answer was looked at. So an am or a pm
+// is read and turned into the 24 hour time, and anything else after the time
+// drops it: in "7:30 - 10pm" the pm belongs to the end, and guessing which half
+// of the day the start is in is the guess this is here to refuse.
+//
+// A dot works as well as a colon when an am or a pm comes after it, the way
+// 7.30pm is written here. Without one, a dot means the page was copied rather
+// than turned into a 24 hour time, and 7.30 on its own on an Irish page is an
+// evening show, so it is only taken for an hour that can only be the evening.
+// Without an am or a pm the minutes have to be there too, so a bare 19 is not
+// taken as a time.
 function realTime(value) {
-    if (!value) return null
-    const m = /^(\d{1,2}):(\d{2})/.exec(String(value).trim())
+    const text = String(value ?? '').trim().toLowerCase()
+    const m = /^(\d{1,2})(?:([:.])(\d{2})(?::\d{2})?)?\s*(am|pm|a\.m\.?|p\.m\.?)?$/.exec(text)
     if (!m) return null
-    const h = Number(m[1])
-    const min = Number(m[2])
-    if (h < 0 || h > 23 || min < 0 || min > 59) return null
-    return `${String(h).padStart(2, '0')}:${m[2]}`
+
+    const [, hours, mark = '', minutes = '', half = ''] = m
+    let h = Number(hours)
+    const min = Number(minutes || 0)
+    if (min > 59) return null
+
+    if (half) {
+        if (h < 1 || h > 12) return null
+        // 12am is midnight and 12pm is midday, which is the one place the
+        // twelve hour clock does not simply add twelve.
+        h = (h % 12) + (half.startsWith('p') ? 12 : 0)
+    } else if (!minutes || h > 23 || (mark === '.' && h < 13)) {
+        return null
+    }
+
+    return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`
 }
 
 // The name, tidied and nothing more.
@@ -353,39 +493,60 @@ export function sourceKeyFor(date, name, key = 'date') {
 // because a wrong end date on a roster is a band across half a month.
 export const LONGEST_RUN_DAYS = 60
 
-// Nothing ever writes more than this from one page. A page that suddenly
+// Nothing ever writes more than this from one place. A page that suddenly
 // offers four hundred events has changed into something else, and the right
 // answer to that is to write nothing and be noticed.
+//
+// It used to keep the first forty and carry on, which wrote whatever happened
+// to come first on a page that had stopped making sense and showed "40 found"
+// on the settings screen, the same as a busy week. Refused now, so the read
+// fails like any other: the log and the place say how many it offered, the
+// place keeps its last good read, and Read the pages now names it as one that
+// could not be read.
+//
+// Counted after the checks, so rows that were never going to be written do not
+// get a page refused. All the pages of a place count together, since they are
+// read and written as one.
 export const MOST_ROWS = 40
 
 // Everything the model said, minus everything that cannot be true.
 //
 // This is the gate, and it is worth being blunt about what it is for: the model
 // is a reader and readers misread. Every row that survives here is one whose
-// date is a real date, inside the window we asked about, with a name on it, and
-// no two rows describing the same thing twice.
+// date is a real date, on at some point in the window we asked about, with a
+// name on it, and no two rows describing the same thing twice.
 export function eventsFrom(answer, { placeId, url, from, to, now, key = 'date' }) {
     let parsed
     try {
         parsed = typeof answer === 'string' ? JSON.parse(answer) : answer
     } catch {
-        return { rows: [], refused: 'the answer was not readable' }
+        return { rows: [], refused: "Gemini's answer could not be read." }
     }
 
     const list = Array.isArray(parsed?.events) ? parsed.events : []
     const seen = new Set()
     const rows = []
+    let wrongDay = 0
 
     for (const one of list) {
-        if (rows.length >= MOST_ROWS) break
-
         const name = cleanName(one?.name)
         if (!name) continue
 
         const date = String(one?.date || '').trim()
         if (!realDate(date)) continue
-        if (from && date < from) continue
         if (to && date > to) continue
+
+        // A Saturday on the page that is a Sunday on the calendar is a date
+        // read wrong, and nothing else here would notice. See dayOfWeek.
+        //
+        // Counted, so the log says how many went this way. Models are poor at
+        // working out a weekday, and one that started filling it in itself
+        // would lose true rows here with nothing said.
+        const day = dayOfWeek(one?.weekday)
+        if (day !== null && new Date(`${date}T00:00:00Z`).getUTCDay() !== day) {
+            wrongDay += 1
+            continue
+        }
 
         let ends = String(one?.ends || '').trim()
         if (ends && (!realDate(ends) || ends < date)) ends = ''
@@ -394,6 +555,17 @@ export function eventsFrom(answer, { placeId, url, from, to, now, key = 'date' }
             const days = (new Date(`${ends}T00:00:00Z`) - new Date(`${date}T00:00:00Z`)) / 86400000
             if (days > LONGEST_RUN_DAYS) ends = ''
         }
+
+        // Still on, rather than starting inside the window. The prompt asks
+        // for a run's first day, so a festival that began on the Friday comes
+        // back with Friday's date when it is read on the Monday, and asking
+        // whether it starts after the read day threw it away. On the day a page
+        // is added, or after a week the read failed, that was the one thing on.
+        //
+        // Asked only once the end has been checked, so a run whose end was
+        // dropped as too long falls back to its first day and a season that
+        // began months ago is still left out.
+        if (from && (ends || date) < from) continue
 
         const reading = sourceKeyFor(date, name, key)
         if (!reading || seen.has(reading)) continue
@@ -420,7 +592,80 @@ export function eventsFrom(answer, { placeId, url, from, to, now, key = 'date' }
         })
     }
 
-    return { rows, refused: '' }
+    if (rows.length > MOST_ROWS) {
+        return {
+            rows: [],
+            refused: `The page offered ${rows.length} events, more than the ${MOST_ROWS} one place may add, so nothing was saved.`,
+        }
+    }
+
+    return { rows, refused: '', wrongDay }
+}
+
+// ---------------------------------------------------------- what is already there
+
+// The other places watched by every restaurant that watches this one.
+//
+// pairings is the switched-on restaurant_places rows, restaurant and place.
+// These are the places whose listings land on the same calendar and the same
+// roster as this one, so they are where the same night read twice would show
+// twice.
+//
+// **Every, not any.** A place can be watched by two restaurants. If only one
+// of them also watches the page next door, a night skipped here because next
+// door has it is a night the other restaurant never sees, and nothing says
+// so. A second chip somebody can dismiss is the better of the two mistakes.
+export function watchedAlongside(pairings, placeId) {
+    const list = pairings || []
+    const restaurants = [...new Set(list.filter(p => p.place_id === placeId).map(p => p.restaurant_id))]
+    const watchedBy = restaurant => new Set(
+        list.filter(p => p.restaurant_id === restaurant && p.place_id !== placeId).map(p => p.place_id),
+    )
+    const [first, ...rest] = restaurants.map(watchedBy)
+    return [...(first || [])].filter(place => rest.every(others => others.has(place)))
+}
+
+// Statuses that mean a feed night is not going ahead. Ticketmaster spells it
+// canceled; the other spelling costs nothing to accept. withdrawn is the Hub's
+// own, written by nearby-events on a night the feed has stopped listing. The
+// same list nearby-events keeps, written out again because each function
+// deploys on its own.
+const OFF = ['cancelled', 'canceled', 'withdrawn']
+
+// The rows that are not already there, here or on a page next door.
+//
+// **Here** is matched the way this place keys its readings, so a cinema's film
+// it has already seen is skipped whatever day it is seen on. The unique index
+// would stop a second copy anyway; this is what also catches the feed's own row
+// for the same night.
+//
+// **Next door** is matched by the night: the same day and the same name once
+// case and punctuation are flattened. Dun Laoghaire watches both the council's
+// listings and the Pavilion's, and when both carried the same night it was
+// saved twice, offered twice and drawn as two chips. Always by the night, even
+// for a cinema, because a film's title on its own would match any night next
+// door that shares the name.
+//
+// **A feed night that is off is not known.** Ticketmaster calling a show off,
+// or no longer listing it at all, while the venue's own page still has it on
+// is exactly what somebody needs to look at. Counted as known, the reading
+// never came back. So it is offered again, as found, for a person to settle.
+//
+// already is the events at this place and the places next door, place_id,
+// name, event_date and status. What arrived, never the name we chose, the same
+// as the reading key.
+export function notYetKnown(rows, already, { placeId, key = 'date' } = {}) {
+    const here = new Set()
+    const nextDoor = new Set()
+    for (const e of already || []) {
+        if (OFF.includes(String(e.status || '').toLowerCase())) continue
+        if (e.place_id === placeId) here.add(sourceKeyFor(e.event_date, e.name, key))
+        else nextDoor.add(sourceKeyFor(e.event_date, e.name))
+    }
+    here.delete('')
+    nextDoor.delete('')
+
+    return (rows || []).filter(r => !here.has(r.source_key) && !nextDoor.has(sourceKeyFor(r.event_date, r.name)))
 }
 
 // ---------------------------------------------------------- who is calling

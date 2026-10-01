@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase, everyRow } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
-import { fmtMoney, num } from '@/lib/format'
+import { fmtMoney, num, namesList } from '@/lib/format'
 import { todayISO, weekStartOf, shortDate, addDays, fullDate } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
 import { secondaryButton, card, cardEdge, cardHeader, rowButton, pageTitle } from '@/lib/controlStyles'
@@ -13,7 +13,7 @@ import InvoiceForm from '@/components/invoices/InvoiceForm'
 import { useConfirm } from '@/context/confirm'
 import Modal from '@/components/ui/Modal'
 import {
-    INVOICE_SUMMARY_CARDS, invoiceCategory, groupByDay, invoiceSplit, mainCategory, spentIn,
+    INVOICE_SUMMARY_CARDS, invoiceCategory, groupByDay, invoiceSplit, mainCategory, spentIn, costedByLine,
 } from '@/lib/invoiceCategories'
 import CategoryBadges from '@/components/invoices/CategoryBadges'
 import { orderByUse, USE_WINDOW_DAYS } from '@/lib/supplierOrder'
@@ -37,8 +37,13 @@ function emptyForm() {
 
 // One set of rules for both, so an invoice cannot be edited into a state it
 // could never have been created in.
-function validate(f) {
+//
+// Fixed is a document read in line by line, whose total and category are not
+// on the form to check (see costedByLine). A credit note is one of those, and
+// its total is below zero, so checking it refused every correction to one.
+function validate(f, { fixed = false } = {}) {
     if (!f.supplierId) return 'Pick a supplier'
+    if (fixed) return null
     if (!f.category) return 'Pick a category'
     const amount = parseFloat(f.totalAmount)
     if (isNaN(amount) || amount <= 0) return 'The total has to be a number above zero'
@@ -49,7 +54,12 @@ function validate(f) {
 // problems, because they are not deleted with the document. A credit note that
 // settled some leaves them waiting again and still coming off the delivery's
 // week, since its own money was only ever counted through them.
-function deleteWords(waiting, kept) {
+//
+// `weeks` are the weeks the kept ones come off, when any is not the
+// invoice's own: a delivery whose report had already gone out has its claims
+// come off the first week still open (claimWeek), and "that week" would be
+// the wrong one.
+function deleteWords(waiting, kept, weeks = []) {
     if (waiting === 1) {
         return 'It settled one delivery problem. It goes back to Still waiting on Delivery problems '
             + 'until this credit note is imported again.'
@@ -60,8 +70,11 @@ function deleteWords(waiting, kept) {
     }
     const gone = 'It will be taken off the week straight away and off the cost dashboard with it.'
     if (!kept) return gone
+    const where = weeks.length
+        ? `the week${weeks.length === 1 ? '' : 's'} of ${namesList(weeks.map(shortDate))}`
+        : 'that week'
     return `${gone} ${kept === 1 ? 'The delivery problem logged against it is' : `The ${kept} delivery problems logged against it are`} `
-        + `kept, and still ${kept === 1 ? 'comes' : 'come'} off that week.`
+        + `kept, and still ${kept === 1 ? 'comes' : 'come'} off ${where}.`
 }
 
 // Is this the same invoice somebody already entered?
@@ -78,12 +91,15 @@ function deleteWords(waiting, kept) {
 // week_start is worked back out from the date every time rather than kept as it
 // was, so moving an invoice to a different day moves it into the right week too
 // instead of leaving it filed under the old one and wrong on the cost dashboard.
-function invoicePayload(f) {
+//
+// A document read in keeps the total and category it was read with, because
+// the money is costed from its lines and a figure typed over the top would
+// only change this list.
+function invoicePayload(f, { fixed = false } = {}) {
     return {
         supplier_id: f.supplierId,
         invoice_date: f.invoiceDate,
-        total_amount: parseFloat(f.totalAmount),
-        category: f.category,
+        ...(fixed ? {} : { total_amount: parseFloat(f.totalAmount), category: f.category }),
         week_start: weekStartOf(f.invoiceDate),
         notes: f.notes.trim() || null,
     }
@@ -333,18 +349,20 @@ export default function InvoicesPage() {
         e.preventDefault()
         setEditProblem(""); setSuccess("")
 
-        const problem = validate(editForm)
+        const fixed = costedByLine(editingInvoice)
+        const problem = validate(editForm, { fixed })
         if (problem) { setEditProblem(problem); return }
 
         // The same check on the way through. Correcting a date or an amount can
         // land an invoice exactly on top of another one, and itself does not
-        // count, which is what editingId is for.
-        if (!await pastDuplicate(editForm, editingId)) return
+        // count, which is what editingId is for. Not for a document read in:
+        // its number already keeps it from going in twice.
+        if (!fixed && !await pastDuplicate(editForm, editingId)) return
 
         setSaving(true)
         const { error: e1 } = await supabase
             .from('invoices')
-            .update(invoicePayload(editForm))
+            .update(invoicePayload(editForm, { fixed }))
             .eq('id', editingId)
         setSaving(false)
 
@@ -357,7 +375,7 @@ export default function InvoicesPage() {
 
     async function handleDelete(inv) {
         // The delivery problems that point at it. Deleting leaves them in
-        // place, still coming off the week of the delivery, so the dialog says
+        // place, still coming off the week they come off, so the dialog says
         // so. A credit note that settled some opens them again first, or
         // importing it again would take the same money off twice. See
         // creditTakenBack.
@@ -366,7 +384,11 @@ export default function InvoicesPage() {
             .or(`invoice_id.eq.${inv.id},credit_invoice_id.eq.${inv.id}`)
         if (e0) { setError(friendlyError(e0)); return }
         const back = creditTakenBack(inv, claims)
-        const kept = (claims || []).filter(c => c.invoice_id === inv.id && claimTakesOff(c) > 0).length
+        const keeping = (claims || []).filter(c => c.invoice_id === inv.id && claimTakesOff(c) > 0)
+        const kept = keeping.length
+        // Named only when one comes off a week other than the invoice's own.
+        const weeks = [...new Set(keeping.map(c => c.counted_week))].sort()
+        const elsewhere = weeks.some(w => w !== weekStartOf(inv.invoice_date)) ? weeks : []
 
         // Read back what is about to go, laid out rather than squeezed into one
         // sentence. Several invoices from the same supplier on the same day are
@@ -375,7 +397,7 @@ export default function InvoicesPage() {
         const cat = invoiceCategory(mainCategory(invoiceSplit(inv), inv.category))
         const ok = await confirm({
             title: 'Delete this invoice?',
-            message: deleteWords(back.waiting, kept),
+            message: deleteWords(back.waiting, kept, elsewhere),
             details: [
                 { label: 'Supplier', value: inv.suppliers?.name || 'Unknown supplier' },
                 { label: 'Category', value: cat.label },
@@ -658,6 +680,7 @@ export default function InvoicesPage() {
                             suppliers={suppliers}
                             problem={editProblem}
                             weekStart={weekStartOf(editForm.invoiceDate)}
+                            readIn={costedByLine(editingInvoice) ? editingInvoice : null}
                         />
                     </div>
                 </Modal>

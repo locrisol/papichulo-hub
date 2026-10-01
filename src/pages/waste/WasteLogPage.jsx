@@ -58,7 +58,13 @@ export default function WasteLogPage() {
     const navigate = useNavigate()
 
     const [logDate, setLogDate] = useState(todayISO())
+    // What can be logged: the products still in use. Costing a MIX reads only
+    // these, so an ingredient switched off cannot be costed.
     const [products, setProducts] = useState([])
+    // Every product, switched off ones included, for the names on the day's
+    // list. Something logged this morning and switched off this afternoon is
+    // still on today's list.
+    const [allProducts, setAllProducts] = useState([])
     const [recipeLines, setRecipeLines] = useState([])
     const [prices, setPrices] = useState([])
     const [entries, setEntries] = useState([])
@@ -102,18 +108,23 @@ export default function WasteLogPage() {
             setLoading(true)
             setError('')
 
+            // Through staff_products, for a manager too, since this page
+            // needs nothing the view leaves out: the notes, the weight loss
+            // and the rest of what only the Products page uses.
             const { data: prods, error: pErr } = await supabase
-                .from('products')
+                .from('staff_products')
                 .select('*')
-                .eq('is_active', true)
                 .order('name')
 
             if (pErr) { setError(friendlyError(pErr)); setLoading(false); return }
-            setProducts(prods || [])
+            setAllProducts(prods || [])
+            setProducts((prods || []).filter(p => p.is_active))
 
             // Needed to cost a MIX, which has no supplier price of its own.
+            // What goes in and how much, without the notes, which is what
+            // staff are given of the recipes.
             const { data: recipes, error: rErr } = await supabase
-                .from('mix_recipes')
+                .from('staff_mix_recipes')
                 .select('*')
 
             if (rErr) { setError(friendlyError(rErr)); setLoading(false); return }
@@ -145,9 +156,12 @@ export default function WasteLogPage() {
         async function loadEntries() {
             setLoadingEntries(true)
 
+            // The names come from the products already loaded rather than
+            // from the products table beside each entry, which staff cannot
+            // read.
             const { data: logs, error: wErr } = await supabase
                 .from('waste_logs')
-                .select('*, products(name, unit)')
+                .select('*')
                 .eq('restaurant_id', restaurantId)
                 .eq('log_date', logDate)
                 .order('created_at', { ascending: true })
@@ -169,6 +183,7 @@ export default function WasteLogPage() {
     }, [restaurantId, logDate, refresh])
 
     const selectedProduct = products.find(p => p.id === productId) || null
+    const productOf = id => allProducts.find(p => p.id === id) || null
 
     // Worked out live as you type, so the money is on screen before you add it.
     const costing = calculateWasteValue(selectedProduct, quantity, products, recipeLines, prices)
@@ -248,16 +263,20 @@ export default function WasteLogPage() {
         const ok = await confirm({
             title: 'Delete this waste entry?',
             details: [
-                { label: 'Product', value: entry.products?.name || 'Unknown product' },
-                { label: 'Quantity', value: `${fmtQty(entry.quantity_wasted)} ${entry.products?.unit || ''}`.trim() },
+                { label: 'Product', value: productOf(entry.product_id)?.name || 'Unknown product' },
+                { label: 'Quantity', value: `${fmtQty(entry.quantity_wasted)} ${productOf(entry.product_id)?.unit || ''}`.trim() },
                 { label: 'Reason', value: reasonLabel(entry.reason) },
             ],
             confirmLabel: 'Delete entry',
             tone: 'danger',
         })
         if (!ok) return
-        const { error: e1 } = await supabase.from('waste_logs').delete().eq('id', entry.id)
+        // A delete the rules turn away is not an error, it just removes
+        // nothing, so the row has to come back for it to count as gone.
+        const { data: gone, error: e1 } = await supabase.from('waste_logs')
+            .delete().eq('id', entry.id).select('id')
         if (e1) setError(friendlyError(e1))
+        else if (!gone?.length) setError('That entry could not be deleted, so nothing has changed.')
         else setRefresh(n => n + 1)
     }
 
@@ -512,9 +531,9 @@ export default function WasteLogPage() {
                             {entries.map(e => (
                                 <div key={e.id} className="flex items-center gap-3 py-2.5">
                                     <div className="flex-1 min-w-0">
-                                        <div className="text-sm text-gray-900 truncate">{e.products?.name || 'Unknown product'}</div>
+                                        <div className="text-sm text-gray-900 truncate">{productOf(e.product_id)?.name || 'Unknown product'}</div>
                                         <div className="text-xs text-muted">
-                                            {fmtQty(e.quantity_wasted)} {e.products?.unit} · {reasonLabel(e.reason)}
+                                            {fmtQty(e.quantity_wasted)} {productOf(e.product_id)?.unit} · {reasonLabel(e.reason)}
                                         </div>
                                     </div>
                                     <span className="text-sm text-gray-900 whitespace-nowrap">

@@ -332,11 +332,14 @@ export function weekCleaning({ lists, categories, tasks, rounds, ticks, weekStar
             if (finished && roundOutcome(finished) === 'finished') {
                 return { label, state: 'done', on: dayOf(finished.ended_at), warn: false }
             }
-            const left = leftOf(open || finished)
-            const done = leaves.length - left.length
+            // A round ended early is spoken of by what it left, even when
+            // another has been started since. That one is said on its own.
             if (finished) {
-                return { label, state: 'ended', on: dayOf(finished.ended_at), by: finished.ended_by_name, done, total: leaves.length, left, warn: true }
+                const left = leftOf(finished)
+                return { label, state: 'ended', on: dayOf(finished.ended_at), by: finished.ended_by_name, done: leaves.length - left.length, total: leaves.length, left, warn: true }
             }
+            const left = leftOf(open)
+            const done = leaves.length - left.length
             if (!open) return { label, state: 'not_started', done: 0, total: leaves.length, left, warn: warnWhenNotDone }
             return { label, state: warnWhenNotDone ? 'not_finished' : 'in_progress', done, total: leaves.length, left, warn: warnWhenNotDone }
         }
@@ -356,6 +359,13 @@ export function weekCleaning({ lists, categories, tasks, rounds, ticks, weekStar
             } else {
                 lines.push(verdict(list.repeats === 'monthly' ? monthName(now.from) : null, now, now.to === saturday))
             }
+        }
+        // Started again after a round was ended early, which the end dialog
+        // tells staff to do. It counts in the week it finishes, so it never
+        // warns, it only says how far it has got.
+        if (open && lines.at(-1)?.state === 'ended') {
+            const left = leftOf(open)
+            lines.push({ label: null, state: 'started_again', on: dayOf(open.started_at), done: leaves.length - left.length, total: leaves.length, left, warn: false })
         }
 
         out.push({
@@ -404,5 +414,6 @@ export function cleaningWords(line) {
     if (line.state === 'ended') return `${when}Ended on ${doneDayLong(line.on + 'T12:00:00')}${line.by ? ` by ${line.by}` : ''} with ${line.left.length} not done.`
     if (line.state === 'not_started') return line.warn ? `${when}Not done. Nobody started it.` : `${when}Not started yet.`
     if (line.state === 'not_finished') return `${when}Not finished: ${line.done} of ${line.total} done, ${line.left.length} left.`
+    if (line.state === 'started_again') return `${when}Started again on ${doneDayLong(line.on + 'T12:00:00')}: ${line.done} of ${line.total} done so far.`
     return `${when}${line.done} of ${line.total} done so far.`
 }

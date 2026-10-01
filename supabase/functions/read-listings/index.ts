@@ -56,10 +56,10 @@
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
-    endpoint, readable, promptFor, SCHEMA, answerFrom, eventsFrom, sourceKeyFor,
-    urlsFor, joinPages, isServiceRole, roleOf, refusalFor,
+    readable, promptFor, geminiRequest, failedWords, answerFrom, eventsFrom, notYetKnown, watchedAlongside,
+    urlsFor, joinPages, isServiceRole, roleOf, refusalFor, readError, readProblem, geminiWords,
 } from './reading.js'
-import { readPage } from './fetching.js'
+import { readPage, readPages } from './fetching.js'
 
 // How far ahead to ask about. One month at his word, against the Arena's six.
 //
@@ -130,6 +130,7 @@ type Place = {
     reading_key: string
     page_depth: number
 }
+type Pairing = { restaurant_id: string, place_id: string }
 
 function windowOf(now: Date) {
     const to = new Date(now)
@@ -140,32 +141,38 @@ function windowOf(now: Date) {
     return { from: now.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) }
 }
 
+// The key travels in a header, and anything that goes wrong is said as what
+// failed and where rather than as the error's own message, which names the
+// address it was sending to. See geminiRequest and failedWords in reading.js.
+//
+// That is only the detail, for the log. The place gets a plain sentence that
+// says whether anybody has to act, because a manager reading an error kind, a
+// host or a status on the settings row cannot tell. See geminiWords.
 async function ask(key: string, prompt: string) {
-    const res = await fetch(`${endpoint()}?key=${encodeURIComponent(key)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(ASK_WAIT_MS),
-        body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: {
-                // JSON out, held to the shape in reading.js. That takes care of
-                // the shape and none of the sense, which is what the checks in
-                // eventsFrom are for.
-                responseMimeType: 'application/json',
-                responseSchema: SCHEMA,
-                // As close to no invention as the dial goes. This is a reading
-                // job and there is nothing here worth being creative about.
-                temperature: 0,
-            },
-        }),
-    })
+    const { url, init } = geminiRequest(key, prompt)
 
-    if (!res.ok) {
-        // Deliberately not the body. An API error can carry the key back.
-        throw new Error(`Gemini said no (${res.status}).`)
+    let res: Response
+    try {
+        res = await fetch(url, { ...init, signal: AbortSignal.timeout(ASK_WAIT_MS) })
+    } catch (err) {
+        throw readError('Could not reach Gemini. It will try again at the next read.', failedWords('Asking Gemini', err, url))
     }
 
-    return answerFrom(await res.json())
+    if (!res.ok) {
+        res.body?.cancel().catch(() => {})
+        // Deliberately not the body. An API error can carry the key back.
+        throw readError(geminiWords(res.status), `Gemini said no (${res.status}).`)
+    }
+
+    let answer: unknown
+    try {
+        answer = await res.json()
+    } catch (err) {
+        throw readError("Gemini's answer could not be read. It will try again at the next read.",
+            failedWords("Reading Gemini's answer", err, url))
+    }
+
+    return answerFrom(answer)
 }
 
 // One page read, checked, and written.
@@ -173,38 +180,37 @@ async function ask(key: string, prompt: string) {
 // The read is recorded whatever happens, including when it finds nothing. A
 // page that changes its layout goes quiet rather than going wrong, and a run of
 // zeroes on the settings screen is the only way anybody would ever notice.
-async function readOne(admin: Admin, place: Place, key: string, now: Date) {
+async function readOne(admin: Admin, place: Place, key: string, now: Date, pairings: Pairing[]) {
     const { from, to } = windowOf(now)
 
     // One address can be several pages: a month each, a pageful each, or both.
     // See urlsFor, and the reasons it exists, in reading.js.
     const addresses = urlsFor(place.page_url, { depth: place.page_depth, from, to })
-    if (addresses.length === 0) throw new Error('no address to read')
-
-    const parts: string[] = []
-    const missed: string[] = []
+    if (addresses.length === 0) throw readError('There is no address to read.')
 
     // Through readPage and never a plain fetch. The address was typed by a
     // person, so it is checked before it goes out and at every redirect, and
-    // the read has a time limit and a size limit. See fetching.js.
-    for (const address of addresses) {
-        try {
-            const page = await readPage(address, { headers: { 'User-Agent': AGENT }, resolve: addressesOf })
-            parts.push(readable(page))
-        } catch (err) {
-            missed.push(`${address}: ${(err as Error).message}`)
-        }
-    }
+    // the read has a time limit and a size limit. A page that runs out of time
+    // ends the place there, rather than costing the same wait on every page
+    // after it. See fetching.js.
+    const { texts, missed } = await readPages(addresses, (address: string) =>
+        readPage(address, { headers: { 'User-Agent': AGENT }, resolve: addressesOf }))
+    const parts = texts.map(readable)
 
     // One page of four refusing is not a failure. All of them refusing is, and
     // it has to be, or a site that has gone away would look like a quiet week.
+    // Which pages and what they answered goes to the log; the place only says
+    // that they could not be read. See readProblem in reading.js.
     if (parts.length === 0) {
-        throw new Error(missed.join('; ') || `${place.page_url} had no words on it`)
+        throw readError(
+            addresses.length > 1 ? 'None of the pages could be read.' : 'The page could not be read.',
+            missed.join('; ') || `${place.page_url} had no words on it`,
+        )
     }
     if (missed.length) console.warn('read-listings', place.name, missed.join('; '))
 
     const text = joinPages(parts)
-    if (!text) throw new Error(`${place.page_url} had no words on it`)
+    if (!text) throw readError('The page had no words on it.', `${place.page_url} had no words on it`)
 
     // How this place's readings are keyed decides both what to ask for and
     // what makes an answer the same answer twice. A cinema is asked for films
@@ -212,7 +218,7 @@ async function readOne(admin: Admin, place: Place, key: string, now: Date) {
     const reading = place.reading_key || 'date'
 
     const answer = await ask(key, promptFor(text, { from, to, today: from, key: reading }))
-    const { rows, refused } = eventsFrom(answer, {
+    const { rows, refused, wrongDay } = eventsFrom(answer, {
         placeId: place.id,
         url: place.page_url,
         from,
@@ -221,7 +227,8 @@ async function readOne(admin: Admin, place: Place, key: string, now: Date) {
         key: reading,
     })
 
-    if (refused) throw new Error(refused)
+    if (refused) throw readError(refused)
+    if (wrongDay) console.log('read-listings', place.name, `${wrongDay} left out, the day of the week did not match the date`)
 
     // **What the feed already knows, the reading does not repeat.**
     //
@@ -235,18 +242,28 @@ async function readOne(admin: Admin, place: Place, key: string, now: Date) {
     // case or punctuation is not a second event. A feed that names a night
     // differently from the page will still slip through, and that is the honest
     // limit of comparing two strings nobody wrote together.
+    //
+    // Not a night the feed has called off or stopped listing, though. If the
+    // page still has it on, that is worth a person's look. See notYetKnown.
+    //
+    // **Nor does what a page next door already said.** The council's listings
+    // and the Pavilion's own can both carry the same night, and both are
+    // watched from Dun Laoghaire, so the places watched alongside this one are
+    // asked as well. See notYetKnown in reading.js.
+    //
+    // From the earliest day any row starts on, not from the read day. A run
+    // that began last Friday is kept now, and the feed's own row for it starts
+    // last Friday too, so looking from today would miss it and offer the same
+    // run a second time.
+    const earliest = rows.reduce((first, r) => (r.event_date < first ? r.event_date : first), from)
     const { data: already } = await admin
         .from('events')
-        .select('name, event_date')
-        .eq('place_id', place.id)
-        .gte('event_date', from)
+        .select('place_id, name, event_date, status')
+        .in('place_id', [place.id, ...watchedAlongside(pairings, place.id)])
+        .gte('event_date', earliest)
         .lte('event_date', to)
 
-    const known = new Set(
-        (already || []).map(e => sourceKeyFor(e.event_date, e.name, reading)).filter(Boolean),
-    )
-
-    const fresh = rows.filter(r => !known.has(r.source_key))
+    const fresh = notYetKnown(rows, already, { placeId: place.id, key: reading })
     const repeats = rows.length - fresh.length
     if (repeats) console.log('read-listings', place.name, `${repeats} already known`)
 
@@ -261,12 +278,13 @@ async function readOne(admin: Admin, place: Place, key: string, now: Date) {
             .upsert(fresh, { onConflict: 'place_id,source_key', ignoreDuplicates: true })
             .select('id')
 
-        if (error) throw new Error(error.message)
+        if (error) throw readError('The events could not be saved.', error.message)
         added = (data || []).length
     }
 
+    // A read that worked clears whatever the last one said went wrong.
     await admin.from('places')
-        .update({ last_read_at: now.toISOString(), last_read_count: rows.length })
+        .update({ last_read_at: now.toISOString(), last_read_count: rows.length, read_problem: null })
         .eq('id', place.id)
 
     return {
@@ -279,26 +297,31 @@ async function readOne(admin: Admin, place: Place, key: string, now: Date) {
     }
 }
 
-async function pagesFor(admin: Admin, restaurantId?: string): Promise<Place[]> {
+async function pagesFor(admin: Admin, restaurantId?: string) {
     // Only places somebody is actually watching. Turning one off is how a
     // manager says they do not want to hear about it, and reading a page to
     // fill a table nothing looks at is the sort of waste nobody notices.
-    const query = admin
+    //
+    // Every restaurant's pairings, even when one restaurant asked, because
+    // which pages are next door to a place depends on everybody who watches
+    // it. Only the asking restaurant's places are read.
+    const { data } = await admin
         .from('restaurant_places')
-        .select('restaurant_id, place:places(id, name, page_url, reading_key, page_depth)')
+        .select('restaurant_id, place_id, place:places(id, name, page_url, reading_key, page_depth)')
         .eq('is_active', true)
 
-    const { data } = restaurantId ? await query.eq('restaurant_id', restaurantId) : await query
+    const pairings = (data || []) as unknown as (Pairing & { place: Place | null })[]
 
     const places = new Map<string, Place>()
-    for (const row of data || []) {
-        const place = row.place as unknown as Place
+    for (const row of pairings) {
+        if (restaurantId && row.restaurant_id !== restaurantId) continue
+        const place = row.place
         // One read per page, not one per restaurant near it. The council's page
         // is the council's page whoever is asking.
         if (place?.page_url && !places.has(place.id)) places.set(place.id, place)
     }
 
-    return [...places.values()]
+    return { places: [...places.values()], pairings }
 }
 
 Deno.serve(async (request) => {
@@ -315,15 +338,21 @@ Deno.serve(async (request) => {
     const bearer = request.headers.get('Authorization') || ''
     const now = new Date()
 
-    async function readAll(places: Place[]) {
+    async function readAll({ places, pairings }: { places: Place[], pairings: Pairing[] }) {
         const done: Record<string, unknown>[] = []
         for (const [i, place] of places.entries()) {
             if (i > 0) await wait(GAP_MS)
             try {
-                done.push(await readOne(admin, place, key!, now))
+                const read = await readOne(admin, place, key!, now, pairings)
+                // Said as each place finishes and not only at the end. The
+                // platform stops a run at two and a half minutes, and a run
+                // stopped there never reaches the line at the end, so this is
+                // what says which places were read before it.
+                console.log('read-listings', place.name, JSON.stringify(read))
+                done.push(read)
             } catch (err) {
                 // One page refusing must not stop the others, and the log is
-                // the only place anybody sees this, so it says which.
+                // the only place anybody sees the detail, so it says which.
                 //
                 // The detail stays in the log. It used to go back to the
                 // browser as well, and a status code or a connection error for
@@ -331,6 +360,12 @@ Deno.serve(async (request) => {
                 // inside a network. The settings screen only ever showed the
                 // place's name, so it loses nothing.
                 console.error('read-listings', place.name, err)
+
+                // Kept on the place as well, so a page that keeps failing says
+                // so on the settings row instead of only showing the last good
+                // read getting older. Only ever a sentence this function wrote,
+                // never the error itself. See readProblem in reading.js.
+                await admin.from('places').update({ read_problem: readProblem(err) }).eq('id', place.id)
                 done.push({ place: place.name, error: 'could not be read' })
             }
         }

@@ -81,3 +81,12 @@ export function num(v) {
   const n = Number(v)
   return isNaN(n) ? 0 : n
 }
+
+// Names the way a sentence says them: "Lime", "Lime and Salt", "Lime, Salt
+// and Cream". For a message that names what is wrong rather than counting it.
+export function namesList(names) {
+  const list = names || []
+  return list.length < 2
+    ? list.join('')
+    : `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}`
+}

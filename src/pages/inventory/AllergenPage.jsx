@@ -1,9 +1,11 @@
-import { pageTitle, primaryButton } from '@/lib/controlStyles'
+import { pageTitle, primaryButton, warningNote } from '@/lib/controlStyles'
+import { declaresAllergens } from '@/lib/products'
 import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { friendlyError } from '@/lib/errors'
 import { ALLERGENS, emptyAllergens } from '@/lib/allergens'
+import { allergensChanged } from '@/lib/allergensChanged'
 import AllergenPicker from '@/components/inventory/AllergenPicker'
 import BackButton from '@/components/ui/BackButton'
 import ErrorBanner from '@/components/ui/ErrorBanner'
@@ -15,9 +17,10 @@ import ErrorBanner from '@/components/ui/ErrorBanner'
 // product form, which is where you would rather say it. Both draw the list, the
 // three states and the boxes from the same place.
 //
-// The 14 are fixed by EU 1169 and cannot be added to or renamed. A product with
-// no record yet is treated as Not Present for all of them, which is why the form
-// opens filled in rather than empty.
+// The 14 are fixed by EU 1169 and cannot be added to or renamed. The form opens
+// at Not Present for all of them, so only the ones that apply need changing,
+// but a product with no record saved is not known rather than none, and the
+// page says so until it is saved.
 //
 // One row per product, so saving is an insert the first time and an update after.
 
@@ -37,6 +40,10 @@ export default function AllergenPage() {
   const [formProblem, setFormProblem] = useState('')
   const [saving, setSaving] = useState(false)
   const [savedMessage, setSavedMessage] = useState('')
+  // A MIX with a recipe takes its allergens from what goes into it, so having
+  // no row of its own is not a gap, and the note about nothing being saved
+  // would send somebody to fix the wrong product.
+  const [hasRecipe, setHasRecipe] = useState(false)
 
   
 
@@ -55,6 +62,20 @@ export default function AllergenPage() {
       return
     }
     setProduct(productData)
+
+    if (productData.is_mix) {
+      const { data: lines, error: recipeError } = await supabase
+        .from('mix_recipes')
+        .select('ingredient_product_id')
+        .eq('mix_product_id', id)
+        .limit(1)
+      if (recipeError) {
+        setError(friendlyError(recipeError))
+        setLoading(false)
+        return
+      }
+      setHasRecipe((lines || []).length > 0)
+    }
 
     // maybeSingle returns null (not an error) if no row exists yet,
     // which is the case for a product that has never had allergens set.
@@ -119,6 +140,9 @@ export default function AllergenPage() {
       setFormProblem(friendlyError(error))
     } else {
       setSavedMessage('Saved')
+      // So the red count on Products in the sidebar goes down now, rather
+      // than on the next page change.
+      allergensChanged()
       // Refetch so the "Last updated" timestamp shown is the one
       // Postgres actually stored, not the client-side timestamp.
       loadAll()
@@ -159,6 +183,23 @@ export default function AllergenPage() {
         <div className="text-sm text-gray-500">Loading allergens...</div>
       ) : (
         <>
+          {/* The boxes open at Not Present so only the ones that apply need
+              changing, but until something is saved that is where the form
+              starts, not an answer. The customer sheet treats it as not
+              known, so this says so rather than looking like none. */}
+          {!existing && !error && declaresAllergens(product) && !hasRecipe && (
+            <p className={`${warningNote} mb-4`}>
+              Nothing has been saved for {product.name} yet. Until it is, the allergen sheet asks
+              customers to speak to a member of staff about any dish it goes into. Set what applies,
+              or leave all fourteen at Not Present, and save.
+            </p>
+          )}
+          {hasRecipe && !error && (
+            <p className="text-sm text-muted mb-4">
+              The allergens for {product.name} come from the products in its recipe. Anything set
+              here is added to them.
+            </p>
+          )}
           <AllergenPicker values={values} onChange={setAllergenState} className="mb-6" />
 
           {/* Above the button row rather than inside it. As a sibling of the

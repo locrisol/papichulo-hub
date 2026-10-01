@@ -2,7 +2,7 @@ import { useState, useRef, Fragment } from 'react'
 import { cardEdge } from '@/lib/controlStyles'
 import { NO_COLOUR } from '@/lib/team'
 import { kindColours } from '@/lib/diary'
-import { chipWords } from '@/lib/nearby'
+import { markedWords } from '@/lib/nearby'
 import { unavailableSpans, dayState, windowsFor, windowsLabel, availabilityOn } from '@/lib/availability'
 import { AlertBadge, AlertStrip } from '@/components/roster/RosterAlerts'
 import { hasWarnings } from '@/lib/workRules'
@@ -365,7 +365,7 @@ export default function RosterDay({
                                     return (
                                         <span
                                             key={row.event.id}
-                                            title={chipWords(row) + (row.checked === false ? ' (found, nobody has checked it)' : '')}
+                                            title={markedWords(row) + (row.checked === false ? ' (found, nobody has checked it)' : '')}
                                             className="relative h-4 mb-0.5 last:mb-0 rounded-sm flex items-center px-1 overflow-hidden"
                                             style={{
                                                 marginLeft: `${pct(start)}%`,
@@ -386,7 +386,7 @@ export default function RosterDay({
                                                 {/* The short name, the same as
                                                     the week and the sheet. One
                                                     week, one name for a place. */}
-                                                {chipWords(row, { short: true })}
+                                                {markedWords(row, { short: true })}
                                             </span>
                                         </span>
                                     )
