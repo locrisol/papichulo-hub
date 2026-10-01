@@ -1,5 +1,6 @@
-import { secondaryButton } from '@/lib/controlStyles'
+import { primaryButton, secondaryButton } from '@/lib/controlStyles'
 import { fullDate } from '@/lib/dates'
+import { isCorrection, mailMissing } from '@/lib/weeklyReport'
 
 // The bar that finishes a report, or re-opens one.
 //
@@ -29,10 +30,39 @@ function Outcome({ children }) {
 }
 
 export default function PublishBar({
-    report, blockers, warnings, canWrite, busy, mailed, onPublish, onReopen, onTest,
+    report, blockers, warnings, canWrite, busy, mailed, onPublish, onReopen, onTest, onSend,
 }) {
     const sent = report.status === 'published'
-    const correction = (report.send_count || 0) > 0
+    const reopened = (report.send_count || 0) > 0
+    const correction = isCorrection(report)
+
+    // Frozen and published, and the mail never went. This used to say Sent
+    // like any other, so after one reload nothing on the Hub said the owners
+    // had nothing. Sending it from here is the same report going out for the
+    // first time: nothing is frozen again and it is not a correction.
+    if (sent && mailMissing(report)) {
+        return (
+            <div className="rounded-xl border border-accent/50 bg-accent-light/50 p-4 flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0">
+                    <p className="text-sm font-bold text-sidebar">Published, not sent</p>
+                    <p className="text-xs text-muted mt-0.5">
+                        The figures are frozen, but the mail did not go out, so nobody has this week yet.
+                    </p>
+                </div>
+                {canWrite && (
+                    <div className="flex flex-wrap gap-2">
+                        <button type="button" onClick={onReopen} disabled={busy} className={secondaryButton}>
+                            Re-open
+                        </button>
+                        <button type="button" onClick={onSend} disabled={busy} className={primaryButton()}>
+                            {busy ? 'Sending' : 'Send it'}
+                        </button>
+                    </div>
+                )}
+                {mailed && <Outcome>{mailed}</Outcome>}
+            </div>
+        )
+    }
 
     if (sent) {
         return (
@@ -71,12 +101,14 @@ export default function PublishBar({
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0">
                     <p className="text-sm font-bold text-sidebar">
-                        {correction ? 'Re-opened' : 'Not sent yet'}
+                        {reopened ? 'Re-opened' : 'Not sent yet'}
                     </p>
                     <p className="text-xs text-muted mt-0.5">
                         {correction
                             ? 'Publishing again sends a second mail marked as a correction, to everyone who got the first.'
-                            : 'Publishing freezes the figures and mails the report out.'}
+                            : reopened
+                                ? 'Nobody got it the first time, so publishing sends it as the first mail, not a correction.'
+                                : 'Publishing freezes the figures and mails the report out.'}
                     </p>
                 </div>
 
@@ -97,7 +129,7 @@ export default function PublishBar({
                     <button
                         onClick={onPublish}
                         disabled={busy || stopped}
-                        className="px-4 py-2 bg-accent text-white rounded-lg text-sm font-semibold shadow-sm hover:bg-accent-ink transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className={primaryButton()}
                     >
                         {busy
                             ? 'Publishing'

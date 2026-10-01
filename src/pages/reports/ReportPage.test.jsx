@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen } from '@testing-library/react'
+import { screen, fireEvent, waitFor } from '@testing-library/react'
 import { Routes, Route } from 'react-router-dom'
 import { mockSupabase, makeQuery, renderWithRouter } from '@/test/helpers'
 import { addDays, todayISO, weekStartOf } from '@/lib/dates'
@@ -30,7 +30,8 @@ vi.mock('@/lib/supabase', async importOriginal => ({
     supabase: new Proxy({}, { get: (_, k) => db[k] }),
 }))
 vi.mock('@/context/auth', () => ({ useAuth: () => ({ user: { id: 'u1', role: 'store_manager', restaurant_id: 'r1' } }) }))
-vi.mock('@/context/confirm', () => ({ useConfirm: () => () => Promise.resolve(true) }))
+const confirmed = vi.fn(() => Promise.resolve(true))
+vi.mock('@/context/confirm', () => ({ useConfirm: () => confirmed }))
 
 let restaurant
 vi.mock('@/context/restaurant', () => ({
@@ -42,11 +43,11 @@ const { default: ReportPage } = await import('./ReportPage')
 // The report itself answers .single(); the year of reports behind it for the
 // charts is a list. The restaurant row fails when it is asked for a column
 // the live database has not got yet.
-function answer({ changedAt }) {
+function answer({ changedAt, head = HEAD }) {
     db.from.mockImplementation(table => {
         if (table === 'weekly_reports') {
             const chain = makeQuery({ data: [], error: null })
-            chain.single = vi.fn(() => Promise.resolve({ data: HEAD, error: null }))
+            chain.single = vi.fn(() => Promise.resolve({ data: head, error: null }))
             return chain
         }
         if (table === 'restaurants') {
@@ -88,6 +89,60 @@ describe('the report before migration 023 is run', () => {
         renderReport()
         await screen.findByText('accounts@example.ie')
         expect(screen.queryByText(/Allergen sheet/)).toBeNull()
+    })
+})
+
+// A report frozen and published whose mail did not go out. Sending it from
+// here is the same report mailed for the first time, so nothing about it is
+// written again: the count stays at one and the owners get no correction.
+describe('a report published but not sent', () => {
+    const notSent = {
+        ...HEAD, status: 'published', send_count: 1, sent_to: null, published_at: `${WEEK}T09:00:00Z`,
+        figures: { net: 1000, gross: 1100, version: 3, paperwork: { food: [], permits: [] } },
+    }
+
+    it('sends it as it was frozen, and writes nothing to the report', async () => {
+        answer({ changedAt: { data: null, error: null }, head: notSent })
+        db.functions.invoke.mockClear()
+        db.functions.invoke.mockResolvedValue({ data: { sent: 2 }, error: null })
+        renderReport()
+
+        fireEvent.click(await screen.findByRole('button', { name: 'Send it' }))
+        await waitFor(() => expect(db.functions.invoke).toHaveBeenCalled())
+
+        const [name, { body }] = db.functions.invoke.mock.calls[0]
+        expect(name).toBe('weekly-report-email')
+        expect(body).toMatchObject({ reportId: 'rep1', test: false })
+        expect(body.figures).toBeUndefined()
+        const writes = db.from.mock.results
+            .filter((r, i) => db.from.mock.calls[i][0] === 'weekly_reports')
+            .filter(r => r.value.update.mock.calls.length)
+        expect(writes).toHaveLength(0)
+        expect(await screen.findByText('Published and sent to 2 people.')).toBeInTheDocument()
+    })
+
+    // Nobody got the first one, so publishing it again is not a correction,
+    // and the question asked before re-opening must not say it is.
+    it('does not warn that re-opening it leads to a correction', async () => {
+        answer({ changedAt: { data: null, error: null }, head: notSent })
+        confirmed.mockClear()
+        renderReport()
+
+        fireEvent.click(await screen.findByRole('button', { name: 'Re-open' }))
+        await waitFor(() => expect(confirmed).toHaveBeenCalled())
+        const { message } = confirmed.mock.calls[0][0]
+        expect(message).not.toMatch(/correction to everyone/)
+        expect(message).toMatch(/Nobody got it the first time/)
+    })
+
+    it('still warns of a correction once a send has reached somebody', async () => {
+        answer({ changedAt: { data: null, error: null }, head: { ...notSent, sent_to: ['owner@example.ie'] } })
+        confirmed.mockClear()
+        renderReport()
+
+        fireEvent.click(await screen.findByRole('button', { name: 'Re-open to correct it' }))
+        await waitFor(() => expect(confirmed).toHaveBeenCalled())
+        expect(confirmed.mock.calls[0][0].message).toMatch(/mails a correction to everyone who got the first/)
     })
 })
 

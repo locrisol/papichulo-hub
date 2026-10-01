@@ -634,8 +634,25 @@ export function figuresToStore(figures, at = new Date()) {
 }
 
 // Is this report the first time it has gone out, or a correction?
+//
+// A correction only once an earlier send reached somebody. send_count goes up
+// when the report is frozen, before the mail goes, and sent_to is written only
+// once a mail has gone, so a first send that failed (Gmail dropped the
+// connection twice in September) left the count at one with nobody having it.
+// Counting that as sent turned the next try into "Corrected:" for owners who
+// never got the first. Sent to nobody because nobody was on the list is the
+// same: there is nothing to correct. The mail function asks the same thing in
+// correctionSend, in its email.js, and the two have to agree.
 export function isCorrection(report) {
-    return (report?.send_count || 0) > 0
+    return (report?.send_count || 0) > 0 && report?.sent_to?.length > 0
+}
+
+// A published report whose mail never went out. sent_to is written only after
+// a send, so null on a published report is a send that failed. An empty list
+// is a send that went to nobody because nobody was on the list, which the
+// page says already, and is not this.
+export function mailMissing(report) {
+    return report?.status === 'published' && report.sent_to == null
 }
 
 // Only a rating that moved is worth a sentence. One that held is noise.

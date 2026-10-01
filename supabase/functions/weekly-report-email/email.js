@@ -1162,9 +1162,7 @@ export function reportEmail({
 }) {
     const weekStart = report.week_start
     const place = restaurant?.name || 'The restaurant'
-    // Not > 0. This runs after the report has been published, so the first send
-    // arrives here with a count of one. Two is the first correction.
-    const correction = !isTest && (report.send_count || 0) > 1
+    const correction = correctionSend(report, isTest)
 
     // Which restaurant it is comes from the sender name, which is why the
     // subject does not carry it as well.
@@ -1450,6 +1448,21 @@ export function whatToSend(report, { test = false, figures, charts } = {}) {
     if (report?.status === 'published') return { figures: report.figures || {}, charts: report.charts || {} }
     if (!test) return { refused: 'This report has not been published, so it cannot be sent.' }
     return { figures: figures || {}, charts: charts || {} }
+}
+
+// Whether a send of a report is a correction of an earlier one.
+//
+// Not a count above nought. This runs after the report has been published, so
+// the first send arrives here with a count of one, and two is the first
+// correction. And only when an earlier send reached somebody: sent_to is read
+// before this send writes it, so it is still the list the last real mail went
+// to. Before 1 October the count went up on every publish, mail or no mail, so
+// a report whose first two sends both failed has a count of two and nobody
+// who ever got it, and the count alone told the owners this replaced a report
+// they never had. The browser asks the same before it publishes, in
+// isCorrection in src/lib/weeklyReport.js, and the two have to agree.
+export function correctionSend(report, isTest = false) {
+    return !isTest && (report?.send_count || 0) > 1 && report?.sent_to?.length > 0
 }
 
 // An address nobody can ever receive mail at.

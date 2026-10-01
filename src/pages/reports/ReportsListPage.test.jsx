@@ -12,8 +12,19 @@ import { todayISO, weekStartOf, addDays, weekDates, weekRange } from '@/lib/date
 // badge was not, because the badge never asked which of the two was missing.
 
 const LAST_WEEK = addDays(weekStartOf(todayISO()), -7)
+// Two weeks before that, published with a mail that never went, and the one
+// before it sent the ordinary way.
+const NOT_SENT = addDays(LAST_WEEK, -14)
+const SENT = addDays(LAST_WEEK, -21)
 
 const db = mockSupabase({
+    weekly_reports: {
+        data: [
+            { id: 'rep1', week_start: NOT_SENT, status: 'published', published_at: `${NOT_SENT}T09:00:00Z`, send_count: 1, sent_to: null },
+            { id: 'rep2', week_start: SENT, status: 'published', published_at: `${SENT}T09:00:00Z`, send_count: 1, sent_to: ['owner@papichulo.ie'] },
+        ],
+        error: null,
+    },
     // Every day of last week entered, and no other week at all.
     sales_records: {
         data: weekDates(LAST_WEEK).map(date => ({
@@ -96,6 +107,19 @@ describe('a week with its sales in and its timesheet not', () => {
         const at = db.from.mock.calls.findIndex(([table]) => table === 'timesheet_entries')
         const [columns] = db.from.mock.results[at].value.select.mock.calls[0]
         expect(columns.split(', ')).toContain('id')
+    })
+})
+
+describe('a week published whose mail never went', () => {
+    it('says it was not sent, rather than Sent', async () => {
+        const row = await rowFor(NOT_SENT)
+        expect(within(row).getByText('Not sent')).toBeInTheDocument()
+        expect(within(row).queryByText('Sent')).toBeNull()
+    })
+
+    it('still says Sent for one that went', async () => {
+        const row = await rowFor(SENT)
+        expect(within(row).getByText('Sent')).toBeInTheDocument()
     })
 })
 

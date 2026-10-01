@@ -14,6 +14,7 @@ import { useState as useLocalState } from 'react'
 import {
     reportFigures, sectionKey, publishCheck, figuresToStore, platformShare,
     deliveryRows, deliveryBlockers, deliveryCost, platformTaken, statementWeek, statementWords, platformWeeks,
+    isCorrection, mailMissing,
 } from '@/lib/weeklyReport'
 import { keyedPlatforms, platformsToShow } from '@/lib/salesTenders'
 import { paperworkFor } from '@/lib/reportPeople'
@@ -747,7 +748,8 @@ export default function ReportPage() {
         if (check.blockers.length > 0) return
         if (stillReading()) return
 
-        const first = (report.send_count || 0) === 0
+        // First unless an earlier send reached somebody. See isCorrection.
+        const first = !isCorrection(report)
         const ok = await confirm({
             title: first ? 'Send this report?' : 'Send a correction?',
             message: first
@@ -771,7 +773,7 @@ export default function ReportPage() {
             // What the last mail said, kept so the next one can say what
             // changed. Only from the second send on: the first has nothing to
             // be a correction of.
-            const previous = (report.send_count || 0) > 0 ? report.figures : null
+            const previous = first ? null : report.figures
 
             const { error: saveError } = await supabase.from('weekly_reports').update({
                 status: 'published',
@@ -780,13 +782,15 @@ export default function ReportPage() {
                 charts,
                 published_at: new Date().toISOString(),
                 published_by: user.id,
-                send_count: (report.send_count || 0) + 1,
+                // One again when nobody got the last one, because the mail
+                // calls anything past one a correction.
+                send_count: first ? 1 : (report.send_count || 0) + 1,
             }).eq('id', report.id)
             if (saveError) throw saveError
 
             // Frozen first, sent second, and deliberately in that order. A
-            // report that was frozen but not mailed can be sent again by
-            // re-opening it. One that was mailed off figures nothing kept is a
+            // report that was frozen but not mailed says so and can be sent
+            // from the bar. One that was mailed off figures nothing kept is a
             // week nobody can ever look up again.
             try {
                 const result = await sendReport({ reportId: report.id })
@@ -861,13 +865,47 @@ export default function ReportPage() {
         }
     }
 
-    // Re-opening does not clear published_at or send_count. What went out went
-    // out, and the next mail has to know it is the second.
+    // Sending one that was published and never went.
+    //
+    // The report as it was frozen, mailed for the first time. Nothing is
+    // written to it here: the figures and charts are the ones already on it,
+    // and the count stays where it is, so the mail is not a correction. The
+    // function writes who it went to once it has gone, which is what turns
+    // this bar back into Sent.
+    async function sendUnsent() {
+        const ok = await confirm({
+            title: 'Send this report?',
+            message: 'It goes to everyone on the list below, with the figures as they were frozen.',
+            confirmLabel: 'Send it',
+        })
+        if (!ok) return
+
+        setMailed(null)
+        setSaving(true)
+        try {
+            const result = await sendReport({ reportId: report.id })
+            setMailed(sendWords(result))
+            setRefresh(n => n + 1)
+        } catch (err) {
+            setMailed(`The mail did not go out: ${err.message}`)
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    // Re-opening does not clear published_at, send_count or sent_to. What went
+    // out went out, and the next mail has to know whether it is a correction,
+    // which it is only when the last one reached somebody. A report whose mail
+    // never went can be re-opened too, and publishing that one again sends it
+    // for the first time, so it is not told otherwise. See isCorrection.
     async function reopen() {
         const ok = await confirm({
             title: 'Re-open this report?',
-            message: 'It goes back to a draft and the figures go live again. Nothing is unsent: publishing it '
-                + 'a second time mails a correction to everyone who got the first.',
+            message: isCorrection(report)
+                ? 'It goes back to a draft and the figures go live again. Nothing is unsent: publishing it '
+                    + 'a second time mails a correction to everyone who got the first.'
+                : 'It goes back to a draft and the figures go live again. Nobody got it the first time, so '
+                    + 'publishing it sends it as the first mail, not a correction.',
             confirmLabel: 'Re-open it',
         })
         if (!ok) return
@@ -1189,12 +1227,12 @@ export default function ReportPage() {
                                     : 'Saves as you type'}
                         </span>
                     )}
-                    <span className={`${badge} ${report.status === 'draft'
+                    <span className={`${badge} ${report.status === 'draft' || mailMissing(report)
                         ? 'bg-accent-light text-accent-ink'
                         : 'bg-green-50 text-green-700'}`}>
                         {report.status === 'draft'
                             ? (report.send_count > 0 ? 'Re-opened' : 'Draft')
-                            : 'Sent'}
+                            : mailMissing(report) ? 'Not sent' : 'Sent'}
                     </span>
                 </div>
             </div>
@@ -1215,6 +1253,7 @@ export default function ReportPage() {
                 onPublish={publish}
                 onReopen={reopen}
                 onTest={testSend}
+                onSend={sendUnsent}
             />
 
             <Recipients

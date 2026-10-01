@@ -3,7 +3,7 @@ import {
     reportEmail, money, negative, pct, withShare, weekWords, weekNumber, slashDate,
     escapeHtml, tidy, stars, starColour, costTone, senderFor, heldNotice, WIDTH, SIDE,
     renewalWords,
-    deliverable, isJustTheGoodbye, replyToFor, switchedOff, whatToSend,
+    deliverable, isJustTheGoodbye, replyToFor, switchedOff, whatToSend, correctionSend,
 } from '../../supabase/functions/weekly-report-email/email'
 import { readFileSync } from 'node:fs'
 import { MAIL_WIDTH } from '@/lib/reportChartImage'
@@ -297,9 +297,8 @@ describe('reportEmail, as a correction', () => {
         { ...figures, food: 5100, foodPct: 34.58 },
         figures,
     )
-    const mail = reportEmail({
-        ...base, report: { ...base.report, send_count: 2 }, changes,
-    })
+    const sent = { ...base.report, send_count: 2, sent_to: ['owner@papichulo.ie'] }
+    const mail = reportEmail({ ...base, report: sent, changes })
 
     it('says so in the subject', () => {
         expect(mail.subject).toContain('Corrected:')
@@ -312,10 +311,42 @@ describe('reportEmail, as a correction', () => {
     })
 
     it('still says it is a correction when nothing measurable moved', () => {
-        const quiet = reportEmail({
-            ...base, report: { ...base.report, send_count: 2 }, changes: [],
-        })
+        const quiet = reportEmail({ ...base, report: sent, changes: [] })
         expect(quiet.html).toContain('the same as the ones you already have')
+    })
+
+    // Before 1 October the count went up on every publish, mail or no mail. A
+    // report whose first two sends both failed has a count of two and nobody
+    // who ever got it, and sending it from Published, not sent would have told
+    // the owners it replaced a report they never had.
+    it('is not a correction when no earlier send reached anybody', () => {
+        const never = reportEmail({ ...base, report: { ...sent, sent_to: null }, changes })
+        expect(never.subject).not.toContain('Corrected')
+        expect(never.html).not.toContain('replaces the report sent earlier')
+        expect(reportEmail({ ...base, report: { ...sent, sent_to: [] } }).subject).not.toContain('Corrected')
+    })
+})
+
+// The function and the browser have to agree on this, or the manager is asked
+// to send a correction and the owners get a first mail, or the other way round.
+describe('correctionSend', () => {
+    it('needs a second send and an earlier one that reached somebody', () => {
+        expect(correctionSend({ send_count: 2, sent_to: ['owner@papichulo.ie'] })).toBe(true)
+        expect(correctionSend({ send_count: 1, sent_to: ['owner@papichulo.ie'] })).toBe(false)
+        expect(correctionSend({ send_count: 3, sent_to: null })).toBe(false)
+        expect(correctionSend({ send_count: 2, sent_to: [] })).toBe(false)
+    })
+
+    it('is never a test', () => {
+        expect(correctionSend({ send_count: 2, sent_to: ['owner@papichulo.ie'] }, true)).toBe(false)
+    })
+
+    it('is what the function asks, off a report read with who it went to', () => {
+        const source = readFileSync('supabase/functions/weekly-report-email/index.ts', 'utf8')
+        const read = source.slice(source.indexOf(".from('weekly_reports')"), source.indexOf("eq('id', reportId)"))
+        expect(read).toContain('sent_to')
+        expect(source).toMatch(/correctionSend\(report, test\)/)
+        expect(source).not.toMatch(/send_count \|\| 0\) > 1/)
     })
 })
 

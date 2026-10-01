@@ -21,6 +21,7 @@ import {
     figuresToStore,
     FIGURES_VERSION,
     isCorrection,
+    mailMissing,
     statementWeek,
     statementWords,
     dayWords,
@@ -590,7 +591,29 @@ describe('isCorrection', () => {
     })
 
     it('is a correction once it has gone out before', () => {
-        expect(isCorrection({ send_count: 1 })).toBe(true)
+        expect(isCorrection({ send_count: 1, sent_to: ['owner@papichulo.ie'] })).toBe(true)
+    })
+
+    // Gmail dropping the connection twice left a report published with its
+    // count at one and nobody having it. Publishing it again sent the owners a
+    // "Corrected:" mail replacing one they never got.
+    it('is still the first when the last send reached nobody', () => {
+        expect(isCorrection({ send_count: 1, sent_to: null })).toBe(false)
+        expect(isCorrection({ send_count: 1 })).toBe(false)
+        expect(isCorrection({ send_count: 1, sent_to: [] })).toBe(false)
+    })
+})
+
+describe('mailMissing', () => {
+    it('is a published report whose mail never went', () => {
+        expect(mailMissing({ status: 'published', send_count: 1, sent_to: null })).toBe(true)
+    })
+
+    it('is not one that went, one that went to nobody on purpose, or a draft', () => {
+        expect(mailMissing({ status: 'published', sent_to: ['owner@papichulo.ie'] })).toBe(false)
+        expect(mailMissing({ status: 'published', sent_to: [] })).toBe(false)
+        expect(mailMissing({ status: 'draft', sent_to: null })).toBe(false)
+        expect(mailMissing(null)).toBe(false)
     })
 })
 

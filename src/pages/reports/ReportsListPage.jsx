@@ -14,6 +14,7 @@ import {
     carriedItems,
     sectionsFor,
     DEFAULT_OVERHEADS,
+    mailMissing,
 } from '@/lib/weeklyReport'
 import { personWeek, unanswered } from '@/lib/timesheet'
 import { can, RESTAURANT_CONFIG } from '@/lib/access'
@@ -171,6 +172,11 @@ function StateBadge({ report }) {
             </span>
         )
     }
+    // Published, and the mail never went. It said Sent like any other, so the
+    // one place that knew was the page it was published from, until a reload.
+    if (mailMissing(report)) {
+        return <span className={`${badge} bg-accent-light text-accent-ink`}>Not sent</span>
+    }
     return (
         <span className={`${badge} bg-green-50 text-green-700`}>
             {report.send_count > 1 ? `Sent ${report.send_count} times` : 'Sent'}
@@ -214,7 +220,7 @@ export default function ReportsListPage() {
         const [reports, sales, tenders, team, entries, absences, shifts, labour, weekRows] = await Promise.all([
             supabase
                 .from('weekly_reports')
-                .select('id, week_start, status, published_at, send_count')
+                .select('id, week_start, status, published_at, send_count, sent_to')
                 .eq('restaurant_id', restaurantId)
                 .gte('week_start', from),
             supabase

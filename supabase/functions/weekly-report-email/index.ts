@@ -43,7 +43,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { reportEmail } from './email.js'
 import { changesSince } from './changes.js'
-import { senderFor, heldNotice, deliverable, isJustTheGoodbye, replyToFor, switchedOff, whatToSend } from './email.js'
+import { senderFor, heldNotice, deliverable, isJustTheGoodbye, replyToFor, switchedOff, whatToSend, correctionSend } from './email.js'
 import { timesheetEmail, personPeriod, addDays, hoursPdfPath } from './timesheet.js'
 import { base64, mimeParts, headersFor } from './mime.js'
 
@@ -313,7 +313,7 @@ Deno.serve(async (req) => {
         // ---- the report ----
         const { data: report, error: reportError } = await admin
             .from('weekly_reports')
-            .select('id, restaurant_id, week_start, status, figures, previous_figures, charts, send_count, published_by')
+            .select('id, restaurant_id, week_start, status, figures, previous_figures, charts, send_count, sent_to, published_by')
             .eq('id', reportId).maybeSingle()
 
         if (reportError) throw reportError
@@ -372,7 +372,7 @@ Deno.serve(async (req) => {
         //
         // Worked out here rather than taken from the browser, off the copy of
         // the last mail's figures the report keeps for exactly this.
-        const changes = (!test && (report.send_count || 0) > 1)
+        const changes = correctionSend(report, test)
             ? changesSince(report.previous_figures, figures)
             : []
 
