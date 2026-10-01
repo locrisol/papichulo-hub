@@ -41,9 +41,17 @@ export function onThisCount(products, lines) {
     return (products || []).filter(p => p && (p.is_active !== false || counted.has(p.id)))
 }
 
+// A line counted while its product had no price. It adds nothing to any total,
+// which is not the same as being worth nothing, so the screens say so rather
+// than leave the total to be read as complete. A line of none is not one: none
+// on the shelf is worth nothing whatever it costs.
+export function noPrice(line) {
+    return line.unit_cost == null && Number(line.quantity_counted || 0) > 0
+}
+
 // Every place that was counted, with the products counted there.
 //
-// [{ section, ink, items: [{ product, lines, qty, value, unitCost }] }]
+// [{ section, ink, items: [{ product, lines, qty, value, unitCost, unpriced }] }]
 //
 // Only places with something in them. A section nobody opened does not appear,
 // which is not the same as a section that came to zero.
@@ -73,6 +81,7 @@ export function bySection(products, lines) {
                     value: own.reduce((s, l) => s + Number(l.line_total || 0), 0),
                     // The cost the line saved on the day, not today's price.
                     unitCost: own.find(l => l.unit_cost != null)?.unit_cost ?? null,
+                    unpriced: own.some(noPrice),
                 }))
                 .sort((a, b) => compareForCount(a.product, b.product)),
         }))

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Route, Routes } from 'react-router-dom'
 import { makeQuery, renderWithRouter, tableOf } from '@/test/helpers'
@@ -124,6 +124,32 @@ describe('closing while somebody is still counting', () => {
         expect(await screen.findByText('Could not reach the server. Check your connection and try again.'))
             .toBeInTheDocument()
         expect(updated).toHaveLength(0)
+    })
+})
+
+// Counted while it had no price, so it adds nothing to the total about to be
+// saved. Worth knowing before Close, and nothing on the page said so.
+describe('something counted with no price', () => {
+    it('is listed before closing', async () => {
+        tables.products = [CHEDDAR, { id: 'p2', name: 'Limes', unit: 'KG', section: 'Cold Room', is_active: true, is_mix: false }]
+        tables.stock_take_lines = [
+            { id: 'l1', stock_take_id: 'st1', product_id: 'p1', section: 'Cold Room', quantity_counted: 2, unit_cost: 7.5, line_total: 15 },
+            { id: 'l2', stock_take_id: 'st1', product_id: 'p2', section: 'Cold Room', quantity_counted: 4, unit_cost: null, line_total: null },
+        ]
+        open()
+        const heading = await screen.findByRole('heading', { name: 'Counted with no price' })
+        const block = heading.closest('section')
+        expect(within(block).getByText('Limes')).toBeInTheDocument()
+        expect(within(block).queryByText('Cheddar')).not.toBeInTheDocument()
+    })
+
+    it('is not there when everything has a price', async () => {
+        tables.stock_take_lines = [
+            { id: 'l1', stock_take_id: 'st1', product_id: 'p1', section: 'Cold Room', quantity_counted: 2, unit_cost: 7.5, line_total: 15 },
+        ]
+        open()
+        await screen.findByText('Total value')
+        expect(screen.queryByRole('heading', { name: 'Counted with no price' })).not.toBeInTheDocument()
     })
 })
 

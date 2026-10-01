@@ -6,6 +6,7 @@ import { resolveUnitCost } from '@/lib/mixCost'
 import { fmtMoney, fmtQty } from '@/lib/format'
 import { friendlyError } from '@/lib/errors'
 import { countName } from '@/lib/products'
+import { noPrice } from '@/lib/stockTakeSummary'
 import { sectionRank, sectionColour } from '@/lib/sections'
 import { card } from '@/lib/controlStyles'
 import BackButton from '@/components/ui/BackButton'
@@ -32,6 +33,16 @@ import ErrorBanner from '@/components/ui/ErrorBanner'
 // What a list of lines comes to. A line with no price adds nothing.
 function valueOf(lines) {
   return (lines || []).reduce((sum, l) => sum + Number(l.line_total || 0), 0)
+}
+
+// The heading over a list worth a look before closing, with how many are in it.
+function ListHeading({ children, count }) {
+  return (
+    <div className="flex items-center gap-3 mb-3">
+      <h2 className="text-sm font-bold uppercase tracking-widest text-muted">{children}</h2>
+      <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">{count}</span>
+    </div>
+  )
 }
 
 export default function StockTakeReviewPage() {
@@ -148,6 +159,16 @@ export default function StockTakeReviewPage() {
       })
       .filter(Boolean)
       .sort((a, b) => a.product.name.localeCompare(b.product.name))
+  }, [products, lines])
+
+  // Counted while they had no price, so they add nothing to the total about
+  // to be saved. Nothing on this page said so, and the total read as the
+  // whole count. See noPrice.
+  const unpricedProducts = useMemo(() => {
+    const unpriced = new Set(lines.filter(noPrice).map(l => l.product_id))
+    return products
+      .filter(p => unpriced.has(p.id))
+      .sort((a, b) => a.name.localeCompare(b.name))
   }, [products, lines])
 
   const totalValue = useMemo(() => valueOf(lines), [lines])
@@ -335,19 +356,31 @@ export default function StockTakeReviewPage() {
         <ErrorBanner className="mb-4">{error}</ErrorBanner>
       )}
 
+      {/* Counted with no price. First, because it is the one that changes
+          the total value, and like the list under it it never blocks closing. */}
+      {unpricedProducts.length > 0 && (
+        <section className="mb-6">
+          <ListHeading count={unpricedProducts.length}>Counted with no price</ListHeading>
+          <div className={`${card} p-4`}>
+            <p className="text-xs text-muted mb-3">
+              These had no price when they were counted, so they are not in the total value. It does
+              not stop you closing.
+            </p>
+            <div className="space-y-2">
+              {unpricedProducts.map(product => (
+                <p key={product.id} className="text-sm font-medium text-gray-900">{countName(product)}</p>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Counted in one place only.
           Above the uncounted list because it is the shorter and stranger of the
           two, and it never blocks closing. */}
       {partlyCounted.length > 0 && (
         <section className="mb-6">
-          <div className="flex items-center gap-3 mb-3">
-            <h2 className="text-sm font-bold uppercase tracking-widest text-muted">
-              Counted in one place only
-            </h2>
-            <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
-              {partlyCounted.length}
-            </span>
-          </div>
+          <ListHeading count={partlyCounted.length}>Counted in one place only</ListHeading>
 
           <div className={`${card} p-4`}>
             <p className="text-xs text-muted mb-3">

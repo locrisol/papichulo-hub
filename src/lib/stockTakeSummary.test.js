@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { bySection, summarise, onThisCount, FOOD_SECTIONS } from '@/lib/stockTakeSummary'
+import { bySection, summarise, onThisCount, noPrice, FOOD_SECTIONS } from '@/lib/stockTakeSummary'
 
 const product = (id, name, section, extra = {}) =>
     ({ id, name, section, unit: 'KG', ...extra })
@@ -85,6 +85,18 @@ describe('bySection', () => {
         ]
 
         expect(bySection(products, lines)[0].items[0].unitCost).toBe(2.5)
+    })
+
+    it('marks a product counted with no price', () => {
+        const products = [product('p1', 'House Salsa', 'Cold Room'), product('p2', 'Limes', 'Cold Room')]
+        const lines = [
+            { ...line('p1', 'Cold Room', 3, 0), unit_cost: null, line_total: null },
+            line('p2', 'Cold Room', 4, 10),
+        ]
+        const items = bySection(products, lines)[0].items
+
+        expect(items.find(it => it.product.id === 'p1').unpriced).toBe(true)
+        expect(items.find(it => it.product.id === 'p2').unpriced).toBe(false)
     })
 
     it('leaves out a line whose product it does not know', () => {
@@ -260,5 +272,22 @@ describe('onThisCount', () => {
 
     it('has nothing to say about nothing', () => {
         expect(onThisCount(null, null)).toEqual([])
+    })
+})
+
+// A line counted while its product had no price adds nothing to any total,
+// which is not the same as being worth nothing.
+describe('noPrice', () => {
+    it('is a quantity counted with no cost behind it', () => {
+        expect(noPrice({ quantity_counted: 3, unit_cost: null, line_total: null })).toBe(true)
+    })
+
+    it('is not a priced line', () => {
+        expect(noPrice({ quantity_counted: 3, unit_cost: 2.5, line_total: 7.5 })).toBe(false)
+    })
+
+    // None on the shelf is worth nothing whatever it costs.
+    it('is not a line of none', () => {
+        expect(noPrice({ quantity_counted: 0, unit_cost: null, line_total: 0 })).toBe(false)
     })
 })

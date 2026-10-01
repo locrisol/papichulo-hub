@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import { Route, Routes } from 'react-router-dom'
 import { makeQuery, renderWithRouter, tableOf } from '@/test/helpers'
 
@@ -69,6 +69,38 @@ describe('a closed count with a product switched off since', () => {
         await screen.findByText('Cheddar')
         expect(screen.getByText('Counted').nextElementSibling.textContent).toBe('2/2')
         expect(screen.queryByText('Retired Sauce')).not.toBeInTheDocument()
+    })
+})
+
+// Something counted while it had no price adds nothing to the total, and the
+// total read as if it were complete.
+describe('a product counted with no price', () => {
+    const SALSA = { id: 'p4', name: 'House Salsa', unit: 'KG', section: 'Cold Room', is_active: true, is_mix: true }
+    const UNPRICED = {
+        id: 'l3', stock_take_id: 'st1', product_id: 'p4', section: 'Cold Room', quantity_counted: 3,
+        unit_cost: null, line_total: null, counted_at: '2026-08-31T09:10:00+00:00',
+    }
+
+    beforeEach(() => {
+        tables.products = [...PRODUCTS, SALSA]
+        tables.stock_take_lines = [...LINES, UNPRICED]
+        return () => {
+            tables.products = PRODUCTS
+            tables.stock_take_lines = LINES
+        }
+    })
+
+    it('says the total leaves it out', async () => {
+        open()
+        expect(await screen.findByText('1 product was counted with no price, so it is not in the total value.'))
+            .toBeInTheDocument()
+    })
+
+    it('marks it where it is listed', async () => {
+        open()
+        const name = (await screen.findByText('House Salsa')).closest('p')
+        expect(within(name).getByText('No price')).toBeInTheDocument()
+        expect(within(screen.getByText('Cheddar').closest('p')).queryByText('No price')).not.toBeInTheDocument()
     })
 })
 
