@@ -6,7 +6,7 @@ import { dayName } from '@/lib/events'
 import { shortTime, endLabel, fmtHours, hoursForDate } from '@/lib/roster'
 import { modalFooter, secondaryButton, rowButton, badge, labelClass, fieldClass } from '@/lib/controlStyles'
 import { NO_COLOUR } from '@/lib/team'
-import { windowOf, shortlist, hoursChange } from '@/lib/shiftRequests'
+import { windowOf, windowProblem, shortlist, hoursChange } from '@/lib/shiftRequests'
 
 // Asking somebody to take a shift, or asking for one of theirs.
 //
@@ -46,9 +46,6 @@ export default function ShiftRequestDialog({
 
     const giveWindow = giveShift
         ? windowOf(giveShift, givePart ? giveFrom : null, givePart ? giveTo : null)
-        : null
-    const takeWindow = takeShift
-        ? windowOf(takeShift, takePart ? takeFrom : null, takePart ? takeTo : null)
         : null
 
     // Who to ask, worked out from the hours actually being handed over rather
@@ -113,15 +110,20 @@ export default function ShiftRequestDialog({
         message: message.trim() || null,
     }
 
+    // Both halves, measured against their own shift. Hours outside it are
+    // hours approving would invent, and the database refuses them as well.
+    const windowSays = (on, shift, from, to, words) => {
+        if (!on || !shift) return ''
+        const wrong = windowProblem(shift, from, to)
+        if (wrong === 'order') return `The hours you are ${words} finish before they start.`
+        if (wrong) return `The hours you are ${words} must be within the shift.`
+        return ''
+    }
+
     const problem = (() => {
         if (!toEmployeeId) return 'Pick who you are asking.'
-        if (givePart && giveWindow && giveWindow.from >= giveWindow.to) {
-            return 'The hours you are giving finish before they start.'
-        }
-        if (takePart && takeWindow && takeWindow.from >= takeWindow.to) {
-            return 'The hours you are asking for finish before they start.'
-        }
-        return ''
+        return windowSays(givePart, giveShift, giveFrom, giveTo, 'giving')
+            || windowSays(takePart, takeShift, takeFrom, takeTo, 'asking for')
     })()
 
     const change = toEmployeeId ? hoursChange(draft, weekShifts, breakRules) : []

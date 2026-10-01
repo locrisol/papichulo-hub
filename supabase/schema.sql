@@ -2261,10 +2261,11 @@ $$;
 
 -- A swap request says what the two people agreed, and only that. A new one
 -- starts as asked, gives a shift of the asker's own and takes one of the
--- person asked. After that the two of them can answer it or take it back and
--- nothing else. Whose shift is whose is checked when it is made and never at
--- approval, because approving moves the shifts before it marks the request
--- approved; the manager's desk checks it before offering Approve.
+-- person asked, and any part of a shift it names is inside that shift. After
+-- that the two of them can answer it or take it back and nothing else. Whose
+-- shift is whose is checked when it is made and never at approval, because
+-- approving moves the shifts before it marks the request approved; the
+-- manager's desk checks it, and the hours, before offering Approve.
 CREATE OR REPLACE FUNCTION "public"."shift_request_transition_guard"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public', 'pg_temp'
@@ -2272,6 +2273,10 @@ CREATE OR REPLACE FUNCTION "public"."shift_request_transition_guard"() RETURNS "
 declare
     me uuid;
     manager boolean;
+    part record;
+    runs integer;
+    begins integer;
+    ends integer;
 begin
     -- Same as restaurant_settings_guard: only what comes through the API is
     -- guarded, so the database can still maintain its own rows.
@@ -2311,6 +2316,27 @@ begin
         ) then
             raise exception 'You can only ask for a shift of the person you are asking';
         end if;
+
+        -- Part of a shift has to be part of it, in minutes from the shift's
+        -- own start. A finish at the start itself is a whole day later.
+        for part in
+            select s.starts_at, s.ends_at, w.from_at, w.to_at, w.words
+              from (values (new.give_shift_id, new.give_from, new.give_to, 'giving'),
+                           (new.take_shift_id, new.take_from, new.take_to, 'asking for'))
+                   as w(shift_id, from_at, to_at, words)
+              join public.roster_shifts s on s.id = w.shift_id
+             where w.from_at is not null or w.to_at is not null
+        loop
+            runs := mod(floor(extract(epoch from part.ends_at - part.starts_at) / 60)::integer + 1440, 1440);
+            begins := mod(floor(extract(epoch from coalesce(part.from_at, part.starts_at) - part.starts_at) / 60)::integer + 1440, 1440);
+            ends := mod(floor(extract(epoch from coalesce(part.to_at, part.ends_at) - part.starts_at) / 60)::integer + 1440, 1440);
+            if ends = 0 then
+                ends := 1440;
+            end if;
+            if begins >= runs or ends > runs or ends <= begins then
+                raise exception 'The hours you are % must be within the shift', part.words;
+            end if;
+        end loop;
 
         if not exists (
             select 1 from public.employees e

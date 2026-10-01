@@ -79,3 +79,49 @@ describe('changing who to ask', () => {
         }))
     })
 })
+
+// Part of a shift has to be part of it. Approving keeps whatever is either
+// side of the hours named, so hours typed outside the shift became hours
+// nobody had been rostered for.
+describe('giving part of a shift', () => {
+    const pick = (label, value) => fireEvent.change(screen.getAllByLabelText(label)[0], { target: { value } })
+
+    it('will not send hours that run past the end of the shift', () => {
+        const onSend = draw()
+        fireEvent.click(screen.getByRole('button', { name: 'Part of it' }))
+        pick('From', '19:00')
+        pick('To', '23:00')
+        fireEvent.click(screen.getByRole('button', { name: /Ben Walsh/ }))
+
+        expect(screen.getByText('The hours you are giving must be within the shift.')).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Send the ask' })).toBeDisabled()
+        send()
+        expect(onSend).not.toHaveBeenCalled()
+    })
+
+    it('sends hours inside it', () => {
+        const onSend = draw()
+        fireEvent.click(screen.getByRole('button', { name: 'Part of it' }))
+        pick('From', '19:00')
+        pick('To', '21:00')
+        fireEvent.click(screen.getByRole('button', { name: /Ben Walsh/ }))
+        send()
+
+        expect(onSend).toHaveBeenCalledWith(expect.objectContaining({
+            give_from: '19:00', give_to: '21:00',
+        }))
+    })
+
+    it('checks the hours asked for back the same way', () => {
+        const onSend = draw()
+        fireEvent.click(screen.getByRole('button', { name: /Ben Walsh/ }))
+        fireEvent.click(screen.getByRole('button', { name: /09:00 to 17:00/ }))
+        fireEvent.click(screen.getAllByRole('button', { name: 'Part of it' })[1])
+        pick('From', '16:00')
+        pick('To', '18:00')
+
+        expect(screen.getByText('The hours you are asking for must be within the shift.')).toBeInTheDocument()
+        send()
+        expect(onSend).not.toHaveBeenCalled()
+    })
+})

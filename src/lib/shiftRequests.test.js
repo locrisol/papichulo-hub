@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest'
 import {
     windowOf, isWholeShift, weekAfter, hoursFor, hoursChange, shortlist, gapTo,
     waitingOn, requestsOnShift, writesFor, newFindings, shiftIdsOf, requestDate,
-    canTakeBack, shiftsMoved,
+    canTakeBack, shiftsMoved, windowProblem, windowFits, windowsFit,
 } from '@/lib/shiftRequests'
 
 const WED = '2026-08-26'
@@ -349,6 +349,86 @@ describe('shifts that changed hands after the ask', () => {
         expect(shiftsMoved({ ...request, take_shift_id: null }, find([
             shift('s1', 'ana', WED, '09:00', '21:00'),
         ]))).toBe(false)
+    })
+})
+
+// Ana has 12:00 to 17:00 and is giving part of it. Approving keeps whatever is
+// either side of the hours named, so hours outside the shift came out as hours
+// nobody was rostered for: 15:00 to 19:00 left her 12:00 to 15:00 and gave Ben
+// 15:00 to 19:00, seven hours where there had been five.
+describe('part of a shift has to be part of it', () => {
+    const ana = shift('s9', 'ana', WED, '12:00:00', '17:00:00')
+
+    it('takes hours inside the shift, its own two ends included', () => {
+        expect(windowProblem(ana, '15:00', '17:00')).toBe('')
+        expect(windowProblem(ana, '12:00', '14:00')).toBe('')
+        expect(windowFits(ana, '12:00', '17:00')).toBe(true)
+    })
+
+    it('takes the whole shift when no times are written on it', () => {
+        expect(windowFits(ana, null, null)).toBe(true)
+    })
+
+    it('refuses hours that run past the end', () => {
+        expect(windowProblem(ana, '15:00', '19:00')).toBe('outside')
+    })
+
+    it('refuses hours that start before it does', () => {
+        expect(windowProblem(ana, '07:00', '13:00')).toBe('outside')
+    })
+
+    it('refuses hours entirely outside it', () => {
+        expect(windowProblem(ana, '18:00', '20:00')).toBe('outside')
+        expect(windowProblem(ana, '07:00', '09:00')).toBe('outside')
+    })
+
+    it('says so when the hours finish before they start', () => {
+        expect(windowProblem(ana, '16:00', '14:00')).toBe('order')
+        expect(windowProblem(ana, '15:00', '15:00')).toBe('order')
+    })
+
+    // A shift that runs to midnight is measured the way it runs, from its own
+    // start, so its last hours are inside it.
+    it('measures a shift that runs to midnight from its own start', () => {
+        const late = shift('s8', 'ana', WED, '17:00', '00:00')
+        expect(windowProblem(late, '20:00', '00:00')).toBe('')
+        expect(windowProblem(late, '17:00', '20:00')).toBe('')
+        expect(windowProblem(late, '22:00', '01:00')).toBe('outside')
+    })
+
+    it('measures a shift that runs past midnight the same way', () => {
+        const night = shift('s7', 'ana', WED, '18:00', '02:00')
+        expect(windowProblem(night, '00:00', '02:00')).toBe('')
+        expect(windowProblem(night, '01:00', '03:00')).toBe('outside')
+    })
+
+    // The desk asks again at the moment of approving, because a manager can
+    // change the shift after the two of them agreed.
+    describe('on a request', () => {
+        const find = week => id => week.find(s => s.id === id) || null
+        const request = {
+            from_employee_id: 'ana', to_employee_id: 'ben',
+            give_shift_id: 's9', give_from: '15:00', give_to: '17:00',
+        }
+
+        it('is fine while the hours are still inside the shift', () => {
+            expect(windowsFit(request, find([ana]))).toBe(true)
+        })
+
+        it('notices the shift being shortened under it', () => {
+            expect(windowsFit(request, find([{ ...ana, ends_at: '16:00:00' }]))).toBe(false)
+        })
+
+        it('checks the half coming back as well', () => {
+            const ben = shift('s3', 'ben', THU, '09:00', '17:00')
+            const trade = { ...request, take_shift_id: 's3', take_from: '16:00', take_to: '18:00' }
+            expect(windowsFit(trade, find([ana, ben]))).toBe(false)
+        })
+
+        it('has nothing to say about a whole shift, or one not in hand', () => {
+            expect(windowsFit({ ...request, give_from: null, give_to: null }, find([ana]))).toBe(true)
+            expect(windowsFit(request, find([]))).toBe(true)
+        })
     })
 })
 

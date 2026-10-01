@@ -25,7 +25,7 @@ import { openGaps, asCleared } from '@/lib/timeOff'
 import { emailTheAnswer, emailTheShiftDecision } from '@/lib/rosterMail'
 import { absenceRange } from '@/lib/absences'
 import TimeOffDeskModal from '@/components/roster/TimeOffDeskModal'
-import { writesFor, requestsOnShift, shiftIdsOf, LIVE_STATES } from '@/lib/shiftRequests'
+import { writesFor, requestsOnShift, shiftIdsOf, windowsFit, LIVE_STATES } from '@/lib/shiftRequests'
 import RosterDay from '@/components/roster/RosterDay'
 import RosterWeek from '@/components/roster/RosterWeek'
 import ShareWeekButton from '@/components/roster/ShareWeekButton'
@@ -530,8 +530,16 @@ export default function RosterPage() {
     // now, and dropping the week back to a draft would tell everybody the thing
     // they just agreed had been undone.
     async function approveRequest(request) {
-        setSaving(true)
         setError('')
+        // The desk does not offer Approve for this, and this is the last
+        // place to stop it: the writes below keep whatever sits either side of
+        // the hours named, so hours outside the shift would be hours invented.
+        if (!windowsFit(request, id => shifts.find(s => s.id === id) || null)) {
+            setError('The hours asked for are no longer within the shift, so this cannot be approved.')
+            return
+        }
+
+        setSaving(true)
         const plan = writesFor(request, shifts, activeRestaurant?.break_rules)
         // The writes go one at a time, so a refusal can come after some of
         // them have landed. Fetching again shows the week as it now is rather

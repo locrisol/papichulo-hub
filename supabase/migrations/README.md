@@ -109,6 +109,9 @@ and what went wrong if anything did, and a fourth saying what went wrong the
 last time a page was read. The roster and the calendar tell a manager when a
 feed has stopped answering, instead of it looking like a quiet fortnight.
 Redeploy `nearby-events` and `read-listings` after it.
+`029` is **not run yet**. It is the roster, swaps and time off after the
+second round of the audit. A swap for part of a shift has to name hours
+inside that shift, because approving one that did not invented hours.
 `030` is **not run yet**. It works a timesheet row's hours out in real time
 from the date, so a shift on the night the clocks go back or forward comes to
 the hours really worked rather than what the clock face says. Every other

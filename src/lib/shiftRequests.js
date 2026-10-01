@@ -8,7 +8,7 @@
 // Nothing here writes anything. It works out what the week would look like, and
 // the manager's screen is the only thing allowed to make it true.
 
-import { toMinutes, shiftHours, breakFor } from '@/lib/roster'
+import { toMinutes, shiftHours, shiftMinutes, breakFor } from '@/lib/roster'
 import { wholeDayOn } from '@/lib/absences'
 
 export const REQUEST_STATES = {
@@ -43,6 +43,60 @@ export function isWholeShift(shift, from, to) {
     // moment however differently they read.
     return toMinutes(window.from) === toMinutes(shift.starts_at)
         && toMinutes(window.to) === toMinutes(shift.ends_at)
+}
+
+// What is wrong with the hours a request names, or nothing.
+//
+// Part of a shift has to be part of it. Nothing used to check, and approving
+// keeps whatever sits either side of the hours named: Ana on 12:00 to 17:00
+// giving 15:00 to 19:00 came out as Ana 12:00 to 15:00 and Ben 15:00 to 19:00,
+// seven hours where there had been five.
+//
+// Measured in minutes from the shift's own start rather than from midnight, so
+// a shift that runs to midnight or past it is measured the way it runs, and
+// its last hours are inside it. A finish at the shift's start is a whole day
+// later, which is never inside anything.
+//
+//   outside   the hours start or finish beyond the shift
+//   order     they finish before they start
+export function windowProblem(shift, from, to) {
+    const window = windowOf(shift, from, to)
+    if (!window) return 'outside'
+
+    const start = toMinutes(shift.starts_at)
+    const a = toMinutes(window.from)
+    const b = toMinutes(window.to)
+    if (start < 0 || a < 0 || b < 0) return 'outside'
+
+    const runs = shiftMinutes(shift.starts_at, shift.ends_at)
+    const into = t => (t - start + 1440) % 1440
+    const begins = into(a)
+    const ends = into(b) || 1440
+
+    if (begins >= runs || ends > runs) return 'outside'
+    if (ends <= begins) return 'order'
+    return ''
+}
+
+export function windowFits(shift, from, to) {
+    return windowProblem(shift, from, to) === ''
+}
+
+// Whether both halves of a request still name hours inside their shifts.
+//
+// Asked again on the desk and when approving, not only when the ask is sent,
+// because a manager can change a shift after the two of them agreed and a
+// window that fitted then can hang off the end of it now. A whole shift has
+// nothing to check, and a shift not in hand says nothing either way, the same
+// as shiftsMoved.
+export function windowsFit(request, findShift) {
+    const fits = (id, from, to) => {
+        if (!id || (!from && !to)) return true
+        const shift = findShift(id)
+        return !shift || windowFits(shift, from, to)
+    }
+    return fits(request?.give_shift_id, request?.give_from, request?.give_to)
+        && fits(request?.take_shift_id, request?.take_from, request?.take_to)
 }
 
 function overlaps(a, b) {
