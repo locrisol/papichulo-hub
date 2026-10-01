@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen } from '@testing-library/react'
-import { renderWithRouter, tableOf } from '@/test/helpers'
+import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
+import { makeQuery, renderWithRouter, tableOf } from '@/test/helpers'
 import { emptyAllergens } from '@/lib/allergens'
 
 // The menu items list, and what its Allergens column says about each dish.
@@ -9,9 +11,13 @@ import { emptyAllergens } from '@/lib/allergens'
 // answer is on the page twice.
 
 let db
+// The restaurant picked in the header. A test can switch it, the way the
+// switcher does.
+const POINT_CAMPUS = { id: 'r1', name: 'Point Campus' }
+let restaurant = POINT_CAMPUS
 vi.mock('@/lib/supabase', () => ({ supabase: new Proxy({}, { get: (_, k) => db[k] }) }))
 vi.mock('@/context/restaurant', () => ({
-    useRestaurant: () => ({ activeRestaurant: { id: 'r1', name: 'Point Campus' } }),
+    useRestaurant: () => ({ activeRestaurant: restaurant }),
 }))
 vi.mock('@/context/confirm', () => ({ useConfirm: () => vi.fn(() => Promise.resolve(true)) }))
 vi.mock('@/context/auth', () => ({ useAuth: () => ({ user: { id: 'u1', role: 'store_manager' } }) }))
@@ -45,12 +51,86 @@ function useTables(tables) {
     db = { from: vi.fn(table => tableOf(tables[table] || [])) }
 }
 
+beforeEach(() => { restaurant = POINT_CAMPUS })
+
 describe('the Allergens column', () => {
     it('says None for a dish where everything was answered and nothing is in it', async () => {
         useTables(tablesFor())
         renderWithRouter(<MenuItemsPage />)
         expect((await screen.findAllByText('Rice Bowl')).length).toBeGreaterThan(0)
         expect(screen.getAllByText('None')).toHaveLength(2)
+    })
+
+    // supabase-js hands a failed read back rather than throwing it, and the
+    // page kept whatever arrived: a failed read of the allergens put None
+    // against every dish on the menu.
+    it.each([
+        'product_allergens', 'products', 'menu_item_components', 'mix_recipes', 'menu_categories',
+    ])('is not shown as None when %s fails, and the failure is said', async table => {
+        const tables = tablesFor()
+        db = {
+            from: vi.fn(name => (name === table
+                ? makeQuery({ data: null, error: { message: 'Failed to fetch' } })
+                : tableOf(tables[name] || []))),
+        }
+        renderWithRouter(<MenuItemsPage />)
+        expect(await screen.findByText(/could not be loaded in full/)).toBeInTheDocument()
+        expect(screen.queryByText('None')).toBeNull()
+        // Nor as a menu with nothing on it.
+        expect(screen.queryByText(/No menu items yet/)).toBeNull()
+    })
+
+    it('reads again on Try again, and shows the menu once it arrives', async () => {
+        const tables = tablesFor()
+        db = {
+            from: vi.fn(name => (name === 'product_allergens'
+                ? makeQuery({ data: null, error: { message: 'Failed to fetch' } })
+                : tableOf(tables[name] || []))),
+        }
+        const me = userEvent.setup()
+        renderWithRouter(<MenuItemsPage />)
+        await screen.findByText(/could not be loaded in full/)
+        useTables(tablesFor())
+        await me.click(screen.getByRole('button', { name: 'Try again' }))
+        expect((await screen.findAllByText('Rice Bowl')).length).toBeGreaterThan(0)
+        expect(screen.getAllByText('None')).toHaveLength(2)
+    })
+
+    it('says the prices could not be read when they fail', async () => {
+        const tables = tablesFor()
+        db = {
+            from: vi.fn(name => (name === 'product_supplier_prices'
+                ? makeQuery({ data: null, error: { message: 'Failed to fetch' } })
+                : tableOf(tables[name] || []))),
+        }
+        renderWithRouter(<MenuItemsPage />)
+        expect(await screen.findByText(/prices could not be read/)).toBeInTheDocument()
+    })
+
+    // Switching restaurant reads the prices again. A failed read kept the
+    // last restaurant's, so its costs and margins stayed on screen under a
+    // banner saying they were not shown.
+    it('shows no cost from the restaurant before when the next one cannot read its prices', async () => {
+        useTables(tablesFor({
+            product_supplier_prices: [
+                { id: 'pr1', product_id: 'rice', restaurant_id: 'r1', is_preferred: true, price_per_unit: '1.00' },
+                { id: 'pr2', product_id: 'beans', restaurant_id: 'r1', is_preferred: true, price_per_unit: '2.00' },
+            ],
+        }))
+        const { rerender } = renderWithRouter(<MenuItemsPage />)
+        expect((await screen.findAllByText('€0.40')).length).toBeGreaterThan(0)
+
+        const tables = tablesFor()
+        db = {
+            from: vi.fn(name => (name === 'product_supplier_prices'
+                ? makeQuery({ data: null, error: { message: 'Failed to fetch' } })
+                : tableOf(tables[name] || []))),
+        }
+        restaurant = { id: 'r2', name: 'Dun Laoghaire' }
+        rerender(<MemoryRouter><MenuItemsPage /></MemoryRouter>)
+        expect(await screen.findByText(/prices could not be read/)).toBeInTheDocument()
+        expect(screen.queryAllByText('€0.40')).toHaveLength(0)
+        expect(screen.queryAllByText('€9.60')).toHaveLength(0)
     })
 
     // Nothing ever entered for the beans. That is not None.

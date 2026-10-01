@@ -10,7 +10,7 @@ import CategoryManagerModal from '@/components/inventory/CategoryManagerModal'
 import { useKeepScroll } from '@/context/scroll'
 import ArrangeList from '@/components/ui/ArrangeList'
 import { friendlyError } from '@/lib/errors'
-import { productsWithARow, optionsWithoutARow } from '@/lib/allergenSheet'
+import { everyReadArrived, productsWithARow, optionsWithoutARow } from '@/lib/allergenSheet'
 import { secondaryButton, tableHeadRow, tableHeadCell, tableCard, badge, card, rowButton, labelClass, pageTitle, primaryButton } from '@/lib/controlStyles'
 import { numberField } from '@/lib/numberInput'
 import ErrorBanner from '@/components/ui/ErrorBanner'
@@ -52,6 +52,10 @@ export default function MenuItemsPage() {
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  // A read that failed, as against a change that did not go through. No list
+  // is shown then, because one worked out from half the menu looks whole.
+  const [loadFailed, setLoadFailed] = useState(false)
+  const [pricesFailed, setPricesFailed] = useState('')
   // Kept apart from the page's error above. That one is for something that
   // would not load, which belongs at the top of the page because there is
   // nothing else up there to read. This is for a save that would not go
@@ -111,25 +115,49 @@ export default function MenuItemsPage() {
       supabase.from('product_allergens').select('*'),
     ])
 
-    if (menuItemsRes.error) setError(friendlyError(menuItemsRes.error))
-    else setMenuItems(menuItemsRes.data)
+    // All of it or none of it. supabase-js hands a failed read back rather
+    // than throwing it, and this kept whatever did arrive: a failed read of
+    // the allergens put None against every dish on the menu, and a failed
+    // read of the components made every dish look empty. So one failed read
+    // shows the failure and no list, the same as the customer page.
+    const reads = [menuItemsRes, categoriesRes, componentsRes, productsRes, recipeLinesRes, allergensRes]
+    if (!everyReadArrived(reads)) {
+      const failed = reads.find(r => r.error)?.error
+      setError(`The menu items could not be loaded in full. ${friendlyError(failed) || 'Check your connection and try again.'}`)
+      setLoadFailed(true)
+      setLoading(false)
+      return
+    }
+    setLoadFailed(false)
+    setError('')
 
-    if (categoriesRes.data) setCategories(categoriesRes.data)
-    if (componentsRes.data) setComponents(componentsRes.data)
-    if (productsRes.data) setProducts(productsRes.data)
-    if (recipeLinesRes.data) setRecipeLines(recipeLinesRes.data)
-    if (allergensRes.data) setAllergens(allergensRes.data)
+    setMenuItems(menuItemsRes.data)
+    setCategories(categoriesRes.data)
+    setComponents(componentsRes.data)
+    setProducts(productsRes.data)
+    setRecipeLines(recipeLinesRes.data)
+    setAllergens(allergensRes.data)
 
     setLoading(false)
   }
 
+  // A failed read is said as one. Left empty, every dish read as Incomplete,
+  // the same as a dish with a price missing.
   const fetchPrices = useCallback(async () => {
-    const { data } = await supabase
+    const { data, error: priceError } = await supabase
       .from('product_supplier_prices')
       .select('*')
       .eq('restaurant_id', activeRestaurant.id)
       .eq('is_preferred', true)
-    if (data) setPrices(data)
+    if (priceError || !data) {
+      setPricesFailed(`The prices could not be read, so costs and margins are not shown. ${friendlyError(priceError)}`.trim())
+      // Not the last restaurant's either. Kept, they went on costing this
+      // one under the banner saying nothing was costed.
+      setPrices([])
+      return
+    }
+    setPricesFailed('')
+    setPrices(data)
     }, [activeRestaurant])
 
   useEffect(() => {
@@ -443,6 +471,9 @@ export default function MenuItemsPage() {
       {error && (
         <ErrorBanner className="mb-4">{error}</ErrorBanner>
       )}
+      {!loadFailed && pricesFailed && (
+        <ErrorBanner className="mb-4">{pricesFailed}</ErrorBanner>
+      )}
 
       {showForm && (
         <div className={`${card} p-6 mb-6`}>
@@ -534,6 +565,8 @@ export default function MenuItemsPage() {
 
       {loading ? (
         <div className="text-sm text-gray-500">Loading menu items...</div>
+      ) : loadFailed ? (
+        <button type="button" onClick={() => fetchAll()} className={primaryButton()}>Try again</button>
       ) : itemsByCategory.every(g => g.items.length === 0) ? (
         <div className={`${card} p-8 text-center`}>
           <p className="text-sm text-gray-500">No menu items yet. Click "+ Add Menu Item" to add your first.</p>

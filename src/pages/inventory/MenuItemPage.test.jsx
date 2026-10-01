@@ -2,14 +2,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Route, Routes } from 'react-router-dom'
-import { renderWithRouter, tableOf } from '@/test/helpers'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { makeQuery, renderWithRouter, tableOf } from '@/test/helpers'
 import { emptyAllergens } from '@/lib/allergens'
 
 let db
+// The restaurant picked in the header. A test can switch it, the way the
+// switcher does.
+const POINT_CAMPUS = { id: 'r1', name: 'Point Campus' }
+let restaurant = POINT_CAMPUS
 vi.mock('@/lib/supabase', () => ({ supabase: new Proxy({}, { get: (_, k) => db[k] }) }))
 vi.mock('@/context/restaurant', () => ({
-    useRestaurant: () => ({ activeRestaurant: { id: 'r1', name: 'Point Campus' } }),
+    useRestaurant: () => ({ activeRestaurant: restaurant }),
 }))
 vi.mock('@/context/confirm', () => ({ useConfirm: () => vi.fn(() => Promise.resolve(true)) }))
 
@@ -143,11 +147,19 @@ function useTables(tables) {
 // view.
 Element.prototype.scrollIntoView ??= () => {}
 
+// A new element each time. Handed the same one twice, React skips the page
+// on the second render, and a switch of restaurant would never reach it.
+const routes = () => <Routes><Route path="/catalogue/menu-items/:id" element={<MenuItemPage />} /></Routes>
+
+beforeEach(() => { restaurant = POINT_CAMPUS })
+
 function showPage() {
-    return renderWithRouter(
-        <Routes><Route path="/catalogue/menu-items/:id" element={<MenuItemPage />} /></Routes>,
-        { route: '/catalogue/menu-items/m1' },
-    )
+    return renderWithRouter(routes(), { route: '/catalogue/menu-items/m1' })
+}
+
+// The same page again, as it is when something above it changes.
+function showAgain(rerender) {
+    rerender(<MemoryRouter initialEntries={['/catalogue/menu-items/m1']}>{routes()}</MemoryRouter>)
 }
 
 // What one allergen's chip says, from the Derived Allergens panel.
@@ -267,6 +279,70 @@ describe('an option with no row of its own on the allergen sheet', () => {
         expect(screen.getByRole('link', { name: 'Enter allergens for Cola' }))
             .toHaveAttribute('href', '/catalogue/products/cola/allergens')
         expect(screen.queryByText(/List it separately/)).toBeNull()
+    })
+})
+
+// supabase-js hands a failed read back rather than throwing it, and the page
+// kept whatever arrived. A failed read of the allergens left every component
+// with none, and the panel said Not Present for all fourteen.
+describe('a read that fails', () => {
+    function failing(table, overrides = {}) {
+        const tables = tablesFor(overrides)
+        db = {
+            from: vi.fn(name => (name === table
+                ? makeQuery({ data: null, error: { message: 'Failed to fetch' } })
+                : tableOf(tables[name] || []))),
+        }
+    }
+
+    it.each([
+        'product_allergens', 'products', 'menu_item_components', 'mix_recipes', 'menu_items',
+        'menu_categories',
+    ])('is said, and nothing is shown as Not Present, when %s fails', async table => {
+        failing(table)
+        showPage()
+        expect(await screen.findByText(/could not be loaded in full/)).toBeInTheDocument()
+        expect(screen.queryByText('Derived Allergens')).toBeNull()
+        expect(screen.queryByText('Not Present')).toBeNull()
+    })
+
+    it('reads again on Try again, and shows the dish once it arrives', async () => {
+        const me = userEvent.setup()
+        failing('product_allergens')
+        showPage()
+        await screen.findByText(/could not be loaded in full/)
+        useTables(tablesFor())
+        await me.click(screen.getByRole('button', { name: 'Try again' }))
+        expect(await screen.findByText('Derived Allergens')).toBeInTheDocument()
+    })
+
+    // Not as a dish with no prices set, which is what it used to say.
+    it('says the prices could not be read when they fail', async () => {
+        failing('product_supplier_prices', { menu_item_components: [BURRITO[0]] })
+        showPage()
+        expect(await screen.findByText(/prices could not be read/)).toBeInTheDocument()
+        expect(screen.queryByText(/Some components have no preferred price/)).toBeNull()
+    })
+
+    // Switching restaurant reads the prices again. A failed read kept the
+    // last restaurant's, so its cost and margin stayed on screen under a
+    // banner saying they were not shown.
+    it('shows no cost from the restaurant before when the next one cannot read its prices', async () => {
+        useTables(tablesFor({
+            menu_item_components: [BURRITO[0]],
+            product_supplier_prices: [
+                { id: 'pr1', product_id: 'tortilla', restaurant_id: 'r1', is_preferred: true, price_per_unit: '0.30' },
+            ],
+        }))
+        const { rerender } = showPage()
+        await screen.findByText('Derived Allergens')
+        expect(screen.getByText('Cost').parentElement.textContent).toContain('€0.30')
+
+        failing('product_supplier_prices', { menu_item_components: [BURRITO[0]] })
+        restaurant = { id: 'r2', name: 'Dun Laoghaire' }
+        showAgain(rerender)
+        expect(await screen.findByText(/prices could not be read/)).toBeInTheDocument()
+        expect(screen.getByText('Cost').parentElement.textContent).not.toContain('€')
     })
 })
 

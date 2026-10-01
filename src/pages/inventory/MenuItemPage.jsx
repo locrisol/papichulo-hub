@@ -6,7 +6,7 @@ import { menuItemCost, costInside, deactivatedIn, missingIn } from '@/lib/mixCos
 import { deriveMenuItemAllergens, neverEnteredInDish, ALLERGEN_KEYS } from '@/lib/allergens'
 import { friendlyError } from '@/lib/errors'
 import { canBeMenuComponent } from '@/lib/products'
-import { productsWithARow, optionsWithoutARow } from '@/lib/allergenSheet'
+import { productsWithARow, optionsWithoutARow, everyReadArrived } from '@/lib/allergenSheet'
 import { tableHeadRow, badge, card, rowButton, secondaryButton, cardEdge, cardHeader, checkbox, labelClass, pageTitle, primaryButton, warningNote } from '@/lib/controlStyles'
 import { useConfirm } from '@/context/confirm'
 import Modal from '@/components/ui/Modal'
@@ -105,6 +105,11 @@ export default function MenuItemPage() {
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  // A read that failed, as against a save that did not go through. Nothing
+  // about the dish is shown then, because a list worked out from half of it
+  // looks whole.
+  const [loadFailed, setLoadFailed] = useState(false)
+  const [pricesFailed, setPricesFailed] = useState('')
   // Kept apart from the page's error above. That one is for something that
   // would not load; these two are for a save that would not go through, and
   // each belongs beside its own button. The component one matters most: its
@@ -162,17 +167,31 @@ export default function MenuItemPage() {
       supabase.from('menu_item_components').select('*'),
     ])
 
-    if (itemRes.error) { setError(friendlyError(itemRes.error)); setLoading(false); return }
+    // All of it or none of it. supabase-js hands a failed read back rather
+    // than throwing it, and this kept whatever did arrive: a failed read of
+    // the allergens left every component with none, and the panel at the
+    // bottom said Not Present for all fourteen. So one failed read shows the
+    // failure and nothing else, the same as the customer page.
+    const reads = [categoriesRes, productsRes, componentsRes, recipesRes, allergensRes, allItemsRes, allComponentsRes]
+    if (itemRes.error || !itemRes.data || !everyReadArrived(reads)) {
+      const failed = itemRes.error || reads.find(r => r.error)?.error
+      setError(`This menu item could not be loaded in full. ${friendlyError(failed) || 'Check your connection and try again.'}`)
+      setLoadFailed(true)
+      setLoading(false)
+      return
+    }
+    setLoadFailed(false)
+    setError('')
+
     setItem(itemRes.data)
     setHeaderForm(emptyHeaderForm(itemRes.data))
-
-    if (categoriesRes.data) setCategories(categoriesRes.data)
-    if (productsRes.data) setProducts(productsRes.data)
-    if (componentsRes.data) setComponents(componentsRes.data)
-    if (recipesRes.data) setRecipeLines(recipesRes.data)
-    if (allergensRes.data) setAllergens(allergensRes.data)
-    if (allItemsRes.data) setAllMenuItems(allItemsRes.data)
-    if (allComponentsRes.data) setAllComponents(allComponentsRes.data)
+    setCategories(categoriesRes.data)
+    setProducts(productsRes.data)
+    setComponents(componentsRes.data)
+    setRecipeLines(recipesRes.data)
+    setAllergens(allergensRes.data)
+    setAllMenuItems(allItemsRes.data)
+    setAllComponents(allComponentsRes.data)
 
     setLoading(false)
     }, [id])
@@ -186,13 +205,23 @@ export default function MenuItemPage() {
     fetchAll()
   }, [fetchAll])
 
+  // A failed read is said as one. Left empty, it read as a dish with no
+  // prices set, and the note under the cost blamed the components.
   const fetchPrices = useCallback(async () => {
-    const { data } = await supabase
+    const { data, error: priceError } = await supabase
       .from('product_supplier_prices')
       .select('*')
       .eq('restaurant_id', activeRestaurant.id)
       .eq('is_preferred', true)
-    if (data) setPrices(data)
+    if (priceError || !data) {
+      setPricesFailed(`The prices could not be read, so the cost and margin are not shown. ${friendlyError(priceError)}`.trim())
+      // Not the last restaurant's either. Kept, they went on costing this
+      // one under the banner saying nothing was costed.
+      setPrices([])
+      return
+    }
+    setPricesFailed('')
+    setPrices(data)
     }, [activeRestaurant])
 
   useEffect(() => {
@@ -575,6 +604,16 @@ export default function MenuItemPage() {
 
   if (loading) return <div className="text-sm text-gray-500">Loading menu item...</div>
 
+  if (loadFailed) {
+    return (
+      <div>
+        <BackButton to="/catalogue/menu-items" className="mb-4">Back to menu items</BackButton>
+        <ErrorBanner className="mb-4">{error}</ErrorBanner>
+        <button type="button" onClick={fetchAll} className={primaryButton()}>Try again</button>
+      </div>
+    )
+  }
+
   return (
     <div>
       <BackButton to="/catalogue/menu-items" className="mb-4">Back to menu items</BackButton>
@@ -925,7 +964,8 @@ export default function MenuItemPage() {
           <SummaryLine label={`VAT ${vatRate.toFixed(1)}%`} value={fmtMoney(grossPrice - netPrice)} muted />
           <SummaryLine label="Net price" value={fmtMoney(netPrice)} last />
         </div>
-        {totalCost === null && components.length > 0 && (
+        {pricesFailed && <ErrorBanner className="mt-3">{pricesFailed}</ErrorBanner>}
+        {!pricesFailed && totalCost === null && components.length > 0 && (
           <p className="text-xs text-amber-700 mt-3">
             {deactivated.length > 0
               && `${namesList(deactivated.map(p => p.name))} ${deactivated.length === 1 ? 'is' : 'are'} deactivated. `
