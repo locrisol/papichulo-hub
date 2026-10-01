@@ -621,6 +621,9 @@ export function calendarItems({ entries, nearby, dayNotes, from, to }) {
                 time: event.event_time ? shortTime(event.event_time) : '',
                 allDay: !event.event_time,
                 checked: row.checked !== false,
+                // A night that is not going ahead stays here, struck through.
+                // The roster drops it; this is where somebody finds out why.
+                off: row.off || '',
                 place: row.place,
                 entry: event,
             })

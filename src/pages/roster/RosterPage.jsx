@@ -7,7 +7,7 @@ import { friendlyError } from '@/lib/errors'
 import { can, RESTAURANT_CONFIG } from '@/lib/access'
 import { todayISO, weekStartOf, weekDates, addDays, shortDate, weekMonthLabel } from '@/lib/dates'
 import { DAY_NAMES, dayName } from '@/lib/events'
-import { nearbyRows, rowsOn, headlinePlaces, PAIRING_COLUMNS } from '@/lib/nearby'
+import { nearbyRows, forRoster, rowsOn, headlinePlaces, PAIRING_COLUMNS } from '@/lib/nearby'
 import { fmtMoney } from '@/lib/format'
 import { secondaryButton, cardEdge, cardHeader, badge, segmentTrack, segmentButton } from '@/lib/controlStyles'
 import JumpButton from '@/components/ui/JumpButton'
@@ -273,8 +273,9 @@ export default function RosterPage() {
         loadRequests(fetched.filter(s => s.shift_date >= weekStart && s.shift_date <= weekLast))
         setDayNotes(noteRes.data || [])
         // One pass, so the roster and the calendar cannot disagree about which
-        // listing belongs to which shop. See lib/nearby.
-        setNearbyOn(nearbyRows(eventRes.data, nearRes.data, activeRestaurant))
+        // listing belongs to which shop. See lib/nearby. A night that is not
+        // going ahead comes off here, the way a cancelled diary job does.
+        setNearbyOn(forRoster(nearbyRows(eventRes.data, nearRes.data, activeRestaurant)))
         setNearbyPlaces(headlinePlaces(nearRes.data, activeRestaurant))
         setDiary((diaryRes.data || []).filter(e => atRestaurant(e, restaurantId)))
         setRestaurants(placeRes.data || [])

@@ -59,6 +59,40 @@ export function dismissed(event) {
     return event?.review === 'dismissed'
 }
 
+// -- A night that is not going ahead ------------------------------------
+
+// Whether a listing is off, and why, or '' when it is going ahead.
+//
+// **Ticketmaster spells it canceled**, the American way, and everything here
+// only knew cancelled. So a 3Arena show called off kept its purple chip on the
+// roster, on the picture sent to the group and on every My shifts, looking
+// exactly like a night that was still on. Both spellings, in any case.
+export function offFor(event) {
+    const status = String(event?.status || '').toLowerCase()
+    if (status === 'cancelled' || status === 'canceled') return 'cancelled'
+    return ''
+}
+
+const OFF_WORDS = { cancelled: 'Cancelled' }
+
+export function offWords(off) {
+    return OFF_WORDS[off] || ''
+}
+
+// What the roster gets, which is everything still going ahead.
+//
+// The same rule the diary keeps with showsOnRoster: a cancelled catering job
+// stays in the diary and comes off the roster, because the roster is only
+// about who is needed. A manager does not roster for nine thousand people who
+// are not coming.
+//
+// Applied where the roster and My shifts load, and **not inside nearbyRows**,
+// which the calendar shares. The calendar keeps the night, struck through, so
+// whoever opens it can see it was called off rather than wonder where it went.
+export function forRoster(rows) {
+    return (rows || []).filter(r => !offFor(r?.event))
+}
+
 // -- Which places a restaurant is actually watching ---------------------
 
 // Whether a city place is actually earning its badge.
@@ -209,6 +243,7 @@ export function nearbyRows(events, pairings, restaurant) {
             pairing,
             kind: kindOf(event, pairing),
             checked: !notChecked(event),
+            off: offFor(event),
             time: event.event_time ? shortTime(event.event_time) : '',
             ownRow: pairing.own_row === true,
         }

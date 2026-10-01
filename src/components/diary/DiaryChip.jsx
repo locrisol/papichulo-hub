@@ -1,4 +1,5 @@
 import { kindChip, kindDash } from '@/lib/diary'
+import { offWords } from '@/lib/nearby'
 
 // One thing on a day, wherever it is drawn.
 //
@@ -30,19 +31,26 @@ export default function DiaryChip({ item, onOpen, canEdit = true, compact = fals
     // person has looked at it yet.
     const edge = item.checked === false ? kindDash(item.kind) : ''
 
+    // Struck through, with the reason in the tooltip and in the listing when
+    // it is opened. A night called off stays on the calendar so whoever looks
+    // learns it is off, rather than wondering where it went.
+    const off = offWords(item.off)
+    const struck = off ? 'line-through' : ''
+    const title = off ? `${item.title} (${off})` : item.title
+
     // A delivery belongs to the day it was ticked onto, so it is not a button
     // here. Pressing it would have to take you somewhere else to change it, and
     // a chip that navigates away from a month you were reading is a surprise.
     if (item.source === 'delivery' || !onOpen || (item.source === 'diary' && !canEdit)) {
-        return <span className={`${look} ${edge}`} title={item.title}>{inside}</span>
+        return <span className={`${look} ${edge} ${struck}`} title={title}>{inside}</span>
     }
 
     return (
         <button
             type="button"
             onClick={() => onOpen(item.entry)}
-            className={`${look} ${edge} transition-opacity hover:opacity-80`}
-            title={item.title}
+            className={`${look} ${edge} ${struck} transition-opacity hover:opacity-80`}
+            title={title}
         >
             {inside}
         </button>

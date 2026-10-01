@@ -63,7 +63,10 @@ export function statusNote(status) {
     switch (String(status ?? '').toLowerCase()) {
         case 'offsale':
             return { text: 'No longer on sale, so it has probably sold out', tone: 'warn' }
+        // Ticketmaster sends canceled, the American way. Only this one was
+        // known, so a show called off said nothing here either.
         case 'cancelled':
+        case 'canceled':
             return { text: 'Cancelled, so this is an ordinary night after all', tone: 'bad' }
         case 'postponed':
             return { text: 'Postponed, so the date may still move', tone: 'warn' }

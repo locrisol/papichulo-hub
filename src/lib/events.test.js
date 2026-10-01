@@ -65,6 +65,12 @@ describe('statusNote', () => {
         expect(statusNote('cancelled').tone).toBe('bad')
     })
 
+    // The way Ticketmaster actually sends it. Only the other spelling was
+    // known, so the one place that could say a show was off said nothing.
+    it('knows the American spelling Ticketmaster uses', () => {
+        expect(statusNote('canceled')).toEqual(statusNote('cancelled'))
+    })
+
     it('does not mind how Ticketmaster capitalises it', () => {
         expect(statusNote('OffSale').text).toBe(statusNote('offsale').text)
     })

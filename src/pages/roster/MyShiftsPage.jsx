@@ -25,7 +25,7 @@ import RosterWeek from '@/components/roster/RosterWeek'
 import DiaryChip from '@/components/diary/DiaryChip'
 import DiaryEntryModal from '@/components/diary/DiaryEntryModal'
 import { calendarItems, itemsByDate, showsOnRoster, atRestaurant } from '@/lib/diary'
-import { nearbyRows, headlinePlaces, PAIRING_COLUMNS } from '@/lib/nearby'
+import { nearbyRows, forRoster, headlinePlaces, PAIRING_COLUMNS } from '@/lib/nearby'
 import PresenceGrid from '@/components/roster/PresenceGrid'
 import ShiftRequestDialog from '@/components/roster/ShiftRequestDialog'
 import TimeOffRequestDialog from '@/components/roster/TimeOffRequestDialog'
@@ -259,7 +259,8 @@ export default function MyShiftsPage() {
             setOpeningHours(restRes.data?.opening_hours || null)
             setBreakRules(restRes.data?.break_rules || null)
             setRosterRules(restRes.data?.roster_rules || null)
-            setNearbyOn(nearbyRows(eventRes.data, nearRes.data, restRes.data))
+            // Only what is going ahead, the same as the roster. See forRoster.
+            setNearbyOn(forRoster(nearbyRows(eventRes.data, nearRes.data, restRes.data)))
             setNearbyPlaces(headlinePlaces(nearRes.data, restRes.data))
             setMyTimeOff(offRes.data || [])
             setReady(true)

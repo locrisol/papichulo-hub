@@ -38,6 +38,9 @@ import {
     sourceKeyFor,
     samePlace,
     couldBeSamePlace,
+    offFor,
+    offWords,
+    forRoster,
 } from '@/lib/nearby'
 
 const arena = { id: 'p1', name: '3Arena', short_name: '3Arena', ticketmaster_venue_id: 'KovZ9177WYV' }
@@ -808,5 +811,56 @@ describe('a row keeps its colour on a week with nothing on', () => {
         const big = { ...arena, capacity: 82300 }
         const rows = nearbyRows([gig], [{ ...pair[0], place: big }], {})
         expect(ownRows(rows, [big])[0].kind).toBe('city')
+    })
+})
+
+// A 3Arena show called off kept its purple chip on the roster, the picture
+// sent to the group and every My shifts. Ticketmaster spells it canceled, and
+// only cancelled was known anywhere.
+describe('a night that is not going ahead', () => {
+    const off = { ...gig, id: 'e9', status: 'canceled' }
+
+    it('knows both spellings, in any case', () => {
+        expect(offFor({ status: 'canceled' })).toBe('cancelled')
+        expect(offFor({ status: 'Cancelled' })).toBe('cancelled')
+        expect(offFor({ status: 'onsale' })).toBe('')
+        expect(offFor({ status: 'postponed' })).toBe('')
+        expect(offFor({})).toBe('')
+    })
+
+    it('has words for the calendar', () => {
+        expect(offWords('cancelled')).toBe('Cancelled')
+        expect(offWords('')).toBe('')
+    })
+
+    // The calendar shares nearbyRows, and it is the one screen that keeps the
+    // night so it can say it is off.
+    it('stays in the rows the calendar draws, marked', () => {
+        const rows = nearbyRows([gig, off], pairs, {})
+        expect(rows.map(r => r.event.id)).toEqual(['e1', 'e9'])
+        expect(rows.map(r => r.off)).toEqual(['', 'cancelled'])
+    })
+
+    it('comes off the roster', () => {
+        const rows = forRoster(nearbyRows([gig, off, { ...gig, id: 'e8', status: 'cancelled' }], pairs, {}))
+        expect(rows.map(r => r.event.id)).toEqual(['e1'])
+    })
+
+    // Postponed with the old date kept may still go ahead, and the modal says
+    // so. Off sale is usually sold out, which is the opposite of off.
+    it('keeps a postponed night and a sold out one', () => {
+        const rows = forRoster(nearbyRows([
+            { ...gig, status: 'postponed' }, { ...gig, id: 'e7', status: 'offsale' },
+        ], pairs, {}))
+        expect(rows).toHaveLength(2)
+    })
+
+    // The Arena's row is drawn from the pairings, so on that night it reads as
+    // the ordinary night it now is rather than vanishing.
+    it('leaves the headline row in place', () => {
+        const rows = forRoster(nearbyRows([off], pairs, {}))
+        expect(ownRows(rows, headlinePlaces(pairs, {}))).toEqual([
+            { place: arena, kind: 'arena', rows: [] },
+        ])
     })
 })

@@ -426,6 +426,16 @@ describe('one screen out of three sources', () => {
         expect(found[0].checked).toBe(false)
     })
 
+    // A night called off stays on the calendar, struck through, so whoever
+    // opens it can see it is off rather than wonder where it went.
+    it('carries a night that is off', () => {
+        const off = calendarItems({
+            nearby: [{ kind: 'arena', off: 'cancelled', event: { id: 'c1', name: 'Westlife', event_date: '2026-10-16' } }],
+        })
+        expect(off[0].off).toBe('cancelled')
+        expect(items().find(i => i.source === 'nearby').off).toBe('')
+    })
+
     // The whole reason this exists. A screen built to answer what is coming up
     // that leaves out half of what is coming up is a screen you cannot trust.
     it('reads the deliveries without moving them', () => {
