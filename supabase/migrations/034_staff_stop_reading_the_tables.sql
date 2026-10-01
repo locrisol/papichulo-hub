@@ -5,10 +5,17 @@
 -- everything their screens use and none of that. They also stop reading
 -- their own row on the team list.
 --
--- Run it after the branch is merged and the new site is live, never before.
--- The site before that still asks these tables, so a member of staff opening
--- it would be told the Hub cannot open, and My shifts would say they are not
--- on the team list.
+-- Run it only after development has been merged into main and Vercel shows
+-- the deployment of that merge to papichulo-hub.vercel.app as ready, never
+-- before. Merging the branch into development is not enough: that only
+-- updates the development address, which staff cannot open, and the real
+-- site goes on running main, which still asks these tables. A member of
+-- staff opening it would be told the Hub cannot open, and My shifts would say
+-- they are not on the team list.
+--
+-- A Hub tab opened before that deploy still runs the old site, and says it
+-- cannot open until it is reloaded, so ask staff to close it and open it
+-- again.
 --
 -- Owners, store managers and the super admin keep the whole row through
 -- restaurants_select, which is not touched, and nothing below narrows what a

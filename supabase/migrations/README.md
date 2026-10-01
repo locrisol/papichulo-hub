@@ -3,8 +3,10 @@
 **`001` to `034` are in here. `001` to `027` are run on live, `028` to `034` are not yet, and the next one is `035`.**
 
 The order for `028` to `034`, which come in together: `028` to `033` before the
-branch is merged, in number order, and `034` only after it is merged and the
-new site is live. Each one's note below says why.
+branch is merged into development, in number order. `034` waits until
+development has been merged into main and papichulo-hub.vercel.app shows the
+new site. Merging into development only updates the development address,
+which staff cannot open. Each one's note below says why.
 
 The numbers started again at `001` on 20 September, because the folder was
 empty then. They were only ever there to put the files in order. Everything
@@ -217,11 +219,20 @@ uses, now that the new site reads only what it needs:
 - `mix_recipes`, with its notes. A count and the Waste page read
   `staff_mix_recipes`, so a MIX is valued the same as before.
 
-**Run it after merging, once the new site is live**: the site before that
-reads these tables, so staff would be told the Hub cannot open, My shifts
-would say they are not on the team list, Delivery problems would be empty,
-Waste and Stock Takes would have no products and the calendar would have no
-diary.
+**Run it only after development has been merged into main** and Vercel shows
+the deployment of that merge to papichulo-hub.vercel.app as Ready. Merging the
+branch into development is not enough: that only updates the development
+address, which staff cannot open, and papichulo-hub.vercel.app goes on running
+main, which reads these tables. Run before then, staff would be told the Hub
+cannot open, My shifts would say they are not on the team list, Delivery
+problems would be empty, Waste and Stock Takes would have no products and the
+calendar would have no diary. Afterwards, sign in there as a staff account and
+open My shifts to check.
+
+Anybody who had the Hub open from before the release has to reload it once
+after 034 runs. Until they do, staff see "We cannot open the Hub for you", and
+signing out and in again on that same page does not fix it, so tell anybody
+with a staff login to close the Hub and open it again.
 
 ## What was here before
 

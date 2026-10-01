@@ -15,7 +15,8 @@
 -- The views only add, so this can be run any time before the branch is
 -- merged. The site as it is still reads the tables and the new one reads the
 -- views, so staff can use the Hub with either. 034 takes the tables away from
--- them, and is run once the new site is live.
+-- them, and is run once development has been merged into main and
+-- papichulo-hub.vercel.app shows the new site.
 --
 -- Safe to run twice.
 

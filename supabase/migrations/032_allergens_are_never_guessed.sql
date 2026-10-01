@@ -32,9 +32,9 @@
 -- psql does not, and without this the view and the function would still
 -- have changed after the check had stopped.
 --
--- Run it before the branch is merged. Merging deploys the site, and the new
--- customer page without the section would ask customers to see staff about
--- every dish that comes in a pot.
+-- Run it before the branch is merged. The new customer page goes out with
+-- the merge into main, and without the section it would ask customers to see
+-- staff about every dish that comes in a pot.
 --
 -- Safe to run twice.
 
