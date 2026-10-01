@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef, Fragment, useCallback } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useRestaurant } from '@/context/restaurant'
 import { menuItemCost, costInside, deactivatedIn, missingIn } from '@/lib/mixCost'
 import { deriveMenuItemAllergens, neverEnteredInDish, ALLERGEN_KEYS } from '@/lib/allergens'
 import { friendlyError } from '@/lib/errors'
 import { canBeMenuComponent } from '@/lib/products'
+import { productsWithARow, optionsWithoutARow } from '@/lib/allergenSheet'
 import { tableHeadRow, badge, card, rowButton, secondaryButton, cardEdge, cardHeader, checkbox, labelClass, pageTitle, primaryButton, warningNote } from '@/lib/controlStyles'
 import { useConfirm } from '@/context/confirm'
 import Modal from '@/components/ui/Modal'
@@ -520,6 +521,26 @@ export default function MenuItemPage() {
     }, new Map())]
     .sort((a, b) => a[0].localeCompare(b[0]))
 
+  // The options whose allergens would be on no row of the allergen sheet, the
+  // same question the sheet asks, so they are named here before a customer is
+  // sent to staff about this dish. Only while the dish is on the sheet at all.
+  //
+  // This item's own components are the fresh ones: ticking List it separately
+  // refetches those and not the list of every component.
+  const sheetCategoryIds = new Set(categories
+    .filter(c => c.is_active && c.on_allergen_sheet !== false)
+    .map(c => c.id))
+  const onSheet = Boolean(item?.is_active) && sheetCategoryIds.has(item?.category_id)
+  const withARow = onSheet
+    ? productsWithARow(
+      allMenuItems.filter(i => sheetCategoryIds.has(i.category_id)),
+      [...allComponents.filter(c => c.menu_item_id !== id), ...components],
+      products)
+    : null
+  const withoutARow = rows => (onSheet
+    ? optionsWithoutARow(rows, products, recipeLines, allergens, withARow)
+    : [])
+
   // The groups already used on this item, for the form to offer back.
   const existingGroups = [...new Set(
     components.map(c => c.choice_group).filter(Boolean),
@@ -781,7 +802,15 @@ export default function MenuItemPage() {
             </div>
           )}
 
-          {choiceGroups.map(([groupName, rows]) => (
+          {choiceGroups.map(([groupName, rows]) => {
+            const unshown = withoutARow(rows)
+            // Ticking is only the answer for one that carries something. One
+            // nobody entered allergens for needs them entered: ticked, its own
+            // row would only send customers to staff as well.
+            const toTick = unshown.filter(o => o.carries).map(o => o.product)
+            const toEnter = [...new Map(unshown.flatMap(o => o.notEntered).map(p => [p.id, p])).values()]
+            const one = toTick.length === 1
+            return (
             <div key={groupName} className={`${cardEdge} bg-white overflow-hidden mb-6`}>
               <div className={`${cardHeader} flex flex-wrap items-baseline gap-x-3`}>
                 <span>{groupName}</span>
@@ -801,8 +830,34 @@ export default function MenuItemPage() {
                   onCancelEdit={resetComponentForm}
                   onRemove={removeComponent}
                 />
+              {/* An option is kept off the dish's own row, so its allergens
+                  reach the sheet only through a row of its own. Without one,
+                  the sheet asks customers to see staff about the whole dish. */}
+              {toTick.length > 0 && (
+                <p className={`${warningNote} m-3`}>
+                  {namesList(toTick.map(p => p.name))} {one ? 'has' : 'have'} no row of {one ? 'its' : 'their'} own
+                  on the allergen sheet, so the sheet asks customers to speak to a member of staff about this
+                  dish. Edit {one ? 'it' : 'each one'} and tick List it separately on the allergen sheet.
+                </p>
+              )}
+              {toEnter.length > 0 && (
+                <div className={`${warningNote} m-3`}>
+                  <p>
+                    Allergens have not been entered for {namesList(toEnter.map(p => p.name))}, so the allergen
+                    sheet asks customers to speak to a member of staff about this dish.
+                  </p>
+                  <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+                    {toEnter.map(p => (
+                      <Link key={p.id} to={`/catalogue/products/${p.id}/allergens`} className="font-semibold text-accent-ink underline">
+                        Enter allergens for {p.name}
+                      </Link>
+                    ))}
+                  </p>
+                </div>
+              )}
             </div>
-          ))}
+            )
+          })}
           {/* Last, because it is the part you look at least. On a burrito with
               two choices this used to sit second and push the interesting
               tables down the page.

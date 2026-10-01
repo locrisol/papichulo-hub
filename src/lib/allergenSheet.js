@@ -1,6 +1,8 @@
 import {
     deriveMenuItemAllergens, deriveProductAllergens, emptyAllergens, neverEntered, neverEnteredInDish,
+    summariseAllergens,
 } from '@/lib/allergens'
+import { offerable } from '@/lib/menuChoices'
 import { toISODate, todayISO, dayMonth, addMonths } from '@/lib/dates'
 
 // The rows of the allergen sheet for one category.
@@ -72,7 +74,67 @@ function everythingAnswered(components, products, recipeLines, allergens) {
     return neverEnteredInDish(components, products || [], recipeLines || [], allergens || []).length === 0
 }
 
-export function sheetRows(menuItems, allComponents, products, recipeLines, allergens) {
+// The products that already have a row of their own somewhere on the sheet.
+//
+// An option is kept off its dish's row, which is the settled rule, so the only
+// way its allergens reach the sheet is a row of its own: a dish that is that
+// one product (a salsa sold in a pot), or a tick to list it separately. Nothing
+// checked that one of the two was true, and an option with neither had its
+// allergens on no row at all.
+//
+// Asked of the whole sheet at once, so sheetItems is every dish the sheet
+// shows: switched on, in a category that is on it. The rows themselves are
+// worked out a category at a time, and the salsa's row is in the Salsa
+// category, not under the burrito.
+//
+// Only what a dish's row is made of counts, so its options are left out
+// before asking offerable, which owns the rule about one real product and the
+// pot it comes in.
+export function productsWithARow(sheetItems, allComponents, products) {
+    const found = new Set()
+    const always = (allComponents || []).filter(c => !c.choice_group)
+    for (const { product } of offerable(sheetItems || [], always, products || []).offered) {
+        found.add(product.id)
+    }
+
+    const onSheet = new Set((sheetItems || []).map(i => i.id))
+    for (const c of allComponents || []) {
+        if (c.list_separately && onSheet.has(c.menu_item_id)) found.add(c.product_id)
+    }
+    return found
+}
+
+// A dish's options whose allergens are on no row of the sheet: not ticked to
+// be listed, no row anywhere else, and carrying something, or never answered.
+// One that carries none of the fourteen leaves nothing out, which is a can of
+// cola from a drinks category kept off the sheet on purpose.
+//
+// Each comes with why, because the two want different things doing. One that
+// carries something wants a row of its own. One with something in it nobody
+// answered for wants that entered first: ticked, its row would only say ask
+// staff as well. notEntered is what neverEntered named, so a screen can name
+// the very product to enter, which in a sauce may be one of its ingredients.
+//
+// withARow is what productsWithARow said. Not given it, this assumes nothing
+// has a row, which sends the customer to staff rather than leaving them short.
+export function optionsWithoutARow(components, products, recipeLines, allergens, withARow) {
+    const found = new Map()
+    for (const c of components || []) {
+        if (!c.choice_group || c.list_separately || withARow?.has(c.product_id)) continue
+        const product = (products || []).find(p => p.id === c.product_id)
+        // One that did not arrive is everythingArrived's to say.
+        if (!product) continue
+
+        const held = summariseAllergens(
+            deriveProductAllergens(product, products, recipeLines || [], allergens || []))
+        const carries = held.contains + held.mayContain > 0
+        const notEntered = neverEntered(product, products, recipeLines || [], allergens || [])
+        if (carries || notEntered.length > 0) found.set(product.id, { product, carries, notEntered })
+    }
+    return [...found.values()]
+}
+
+export function sheetRows(menuItems, allComponents, products, recipeLines, allergens, withARow) {
     const rows = []
 
     // ---- the dishes, merged by the name they go under ----
@@ -104,8 +166,12 @@ export function sheetRows(menuItems, allComponents, products, recipeLines, aller
             key: `item:${name}`,
             name,
             order: orderOf(items),
+            // An option on no row of the sheet marks the dish rather than
+            // being added to it: on the dish's own row it would warn somebody
+            // who took the other option, which the rule exists to stop.
             complete: everythingArrived(items, all, products)
-                && everythingAnswered(all, products, recipeLines, allergens),
+                && everythingAnswered(all, products, recipeLines, allergens)
+                && optionsWithoutARow(all, products, recipeLines, allergens, withARow).length === 0,
             // The choices are dropped by deriveMenuItemAllergens itself, so
             // this hands it everything rather than filtering here as well. Two
             // places doing the same job is two places to forget it.

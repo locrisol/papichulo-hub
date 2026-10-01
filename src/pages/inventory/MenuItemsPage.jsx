@@ -10,6 +10,7 @@ import CategoryManagerModal from '@/components/inventory/CategoryManagerModal'
 import { useKeepScroll } from '@/context/scroll'
 import ArrangeList from '@/components/ui/ArrangeList'
 import { friendlyError } from '@/lib/errors'
+import { productsWithARow, optionsWithoutARow } from '@/lib/allergenSheet'
 import { secondaryButton, tableHeadRow, tableHeadCell, tableCard, badge, card, rowButton, labelClass, pageTitle, primaryButton } from '@/lib/controlStyles'
 import { numberField } from '@/lib/numberInput'
 import ErrorBanner from '@/components/ui/ErrorBanner'
@@ -236,6 +237,17 @@ export default function MenuItemsPage() {
       else lines.set(c.menu_item_id, [c])
     }
 
+    // The allergen sheet, the way the dish page and the sheet itself work it
+    // out: the dishes switched on in a category that is on it, and which
+    // products already have a row of their own there.
+    const sheetCategories = new Set(categories
+      .filter(c => c.is_active && c.on_allergen_sheet !== false)
+      .map(c => c.id))
+    const withARow = productsWithARow(
+      menuItems.filter(i => i.is_active && sheetCategories.has(i.category_id)),
+      components,
+      products)
+
     const out = new Map()
     for (const item of menuItems) {
       const mine = lines.get(item.id) || []
@@ -255,6 +267,12 @@ export default function MenuItemsPage() {
         // Something in it nobody ever entered allergens for, which the line
         // above can only read as none.
         notEntered: neverEnteredInDish(mine, products, recipeLines, allergens).length > 0,
+        // An option with no row of its own on the sheet that carries
+        // something or was never answered. The two lines above leave options
+        // out, and the sheet then sends customers to staff about the whole
+        // dish, so on its own the column said None for it.
+        asksStaff: Boolean(item.is_active) && sheetCategories.has(item.category_id)
+          && optionsWithoutARow(mine, products, recipeLines, allergens, withARow).length > 0,
         // The options are not ingredients. A burrito with eleven ingredients
         // and a choice of five salsas is not a sixteen ingredient burrito:
         // only one of the five is ever in it. Counting them together made it
@@ -266,9 +284,9 @@ export default function MenuItemsPage() {
       })
     }
     return out
-  }, [menuItems, components, products, recipeLines, allergens, prices])
+  }, [menuItems, categories, components, products, recipeLines, allergens, prices])
 
-  const EMPTY = { components: [], cost: null, net: NaN, margin: null, allergens: null, notEntered: false, counts: { components: 0, choices: 0 } }
+  const EMPTY = { components: [], cost: null, net: NaN, margin: null, allergens: null, notEntered: false, asksStaff: false, counts: { components: 0, choices: 0 } }
   const forItem = id => byItem.get(id) || EMPTY
 
 
@@ -346,6 +364,10 @@ export default function MenuItemsPage() {
   function allergenSummary(item) {
     const entry = forItem(item.id)
     if (entry.notEntered) return <span className="text-amber-700">Not all entered</span>
+    // Instead of None or the counts, the same as the dish's row on the sheet,
+    // which shows only the ask staff note. Not Not all entered: an option
+    // that carries something has been entered, it only has no row.
+    if (entry.asksStaff) return <span className="text-amber-700">Sheet says ask staff</span>
     const s = summariseAllergens(entry.allergens || {})
     if (s.contains === 0 && s.mayContain === 0) return 'None'
     return (

@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import { sheetRows, everyReadArrived, reprintDue } from '@/lib/allergenSheet'
+import { sheetRows, everyReadArrived, reprintDue, productsWithARow } from '@/lib/allergenSheet'
 import { stampDate } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
 import { SHEET_ORDER, ALLERGEN_SHORT } from '@/lib/allergens'
@@ -598,17 +598,27 @@ export default function PublicAllergensPreviewPage() {
         // The same rows the customer page shows, worked out in one place so the
         // printed sheet and the screen cannot come out saying different things.
         // They used to have a copy of this reasoning each.
-        for (const category of menuData.categories) {
-            // A category can be kept off the sheet. No answer means shown, so
-            // nothing recorded before that switch existed disappears.
-            if (category.on_allergen_sheet === false) continue
+        //
+        // A category can be kept off the sheet. No answer means shown, so
+        // nothing recorded before that switch existed disappears.
+        const sheetCategories = menuData.categories.filter(c => c.on_allergen_sheet !== false)
 
+        // What already has a row of its own anywhere on the sheet, asked once
+        // of all of it, the same as the customer page asks.
+        const withARow = productsWithARow(
+            menuData.menuItems.filter(i => sheetCategories.some(c => c.id === i.category_id)),
+            menuData.components,
+            menuData.products,
+        )
+
+        for (const category of sheetCategories) {
             const rows = sheetRows(
                 menuData.menuItems.filter(i => i.category_id === category.id),
                 menuData.components,
                 menuData.products,
                 menuData.recipeLines,
                 menuData.allergens,
+                withARow,
             )
 
             if (rows.length === 0) continue

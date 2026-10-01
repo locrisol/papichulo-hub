@@ -221,6 +221,55 @@ describe('a component nobody entered allergens for', () => {
     })
 })
 
+// A choice of sauce on the burrito, and the sauce sold nowhere on its own.
+// Kept off the burrito's row by the rule, and on no row of its own, so its
+// milk was on no row of the sheet at all and nothing here said so.
+describe('an option with no row of its own on the allergen sheet', () => {
+    const SAUCE = { id: 'cheese', name: 'Cheese Sauce', section: 'Cold Room', unit: 'KG', is_mix: false, is_active: true }
+    const option = extra => ({
+        id: 'k5', menu_item_id: 'm1', product_id: 'cheese', quantity: 0.05, no_quantity: false,
+        choice_group: 'Sauce', ...extra,
+    })
+    const tables = extra => tablesFor({
+        products: [...CATALOGUE, SAUCE],
+        menu_item_components: [BURRITO[0], option(extra)],
+        product_allergens: [...tablesFor().product_allergens, answered('cheese', { milk: 'contains' })],
+    })
+
+    it('is named under its choice, with what to do about it', async () => {
+        useTables(tables())
+        showPage()
+        expect(await screen.findByText(/Cheese Sauce has no row of its own on the allergen sheet/))
+            .toBeInTheDocument()
+    })
+
+    it('is not named once it is ticked to be listed separately', async () => {
+        useTables(tables({ list_separately: true }))
+        showPage()
+        await screen.findByText('Derived Allergens')
+        expect(screen.queryByText(/no row of its own/)).toBeNull()
+    })
+
+    // A free can on a breakfast, from a drinks category kept off the sheet on
+    // purpose, and nobody entered its allergens. Ticking it would only give it
+    // a row saying ask staff as well, so the note sends you to enter them.
+    it('says when its allergens were never entered, and links to entering them', async () => {
+        const COLA = { id: 'cola', name: 'Cola', section: 'Drinks', unit: 'Units', is_mix: false, is_active: true }
+        useTables(tablesFor({
+            products: [...CATALOGUE, COLA],
+            menu_item_components: [
+                BURRITO[0],
+                { id: 'k6', menu_item_id: 'm1', product_id: 'cola', quantity: 1, no_quantity: false, choice_group: 'Drink' },
+            ],
+        }))
+        showPage()
+        expect(await screen.findByText(/Allergens have not been entered for Cola/)).toBeInTheDocument()
+        expect(screen.getByRole('link', { name: 'Enter allergens for Cola' }))
+            .toHaveAttribute('href', '/catalogue/products/cola/allergens')
+        expect(screen.queryByText(/List it separately/)).toBeNull()
+    })
+})
+
 // Its old price is still on it. The menu items list read every product and
 // costed the dish from that price while this page could not find it, so the
 // same dish had a margin on one screen and none on the other.

@@ -166,6 +166,56 @@ describe('a dish with something in it nobody answered for', () => {
     })
 })
 
+// A burrito with a choice of salsa. The salsa is kept off the burrito's own
+// row, and reaches the sheet through its own row in the Salsa category.
+describe('an option in a choice', () => {
+    const SALSA_SHEET = {
+        ...WHOLE,
+        public_menu_categories: { data: [
+            { id: 'c1', name: 'Burritos', sort_order: 0 },
+            { id: 'c2', name: 'Salsas', sort_order: 1 },
+        ], error: null },
+        public_menu_items: { data: [
+            { id: 'm1', name: 'Beef Burrito', category_id: 'c1' },
+            { id: 'm2', name: 'Chipotle Salsa', category_id: 'c2' },
+        ], error: null },
+        public_menu_item_components: { data: [
+            { id: 'k1', menu_item_id: 'm1', product_id: 'p1' },
+            { id: 'k2', menu_item_id: 'm1', product_id: 'chipotle', choice_group: 'Salsa' },
+            { id: 'k3', menu_item_id: 'm2', product_id: 'chipotle' },
+            { id: 'k4', menu_item_id: 'm2', product_id: 'pot' },
+        ], error: null },
+        public_products: { data: [
+            { id: 'p1', name: 'Rice', is_mix: false, section: 'Dry' },
+            { id: 'chipotle', name: 'Chipotle', is_mix: false, section: 'Cold Room' },
+            { id: 'pot', name: 'Dip Pot', is_mix: false, section: 'Packaging' },
+        ], error: null },
+        public_product_allergens: { data: [
+            { product_id: 'p1' },
+            { product_id: 'chipotle', celery: 'contains' },
+        ], error: null },
+    }
+
+    it('leaves the dish alone when the option has a row of its own', async () => {
+        answer(SALSA_SHEET)
+        renderWithRouter(<PublicAllergensPage slugOverride="point-campus" />)
+        expect(await screen.findByText('Beef Burrito')).toBeInTheDocument()
+        expect(screen.queryByText('Please ask a member of staff')).toBeNull()
+    })
+
+    // The salsa taken off the menu, so its row is gone and its celery is on
+    // no row at all. The burrito used to say No declared allergens.
+    it('tells the customer to ask staff when the option is on no row at all', async () => {
+        answer({
+            ...SALSA_SHEET,
+            public_menu_items: { data: [{ id: 'm1', name: 'Beef Burrito', category_id: 'c1' }], error: null },
+        })
+        renderWithRouter(<PublicAllergensPage slugOverride="point-campus" />)
+        expect(await screen.findByText('Beef Burrito')).toBeInTheDocument()
+        expect(screen.getByText('Please ask a member of staff')).toBeInTheDocument()
+    })
+})
+
 describe('the allergen page when one read fails', () => {
     it.each([
         'public_product_allergens',

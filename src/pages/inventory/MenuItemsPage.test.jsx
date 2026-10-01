@@ -71,4 +71,33 @@ describe('the Allergens column', () => {
             expect(words).toHaveClass('text-amber-700')
         }
     })
+
+    // A free can with the bowl, from a drinks category kept off the sheet,
+    // with nothing entered for it. An option is kept off its dish's row, so
+    // with no row of its own the sheet sends customers to staff about the
+    // bowl. None here was the misreading the sheet itself was fixed for.
+    const withACan = can => tablesFor({
+        products: [...PRODUCTS, { id: 'can', name: 'Can of Cola', section: 'Drinks', unit: 'Units', is_mix: false, is_active: true }],
+        menu_item_components: [
+            ...tablesFor().menu_item_components,
+            { id: 'k3', menu_item_id: 'm1', product_id: 'can', quantity: 1, no_quantity: false, choice_group: 'Drink', ...can },
+        ],
+    })
+
+    it('does not say None for a dish the sheet sends to staff about an option', async () => {
+        useTables(withACan())
+        renderWithRouter(<MenuItemsPage />)
+        await screen.findAllByText('Rice Bowl')
+        expect(screen.queryByText('None')).toBeNull()
+        for (const words of screen.getAllByText('Sheet says ask staff')) {
+            expect(words).toHaveClass('text-amber-700')
+        }
+    })
+
+    it('says None once that option has a row of its own on the sheet', async () => {
+        useTables(withACan({ list_separately: true }))
+        renderWithRouter(<MenuItemsPage />)
+        await screen.findAllByText('Rice Bowl')
+        expect(screen.getAllByText('None')).toHaveLength(2)
+    })
 })

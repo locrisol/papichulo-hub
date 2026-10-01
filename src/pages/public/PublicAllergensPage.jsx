@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
-import { sheetRows, everyReadArrived } from '@/lib/allergenSheet'
+import { sheetRows, everyReadArrived, productsWithARow } from '@/lib/allergenSheet'
 import AllergenList from '@/components/allergens/AllergenList'
 import { card, primaryButton } from '@/lib/controlStyles'
 import { stampDate } from '@/lib/dates'
@@ -161,16 +161,27 @@ export default function PublicAllergensPage({ slugOverride }) {
   // something handed over beside it gets a row of its own. Worked out in
   // lib/allergenSheet so the printed sheet cannot come out saying anything
   // different from this.
-  const itemsByCategory = categories
-    // A category can be kept off the sheet: cans and bottled water carry none
-    // of the fourteen and fill it with rows saying so. Older rows have no
-    // answer here, and no answer means shown.
-    .filter(c => c.on_allergen_sheet !== false)
+  //
+  // A category can be kept off the sheet: cans and bottled water carry none
+  // of the fourteen and fill it with rows saying so. Older rows have no
+  // answer here, and no answer means shown.
+  const sheetCategories = categories.filter(c => c.on_allergen_sheet !== false)
+
+  // Which products already have a row of their own anywhere on the sheet,
+  // asked once of the whole sheet. An option on a dish reaches the sheet only
+  // through one of those, and a dish with an option that has none says ask
+  // staff rather than leaving that option's allergens off every row.
+  const withARow = productsWithARow(
+    menuItems.filter(i => sheetCategories.some(c => c.id === i.category_id)),
+    components, products,
+  )
+
+  const itemsByCategory = sheetCategories
     .map(c => ({
       category: c,
       rows: sheetRows(
         menuItems.filter(i => i.category_id === c.id),
-        components, products, recipeLines, allergens,
+        components, products, recipeLines, allergens, withARow,
       ),
     }))
     .filter(group => group.rows.length > 0)

@@ -133,6 +133,34 @@ describe('printing the allergen sheet', () => {
         expect(drawnText).toContain('Please ask a member of staff')
     })
 
+    // A choice of sauce on the rice, and the sauce has no row of its own on
+    // the sheet. Its milk was on no row of the paper at all.
+    it('marks a dish whose option is on no row at all', async () => {
+        answer({
+            ...WHOLE,
+            menu_item_components: { data: [
+                { id: 'k1', menu_item_id: 'm1', product_id: 'p1' },
+                { id: 'k2', menu_item_id: 'm1', product_id: 'p2', choice_group: 'Sauce' },
+            ], error: null },
+            products: { data: [
+                { id: 'p1', name: 'Rice', is_mix: false, section: 'Dry' },
+                { id: 'p2', name: 'Cheese Sauce', is_mix: false, section: 'Cold Room' },
+            ], error: null },
+            product_allergens: { data: [
+                { product_id: 'p1' },
+                { product_id: 'p2', milk: 'contains' },
+            ], error: null },
+        })
+        const me = userEvent.setup()
+        renderWithRouter(<PublicAllergensPreviewPage />)
+
+        await me.click(button())
+
+        await waitFor(() => expect(saved).toHaveLength(1))
+        expect(drawnText).toContain('Plain Rice')
+        expect(drawnText).toContain('Please ask a member of staff')
+    })
+
     it('leaves a dish that is whole unmarked', async () => {
         answer(WHOLE)
         const me = userEvent.setup()

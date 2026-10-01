@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { sheetRows, sheetName, everyReadArrived, reprintDue } from '@/lib/allergenSheet'
+import { sheetRows, sheetName, everyReadArrived, reprintDue, productsWithARow, optionsWithoutARow } from '@/lib/allergenSheet'
 import { emptyAllergens } from '@/lib/allergens'
 
 // The churros case, which is what this was built for.
@@ -213,10 +213,11 @@ describe('sheetRows', () => {
 
     it('still vouches for a dish that is only a choice', () => {
         // Allowed by the choices model: the options are listed in their own
-        // right, so the dish is not a gap.
+        // right, so the dish is not a gap. Here the salsa has a row in the
+        // Salsa category.
         const dip = [{ id: 'd', name: 'Dip Pot', category_id: 'sides' }]
         const comps = [{ menu_item_id: 'd', product_id: 'chipotle', quantity: 1, choice_group: 'Salsa' }]
-        expect(sheetRows(dip, comps, products, [], allergens)[0].complete).toBe(true)
+        expect(sheetRows(dip, comps, products, [], allergens, new Set(['chipotle']))[0].complete).toBe(true)
     })
 
     it('still vouches for the churros', () => {
@@ -274,6 +275,75 @@ describe('sheetRows', () => {
         })
     })
 
+    // An option is kept off the dish's own row, which is the settled rule, and
+    // it only reaches the sheet through a row of its own: ticked to be listed,
+    // or sold as a dish in a category on the sheet. One with neither had its
+    // allergens on no row at all, and nothing said so.
+    describe('an option with no row of its own anywhere on the sheet', () => {
+        const kitchen = [
+            ...products,
+            { id: 'marinade', name: 'Chicken Marinade', section: 'Cold Room' },
+            { id: 'cola', name: 'Cola', section: 'Dry' },
+            { id: 'mystery', name: 'Mystery Sauce', section: 'Cold Room' },
+        ]
+        const rows = [
+            ...allergens,
+            { product_id: 'marinade', mustard: 'contains' },
+            { product_id: 'cola' },
+            { product_id: 'chipotle', celery: 'contains' },
+        ]
+        const box = [{ id: 'b', name: 'Mucho Box', category_id: 'mains' }]
+        const boxWith = option => [
+            { menu_item_id: 'b', product_id: 'churro', quantity: 1 },
+            { menu_item_id: 'b', product_id: option, quantity: 1, choice_group: 'Pick one' },
+        ]
+
+        it('does not vouch for the dish when the option carries something', () => {
+            expect(sheetRows(box, boxWith('marinade'), kitchen, [], rows, new Set())[0].complete).toBe(false)
+        })
+
+        it('does not vouch for it when nobody entered allergens for the option', () => {
+            expect(sheetRows(box, boxWith('mystery'), kitchen, [], rows, new Set())[0].complete).toBe(false)
+        })
+
+        it('still vouches for it once the option has a row elsewhere', () => {
+            expect(sheetRows(box, boxWith('marinade'), kitchen, [], rows, new Set(['marinade']))[0].complete)
+                .toBe(true)
+        })
+
+        it('still vouches for it when the option is ticked to be listed', () => {
+            const comps = boxWith('marinade').map(c => (c.choice_group ? { ...c, list_separately: true } : c))
+            const sheet = sheetRows(box, comps, kitchen, [], rows, new Set())
+            expect(sheet.find(r => r.name === 'Mucho Box').complete).toBe(true)
+            expect(sheet.find(r => r.name === 'Chicken Marinade').allergens.mustard).toBe('contains')
+        })
+
+        // A can of cola has nothing to declare, and the drinks are kept off
+        // the sheet on purpose. Nothing is missing.
+        it('still vouches for it when the option carries none of the fourteen', () => {
+            expect(sheetRows(box, boxWith('cola'), kitchen, [], rows, new Set())[0].complete).toBe(true)
+        })
+
+        // The caller that does not say what has a row is told nothing has.
+        it('assumes nothing has a row when it is not told', () => {
+            expect(sheetRows(box, boxWith('marinade'), kitchen, [], rows)[0].complete).toBe(false)
+        })
+
+        // The two need different things doing. One that carries something
+        // wants a row of its own. One nobody answered for wants its allergens
+        // entered: a row of its own would only say ask staff as well.
+        it('says why each option is left out', () => {
+            const [marinade] = optionsWithoutARow(boxWith('marinade'), kitchen, [], rows, new Set())
+            expect(marinade.product.id).toBe('marinade')
+            expect(marinade.carries).toBe(true)
+            expect(marinade.notEntered).toEqual([])
+
+            const [mystery] = optionsWithoutARow(boxWith('mystery'), kitchen, [], rows, new Set())
+            expect(mystery.carries).toBe(false)
+            expect(mystery.notEntered.map(p => p.id)).toEqual(['mystery'])
+        })
+    })
+
     it('answers for all fourteen even where nothing is set', () => {
         const plain = sheetRows(
             [{ id: 'p', name: 'Plain' }],
@@ -281,6 +351,53 @@ describe('sheetRows', () => {
             products, [], allergens,
         )
         expect(Object.keys(plain[0].allergens)).toEqual(Object.keys(emptyAllergens()))
+    })
+})
+
+// Which products already have a row of their own somewhere on the sheet. Asked
+// of the whole sheet at once, because the rows are worked out a category at a
+// time and a salsa's row is in the Salsa category, not under the burrito.
+describe('productsWithARow', () => {
+    const kitchen = [
+        { id: 'chipotle', name: 'Chipotle Salsa', section: 'Cold Room' },
+        { id: 'pot', name: 'Dip Pot', section: 'Packaging' },
+        { id: 'avocado', name: 'Avocado', section: 'Cold Room' },
+        { id: 'lime', name: 'Lime', section: 'Cold Room' },
+        { id: 'choc', name: 'Chocolate Sauce', section: 'Dry' },
+        { id: 'churro', name: 'Churros', section: 'Freezer' },
+    ]
+    const items = [
+        { id: 'salsa', name: 'Chipotle Salsa', category_id: 'salsas' },
+        { id: 'guac', name: 'Guacamole', category_id: 'sides' },
+        { id: 'churros', name: 'Churros', category_id: 'des' },
+    ]
+    const comps = [
+        // Sold on its own in a pot. The pot is how it is handed over.
+        { menu_item_id: 'salsa', product_id: 'chipotle', quantity: 1 },
+        { menu_item_id: 'salsa', product_id: 'pot', quantity: 1 },
+        // Made of two things, so neither of them is the guacamole.
+        { menu_item_id: 'guac', product_id: 'avocado', quantity: 1 },
+        { menu_item_id: 'guac', product_id: 'lime', quantity: 1 },
+        { menu_item_id: 'churros', product_id: 'churro', quantity: 4 },
+        { menu_item_id: 'churros', product_id: 'choc', quantity: 1, choice_group: 'Sauce', list_separately: true },
+    ]
+
+    it('counts a dish that is one product and its pot', () => {
+        expect(productsWithARow(items, comps, kitchen).has('chipotle')).toBe(true)
+    })
+
+    it('does not count what a dish of several things is made of', () => {
+        const found = productsWithARow(items, comps, kitchen)
+        expect(found.has('avocado')).toBe(false)
+        expect(found.has('lime')).toBe(false)
+    })
+
+    it('counts what is ticked to be listed on its own', () => {
+        expect(productsWithARow(items, comps, kitchen).has('choc')).toBe(true)
+    })
+
+    it('only counts the dishes it is given, which are the ones on the sheet', () => {
+        expect(productsWithARow(items.filter(i => i.id !== 'salsa'), comps, kitchen).has('chipotle')).toBe(false)
     })
 })
 
