@@ -55,7 +55,7 @@ import {
     discoveryUrl, eventsFrom, isServiceRole, roleOf,
     geocodeUrl, pointFrom, pointTyped, venuesUrl, venuesFrom, suggestions, refusalFor,
     irishDate, stillToCome, emptyProblem, feedError, feedProblem, goneBetween, endsMoved,
-    superseded,
+    superseded, notOverBy,
 } from './discovery.js'
 
 // Asked of OpenStreetMap once when somebody adds a restaurant. They ask for a
@@ -221,7 +221,7 @@ async function syncOne(admin: Admin, place: Place, key: string) {
         .eq('place_id', place.id)
         .eq('source', 'page')
         .eq('review', 'found')
-        .gte('event_date', irishDate())
+        .or(notOverBy(irishDate()))
 
     const stale = superseded(readings, fetched)
 

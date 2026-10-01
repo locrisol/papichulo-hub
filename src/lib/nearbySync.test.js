@@ -10,7 +10,7 @@ import {
     geohash, venuesUrl, venuesFrom, suggestions, geocodeUrl, pointFrom,
     distanceKm, walkMinutesFor, WALKABLE_MINUTES, sourceKeyFor, pointTyped,
     irishDate, stillToCome, feedError, feedProblem, emptyProblem, wholeAnswer, goneBetween,
-    endsMoved, superseded,
+    endsMoved, superseded, notOverBy,
 } from '../../supabase/functions/nearby-events/discovery'
 import {
     distanceKm as browserDistanceKm, walkMinutesFor as browserWalkMinutesFor,
@@ -624,5 +624,12 @@ describe('which readings the feed supersedes', () => {
     it('leaves alone a reading of another night', () => {
         expect(superseded([reading('r3', 'found', { event_date: '2026-10-10' })], feed)).toEqual([])
         expect(superseded(null, feed)).toEqual([])
+    })
+
+    // A page read now keeps a run of days that began before the day it was
+    // read and is still on. Asking only for readings that start today or later
+    // left those out, so the feed could never retire one.
+    it('looks at every reading still on today, a run that began earlier included', () => {
+        expect(notOverBy('2026-10-05')).toBe('event_date.gte.2026-10-05,ends_on.gte.2026-10-05')
     })
 })

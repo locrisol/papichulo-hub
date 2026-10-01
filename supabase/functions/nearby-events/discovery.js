@@ -139,6 +139,17 @@ export function superseded(readings, fetched) {
         .map(r => r.id)
 }
 
+// Which readings are still on, as the filter the sync asks for them with.
+//
+// **On or after today, by either end.** A run of days that began before today
+// and has not finished is still on, and a page read keeps one now: read on a
+// Monday, a market that opened last Thursday is saved. Asking only for
+// readings that start today or later left those out, so the feed could never
+// retire one. The same overlap the roster asks the week with.
+export function notOverBy(today) {
+    return `event_date.gte.${today},ends_on.gte.${today}`
+}
+
 // ------------------------------------------------------------ how a feed went
 
 // Today in Ireland, as the date a listing is on.
