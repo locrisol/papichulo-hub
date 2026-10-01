@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen } from '@testing-library/react'
+import { screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { renderWithRouter, tableOf, makeQuery, A_RESTAURANT, A_MANAGER } from '@/test/helpers'
-import { todayISO, weekStartOf } from '@/lib/dates'
+import { mockSupabase, renderWithRouter, tableOf, makeQuery, A_RESTAURANT, A_MANAGER } from '@/test/helpers'
+import { todayISO, weekStartOf, addDays } from '@/lib/dates'
 import { NEARBY_FAILED } from '@/lib/nearby'
 
 // The roster as a store manager sees it unless a test says otherwise, with the
@@ -26,18 +26,21 @@ const tables = {
 
 let db
 // Who is signed in. A store manager unless a test says otherwise.
-const me = { ...A_MANAGER }
+let me
 vi.mock('@/lib/supabase', () => ({ supabase: new Proxy({}, { get: (_, k) => db[k] }) }))
 vi.mock('@/context/restaurant', () => ({
     useRestaurant: () => ({ activeRestaurant: A_RESTAURANT, setActiveRestaurant: () => {} }),
 }))
 vi.mock('@/context/auth', () => ({ useAuth: () => ({ user: me }) }))
 vi.mock('@/context/confirm', () => ({ useConfirm: () => () => Promise.resolve(true) }))
+vi.mock('@/lib/rosterMail', () => ({
+    emailTheAnswer: vi.fn(), emailTheShiftDecision: vi.fn(),
+}))
 
 const { default: RosterPage } = await import('./RosterPage')
 
 beforeEach(() => {
-    me.role = 'store_manager'
+    me = { ...A_MANAGER }
     db = {
         from: vi.fn(table => {
             if (table === 'events') return makeQuery({ data: null, error: { message: 'Failed to fetch' } })
@@ -87,5 +90,96 @@ describe('how the restaurant is set up, from the roster', () => {
         for (const name of SETTINGS) {
             expect(screen.queryByRole('button', { name })).not.toBeInTheDocument()
         }
+    })
+})
+
+// The roster, as the owner answering what is waiting on it. Invented people.
+
+const MONDAY_AFTER = addDays(weekStartOf(todayISO()), 1)
+
+const ANA = { id: 'e1', full_name: 'Ana', sort_order: 0, user_id: 'u-ana', restaurant_id: 'r1' }
+const LEO = { id: 'e2', full_name: 'Leo', sort_order: 1, user_id: 'u-leo', restaurant_id: 'r1' }
+
+const anasDayOff = {
+    id: 'a1', restaurant_id: 'r1', employee_id: 'e1', kind: 'day_off',
+    starts_on: MONDAY_AFTER, ends_on: MONDAY_AFTER, status: 'requested', created_at: '2026-09-01T10:00:00Z',
+}
+const anasMonday = {
+    id: 's1', restaurant_id: 'r1', employee_id: 'e1', shift_date: MONDAY_AFTER,
+    starts_at: '09:00:00', ends_at: '17:00:00', break_minutes: 30, published_at: '2026-09-01T10:00:00Z',
+}
+
+let made
+
+function waitingOn(extra = {}) {
+    const answer = {
+        employees: { data: [ANA, LEO], error: null },
+        absences: { data: [anasDayOff], error: null },
+        roster_shifts: { data: [anasMonday], error: null },
+        ...extra,
+    }
+    db = mockSupabase(answer)
+    // Every query the page makes, so a test can say what was never asked.
+    made = []
+    db.from = vi.fn(table => {
+        const query = makeQuery(answer[table] || { data: [], error: null })
+        made.push([table, query])
+        return query
+    })
+}
+
+const deletedFrom = table => made.some(([t, q]) => t === table && q.delete.mock.calls.length > 0)
+
+async function approveFreeingTheDay() {
+    renderWithRouter(<RosterPage />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Answer it' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve and free that day' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Yes, free those days' }))
+}
+
+// Approving used to take the shifts off first and then mark the request, and
+// the second write matched nothing if Ana had taken her request back in the
+// meantime. Her Monday was gone with nothing saying what it had been.
+describe('answering time off', () => {
+    beforeEach(() => {
+        me = { id: 'u-owner', role: 'owner', full_name: 'The Owner' }
+        waitingOn()
+    })
+
+    it('is one call that takes the shifts off and writes the answer together', async () => {
+        db.rpc = vi.fn(() => Promise.resolve({
+            data: { ...anasDayOff, status: 'approved', cleared_shifts: [{ date: MONDAY_AFTER, starts_at: '09:00:00', ends_at: '17:00:00' }] },
+            error: null,
+        }))
+        await approveFreeingTheDay()
+
+        await waitFor(() => expect(db.rpc).toHaveBeenCalledWith('answer_time_off', {
+            request_id: 'a1', answer: 'approved', clear_shift_ids: ['s1'],
+        }))
+        expect(deletedFrom('roster_shifts')).toBe(false)
+        expect(made.some(([t, q]) => t === 'absences' && q.update.mock.calls.length > 0)).toBe(false)
+    })
+
+    it('says so when the request was already answered or taken back', async () => {
+        db.rpc = vi.fn(() => Promise.resolve({
+            data: null,
+            error: { code: 'P0001', message: 'This request has already been answered or was taken back' },
+        }))
+        await approveFreeingTheDay()
+
+        expect(await screen.findByText('This request has already been answered or was taken back'))
+            .toBeInTheDocument()
+        expect(deletedFrom('roster_shifts')).toBe(false)
+    })
+
+    it('declines through the same call, freeing nothing', async () => {
+        db.rpc = vi.fn(() => Promise.resolve({ data: { ...anasDayOff, status: 'declined' }, error: null }))
+        renderWithRouter(<RosterPage />)
+        fireEvent.click(await screen.findByRole('button', { name: 'Answer it' }))
+        fireEvent.click(await screen.findByRole('button', { name: 'Decline' }))
+
+        await waitFor(() => expect(db.rpc).toHaveBeenCalledWith('answer_time_off', {
+            request_id: 'a1', answer: 'declined', clear_shift_ids: [],
+        }))
     })
 })

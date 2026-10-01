@@ -20,7 +20,7 @@ import {
     hoursForDate, totals, publishState, findOverlaps, fmtHours, shortTime, breakFor, shiftHours,
 } from '@/lib/roster'
 import { checkWeek, findingsByEmployee, aboutThisWeek, overlapFindings } from '@/lib/workRules'
-import { openGaps, asCleared } from '@/lib/timeOff'
+import { openGaps } from '@/lib/timeOff'
 import { emailTheAnswer, emailTheShiftDecision } from '@/lib/rosterMail'
 import { absenceRange } from '@/lib/absences'
 import TimeOffDeskModal from '@/components/roster/TimeOffDeskModal'
@@ -410,49 +410,41 @@ export default function RosterPage() {
         })
     }
 
-    // Approving with shifts to clear takes them off and writes down what they
-    // were, so the week can go on asking for cover until somebody is on them.
-    async function approveTimeOff(request, clearing) {
+    // Answering a request, in one call to the database.
+    //
+    // It was two from here: take the shifts off, then mark the request. If
+    // they had taken the request back after this page loaded, the second
+    // write matched nothing and said nothing, so the shifts were gone with no
+    // record of what they were. Two managers answering the same request was
+    // last write wins, and a no could quietly become a yes.
+    //
+    // answer_time_off locks the request, refuses one that is no longer
+    // waiting, and takes the shifts off and writes the answer together or not
+    // at all. Approving with shifts to clear writes down what they were, so the
+    // week can go on asking for cover until somebody is on them.
+    async function answerTimeOff(request, answer, clearing = []) {
         setSavingOff(true)
         setError('')
 
-        if (clearing.length > 0) {
-            const { error: delErr } = await supabase.from('roster_shifts')
-                .delete().in('id', clearing.map(s => s.id))
-            if (delErr) { setSavingOff(false); setError(friendlyError(delErr)); return }
-        }
-
-        const { error: updErr } = await supabase.from('absences').update({
-            status: 'approved',
-            decided_by: user.id,
-            decided_at: new Date().toISOString(),
-            cleared_shifts: clearing.length > 0 ? clearing.map(asCleared) : null,
-        }).eq('id', request.id)
+        const { data, error: err } = await supabase.rpc('answer_time_off', {
+            request_id: request.id,
+            answer,
+            clear_shift_ids: clearing.map(s => s.id),
+        })
 
         setSavingOff(false)
-        if (updErr) { setError(friendlyError(updErr)); return }
-
-        told(request, 'approved', clearing.map(asCleared))
         setAnswering(null)
         load({ quiet: true })
-    }
-
-    async function declineTimeOff(request) {
-        setSavingOff(true)
-        setError('')
-        const { error: err } = await supabase.from('absences').update({
-            status: 'declined',
-            decided_by: user.id,
-            decided_at: new Date().toISOString(),
-        }).eq('id', request.id)
-
-        setSavingOff(false)
+        // After load, which clears the message as it starts. Answered by
+        // somebody else or taken back is the usual reason, and the list it
+        // came from is out of date either way.
         if (err) { setError(friendlyError(err)); return }
 
-        told(request, 'declined', [])
-        setAnswering(null)
-        load({ quiet: true })
+        told(request, answer, data?.cleared_shifts || [])
     }
+
+    const approveTimeOff = (request, clearing) => answerTimeOff(request, 'approved', clearing)
+    const declineTimeOff = request => answerTimeOff(request, 'declined')
 
     const findings = checkWeek({
         shifts,

@@ -113,7 +113,11 @@ Redeploy `nearby-events` and `read-listings` after it.
 second round of the audit. A swap for part of a shift has to name hours
 inside that shift, because approving one that did not invented hours. A swap
 cannot be asked of somebody with no account, who could never answer it, and
-`roster_colleagues` says who has one.
+`roster_colleagues` says who has one. Time off is answered by
+`answer_time_off()`, which frees the shifts and writes the answer together,
+and only for a request still waiting. **Run it before the branch is merged**:
+the roster calls that function to answer time off, and until it exists the
+answer buttons only show an error.
 `030` is **not run yet**. It works a timesheet row's hours out in real time
 from the date, so a shift on the night the clocks go back or forward comes to
 the hours really worked rather than what the clock face says. Every other

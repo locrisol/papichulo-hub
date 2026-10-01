@@ -2398,6 +2398,61 @@ begin
     raise exception 'A swap is approved by a manager, not by the people in it';
 end $$;
 
+-- Answering a request for time off, in one go. The request is locked and has
+-- to still be waiting, and the shifts it frees go and the answer is written
+-- together or not at all. It was two writes from the browser, and the second
+-- matched nothing when the request had been taken back in between, so the
+-- shifts were gone with no record of them; two managers answering was last
+-- write wins. Security invoker, so the caller's own rules apply to every row.
+CREATE OR REPLACE FUNCTION "public"."answer_time_off"("request_id" "uuid", "answer" "text", "clear_shift_ids" "uuid"[] DEFAULT '{}'::"uuid"[]) RETURNS "public"."absences"
+    LANGUAGE "plpgsql"
+    SET "search_path" TO 'public', 'pg_temp'
+    AS $$
+declare
+    asked public.absences;
+    cleared jsonb;
+begin
+    if answer is null or answer not in ('approved', 'declined') then
+        raise exception 'A request is approved or declined';
+    end if;
+
+    if not coalesce(public.get_my_role() in ('super_admin', 'owner', 'store_manager'), false) then
+        raise exception 'Only a manager can answer time off';
+    end if;
+
+    select * into asked from public.absences where id = request_id for update;
+    if not found or asked.status <> 'requested' then
+        raise exception 'This request has already been answered or was taken back';
+    end if;
+
+    -- Only their shifts, and only inside the dates asked for, whatever was
+    -- sent. What goes is written down as it was, so the week can go on asking
+    -- for cover until somebody is on those hours.
+    if answer = 'approved' and coalesce(cardinality(clear_shift_ids), 0) > 0 then
+        with gone as (
+            delete from public.roster_shifts s
+             where s.id = any(clear_shift_ids)
+               and s.employee_id = asked.employee_id
+               and s.shift_date between asked.starts_on and asked.ends_on
+            returning s.shift_date, s.starts_at, s.ends_at
+        )
+        select jsonb_agg(jsonb_build_object('date', g.shift_date, 'starts_at', g.starts_at, 'ends_at', g.ends_at)
+                         order by g.shift_date, g.starts_at)
+          into cleared
+          from gone g;
+    end if;
+
+    update public.absences
+       set status = answer,
+           decided_by = auth.uid(),
+           decided_at = now(),
+           cleared_shifts = cleared
+     where id = request_id
+    returning * into asked;
+
+    return asked;
+end $$;
+
 CREATE OR REPLACE FUNCTION "public"."record_logins"() RETURNS integer
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public', 'auth', 'pg_temp'
@@ -3162,6 +3217,7 @@ end $$;
 
 COMMENT ON FUNCTION "public"."allergen_sheet_printed"("restaurant" "uuid") IS 'Stamps now() as when the allergen sheet was last printed for a restaurant. Managers and owners for their own restaurant, the super admin for any. Returns the stamp.';
 COMMENT ON FUNCTION "public"."allergens_changed_at"() IS 'When anything on the allergen sheet last changed, from the change log: allergens, dishes, what is in them, their categories, recipes, and a product renamed, switched on or off, made a MIX or moved section. Not prices, VAT, quantities or notes. Null when the log holds no such change.';
+COMMENT ON FUNCTION "public"."answer_time_off"("request_id" "uuid", "answer" "text", "clear_shift_ids" "uuid"[]) IS 'Approves or declines a request for time off that is still waiting, and on approval takes off the roster those of the given shifts that are theirs and inside the dates, recording them in cleared_shifts. All in one transaction. Managers only, under their own row rules. Returns the answered row.';
 COMMENT ON FUNCTION "public"."audit_ignored_columns"() IS 'Columns the change log does not treat as a change. Housekeeping stamps only: if one of these is all that moved, nothing is written.';
 COMMENT ON FUNCTION "public"."checklist_left"("round" "uuid") IS 'How many things at the bottom of the list a round has not ticked yet, counting what is on the list now.';
 COMMENT ON FUNCTION "public"."checklist_photos_due"() IS 'The photos the nightly job deletes: rounds older than a list''s last finished one, a once off list two weeks after it finished, a guide picture no task in use points at, and a photo never submitted once its round has ended. Nothing younger than a day.';
@@ -3179,6 +3235,8 @@ revoke all on function "public"."allergen_sheet_printed"("restaurant" "uuid") fr
 grant execute on function "public"."allergen_sheet_printed"("restaurant" "uuid") to authenticated;
 revoke all on function "public"."allergens_changed_at"() from public, anon, authenticated, service_role;
 grant execute on function "public"."allergens_changed_at"() to anon, authenticated;
+revoke all on function "public"."answer_time_off"("request_id" "uuid", "answer" "text", "clear_shift_ids" "uuid"[]) from public, anon, authenticated, service_role;
+grant execute on function "public"."answer_time_off"("request_id" "uuid", "answer" "text", "clear_shift_ids" "uuid"[]) to authenticated;
 revoke all on function "public"."checklist_photos_due"() from public, anon, authenticated, service_role;
 grant execute on function "public"."checklist_photos_due"() to service_role;
 revoke all on function "public"."checklist_photos_removed"("names" "text"[]) from public, anon, authenticated, service_role;

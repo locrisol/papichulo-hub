@@ -382,9 +382,14 @@ export default function MyShiftsPage() {
 
     // Only while nobody has answered it. Once it has been decided it is a
     // record of what was decided, and the database refuses anything else.
+    //
+    // The refusal is a delete that matches nothing, which is not an error, so
+    // the row is asked for back. A manager answering it after this page
+    // loaded used to leave the page carrying on as if it had been cancelled.
     async function withdrawTimeOff(id) {
-        const { error: err } = await supabase.from('absences').delete().eq('id', id)
+        const { data, error: err } = await supabase.from('absences').delete().eq('id', id).select('id')
         if (err) { setError(friendlyError(err)); return }
+        if (!data?.length) setError('This request has already been answered, so it cannot be cancelled.')
         reloadTimeOff()
     }
 

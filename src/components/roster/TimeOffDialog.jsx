@@ -180,13 +180,12 @@ export default function TimeOffDialog({
         setError('')
 
         const clearing = freeing ? clashing : []
-        if (clearing.length > 0) {
-            const { error: delErr } = await supabase.from('roster_shifts')
-                .delete().in('id', clearing.map(x => x.id))
-            if (delErr) { setSaving(false); setError(friendlyError(delErr)); return }
-        }
 
-        const { error: err } = editing
+        // The time off first, carrying what it takes off, and the shifts only
+        // once that is written. The other way round, a save that failed left
+        // the shifts gone and nothing saying what they had been, so the week
+        // could not ask for cover. The new row is kept, see below.
+        const { data: saved, error: err } = editing
             ? await supabase.from('absences').update(toRow()).eq('id', editing.id)
             : await supabase.from('absences').insert({
                 ...toRow(),
@@ -196,11 +195,32 @@ export default function TimeOffDialog({
                 status: 'approved',
                 created_by: userId,
                 cleared_shifts: clearing.length > 0 ? clearing.map(asCleared) : null,
-            })
+            }).select().single()
+
+        if (err) { setSaving(false); setError(friendlyError(err)); return }
+
+        // If this fails the time off is still right and the shifts are still
+        // there, and the roster warns about a shift on a day somebody is away,
+        // so nothing is lost or hidden.
+        //
+        // The form then holds the row it just wrote, as if Edit had been
+        // pressed on it. Left as a new one, with the button to free the day
+        // still on it, pressing again after the error wrote the same time off
+        // a second time, and a holiday's hours counted twice. Only ever a new
+        // row here: nothing is cleared while editing.
+        if (clearing.length > 0) {
+            const { error: delErr } = await supabase.from('roster_shifts')
+                .delete().in('id', clearing.map(x => x.id))
+            if (delErr) {
+                setSaving(false)
+                setEditing(saved)
+                setError(`Saved, but the shifts are still on the roster. Take them off there. ${friendlyError(delErr)}`)
+                reload()
+                return
+            }
+        }
 
         setSaving(false)
-        if (err) { setError(friendlyError(err)); return }
-
         openNew()
         reload()
     }

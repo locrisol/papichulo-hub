@@ -13,6 +13,14 @@
 -- whether each person has an account, a yes or no and never the account
 -- itself, so My shifts can say so before anybody asks.
 --
+-- Answering time off is one call, answer_time_off. It was two writes from the
+-- browser: take the shifts off, then mark the request. If the request had
+-- been taken back in between, the second matched nothing and said nothing, so
+-- the shifts were gone with no record of what they had been. Two managers
+-- answering the same request was last write wins, so a no could quietly
+-- become a yes. Now the request is locked, it has to still be waiting, and
+-- the shifts and the answer go together or not at all.
+--
 -- Safe to run twice.
 
 create or replace view public.roster_colleagues as
@@ -164,5 +172,60 @@ begin
 
     raise exception 'A swap is approved by a manager, not by the people in it';
 end $$;
+
+create or replace function public.answer_time_off(request_id uuid, answer text, clear_shift_ids uuid[] default '{}'::uuid[])
+    returns public.absences
+    language plpgsql
+    set search_path to 'public', 'pg_temp'
+    as $$
+declare
+    asked public.absences;
+    cleared jsonb;
+begin
+    if answer is null or answer not in ('approved', 'declined') then
+        raise exception 'A request is approved or declined';
+    end if;
+
+    if not coalesce(public.get_my_role() in ('super_admin', 'owner', 'store_manager'), false) then
+        raise exception 'Only a manager can answer time off';
+    end if;
+
+    select * into asked from public.absences where id = request_id for update;
+    if not found or asked.status <> 'requested' then
+        raise exception 'This request has already been answered or was taken back';
+    end if;
+
+    -- Only their shifts, and only inside the dates asked for, whatever was
+    -- sent. What goes is written down as it was, so the week can go on asking
+    -- for cover until somebody is on those hours.
+    if answer = 'approved' and coalesce(cardinality(clear_shift_ids), 0) > 0 then
+        with gone as (
+            delete from public.roster_shifts s
+             where s.id = any(clear_shift_ids)
+               and s.employee_id = asked.employee_id
+               and s.shift_date between asked.starts_on and asked.ends_on
+            returning s.shift_date, s.starts_at, s.ends_at
+        )
+        select jsonb_agg(jsonb_build_object('date', g.shift_date, 'starts_at', g.starts_at, 'ends_at', g.ends_at)
+                         order by g.shift_date, g.starts_at)
+          into cleared
+          from gone g;
+    end if;
+
+    update public.absences
+       set status = answer,
+           decided_by = auth.uid(),
+           decided_at = now(),
+           cleared_shifts = cleared
+     where id = request_id
+    returning * into asked;
+
+    return asked;
+end $$;
+
+comment on function public.answer_time_off(uuid, text, uuid[]) is 'Approves or declines a request for time off that is still waiting, and on approval takes off the roster those of the given shifts that are theirs and inside the dates, recording them in cleared_shifts. All in one transaction. Managers only, under their own row rules. Returns the answered row.';
+
+revoke all on function public.answer_time_off(uuid, text, uuid[]) from public, anon, authenticated, service_role;
+grant execute on function public.answer_time_off(uuid, text, uuid[]) to authenticated;
 
 notify pgrst, 'reload schema';
