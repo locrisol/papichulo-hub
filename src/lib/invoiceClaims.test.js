@@ -4,6 +4,7 @@ import {
     CLAIM_KINDS, NOT_LOGGED, claimKind, emptyDoorClaim, doorClaimProblem, doorClaimPayload,
     claimAmount, claimBalance, claimIsOpen, claimTakesOff, claimCandidates, claimMatch,
     creditSettles, creditTakenBack, voidedBy, sentBack, chasingList, isLate, claimsForWeek, bySupplier,
+    attachedWeek,
 } from '@/lib/invoiceClaims'
 
 const LINE = {
@@ -692,5 +693,25 @@ describe('how a supplier does on claims', () => {
         const none = bySupplier([claim({ amount: null })], suppliers, '2026-09-20')
         expect(none[0].backPct).toBeNull()
         expect(none[0].typicalDays).toBeNull()
+    })
+})
+
+// A Saturday delivery, short a case, written down at the door on the Sunday,
+// which is already the next week.
+describe('attachedWeek', () => {
+    const claim = { counted_week: '2026-09-27', raised_on: '2026-09-27' }
+    const invoice = { invoice_date: '2026-09-26' }
+
+    it('is the week the delivery landed in', () => {
+        expect(attachedWeek(claim, invoice)).toEqual({ week: '2026-09-20', delivered: '2026-09-20', moved: true })
+    })
+
+    it('stays where the note was written once that week has been sent', () => {
+        expect(attachedWeek(claim, invoice, { deliveryWeekSent: true }))
+            .toEqual({ week: '2026-09-27', delivered: '2026-09-20', moved: false })
+    })
+
+    it('falls back to the day it was raised for a note with no week on it', () => {
+        expect(attachedWeek({ raised_on: '2026-09-28' }, invoice, { deliveryWeekSent: true }).week).toBe('2026-09-27')
     })
 })

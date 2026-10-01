@@ -320,6 +320,20 @@ export function claimMatch(claim, invoices) {
     return best
 }
 
+// Which week a note from the door comes off, once it is put against its line.
+//
+// The week the delivery landed in, which is what the screen says it does. The
+// note was dated by the day it was written down, so a Saturday delivery noted
+// on the Sunday came off the week after, and the report for the delivery's own
+// week went out with the whole invoice in it. Unless that report has already
+// been sent: a week is closed once its report is published, so the money stays
+// in the week the note was written in, and the screen says so.
+export function attachedWeek(claim, invoice, { deliveryWeekSent = false } = {}) {
+    const delivered = weekStartOf(invoice.invoice_date)
+    if (!deliveryWeekSent) return { week: delivered, delivered, moved: true }
+    return { week: claim.counted_week || weekStartOf(claim.raised_on), delivered, moved: false }
+}
+
 // ---------------------------------------------------------------------------
 // The credit note, when it turns up
 // ---------------------------------------------------------------------------
