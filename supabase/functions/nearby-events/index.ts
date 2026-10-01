@@ -54,7 +54,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
     discoveryUrl, eventsFrom, isServiceRole, roleOf, sourceKeyFor,
     geocodeUrl, pointFrom, pointTyped, venuesUrl, venuesFrom, suggestions, refusalFor,
-    irishDate, stillToCome, emptyProblem, feedError, feedProblem, goneBetween,
+    irishDate, stillToCome, emptyProblem, feedError, feedProblem, goneBetween, endsMoved,
 } from './discovery.js'
 
 // Asked of OpenStreetMap once when somebody adds a restaurant. They ask for a
@@ -128,11 +128,23 @@ async function syncOne(admin: Admin, place: Place, key: string) {
         return { added: 0, total: 0, problem: emptyProblem(stillToCome(held, today)) }
     }
 
-    // Only to report how many are new. If this is racing another sync the count
-    // may be off, which does not matter: the upsert below is what is correct.
+    // To report how many are new, and to find a run of days that has to move
+    // with its show. If this is racing another sync the count may be off,
+    // which does not matter: the upsert below is what is correct.
     const { data: existing } = await admin
-        .from('events').select('ticketmaster_id')
+        .from('events').select('id, ticketmaster_id, event_date, ends_on')
         .in('ticketmaster_id', fetched.map(e => e.ticketmaster_id))
+
+    // **Before the upsert, one row at a time.** A moved show with an end date
+    // on it would otherwise fail the one statement that carries the whole
+    // venue. See endsMoved. Never by adding ends_on to the upsert below: a key
+    // on some rows of a batch is written on all of them, so every other run
+    // at the venue would lose its end.
+    for (const move of endsMoved(existing, fetched)) {
+        const { error: moved } = await admin.from('events')
+            .update({ event_date: move.event_date, ends_on: move.ends_on }).eq('id', move.id)
+        if (moved) console.error('nearby-events', place.name, 'could not move a run of days:', moved.message)
+    }
 
     const now = new Date().toISOString()
     const { error } = await admin

@@ -196,6 +196,35 @@ export function goneBetween(payload, now = new Date()) {
     return { after: irishDate(now), before: irishDate(end) }
 }
 
+// The listings whose run of days has to move with them, and where to.
+//
+// "Runs until" can be set on any listing, a feed's included. The sync rewrites
+// the start of a show Ticketmaster has moved and never sends an end, so a
+// conference set to run 5 to 7 October and then moved to November came back
+// starting on 10 November and ending on 7 October. The database refuses a run
+// that ends before it starts, and since every listing at a venue goes in one
+// statement, nothing at that venue was saved again until the new date passed.
+//
+// Moved by the same number of days as the start, so the length somebody gave
+// it is kept, and both dates go in one update so the run never reads
+// backwards in between. Counted in UTC days, because a local date sum across
+// the end of summer time comes out an hour short of a day.
+export function endsMoved(held, fetched) {
+    const next = new Map((fetched || []).map(e => [e.ticketmaster_id, e.event_date]))
+    const day = d => Date.parse(`${d}T00:00:00Z`)
+    const out = []
+
+    for (const row of held || []) {
+        if (!row?.ends_on) continue
+        const to = next.get(row.ticketmaster_id)
+        if (!to || to === row.event_date) continue
+        const end = new Date(day(row.ends_on) + (day(to) - day(row.event_date)))
+        out.push({ id: row.id, event_date: to, ends_on: end.toISOString().slice(0, 10) })
+    }
+
+    return out
+}
+
 // A failure carrying a sentence that is safe to keep and to show.
 export function feedError(sentence) {
     const err = new Error(sentence)

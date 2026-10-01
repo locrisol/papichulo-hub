@@ -10,6 +10,7 @@ import {
     geohash, venuesUrl, venuesFrom, suggestions, geocodeUrl, pointFrom,
     distanceKm, walkMinutesFor, WALKABLE_MINUTES, sourceKeyFor, pointTyped,
     irishDate, stillToCome, feedError, feedProblem, emptyProblem, wholeAnswer, goneBetween,
+    endsMoved,
 } from '../../supabase/functions/nearby-events/discovery'
 import {
     distanceKm as browserDistanceKm, walkMinutesFor as browserWalkMinutesFor,
@@ -547,5 +548,46 @@ describe('a night the feed no longer lists', () => {
         const at = new Date('2026-09-30T23:30:00Z')
         expect(goneBetween(answer(5, 5), at)).toEqual({ after: '2026-10-01', before: '2027-03-30' })
         expect(goneBetween(answer(200, 240), at)).toBe(null)
+    })
+})
+
+// "Runs until" can be set on a feed listing. When Ticketmaster then moved the
+// show past that date, the sync wrote the new start beside the old end, the
+// database refused it, and the one statement carrying the whole venue failed
+// on every sync after that.
+describe('a run of days on a show that moves', () => {
+    const held = [
+        { id: 'a', ticketmaster_id: 't1', event_date: '2026-10-05', ends_on: '2026-10-07' },
+        { id: 'b', ticketmaster_id: 't2', event_date: '2026-10-05', ends_on: null },
+        { id: 'c', ticketmaster_id: 't3', event_date: '2026-10-05', ends_on: '2026-10-06' },
+    ]
+
+    // The length somebody gave it is kept. A three day conference moved to
+    // November is still three days.
+    it('moves the end with the start', () => {
+        expect(endsMoved(held, [{ ticketmaster_id: 't1', event_date: '2026-11-10' }]))
+            .toEqual([{ id: 'a', event_date: '2026-11-10', ends_on: '2026-11-12' }])
+    })
+
+    // Earlier as well. Left alone the band would quietly grow by a month.
+    it('moves it earlier too', () => {
+        expect(endsMoved(held, [{ ticketmaster_id: 't1', event_date: '2026-10-01' }]))
+            .toEqual([{ id: 'a', event_date: '2026-10-01', ends_on: '2026-10-03' }])
+    })
+
+    // Across the end of summer time, which a local date sum gets an hour out.
+    it('counts in days, not hours', () => {
+        expect(endsMoved(
+            [{ id: 'a', ticketmaster_id: 't1', event_date: '2026-10-20', ends_on: '2026-10-22' }],
+            [{ ticketmaster_id: 't1', event_date: '2026-11-02' }],
+        )).toEqual([{ id: 'a', event_date: '2026-11-02', ends_on: '2026-11-04' }])
+    })
+
+    it('leaves alone a show with no end, one that has not moved, and one not in the answer', () => {
+        expect(endsMoved(held, [
+            { ticketmaster_id: 't2', event_date: '2026-11-10' },
+            { ticketmaster_id: 't3', event_date: '2026-10-05' },
+        ])).toEqual([])
+        expect(endsMoved(null, [])).toEqual([])
     })
 })
