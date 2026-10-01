@@ -4,22 +4,35 @@
 // So looking back at July has to use July's target, not whatever is set today,
 // otherwise the app quietly rewrites how past weeks were judged.
 
+// The override in force for a week, as a row, or null when none is and the
+// restaurant's own figure applies.
+//
 // targetType is 'food', 'labour' or 'packaging'.
-export function resolveTarget(overrides, targetType, weekStart, fallback) {
+//
+// Everything that says anything about a week's target asks this, so the
+// figure on a card and the words beside it are about the same target. The
+// cost dashboard used to find "the temporary one" for itself, the first it
+// came across, and labelled a permanent 28% as temporary and ending on the
+// date of an older 25% it had replaced.
+export function targetInForce(overrides, targetType, weekStart) {
     const matching = (overrides || []).filter(o =>
         o.target_type === targetType &&
         o.effective_from <= weekStart &&
         (o.effective_until == null || o.effective_until >= weekStart)
     )
 
-    if (matching.length === 0) return fallback ?? null
+    if (matching.length === 0) return null
 
     // More than one can match, because setting a new target does not close the
     // old one. The newest wins, since that is the most recent decision.
-    const newest = matching.reduce((a, b) =>
+    return matching.reduce((a, b) =>
         (a.created_at || '') >= (b.created_at || '') ? a : b
     )
-    return Number(newest.override_value)
+}
+
+export function resolveTarget(overrides, targetType, weekStart, fallback) {
+    const row = targetInForce(overrides, targetType, weekStart)
+    return row ? Number(row.override_value) : (fallback ?? null)
 }
 
 // Is a cost inside its target, close to it, or past it.
@@ -67,10 +80,11 @@ export function describeTargets(overrides, targetType, weekStart) {
             return (a.created_at || '') < (b.created_at || '') ? -1 : 1
         })
 
-    // Which one applies to the week being looked at. Worked out the same way
-    // the dashboard does it, so the screen cannot disagree with the number
-    // beside it.
-    const inForceId = pickInForceId(mine, weekStart)
+    // Which one applies to the week being looked at, by id rather than value
+    // so two targets with the same percentage are not confused. Worked out the
+    // same way the dashboard does it, so the screen cannot disagree with the
+    // number beside it.
+    const inForceId = targetInForce(mine, targetType, weekStart)?.id ?? null
 
     return mine.map((o, i) => {
         const next = mine[i + 1]
@@ -114,20 +128,6 @@ export function describeTargets(overrides, targetType, weekStart) {
             wasTemporary: Boolean(o.effective_until),
         }
     }).reverse() // newest first, which is how you read a list like this
-}
-
-// Which override resolveTarget would pick for this week, by id rather than
-// value, so two targets with the same percentage are not confused.
-function pickInForceId(sorted, weekStart) {
-    const matching = sorted.filter(o =>
-        o.effective_from <= weekStart &&
-        (o.effective_until == null || o.effective_until >= weekStart)
-    )
-    if (matching.length === 0) return null
-    const newest = matching.reduce((a, b) =>
-        (a.created_at || '') >= (b.created_at || '') ? a : b
-    )
-    return newest.id
 }
 
 // The day before a date string, in local time.
