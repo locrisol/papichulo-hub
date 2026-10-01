@@ -50,7 +50,9 @@ import TimeOffCard from '@/components/roster/TimeOffCard'
 //              about is literally the same object. On a phone it is a grid of
 //              bars, because the table is 64rem wide and a phone is 23.
 //
-// Published only, and that is the database's rule rather than this page's.
+// Published only, and at their own restaurant. The database holds an employee
+// to that, and the page asks for it as well, because a manager on the roster
+// can read the drafts and they are not what went out.
 // What is on this week, for the phone.
 //
 // Only the days that have something, because a list of seven headings with
@@ -167,9 +169,12 @@ export default function MyShiftsPage() {
         const missing = shiftIdsOf(asks).filter(id => !ids.includes(id))
         if (missing.length === 0) { setAskShifts([]); return }
 
+        // Published only, the same as the week, so a manager's card says
+        // nothing an employee's could not.
         const { data: rows } = await supabase.from('roster_shifts')
             .select('id, employee_id, shift_date, starts_at, ends_at, break_minutes')
             .in('id', missing)
+            .not('published_at', 'is', null)
         setAskShifts(rows || [])
     }
 
@@ -198,13 +203,19 @@ export default function MyShiftsPage() {
             const [
                 shiftRes, mateRes, noteRes, diaryRes, awayRes, restRes, eventRes, nearRes, offRes,
             ] = await Promise.all([
-                // Straight off the table. A policy lets staff read published
-                // rows at their own restaurant, so there is nothing between
-                // this and the same shifts a manager sees.
+                // The published week at their own restaurant, said here and
+                // not left to the policy. The policy is what an employee gets,
+                // but a manager can read the drafts and a super admin every
+                // restaurant, and a store manager on the roster saw next
+                // week's draft as though it had gone out.
                 supabase.from('roster_shifts').select('*')
+                    .eq('restaurant_id', mine.restaurant_id)
+                    .not('published_at', 'is', null)
                     .gte('shift_date', from).lte('shift_date', to)
                     .order('shift_date').order('starts_at'),
-                supabase.from('roster_colleagues').select('*').order('sort_order'),
+                supabase.from('roster_colleagues').select('*')
+                    .eq('restaurant_id', mine.restaurant_id)
+                    .order('sort_order'),
                 supabase.from('day_notes').select('*')
                     .eq('restaurant_id', mine.restaurant_id)
                     .gte('note_date', from).lte('note_date', to),
@@ -226,6 +237,7 @@ export default function MyShiftsPage() {
                 // needs: a day greyed out so you do not ask somebody who is in
                 // Spain.
                 supabase.from('roster_away').select('*')
+                    .eq('restaurant_id', mine.restaurant_id)
                     .lte('starts_on', to).gte('ends_on', from),
                 supabase.from('restaurants')
                     .select('opening_hours, break_rules, roster_rules, watch_city_events')
