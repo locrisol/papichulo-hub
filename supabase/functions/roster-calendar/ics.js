@@ -174,13 +174,19 @@ export function buildIcs({ calendarName, calendarDescription, shifts, now }) {
 // The app has its own copy of this rule in lib/roster.js. They are apart because
 // they run in different places and neither can import the other, and there is a
 // test that runs both over the same cases so they cannot quietly drift.
+//
+// A bank holiday is one of the ten public holidays worked out from the date, or
+// a day somebody ticked as one, the same as the app. This copy only read the
+// tick, so a bank holiday nobody ticked opened on the usual weekday's hours here
+// and on the bank holiday hours on the roster: Closing on the roster, a
+// finishing time on the phone.
 export function hoursForDate(openingHours, dayNote, date) {
     if (dayNote?.is_closed) return null
 
     if (dayNote?.opens_at && dayNote?.closes_at) {
         return { open: String(dayNote.opens_at).slice(0, 5), close: String(dayNote.closes_at).slice(0, 5) }
     }
-    if (dayNote?.is_bank_holiday) {
+    if (dayNote?.is_bank_holiday || bankHolidayOn(date)) {
         const bh = openingHours?.bh
         if (bh?.open && bh?.close) return { open: bh.open, close: bh.close }
     }
@@ -188,6 +194,71 @@ export function hoursForDate(openingHours, dayNote, date) {
     const day = openingHours?.[String(new Date(`${date}T00:00:00Z`).getUTCDay())]
     if (!day?.open || !day?.close) return null
     return day
+}
+
+// The ten Irish public holidays, computed rather than typed, so the feed knows
+// next year's without anybody updating a list.
+//
+// A copy of src/lib/bankHolidays.js rather than an import, for the reason at the
+// top of this file. The weekly report function carries a third copy, and the
+// tests check every copy against the app's.
+export function bankHolidays(year) {
+    const feb1 = new Date(Date.UTC(year, 1, 1))
+    const brigid = feb1.getUTCDay() === 5 ? feb1 : nthMonday(year, 2, 1)
+
+    return [
+        isoDate(new Date(Date.UTC(year, 0, 1))),
+        isoDate(brigid),
+        isoDate(new Date(Date.UTC(year, 2, 17))),
+        isoDate(new Date(easterSunday(year).getTime() + 86400000)),
+        isoDate(nthMonday(year, 5, 1)),
+        isoDate(nthMonday(year, 6, 1)),
+        isoDate(nthMonday(year, 8, 1)),
+        isoDate(lastMonday(year, 10)),
+        isoDate(new Date(Date.UTC(year, 11, 25))),
+        isoDate(new Date(Date.UTC(year, 11, 26))),
+    ]
+}
+
+export function bankHolidayOn(date) {
+    const text = String(date ?? '').slice(0, 10)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return false
+    return bankHolidays(Number(text.slice(0, 4))).includes(text)
+}
+
+// Easter, by the anonymous Gregorian computus, copied faithfully.
+function easterSunday(year) {
+    const a = year % 19
+    const b = Math.floor(year / 100)
+    const c = year % 100
+    const d = Math.floor(b / 4)
+    const e = b % 4
+    const f = Math.floor((b + 8) / 25)
+    const g = Math.floor((b - f + 1) / 3)
+    const h = (19 * a + b - d - g + 15) % 30
+    const i = Math.floor(c / 4)
+    const k = c % 4
+    const l = (32 + 2 * e + 2 * i - h - k) % 7
+    const m = Math.floor((a + 11 * h + 22 * l) / 451)
+    const month = Math.floor((h + l - 7 * m + 114) / 31)
+    const day = ((h + l - 7 * m + 114) % 31) + 1
+    return new Date(Date.UTC(year, month - 1, day))
+}
+
+function nthMonday(year, month, n) {
+    const first = new Date(Date.UTC(year, month - 1, 1))
+    const shift = (8 - first.getUTCDay()) % 7
+    return new Date(Date.UTC(year, month - 1, 1 + shift + (n - 1) * 7))
+}
+
+function lastMonday(year, month) {
+    const last = new Date(Date.UTC(year, month, 0))
+    const back = (last.getUTCDay() + 6) % 7
+    return new Date(Date.UTC(year, month - 1, last.getUTCDate() - back))
+}
+
+function isoDate(date) {
+    return date.toISOString().slice(0, 10)
 }
 
 // Does this shift finish after the store shuts?

@@ -2,8 +2,10 @@ import { describe, it, expect } from 'vitest'
 import {
     foldLine, escapeIcs, stamp, nextDay, eventTimes, buildIcs,
     hoursForDate as feedHours, closesStore, TZID,
+    bankHolidays as feedBankHolidays, bankHolidayOn as feedBankHolidayOn,
 } from '../../supabase/functions/roster-calendar/ics'
 import { hoursForDate as appHours, shiftEdges } from '@/lib/roster'
+import { bankHolidays as appBankHolidays } from '@/lib/bankHolidays'
 
 const shift = (extra = {}) => ({
     id: 'abc',
@@ -243,6 +245,15 @@ describe('the two copies of the opening hours rule agree', () => {
         ['a half filled override', week, { opens_at: '14:00' }, '2026-08-24'],
         ['no hours at all', null, null, '2026-08-24'],
         ['a bank holiday with no bank holiday hours', { 1: { open: '09:00', close: '17:00' } }, { is_bank_holiday: true }, '2026-08-24'],
+        // The ten public holidays are worked out from the date, so a bank
+        // holiday nobody ticked still opens on its own hours. The feed only
+        // read the tick, so on 26 October the roster said Closing and the
+        // phone said 19:00.
+        ['a public holiday nobody ticked', week, null, '2026-10-26'],
+        ['a public holiday that closes later than the usual day',
+            { 1: { open: '09:00', close: '17:00' }, bh: { open: '12:00', close: '23:00' } }, null, '2026-10-26'],
+        ['Christmas Day nobody ticked', { 5: { open: '09:00', close: '21:00' }, bh: { open: '12:00', close: '18:00' } }, null, '2026-12-25'],
+        ['a public holiday with no bank holiday hours', { 1: { open: '09:00', close: '17:00' } }, null, '2026-10-26'],
     ]
 
     for (const [name, hours, note, date] of cases) {
@@ -250,4 +261,21 @@ describe('the two copies of the opening hours rule agree', () => {
             expect(feedHours(hours, note, date)).toEqual(appHours(hours, note, date))
         })
     }
+})
+
+// The feed carries its own copy of the ten Irish public holidays, because a
+// function deploys only its own folder. Checked against the app's over enough
+// years to cover every way Easter and St Brigid's Day fall.
+describe('the feed knows the same public holidays as the app', () => {
+    for (let year = 2024; year <= 2040; year += 1) {
+        it(String(year), () => {
+            expect(feedBankHolidays(year)).toEqual(appBankHolidays(year).map(h => h.date))
+        })
+    }
+
+    it('answers for a date, and for nothing that is not one', () => {
+        expect(feedBankHolidayOn('2026-10-26')).toBe(true)
+        expect(feedBankHolidayOn('2026-10-27')).toBe(false)
+        expect(feedBankHolidayOn('')).toBe(false)
+    })
 })
