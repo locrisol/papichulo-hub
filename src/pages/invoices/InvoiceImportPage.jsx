@@ -2,9 +2,10 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase, everyRow } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
+import { useConfirm } from '@/context/confirm'
 import { useRestaurant } from '@/context/restaurant'
-import { weekStartOf, todayISO, addDays } from '@/lib/dates'
-import { fmtMoney } from '@/lib/format'
+import { weekStartOf, todayISO, addDays, fullDate } from '@/lib/dates'
+import { fmtMoney, namesList } from '@/lib/format'
 import { friendlyError } from '@/lib/errors'
 import { readPdfText } from '@/lib/pdfText'
 import {
@@ -47,6 +48,7 @@ const ON_REVIEW = 'Below is everything waiting for a decision, from this import 
 
 export default function InvoiceImportPage() {
     const navigate = useNavigate()
+    const confirm = useConfirm()
     const { user } = useAuth()
     const { activeRestaurant, restaurants } = useRestaurant()
     const restaurantId = activeRestaurant?.id
@@ -63,6 +65,9 @@ export default function InvoiceImportPage() {
     const [fillingIn, setFillingIn] = useState(null)
     // Credits somebody has said were not taken off by hand, so they go in.
     const [allowed, setAllowed] = useState(() => new Set())
+    // Documents somebody has said are another delivery from any typed in
+    // for that day, so they go in as new.
+    const [asNew, setAsNew] = useState(() => new Set())
     // Bumped after anything goes in, so the list of what is still to
     // download is read again and the documents just imported drop off it.
     const [checked, setChecked] = useState(0)
@@ -256,19 +261,39 @@ export default function InvoiceImportPage() {
     // the credit in against a total that already has it taken off. So the card
     // says which one to fill in, and once it is filled in the credit settles the
     // shortage the fill in turns into a claim.
-    const cards = useMemo(() => files.map(read => {
-        const file = placedNow(read, known)
-        if (file.state !== 'ready' || file.doc?.kind !== 'credit' || allowed.has(file.key)) return file
-        const others = files.filter(f => f.key !== file.key)
-        const onHand = creditOnHandEntry(file.doc, {
-            held: (known?.held || []).filter(h => h.supplier_id === file.where.supplierId),
-            documents: (known?.documents || []).filter(d => d.supplier_id === file.where.supplierId),
-            batch: others.filter(f => f.state === 'ready').map(f => f.doc),
+    //
+    // Every card is placed first, so a credit is weighed against where the
+    // others stand now: an invoice said to be a different delivery is going
+    // in, not waiting to be filled in.
+    const cards = useMemo(() => {
+        const placed = files.map(read => placedNow(read, known, asNew))
+        return placed.map(file => (allowed.has(file.key) ? file : withCredit(file, placed, known)))
+    }, [files, known, allowed, asNew])
+
+    // A file taken off forgets what was said about it, so choosing it again
+    // asks again.
+    function forget(keys) {
+        const gone = new Set(keys)
+        setFiles(all => all.filter(f => !gone.has(f.key)))
+        setAsNew(all => new Set([...all].filter(k => !gone.has(k))))
+        setAllowed(all => new Set([...all].filter(k => !gone.has(k))))
+    }
+
+    // One tap would count a delivery twice if it is one of those typed in, so
+    // it is asked, with what was typed in front of whoever is pressing it.
+    async function importAsNew(file) {
+        const totals = file.place.candidates.map(c => fmtMoney(c.total_amount))
+        const ok = await confirm({
+            title: 'A different delivery?',
+            message: `${namesList(totals)} ${totals.length === 1 ? 'was' : 'were'} typed in for `
+                + `${fullDate(file.doc.date)} with no document behind ${totals.length === 1 ? 'it' : 'them'}. `
+                + `Import ${file.doc.number} (${fmtMoney(documentTotal(file.doc))}) as well only if it is `
+                + 'another delivery that day. If it is one of those, fill that one in instead, or the '
+                + 'delivery is counted twice.',
+            confirmLabel: 'Import it as new',
         })
-        if (!onHand) return file
-        const waitingOn = others.find(f => f.state === 'by_hand' && f.doc?.number === onHand.invoiceNumber)
-        return { ...file, state: 'on_hand', onHand: { ...onHand, waitingOn: waitingOn?.name || null } }
-    }), [files, known, allowed])
+        if (ok) setAsNew(all => new Set(all).add(file.key))
+    }
 
     const ready = cards.filter(f => f.state === 'ready')
 
@@ -638,7 +663,7 @@ export default function InvoiceImportPage() {
                             {reading ? 'Reading...' : 'Choose the PDFs'}
                         </button>
                         {files.length > 0 && (
-                            <button type="button" onClick={() => setFiles([])} className={secondaryButton}>
+                            <button type="button" onClick={() => forget(files.map(f => f.key))} className={secondaryButton}>
                                 Start again
                             </button>
                         )}
@@ -678,10 +703,12 @@ export default function InvoiceImportPage() {
                             <DocumentCard
                                 key={file.key}
                                 file={file}
-                                onForget={() => setFiles(all => all.filter(f => f.key !== file.key))}
+                                busy={saving || reading || stale}
+                                onForget={() => forget([file.key])}
                                 onLinkAccount={() => setLinking(file)}
                                 onFillIn={invoice => setFillingIn({ file, invoice })}
                                 onAllow={() => setAllowed(all => new Set(all).add(file.key))}
+                                onAsNew={() => importAsNew(file)}
                             />
                         ))}
                     </div>
@@ -735,11 +762,30 @@ function placeOf(doc, known, restaurantId, restaurants) {
 
 // Where a file stands against what is in the Hub now rather than when it was
 // read. A document imported or filled in since is already here, and a typed
-// invoice filled in by another file is no longer one waiting to be.
-function placedNow(file, known) {
+// invoice filled in by another file is no longer one waiting to be. One said
+// to be a different delivery from those typed in that day goes in as new.
+function placedNow(file, known, asNew) {
     if (!file.doc || !known || file.where?.what !== 'known' || file.blocks?.length) return file
     const place = placeDocument(file.doc, known.held.filter(h => h.supplier_id === file.where.supplierId))
-    return { ...file, place, state: stateOf({ where: file.where, place, blocks: file.blocks }) }
+    const state = place.what === 'by_hand' && asNew.has(file.key)
+        ? 'ready'
+        : stateOf({ where: file.where, place, blocks: file.blocks })
+    return { ...file, place, state }
+}
+
+// A credit, held back while it may already be inside a total typed by hand.
+// See the comment on the cards.
+function withCredit(file, placed, known) {
+    if (file.state !== 'ready' || file.doc?.kind !== 'credit') return file
+    const others = placed.filter(f => f.key !== file.key)
+    const onHand = creditOnHandEntry(file.doc, {
+        held: (known?.held || []).filter(h => h.supplier_id === file.where.supplierId),
+        documents: (known?.documents || []).filter(d => d.supplier_id === file.where.supplierId),
+        batch: others.filter(f => f.state === 'ready').map(f => f.doc),
+    })
+    if (!onHand) return file
+    const waitingOn = others.find(f => f.state === 'by_hand' && f.doc?.number === onHand.invoiceNumber)
+    return { ...file, state: 'on_hand', onHand: { ...onHand, waitingOn: waitingOn?.name || null } }
 }
 
 // The cards worth staying on the page for. A document already in the Hub has

@@ -99,6 +99,14 @@ describe('where a document goes', () => {
         ]
         expect(placeDocument(doc, held).candidates.map(c => c.id)).toEqual(['near', 'far'])
     })
+
+    // Every invoice typed by hand is an invoice: none on live has ever been a
+    // credit. A credit note dated a day with one typed in used to be offered
+    // only as that invoice, to be overwritten with a negative total.
+    it('never takes a credit note for an invoice typed in that day', () => {
+        const held = [{ id: 'i1', invoice_number: null, invoice_date: '2026-08-23', total_amount: 140 }]
+        expect(placeDocument({ ...doc, kind: 'credit', payable: -12 }, held)).toEqual({ what: 'new' })
+    })
 })
 
 describe('what kind of cost a line is', () => {

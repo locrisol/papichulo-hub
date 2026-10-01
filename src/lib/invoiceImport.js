@@ -76,7 +76,13 @@ export function whereItGoes(accountNo, accounts) {
 // **A hand entered total is net, and a document is gross.** He deducts a
 // shortage by hand before typing it, so matching on the total to the cent would
 // miss exactly the invoices that most need filling in. The day is the match and
-// the candidates come back nearest total first.
+// the candidates come back nearest total first, every one of them: two typed
+// in for one day is the usual pattern, so the card offers each, and a way to
+// say this is a different delivery.
+//
+// **A credit note is never one of them.** Every invoice typed by hand is an
+// invoice, and a credit dated the same day was offered only as that invoice, to
+// be overwritten with a negative total.
 export function placeDocument(doc, held) {
     const rows = held || []
 
@@ -85,7 +91,9 @@ export function placeDocument(doc, held) {
         : null
     if (same) return { what: 'already_here', invoice: same }
 
-    const sameDay = rows.filter(h => !h.invoice_number && h.invoice_date === doc?.date)
+    const sameDay = doc?.kind === 'credit'
+        ? []
+        : rows.filter(h => !h.invoice_number && h.invoice_date === doc?.date)
     if (sameDay.length) {
         const wanted = documentTotal(doc)
         const near = [...sameDay].sort((a, b) => (

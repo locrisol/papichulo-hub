@@ -137,6 +137,9 @@ vi.mock('@/lib/supabase', async () => ({
     supabase: new Proxy({}, { get: (_, k) => db[k] }),
 }))
 vi.mock('@/context/auth', () => ({ useAuth: () => ({ user: { id: 'u1', role: 'store_manager' } }) }))
+// What the are-you-sure question answers. Yes, unless a test says.
+let ask
+vi.mock('@/context/confirm', () => ({ useConfirm: () => options => ask(options) }))
 vi.mock('@/context/restaurant', () => ({
     useRestaurant: () => ({
         activeRestaurant: { id: 'r1', name: 'Point Campus' },
@@ -181,6 +184,7 @@ beforeEach(() => {
     writes = []
     failing = new Set()
     refuse = new Set()
+    ask = async () => true
     DOCS = {}
     slow = { promise: Promise.resolve() }
     tables = {
@@ -413,5 +417,99 @@ describe('filling in a typed invoice', () => {
         expect(screen.queryByText('a.pdf')).toBeNull()
         expect(screen.queryByRole('button', { name: 'Fill it in' })).toBeNull()
         expect(tables.invoice_lines).toHaveLength(2)
+    })
+})
+
+// Two Sysco invoices typed in on one day is the usual pattern on live, and a
+// document dated that day used to be offered only as the nearest of them.
+describe('a document dated a day with invoices typed in', () => {
+    const typed = (id, total) => ({
+        id, restaurant_id: 'r1', supplier_id: 's1', invoice_number: null,
+        invoice_date: '2026-09-28', document_type: 'invoice', total_amount: total,
+    })
+
+    it('offers every invoice typed in that day', async () => {
+        tables.invoices.push(typed('t1', 14.5), typed('t2', 50))
+        DOCS['a.pdf'] = doc('45000001', '2026-09-28', [RICE])
+        renderImport()
+        await choose('a.pdf')
+        expect(await screen.findByText('There are 2 typed in for that day.')).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Fill in the one for €14.50' })).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Fill in the one for €50.00' })).toBeInTheDocument()
+    })
+
+    it('can go in as a different delivery, leaving what was typed alone', async () => {
+        tables.invoices.push(typed('t1', 50))
+        DOCS['a.pdf'] = doc('45000001', '2026-09-28', [RICE])
+        renderImport()
+        await choose('a.pdf')
+        await userEvent.click(await screen.findByRole('button', { name: 'It is a different delivery, import it as new' }))
+        expect(within(cardOf('a.pdf')).getByText('Ready to import')).toBeInTheDocument()
+
+        await importThem()
+        await screen.findByText(/1 document imported/)
+        expect(tables.invoices).toHaveLength(2)
+        expect(tables.invoices.find(i => i.id === 't1')).toMatchObject({ invoice_number: null, total_amount: 50 })
+        expect(tables.invoices.find(i => i.id !== 't1')).toMatchObject({ invoice_number: '45000001', total_amount: 14.5 })
+    })
+
+    it('asks first, with what was typed, and leaves it waiting when told no', async () => {
+        tables.invoices.push(typed('t1', 14.5))
+        DOCS['a.pdf'] = doc('45000001', '2026-09-28', [RICE])
+        const asked = []
+        ask = async options => { asked.push(options); return false }
+        renderImport()
+        await choose('a.pdf')
+        await userEvent.click(await screen.findByRole('button', { name: 'It is a different delivery, import it as new' }))
+        expect(asked[0].message).toMatch(/^€14.50 was typed in for .* with no document behind it\. Import 45000001 \(€14.50\)/)
+        expect(within(cardOf('a.pdf')).getByText('Entered by hand')).toBeInTheDocument()
+    })
+
+    it('forgets it was a different delivery once the file is taken off', async () => {
+        tables.invoices.push(typed('t1', 50))
+        DOCS['a.pdf'] = doc('45000001', '2026-09-28', [RICE])
+        renderImport()
+        await choose('a.pdf')
+        await userEvent.click(await screen.findByRole('button', { name: 'It is a different delivery, import it as new' }))
+        await userEvent.click(within(cardOf('a.pdf')).getByRole('button', { name: 'Take it off' }))
+        await choose('a.pdf')
+        expect(await within(cardOf('a.pdf')).findByText('Entered by hand')).toBeInTheDocument()
+    })
+
+    // A credit for an invoice said to be a different delivery waited for it
+    // to be filled in, which it never would be.
+    it('lets the credit for it go in with it', async () => {
+        tables.invoices.push(typed('t1', 50))
+        DOCS['b.pdf'] = doc('45000002', '2026-09-28', [RICE])
+        DOCS['c.pdf'] = doc('C45000009', '2026-09-28', [{ ...RICE, value: -14.5, cases: -1 }],
+            { kind: 'credit', orderReference: '45000002' })
+        renderImport()
+        await choose('b.pdf', 'c.pdf')
+        expect(await within(cardOf('c.pdf')).findByText('Already taken off?')).toBeInTheDocument()
+        await userEvent.click(await screen.findByRole('button', { name: 'It is a different delivery, import it as new' }))
+        expect(await within(cardOf('c.pdf')).findByText('Ready to import')).toBeInTheDocument()
+    })
+
+    it('decides nothing while a file is still being read', async () => {
+        tables.invoices.push(typed('t1', 50))
+        DOCS['a.pdf'] = doc('45000001', '2026-09-28', [RICE])
+        DOCS['slow.pdf'] = doc('45000002', '2026-09-29', [RICE])
+        let release
+        slow = { promise: new Promise(resolve => { release = resolve }) }
+        renderImport()
+        await choose('a.pdf', 'slow.pdf')
+        expect(await screen.findByRole('button', { name: 'Fill that one in' })).toBeDisabled()
+        expect(screen.getByRole('button', { name: 'It is a different delivery, import it as new' })).toBeDisabled()
+        release()
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Fill that one in' })).toBeEnabled())
+    })
+
+    it('takes a credit note as itself', async () => {
+        tables.invoices.push(typed('t1', 50))
+        DOCS['c.pdf'] = doc('C45000009', '2026-09-28', [{ ...RICE, value: -14.5, cases: -1 }], { kind: 'credit' })
+        renderImport()
+        await choose('c.pdf')
+        expect(await within(cardOf('c.pdf')).findByText('Ready to import')).toBeInTheDocument()
+        expect(screen.queryByText(/typed in for that day/)).toBeNull()
     })
 })
