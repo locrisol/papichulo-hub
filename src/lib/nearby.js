@@ -432,6 +432,27 @@ export function samePlace(a, b) {
     return fewer.every(w => more.includes(w))
 }
 
+// Which place a venue the search turned up fills in, or null to add a new one.
+//
+// The place with that venue id if there is one. Otherwise **a place of the same
+// name that has no venue id yet**, which is the Convention Centre's case: on
+// the list with a page and no feed, so watching it gives that place the feed
+// as well.
+//
+// Never a place that already has a different venue id. Filling that in moved
+// the place to the other venue: a second Ticketmaster venue called "The
+// Convention Centre Dublin Auditorium" matched by name, re-pointed the
+// Convention Centre at itself, and the first venue's shows stopped arriving.
+// Two venue ids are two venues as far as the feed is concerned, so that is a
+// second place, and the search says so before anybody presses.
+export function placeToFill(places, found) {
+    const all = places || []
+    const id = found?.ticketmaster_venue_id
+    return (id && all.find(p => p?.ticketmaster_venue_id === id))
+        || all.find(p => p && !p.ticketmaster_venue_id && samePlace(p.name, found?.name))
+        || null
+}
+
 // Whether two names might be the same venue, which is a weaker question than
 // whether they are.
 //

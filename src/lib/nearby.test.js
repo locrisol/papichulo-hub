@@ -45,6 +45,7 @@ import {
     forRoster,
     feedWords,
     feedTrouble,
+    placeToFill,
 } from '@/lib/nearby'
 
 const arena = { id: 'p1', name: '3Arena', short_name: '3Arena', ticketmaster_venue_id: 'KovZ9177WYV' }
@@ -924,5 +925,36 @@ describe('how the feed last went', () => {
     it('leaves out a place nobody is watching', () => {
         const broke = { ...arena, feed_problem: 'Ticketmaster said no (401).' }
         expect(feedTrouble([{ ...pairs[0], place: broke, is_active: false }], {}, NOW)).toEqual([])
+    })
+})
+
+// Watching a venue the search turned up fills in the place we already have
+// when it is the same building. It used to fill in any place with a matching
+// name, venue id or not, so a second Ticketmaster venue called "The Convention
+// Centre Dublin Auditorium" re-pointed the Convention Centre we already had.
+describe('which place a venue from the search fills in', () => {
+    const ccd = { id: 'p5', name: 'Convention Centre Dublin', ticketmaster_venue_id: null }
+    const ccdFed = { ...ccd, ticketmaster_venue_id: 'A' }
+
+    it('fills in the place with the same venue id', () => {
+        expect(placeToFill([ccdFed, arena], { ticketmaster_venue_id: 'KovZ9177WYV', name: '3Arena Dublin' }))
+            .toBe(arena)
+    })
+
+    // The case the merge was built for: on the list with a page and no feed.
+    it('fills in a place of the same name that has no venue id yet', () => {
+        expect(placeToFill([ccd], { ticketmaster_venue_id: 'A', name: 'The Convention Centre Dublin' }))
+            .toBe(ccd)
+    })
+
+    it('never re-points a place that already has a different venue id', () => {
+        expect(placeToFill([ccdFed], { ticketmaster_venue_id: 'B', name: 'The Convention Centre Dublin Auditorium' }))
+            .toBe(null)
+    })
+
+    it('prefers the venue id to a name', () => {
+        const auditorium = { id: 'p9', name: 'The Auditorium', ticketmaster_venue_id: 'B' }
+        expect(placeToFill([ccd, auditorium], { ticketmaster_venue_id: 'B', name: 'Convention Centre Dublin' }))
+            .toBe(auditorium)
     })
 })

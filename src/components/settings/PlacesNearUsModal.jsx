@@ -12,8 +12,8 @@ import Modal from '@/components/ui/Modal'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import {
     CITY_CAPACITY, CITY_RADIUS_KM, WALKABLE_MINUTES,
-    walkWords, sourceWords, placeTag, readWords, feedWords, pastWalking, cityProblem, samePlace,
-    couldBeSamePlace, placeName, PAIRING_COLUMNS,
+    walkWords, sourceWords, placeTag, readWords, feedWords, pastWalking, cityProblem,
+    couldBeSamePlace, placeName, placeToFill, PAIRING_COLUMNS,
 } from '@/lib/nearby'
 
 const BLANK = {
@@ -57,6 +57,9 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
     const [address, setAddress] = useState('')
     const [searching, setSearching] = useState(false)
     const [candidates, setCandidates] = useState(null)
+    // Every place in the Hub, which is what Watch it fills in from. The note
+    // under each venue reads the same list, so it says what the button does.
+    const [everyPlace, setEveryPlace] = useState(null)
     // Where it searched from. Shown because a lookup can succeed and be wrong:
     // "Papi Chulo Dublin" finds the Dun Laoghaire shop and "Papi Chulo" finds
     // one in Montreal, and neither of those announces itself as a mistake.
@@ -329,6 +332,9 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
 
         if (failed) { setError(await functionError(failed)); return }
         if (data?.error) { setError(data.error); return }
+
+        const { data: every } = await supabase.from('places').select('id, name, ticketmaster_venue_id')
+        setEveryPlace(every || null)
         setCandidates(data?.places || [])
         setLookedFrom(data?.point || null)
     }
@@ -349,10 +355,10 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
             .select('id, name, ticketmaster_venue_id, latitude, longitude')
         if (e0) { setBusy(false); setError(friendlyError(e0)); return }
 
-        const already = (all || []).find(p => (
-            (p.ticketmaster_venue_id && p.ticketmaster_venue_id === found.ticketmaster_venue_id)
-            || samePlace(p.name, found.name)
-        ))
+        // Never one with a different venue id: that is a different venue, and
+        // filling it in would move the place we have over to it. See
+        // placeToFill.
+        const already = placeToFill(all, found)
 
         const patch = {
             ticketmaster_venue_id: found.ticketmaster_venue_id || null,
@@ -755,15 +761,11 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                                         thing that differs between two real
                                         venues in one complex. So it is said
                                         rather than decided. */}
-                                    {rows.some(r => couldBeSamePlace(r.place.name, found.name)) && (
-                                        <span className="block text-xs text-amber-800 font-medium">
-                                            Looks like{' '}
-                                            {placeName(rows.find(
-                                                r => couldBeSamePlace(r.place.name, found.name),
-                                            ).place)}
-                                            , which you already watch. Adding it makes a second one.
-                                        </span>
-                                    )}
+                                    <SameAs
+                                        found={found}
+                                        watched={rows.map(r => r.place)}
+                                        places={everyPlace || rows.map(r => r.place)}
+                                    />
                                     <span className="block text-xs text-muted">
                                         {found.relation === 'city'
                                             ? `${found.km} km away, big enough for the city rule`
@@ -789,6 +791,41 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                 <button type="button" onClick={onClose} className={secondaryButton}>Done</button>
             </div>
         </Modal>
+    )
+}
+
+// What pressing Watch it on a venue from the search will do, when that is not
+// simply adding a place.
+//
+// It fills in a place already on the list when that place is the same
+// building and has no feed yet, and says so. A name that only looks like one
+// already watched gets a second place, and says that, because no rule can
+// safely tell "Odeon Point Square" from "Odeon Point Village". It used to say
+// "makes a second one" in both cases, while the button filled in the place
+// that was there.
+//
+// **From every place in the Hub**, the list the button fills in from, and not
+// only this restaurant's. A place only another restaurant watches was filled
+// in with nothing here saying so.
+function SameAs({ found, watched, places }) {
+    const where = p => (watched.some(w => w?.id === p?.id) ? 'which you already watch' : 'which is already in the Hub')
+
+    const fills = placeToFill(places, found)
+    if (fills) {
+        if (fills.ticketmaster_venue_id) return null
+        return (
+            <span className="block text-xs text-amber-800 font-medium">
+                Watching it adds Ticketmaster to {placeName(fills)}, {where(fills)}.
+            </span>
+        )
+    }
+
+    const like = places.find(p => couldBeSamePlace(p?.name, found.name))
+    if (!like) return null
+    return (
+        <span className="block text-xs text-amber-800 font-medium">
+            Looks like {placeName(like)}, {where(like)}. Watching it adds a second place.
+        </span>
     )
 }
 

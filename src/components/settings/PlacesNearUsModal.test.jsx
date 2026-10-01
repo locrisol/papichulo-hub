@@ -94,3 +94,68 @@ describe('taking a place off the list', () => {
         expect(placeDeleted()).toBe(false)
     })
 })
+
+// Watching a venue the search turned up. A second Ticketmaster venue whose name
+// matched the Convention Centre's re-pointed the Convention Centre at itself,
+// while the screen said it would make a second one.
+describe('watching a venue from the search', () => {
+    const CCD = { id: 'p5', name: 'Convention Centre Dublin', ticketmaster_venue_id: 'A' }
+    const AUDITORIUM = {
+        ticketmaster_venue_id: 'B', name: 'The Convention Centre Dublin Auditorium',
+        latitude: 53.3488, longitude: -6.2387, km: 0.75, walkMinutes: 9, relation: 'walk',
+    }
+
+    async function look(candidate, mine = CCD, every = [mine]) {
+        answers.restaurant_places = { data: [{ ...ROWS[0], id: 'rp5', own_row: false, place: mine }], error: null }
+        answers.places = { data: every, error: null }
+        db.functions.invoke = vi.fn(() => Promise.resolve({
+            data: { point: { latitude: 53.3478, longitude: -6.2285 }, places: [candidate] }, error: null,
+        }))
+        render(<PlacesNearUsModal onClose={() => {}} />)
+        const user = userEvent.setup()
+        await user.type(await screen.findByLabelText(/address, or where it is/), '53.3478, -6.2285')
+        await user.click(screen.getByRole('button', { name: 'Look' }))
+        return user
+    }
+
+    async function watch(candidate) {
+        const user = await look(candidate)
+        await user.click(await screen.findByRole('button', { name: 'Watch it' }))
+    }
+
+    const updates = () => made.filter(m => m.table === 'places').flatMap(m => m.q.update.mock.calls.map(c => c[0]))
+    const inserts = () => made.filter(m => m.table === 'places').flatMap(m => m.q.insert.mock.calls.map(c => c[0]))
+
+    it('adds a second place rather than re-pointing the one already there', async () => {
+        await watch(AUDITORIUM)
+        await waitFor(() => expect(inserts()).toHaveLength(1))
+        expect(inserts()[0]).toMatchObject({ name: AUDITORIUM.name, ticketmaster_venue_id: 'B' })
+        expect(updates()).toEqual([])
+    })
+
+    it('says so before the button is pressed', async () => {
+        await look(AUDITORIUM)
+        expect(await screen.findByText(/Looks like Convention Centre Dublin, which you already watch/))
+            .toHaveTextContent('Watching it adds a second place.')
+    })
+
+    // The case filling in was built for: the same building, on the list with
+    // a page and no feed yet. Watching it gives that place the feed.
+    it('says when watching it fills in the place already there', async () => {
+        const pageOnly = { ...CCD, ticketmaster_venue_id: null }
+        await look({ ...AUDITORIUM, ticketmaster_venue_id: 'A', name: 'The Convention Centre Dublin' }, pageOnly)
+        expect(await screen.findByText(/Watching it adds Ticketmaster to Convention Centre Dublin/))
+            .toBeInTheDocument()
+    })
+
+    // The button fills in a place from every place in the Hub, not only this
+    // restaurant's. One only another restaurant watches was filled in with
+    // nothing on screen saying so.
+    it('says so when the place it fills in is not on this list', async () => {
+        const theirs = { id: 'p6', name: 'Convention Centre Dublin', ticketmaster_venue_id: null }
+        await look({ ...AUDITORIUM, ticketmaster_venue_id: 'A', name: 'The Convention Centre Dublin' }, ARENA, [ARENA, theirs])
+        expect(await screen.findByText(
+            'Watching it adds Ticketmaster to Convention Centre Dublin, which is already in the Hub.',
+        )).toBeInTheDocument()
+    })
+})
