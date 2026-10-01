@@ -4,6 +4,7 @@ import { useRestaurant } from '@/context/restaurant'
 import { useAuth } from '@/context/auth'
 import { useConfirm } from '@/context/confirm'
 import { friendlyError } from '@/lib/errors'
+import { can, RESTAURANT_CONFIG } from '@/lib/access'
 import { todayISO, weekStartOf, weekDates, addDays, shortDate, weekMonthLabel } from '@/lib/dates'
 import { DAY_NAMES, dayName } from '@/lib/events'
 import { nearbyRows, rowsOn, headlinePlaces, PAIRING_COLUMNS } from '@/lib/nearby'
@@ -56,6 +57,11 @@ export default function RosterPage() {
     const { activeRestaurant } = useRestaurant()
     const { user } = useAuth()
     const confirm = useConfirm()
+    // Opening hours, the break and roster rules and the every week list are
+    // all kept on the restaurant row, and an owner cannot change that row. The
+    // four buttons only ever refused them, with a message about a setting
+    // that could not be found.
+    const configures = can(user, RESTAURANT_CONFIG)
 
     const [employees, setEmployees] = useState([])
     const [positions, setPositions] = useState([])
@@ -984,18 +990,22 @@ export default function RosterPage() {
                     <button type="button" onClick={() => setSettingsOpen('timeOff')} className={secondaryButton}>
                         Time off
                     </button>
-                    <button type="button" onClick={() => setSettingsOpen('hours')} className={secondaryButton}>
-                        Opening hours
-                    </button>
-                    <button type="button" onClick={() => setSettingsOpen('breaks')} className={secondaryButton}>
-                        Break rules
-                    </button>
-                    <button type="button" onClick={() => setSettingsOpen('rules')} className={secondaryButton}>
-                        Roster rules
-                    </button>
-                    <button type="button" onClick={() => setSettingsOpen('weekly')} className={secondaryButton}>
-                        Every week
-                    </button>
+                    {configures && (
+                        <>
+                            <button type="button" onClick={() => setSettingsOpen('hours')} className={secondaryButton}>
+                                Opening hours
+                            </button>
+                            <button type="button" onClick={() => setSettingsOpen('breaks')} className={secondaryButton}>
+                                Break rules
+                            </button>
+                            <button type="button" onClick={() => setSettingsOpen('rules')} className={secondaryButton}>
+                                Roster rules
+                            </button>
+                            <button type="button" onClick={() => setSettingsOpen('weekly')} className={secondaryButton}>
+                                Every week
+                            </button>
+                        </>
+                    )}
                 </div>
             </div>
 

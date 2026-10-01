@@ -31,8 +31,14 @@ import {
 //
 // The list is the restaurant's own and nobody is on it by role. It is not the
 // report's list: that one carries the week's takings and goes to the owners.
+//
+// `canSend` is whether this person sends it, which is a store manager or a
+// super admin, the same as the report. An owner gets the PDF and the list to
+// read, and none of the sending: the mail function refuses them and the list
+// is kept on the restaurant row, which they cannot change. What the fortnight
+// is missing is said to both, because the PDF is missing it too.
 export default function SendDialog({
-    period, restaurant, filedAt, canEdit = true, onClose, onKeepList, onSent,
+    period, restaurant, filedAt, canSend = true, onClose, onKeepList, onSent,
 }) {
     const [extras, setExtras] = useState(restaurant?.timesheet_recipients || [])
     const [comment, setComment] = useState('')
@@ -134,11 +140,17 @@ export default function SendDialog({
     // grid follows about a week.
     const unfinished = period ? !periodIsOver(period.start, todayISO()) : false
 
+    // On screen straight away, and back to what it was if it was not kept, so
+    // the list showing is always the list it goes to.
     async function keep(list) {
+        const before = extras
         setExtras(list)
         setError('')
         const failed = await onKeepList(list)
-        if (failed) setError(failed)
+        if (failed) {
+            setExtras(before)
+            setError(failed)
+        }
     }
 
     // The paper for her files, built from the rows already read for the block
@@ -188,11 +200,13 @@ export default function SendDialog({
         setBusy(false)
     }
 
+    const title = canSend ? 'Send the hours' : 'Download the hours'
+
     // Nobody has said when the pay runs, so there is no period to send. The way
     // out is one date in settings, said here rather than left as a dead button.
     if (!period) {
         return (
-            <Modal title="Send the hours" onClose={onClose} width="max-w-lg">
+            <Modal title={title} onClose={onClose} width="max-w-lg">
                 <div className="px-6 py-4">
                     <p className="text-sm text-gray-900 font-semibold mb-2">
                         Nobody has said when the pay period starts.
@@ -202,19 +216,28 @@ export default function SendDialog({
                         Hub needs one date to count from. Any period start will do, however long
                         ago, and it never has to be touched again.
                     </p>
+                    {/* Settings is a store manager's page, so an owner sent
+                        there would only be told they cannot open it. */}
+                    {!canSend && (
+                        <p className="text-sm text-muted mt-2">
+                            Ask a store manager to set it in the restaurant settings.
+                        </p>
+                    )}
                 </div>
                 <div className={modalFooter}>
                     <button type="button" onClick={onClose} className={secondaryButton}>Cancel</button>
-                    <Link to="/settings/restaurant" className={primaryButton('md', 'good')}>
-                        Set it in settings
-                    </Link>
+                    {canSend && (
+                        <Link to="/settings/restaurant" className={primaryButton('md', 'good')}>
+                            Set it in settings
+                        </Link>
+                    )}
                 </div>
             </Modal>
         )
     }
 
     return (
-        <Modal title="Send the hours" onClose={onClose} width="max-w-lg">
+        <Modal title={title} onClose={onClose} width="max-w-lg">
             <div className="px-6 py-4">
                 {error && <ErrorBanner className="mb-3">{error}</ErrorBanner>}
 
@@ -229,7 +252,13 @@ export default function SendDialog({
                     what anybody was rostered for.
                 </p>
 
-                {filedAt && !said && (
+                {!canSend && (
+                    <p className="text-xs text-muted mb-4">
+                        Only a store manager can send the hours. You can still download the PDF.
+                    </p>
+                )}
+
+                {canSend && filedAt && !said && (
                     <p className="text-xs text-muted mb-4">
                         Last sent {stampDateTime(filedAt)}. Sending again replaces nothing; it is a
                         second mail with whatever the period says now.
@@ -239,8 +268,17 @@ export default function SendDialog({
                 {unfinished && (
                     <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4 text-xs text-amber-800">
                         <strong className="font-bold">This period has not finished yet.</strong>{' '}
-                        It runs to {shortDate(period.end)}. You can still send it, and a test is
-                        always safe, but the days after today have nothing on them.
+                        {canSend ? (
+                            <>
+                                It runs to {shortDate(period.end)}. You can still send it, and a test
+                                is always safe, but the days after today have nothing on them.
+                            </>
+                        ) : (
+                            <>
+                                It runs to {shortDate(period.end)}, and the days after today have
+                                nothing on them.
+                            </>
+                        )}
                     </div>
                 )}
 
@@ -256,8 +294,13 @@ export default function SendDialog({
                                     {headCount(unsaid) === 1 ? 'One person has' : `${headCount(unsaid)} people have`} a
                                     day in this period with nothing said about it.
                                 </strong>{' '}
-                                {names(unsaid)}. The period cannot go out until each one has times, time
-                                off, or a comment.
+                                {names(unsaid)}.
+                                {canSend && (
+                                    <>
+                                        {' '}The period cannot go out until each one has times, time off, or
+                                        a comment.
+                                    </>
+                                )}
                             </p>
                         )}
                         {noClockOut.length > 0 && (
@@ -265,43 +308,54 @@ export default function SendDialog({
                                 <strong className="font-bold">
                                     {names(noClockOut)} {headCount(noClockOut) === 1 ? 'has' : 'have'} a clock
                                     in with no clock out.
-                                </strong>{' '}
-                                The period cannot go out until each one has a clock out time.
+                                </strong>
+                                {canSend && (
+                                    <>
+                                        {' '}The period cannot go out until each one has a clock out time.
+                                    </>
+                                )}
                             </p>
                         )}
-                        <p>A test can still be sent.</p>
+                        {canSend && <p>A test can still be sent.</p>}
                     </div>
                 )}
 
                 <Recipients
                     title="Who gets the hours"
                     extras={extras}
-                    canEdit={canEdit}
+                    canEdit={canSend}
                     busy={busy}
                     onChange={keep}
                     note={(
                         <>
                             Nobody is on this list by role, and it is not the report&apos;s list: that
-                            one carries the week&apos;s takings and goes to the owners. You get a copy
-                            of every send, so you can see it arrive, and replies come back to you.
+                            one carries the week&apos;s takings and goes to the owners.
+                            {canSend && (
+                                <>
+                                    {' '}You get a copy of every send, so you can see it arrive, and
+                                    replies come back to you.
+                                </>
+                            )}
                         </>
                     )}
                 />
 
-                <div className="mt-4">
-                    <label className={labelClass} htmlFor="timesheet-note">
-                        Anything to say at the top of it
-                    </label>
-                    <AutoTextarea
-                        id="timesheet-note"
-                        minRows={2}
-                        disabled={busy}
-                        className={fieldClass}
-                        placeholder="Two corrections in week two, both explained on the day..."
-                        value={comment}
-                        onChange={e => setComment(e.target.value)}
-                    />
-                </div>
+                {canSend && (
+                    <div className="mt-4">
+                        <label className={labelClass} htmlFor="timesheet-note">
+                            Anything to say at the top of it
+                        </label>
+                        <AutoTextarea
+                            id="timesheet-note"
+                            minRows={2}
+                            disabled={busy}
+                            className={fieldClass}
+                            placeholder="Two corrections in week two, both explained on the day..."
+                            value={comment}
+                            onChange={e => setComment(e.target.value)}
+                        />
+                    </div>
+                )}
 
                 {said && (
                     <p className="text-sm font-semibold text-green-700 mt-4">{said}</p>
@@ -326,25 +380,29 @@ export default function SendDialog({
                 {/* A test goes to the same list, with the period on it and a
                     band saying it is a rehearsal, because a test that goes
                     somewhere else tests nothing about the list. */}
-                <button
-                    type="button"
-                    disabled={busy || !canEdit}
-                    onClick={() => go(true)}
-                    className={secondaryButton}
-                >
-                    {busy ? 'Sending...' : 'Send a test'}
-                </button>
-                <button
-                    type="button"
-                    disabled={busy || loading || blocked || !canEdit}
-                    onClick={() => go(false)}
-                    className={`${primaryButton('md', 'good')} disabled:opacity-50`}
-                    title={!blocked ? undefined
-                        : unsaid.length ? 'The period has a day nobody has accounted for'
-                            : 'The period has a clock in with no clock out'}
-                >
-                    {busy ? 'Sending...' : 'Send it'}
-                </button>
+                {canSend && (
+                    <>
+                        <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => go(true)}
+                            className={secondaryButton}
+                        >
+                            {busy ? 'Sending...' : 'Send a test'}
+                        </button>
+                        <button
+                            type="button"
+                            disabled={busy || loading || blocked}
+                            onClick={() => go(false)}
+                            className={`${primaryButton('md', 'good')} disabled:opacity-50`}
+                            title={!blocked ? undefined
+                                : unsaid.length ? 'The period has a day nobody has accounted for'
+                                    : 'The period has a clock in with no clock out'}
+                        >
+                            {busy ? 'Sending...' : 'Send it'}
+                        </button>
+                    </>
+                )}
             </div>
         </Modal>
     )

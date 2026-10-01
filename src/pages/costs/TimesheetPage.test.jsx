@@ -37,6 +37,7 @@ function chain(table) {
         eq: () => self,
         gte: () => self,
         lte: () => self,
+        in: () => self,
         order: () => self,
         // The week's own row, which says whether the till's report has been
         // read in for it. Not set in these tests, so every week reads as one
@@ -51,6 +52,13 @@ function chain(table) {
         update: patch => ({
             eq: (_, id) => ({
                 select: () => {
+                    // The restaurant row, which an owner's rules never match:
+                    // no error and no row, the way the real API answers.
+                    if (table === 'restaurants') {
+                        updated.push({ table, id, patch })
+                        const answer = { data: null, error: null }
+                        return { maybeSingle: () => Promise.resolve(answer) }
+                    }
                     if (broken.update) return Promise.resolve({ data: null, error: { message: 'refused' } })
                     updated.push({ table, id, patch })
                     const was = (rows[table] || []).find(r => r.id === id) || {}
@@ -73,8 +81,11 @@ function chain(table) {
     return self
 }
 
+// Who is signed in. A store manager unless a test says otherwise.
+const me = { id: 'u1', role: 'store_manager' }
+
 vi.mock('@/lib/supabase', () => ({ supabase: { from: table => chain(table) } }))
-vi.mock('@/context/auth', () => ({ useAuth: () => ({ user: { id: 'u1' } }) }))
+vi.mock('@/context/auth', () => ({ useAuth: () => ({ user: me }) }))
 vi.mock('@/context/confirm', () => ({
     useConfirm: () => question => {
         asked.push(question)
@@ -83,7 +94,10 @@ vi.mock('@/context/confirm', () => ({
 }))
 vi.mock('@/context/restaurant', () => ({
     useRestaurant: () => ({
-        activeRestaurant: { id: 'r1', hourly_rate: 15 },
+        activeRestaurant: {
+            id: 'r1', hourly_rate: 15, pay_period_start: '2026-01-04', timesheet_recipients: ['payroll@example.ie'],
+        },
+        setActiveRestaurant: () => {},
     }),
 }))
 
@@ -97,6 +111,7 @@ const off_the_till = {
 }
 
 beforeEach(() => {
+    me.role = 'store_manager'
     inserted.length = 0
     updated.length = 0
     deleted.length = 0
@@ -631,5 +646,35 @@ describe('what the week cost as a share of what it took', () => {
         // Sunday, and as the week, since it is the only day that traded.
         await waitFor(() => expect(screen.getByText('Of sales')).toBeInTheDocument())
         expect(screen.getAllByText('26.4%')).toHaveLength(2)
+    })
+})
+
+describe('sending the hours', () => {
+    // The mail function refuses an owner, and the list it goes to lives on the
+    // restaurant, which an owner cannot change. Same as the report: a store
+    // manager sends it, and an owner still gets the PDF.
+    it('offers an owner the PDF rather than a send', async () => {
+        me.role = 'owner'
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        expect(screen.queryByRole('button', { name: 'Send the hours' })).not.toBeInTheDocument()
+        await userEvent.click(screen.getByRole('button', { name: 'Download the hours' }))
+        expect(await screen.findByRole('button', { name: 'Download the PDF' })).toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: 'Send it' })).not.toBeInTheDocument()
+    })
+
+    // A write the rules turn away changes no row and says nothing at all, so
+    // the address went off the screen and stayed on the list it sends to.
+    it('says so when the list was not kept, and puts it back', async () => {
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        await userEvent.click(screen.getByRole('button', { name: 'Send the hours' }))
+        await userEvent.click(await screen.findByRole('button', { name: 'Take payroll@example.ie off the list' }))
+
+        await waitFor(() => expect(updated.some(u => u.table === 'restaurants')).toBe(true))
+        expect(await screen.findByText('That could not be saved, so nothing has changed.')).toBeInTheDocument()
+        expect(screen.getByText('payroll@example.ie')).toBeInTheDocument()
     })
 })
