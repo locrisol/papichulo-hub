@@ -19,7 +19,7 @@
 // the allergens of each component product separately and merge. See
 // deriveMenuItemAllergens below.
 
-import { declaresAllergens } from '@/lib/products'
+import { declaresAllergens, heldFor } from '@/lib/products'
 
 // The fourteen, fixed by EU 1169. They cannot be added to or renamed, which is
 // why the list is here rather than in a settings screen.
@@ -309,6 +309,53 @@ export function neverEnteredInDish(menuItemComponents, allProducts, allRecipeLin
     }
   }
   return [...found.values()]
+}
+
+// Every product with no allergens declared: what the red count on Products in
+// the sidebar counts, and what the Products page marks.
+//
+// What counts as missing is neverEntered's rule and nobody else's, so the
+// badge, the Products page and the customer sheet cannot disagree about one
+// product. That means food with no allergen row, and a MIX with no recipe and
+// no row of its own. A MIX with a recipe is worked out from what goes into it,
+// so it is not missing anything itself; whatever inside it is missing is
+// counted on its own instead.
+//
+// What this adds is which products are asked about. Everything switched on,
+// and a switched off product the sheet still reads: one in a dish on sale, or
+// in the recipe of something that is used, however deep. A product switched
+// off and in nothing is nobody's problem any more.
+//
+// Food held for somebody else is not asked about just for being switched on.
+// It sits on our shelf but never goes into anything we make or sell (the
+// pickers keep it out, see canBeIngredient and canBeMenuComponent), so the
+// sheet never reads it. That is this list's own choice, not the sheet's rule,
+// which stays as it is: if one ever did end up in a dish on sale, it is reached
+// through the dish and counted like anything else.
+//
+// Products are shared by both restaurants, so the answer is the same for each.
+// allergens only has to carry product_id, since all that matters here is
+// whether a product has a row. In the order the products came in.
+export function noAllergensDeclared({ products, allergens, recipeLines, menuItems, components } = {}) {
+  const all = products || []
+  const byId = new Map(all.map(p => [p.id, p]))
+
+  const onSale = new Set((menuItems || []).filter(m => m.is_active).map(m => m.id))
+  const asked = new Set(all.filter(p => p.is_active && !heldFor(p)).map(p => p.id))
+  for (const c of components || []) {
+    if (onSale.has(c.menu_item_id)) asked.add(c.product_id)
+  }
+
+  // neverEntered goes down through the recipes itself, which is how a
+  // switched off ingredient of something in use is reached without a second
+  // walk of its own.
+  const missing = new Set()
+  for (const id of asked) {
+    for (const p of neverEntered(byId.get(id), all, recipeLines || [], allergens || [])) {
+      missing.add(p.id)
+    }
+  }
+  return all.filter(p => missing.has(p.id))
 }
 
 // Convenience: count how many allergens are 'contains' vs 'may_contain' in

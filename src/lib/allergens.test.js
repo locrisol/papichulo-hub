@@ -11,6 +11,7 @@ import {
   ALLERGEN_SHORT,
   neverEntered,
   neverEnteredInDish,
+  noAllergensDeclared,
 } from '@/lib/allergens'
 
 // --- Fixtures ------------------------------------------------------------
@@ -219,6 +220,123 @@ describe('neverEntered', () => {
       expect(neverEnteredInDish([{ product_id: 'p-flour' }, { product_id: 'pot' }], products, lines, rows))
         .toEqual([])
     })
+  })
+})
+
+// The products the badge on Products counts and the Products page marks. The
+// rule for what is missing is neverEntered's; what this adds is which products
+// are asked about at all.
+describe('noAllergensDeclared', () => {
+  const on = (id, extra = {}) => ({ id, name: id, section: 'Dry', is_mix: false, is_active: true, ...extra })
+  const off = (id, extra = {}) => on(id, { is_active: false, ...extra })
+  const ids = list => list.map(p => p.id)
+  const answered = (...list) => list.map(id => ({ product_id: id }))
+
+  it('counts a switched on food product nobody entered allergens for', () => {
+    const rice = on('rice')
+    const beans = on('beans')
+    expect(ids(noAllergensDeclared({ products: [rice, beans], allergens: answered('beans') })))
+      .toEqual(['rice'])
+  })
+
+  // Only packaging and cleaning have nothing to declare. A can of cola is a
+  // drink somebody is going to drink, so it is asked about like any food.
+  it('leaves out packaging and cleaning, and keeps drinks', () => {
+    const products = [
+      on('pot', { section: 'Packaging' }),
+      on('bleach', { section: 'Cleaning' }),
+      on('cola', { category: 'drink' }),
+    ]
+    expect(ids(noAllergensDeclared({ products }))).toEqual(['cola'])
+  })
+
+  // Its allergens are worked out from what goes into it, so the MIX itself is
+  // not missing anything. What is missing is the ingredient, counted on its own.
+  it('does not count a MIX with a recipe, only what is missing inside it', () => {
+    const salsa = on('salsa', { is_mix: true })
+    const tomato = on('tomato')
+    const onion = on('onion')
+    const recipeLines = [
+      { mix_product_id: 'salsa', ingredient_product_id: 'tomato' },
+      { mix_product_id: 'salsa', ingredient_product_id: 'onion' },
+    ]
+    expect(ids(noAllergensDeclared({
+      products: [salsa, tomato, onion], allergens: answered('onion'), recipeLines,
+    }))).toEqual(['tomato'])
+  })
+
+  it('counts a MIX with no recipe, unless it was given allergens of its own', () => {
+    const empty = on('empty', { is_mix: true })
+    const given = on('given', { is_mix: true })
+    expect(ids(noAllergensDeclared({ products: [empty, given], allergens: answered('given') })))
+      .toEqual(['empty'])
+  })
+
+  // On our shelf and never in anything we make or sell, so the sheet never
+  // reads it and there is nothing for the badge to ask.
+  it('leaves out food held for somebody else', () => {
+    const products = [on('rice'), on('their-bread', { held_for: 'Pita Pit' })]
+    expect(ids(noAllergensDeclared({ products }))).toEqual(['rice'])
+  })
+
+  // If one ever did end up in a dish, the sheet would read it like any other
+  // product, so it is counted like any other.
+  it('still counts food held for somebody else that a dish on sale has', () => {
+    const products = [on('their-bread', { held_for: 'Pita Pit' })]
+    const menuItems = [{ id: 'wrap', is_active: true }]
+    const components = [{ menu_item_id: 'wrap', product_id: 'their-bread' }]
+    expect(ids(noAllergensDeclared({ products, menuItems, components }))).toEqual(['their-bread'])
+  })
+
+  it('leaves out a switched off product nothing uses any more', () => {
+    expect(noAllergensDeclared({ products: [off('old')] })).toEqual([])
+  })
+
+  // The sheet still reads a switched off product while a dish on sale has it,
+  // so it can still send a customer to staff.
+  it('counts a switched off product still in a dish on sale, as an option too', () => {
+    const products = [off('cheese'), off('sauce'), off('gone')]
+    const menuItems = [{ id: 'nachos', is_active: true }, { id: 'retired', is_active: false }]
+    const components = [
+      { menu_item_id: 'nachos', product_id: 'cheese' },
+      { menu_item_id: 'nachos', product_id: 'sauce', choice_group: 'Dip' },
+      { menu_item_id: 'retired', product_id: 'gone' },
+    ]
+    expect(ids(noAllergensDeclared({ products, menuItems, components }))).toEqual(['cheese', 'sauce'])
+  })
+
+  it('counts a switched off product in the recipe of something still used, however deep', () => {
+    const products = [
+      on('salsa', { is_mix: true }),
+      off('lime'),
+      off('crema', { is_mix: true }),
+      off('cream'),
+      off('old-mix', { is_mix: true }),
+      off('old-herb'),
+    ]
+    const menuItems = [{ id: 'tacos', is_active: true }]
+    const components = [{ menu_item_id: 'tacos', product_id: 'crema' }]
+    const recipeLines = [
+      { mix_product_id: 'salsa', ingredient_product_id: 'lime' },
+      { mix_product_id: 'crema', ingredient_product_id: 'cream' },
+      // Switched off and in nothing on sale, so neither it nor what is in it
+      // reaches the sheet.
+      { mix_product_id: 'old-mix', ingredient_product_id: 'old-herb' },
+    ]
+    expect(ids(noAllergensDeclared({ products, recipeLines, menuItems, components })))
+      .toEqual(['lime', 'cream'])
+  })
+
+  it('names each product once, however many ways it is reached', () => {
+    const products = [on('salsa', { is_mix: true }), on('wrap', { is_mix: true }), on('rice')]
+    const recipeLines = [
+      { mix_product_id: 'salsa', ingredient_product_id: 'rice' },
+      { mix_product_id: 'wrap', ingredient_product_id: 'rice' },
+      { mix_product_id: 'wrap', ingredient_product_id: 'salsa' },
+    ]
+    const menuItems = [{ id: 'bowl', is_active: true }]
+    const components = [{ menu_item_id: 'bowl', product_id: 'rice' }, { menu_item_id: 'bowl', product_id: 'wrap' }]
+    expect(ids(noAllergensDeclared({ products, recipeLines, menuItems, components }))).toEqual(['rice'])
   })
 })
 
