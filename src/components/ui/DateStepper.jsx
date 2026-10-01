@@ -22,11 +22,16 @@
 //
 // And the jump button gets its own full width line on a phone rather than
 // floating off the end of the row.
+//
+// A screen that only opens so many weeks turns the arrow off at the edge,
+// rather than stepping into a week it then has nothing to show for.
 export default function DateStepper({
     onBack,
     onNext,
     backLabel = 'Previous',
     nextLabel = 'Next',
+    backDisabled = false,
+    nextDisabled = false,
     jump = null,
     children,
 }) {
@@ -43,7 +48,7 @@ export default function DateStepper({
                 not on the edges and the date between them was not in the
                 middle, which is exactly what it looked like. */}
             <div className="flex items-center gap-2">
-                <button type="button" onClick={onBack} aria-label={backLabel} className={arrow}>
+                <button type="button" onClick={onBack} disabled={backDisabled} aria-label={backLabel} className={arrow}>
                     &lsaquo;
                 </button>
 
@@ -53,7 +58,7 @@ export default function DateStepper({
                     {children}
                 </span>
 
-                <button type="button" onClick={onNext} aria-label={nextLabel} className={arrow}>
+                <button type="button" onClick={onNext} disabled={nextDisabled} aria-label={nextLabel} className={arrow}>
                     &rsaquo;
                 </button>
             </div>

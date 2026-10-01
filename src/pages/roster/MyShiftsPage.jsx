@@ -9,7 +9,7 @@ import { card, cardEdge, badge, rowButton, segmentTrack, segmentButton } from '@
 import JumpButton from '@/components/ui/JumpButton'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import {
-    hoursForDate, endLabel, shortTime, breakLabel, fmtHours, shiftHours, weekRows, toTime,
+    hoursForDate, endLabel, shortTime, breakLabel, fmtHours, shiftHours, weekRows, toTime, staffWeekRange,
 } from '@/lib/roster'
 import { weekSpan, freeEnds, dayShape } from '@/lib/presence'
 import { wholeDayOn } from '@/lib/absences'
@@ -131,6 +131,15 @@ export default function MyShiftsPage() {
 
     const today = todayISO()
     const dates = weekDates(weekStart)
+
+    // No further than the team and its time off are given to staff, so a
+    // week never opens with nobody's name on it. See staffWeekRange.
+    const { first: firstWeek, last: lastWeek } = staffWeekRange(today)
+    const toWeek = week => setWeekStart(week < firstWeek ? firstWeek : week > lastWeek ? lastWeek : week)
+    // A request can be about a shift older than that, one left waiting for
+    // months, and a link to its week would open a different one. So a card
+    // only offers to open the week when the page can get there.
+    const opensOn = date => !!date && weekStartOf(date) >= firstWeek && weekStartOf(date) <= lastWeek
 
     // The asks, in two halves, and they answer two different questions.
     //
@@ -546,8 +555,10 @@ export default function MyShiftsPage() {
 
             <div className={`${cardEdge} bg-white p-3 mb-4 flex flex-col sm:flex-row sm:items-center gap-3`}>
                 <DateStepper
-                    onBack={() => setWeekStart(addDays(weekStart, -7))}
-                    onNext={() => setWeekStart(addDays(weekStart, 7))}
+                    onBack={() => toWeek(addDays(weekStart, -7))}
+                    onNext={() => toWeek(addDays(weekStart, 7))}
+                    backDisabled={weekStart <= firstWeek}
+                    nextDisabled={weekStart >= lastWeek}
                     backLabel="Previous week"
                     nextLabel="Next week"
                     jump={(
@@ -611,7 +622,7 @@ export default function MyShiftsPage() {
                             dates={dates}
                             onAnswer={waitingOn(r, me.id, false) === 'answer' ? answer : null}
                             onWithdraw={canTakeBack(r, me.id) ? withdraw : null}
-                            onGoToWeek={date => setWeekStart(weekStartOf(date))}
+                            onGoToWeek={opensOn(requestDate(r, shiftById)) ? date => toWeek(weekStartOf(date)) : null}
                         />
                     ))}
                 </div>

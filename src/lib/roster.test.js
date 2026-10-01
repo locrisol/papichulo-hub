@@ -4,7 +4,7 @@ import {
     hoursForDay, shiftEdges, endLabel, shiftsOverlap, findOverlaps, totals, publishState,
     fmtHours, hoursForDate, timelineRange, staffAt, staffPerSlot, weekRows, dayTotals, tint, DEFAULT_BREAK_RULES,
     hourLabelStep,
-    dayBreakLabels, endMinutes, closeMinutes,
+    dayBreakLabels, endMinutes, closeMinutes, STAFF_WEEKS, staffWeekRange,
 } from '@/lib/roster'
 
 const shift = (starts_at, ends_at, extra = {}) => ({
@@ -639,5 +639,20 @@ describe('what a day of breaks reads as', () => {
 
     it('treats a missing break as none rather than throwing', () => {
         expect(dayBreakLabels([{ id: 'a' }, { id: 'b' }])).toEqual(['No break'])
+    })
+})
+
+// How far My shifts steps either way. roster_colleagues and roster_away give
+// staff nothing outside it, so a week it opens on must be inside what they
+// give: schema.test.js checks the two agree.
+describe('staffWeekRange', () => {
+    it('is eight weeks either side of this week, Sunday to Sunday', () => {
+        expect(STAFF_WEEKS).toBe(8)
+        // Thursday 1 October 2026, in the week that starts on Sunday 27 September.
+        expect(staffWeekRange('2026-10-01')).toEqual({ first: '2026-08-02', last: '2026-11-22' })
+    })
+
+    it('is the same whichever day of the week it is asked on', () => {
+        expect(staffWeekRange('2026-09-27')).toEqual(staffWeekRange('2026-10-03'))
     })
 })

@@ -5,6 +5,25 @@
 // worth, what break it earns, and what a week costs.
 
 import { isBankHoliday } from '@/lib/bankHolidays'
+import { weekStartOf, addDays } from '@/lib/dates'
+
+// How far My shifts steps either way from this week. Eight weeks back is
+// four pay periods, for checking hours against a payslip. Eight ahead is past
+// any roster that has gone out, and far enough to see who is already off
+// before asking for a day.
+//
+// roster_colleagues and roster_away give staff the team and its time off for
+// nine weeks either side of today and nothing outside it: nobody who left long
+// ago, no time off from last year, and no leaving date months before it
+// matters. A week more than the page opens, so the furthest week is never cut
+// short whatever day it is. schema.test.js checks the two still agree.
+export const STAFF_WEEKS = 8
+
+// The first and last week My shifts opens on, as the Sunday each one starts.
+export function staffWeekRange(today) {
+    const now = weekStartOf(today)
+    return { first: addDays(now, -STAFF_WEEKS * 7), last: addDays(now, STAFF_WEEKS * 7) }
+}
 
 // The ladder every restaurant starts with.
 //

@@ -196,7 +196,11 @@ uses, now that the new site reads only what it needs:
 - the group's and their restaurant's diary entries on the table, which carry
   the Google event ids. The calendar and My shifts read `staff_diary`. It
   also stops a switched off account reading its own private diary entries;
-  nobody still working loses anything.
+  nobody still working loses anything;
+- the team and its time off outside the weeks My shifts opens.
+  `roster_colleagues` and `roster_away` give nine weeks either side of today,
+  so nobody who left long ago, no old holidays, and no leaving date months
+  before it matters. My shifts steps eight weeks either way.
 
 **Run it after merging, once the new site is live**: the site before that
 reads these tables, so staff would be told the Hub cannot open, My shifts

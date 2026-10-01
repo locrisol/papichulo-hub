@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { describe, it, expect } from 'vitest'
 import { photoPath } from '@/lib/photo'
 import { ALLERGEN_KEYS } from '@/lib/allergens'
+import { STAFF_WEEKS } from '@/lib/roster'
 
 // What supabase/schema.sql must hold that no comparison with live can catch.
 //
@@ -316,6 +317,49 @@ describe('what staff are given of the diary', () => {
         expect(shared).not.toContain('IS NOT NULL')
         expect(shared).toContain(`("scope" = 'all_sites'::"text") AND (( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))`)
         expect(shared).toContain(`(( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND (( SELECT "public"."get_my_restaurant_id"() ) = ANY ("restaurant_ids"))`)
+    })
+})
+
+describe('how far back and ahead staff see the team', () => {
+    // My shifts steps eight weeks either way. Outside that, staff are not told
+    // who left long ago, whose time off was last year, or a colleague's leaving
+    // date months before it matters. The views give a week more than the page
+    // opens, so a week at the edge is never cut short.
+    const sqlDays = view => {
+        const found = [...view.matchAll(/'Europe\/Dublin'::"text"\)\)::"date" [-+] (\d+)\)/g)].map(m => Number(m[1]))
+        expect(found.length, `no window in ${view.slice(0, 60)}`).toBeGreaterThan(0)
+        return Math.min(...found)
+    }
+
+    it.each(['roster_colleagues', 'roster_away'])('%s covers every week My shifts opens', name => {
+        // The far edge of the furthest week, from any day of this one.
+        expect(sqlDays(viewNamed(name))).toBeGreaterThanOrEqual(STAFF_WEEKS * 7 + 6)
+    })
+
+    // The number of days is not enough on its own. Written the wrong way
+    // round, the same number keeps out everybody on the team this week and
+    // staff see only their own row. Somebody counts from the day they start
+    // to the day they leave, and time off while any of it is inside.
+    it.each([
+        ['roster_colleagues', '"e"."started_on" <=', '"e"."ended_on" >='],
+        ['roster_away', '"starts_on" <=', '"ends_on" >='],
+    ])('%s has the window the right way round', (name, starts, ends) => {
+        const view = viewNamed(name)
+        const where = view.slice(view.lastIndexOf('WHERE'))
+        const day = String.raw`\(\(\("now"\(\) AT TIME ZONE 'Europe\/Dublin'::"text"\)\)::"date"`
+        const escape = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        expect(where).toMatch(new RegExp(String.raw`\(${escape(starts)} ${day} \+ \d+\)\)`))
+        expect(where).toMatch(new RegExp(String.raw`\(${escape(ends)} ${day} - \d+\)\)`))
+    })
+
+    it('keeps has_login the last column of roster_colleagues', () => {
+        const view = viewNamed('roster_colleagues')
+        expect(view.slice(0, view.indexOf('FROM ("public"."employees"')).trim()).toMatch(/AS "has_login"$/)
+    })
+
+    it('never tells staff a leaving date beyond the weeks they can open', () => {
+        const view = viewNamed('roster_colleagues')
+        expect(view).toMatch(/CASE\s+WHEN \("e"\."ended_on" <= /)
     })
 })
 

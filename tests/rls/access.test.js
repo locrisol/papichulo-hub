@@ -843,6 +843,74 @@ maybe('what each role can see and do', () => {
             }
         })
 
+        // Since 034. Staff see the team and its time off for the weeks My
+        // shifts opens, nine weeks either side of today and no further:
+        // nobody who left long before, no time off from long ago, and no
+        // leaving date or start date that matters to no week they can see.
+        it('roster_colleagues and roster_away keep to the weeks My shifts opens', async () => {
+            const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Dublin' })
+            const shift = days => {
+                const d = new Date(`${today}T12:00:00Z`)
+                d.setUTCDate(d.getUTCDate() + days)
+                return d.toISOString().slice(0, 10)
+            }
+            const [from, to] = [shift(-63), shift(63)]
+            const { data: me } = await employee.rpc('get_my_employee_id')
+
+            const { data: team, error } = await employee.from('roster_colleagues').select('id, started_on, ended_on')
+            expect(error).toBeNull()
+            for (const person of team || []) {
+                if (person.id === me) continue
+                if (person.ended_on) expect(person.ended_on >= from && person.ended_on <= to, `a leaving date of ${person.ended_on}`).toBe(true)
+                if (person.started_on) expect(person.started_on >= from && person.started_on <= to, `a start date of ${person.started_on}`).toBe(true)
+            }
+            const { data: gone } = await manager.from('employees').select('id')
+                .eq('restaurant_id', ownRestaurantId).lt('ended_on', from)
+            const shown = (team || []).map(p => p.id)
+            expect((gone || []).filter(p => shown.includes(p.id) && p.id !== me), 'roster_colleagues names somebody who left long ago')
+                .toEqual([])
+
+            const { data: away } = await employee.from('roster_away').select('starts_on, ends_on')
+            expect((away || []).filter(a => a.ends_on < from || a.starts_on > to), 'roster_away gives time off outside the weeks')
+                .toEqual([])
+        })
+
+        // And everything inside the weeks is still there. A window written the
+        // wrong way round would leave staff only their own row and pass the
+        // test above, so this asks the manager, who reads both tables whole,
+        // who and what should be on it.
+        it('roster_colleagues and roster_away still give the team and its time off for those weeks', async () => {
+            const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Dublin' })
+            const shift = days => {
+                const d = new Date(`${today}T12:00:00Z`)
+                d.setUTCDate(d.getUTCDate() + days)
+                return d.toISOString().slice(0, 10)
+            }
+            const [from, to] = [shift(-63), shift(63)]
+            const { data: me } = await employee.rpc('get_my_employee_id')
+
+            const { data: everyone, error: teamError } = await manager.from('employees')
+                .select('id, started_on, ended_on').eq('restaurant_id', ownRestaurantId)
+            expect(teamError).toBeNull()
+            const inWeeks = (everyone || [])
+                .filter(p => (!p.started_on || p.started_on <= to) && (!p.ended_on || p.ended_on >= from))
+                .map(p => p.id)
+            const { data: team, error } = await employee.from('roster_colleagues').select('id')
+            expect(error).toBeNull()
+            expect((team || []).map(p => p.id).sort(), 'roster_colleagues leaves out somebody on the team in those weeks')
+                .toEqual([...new Set([...inWeeks, ...(me ? [me] : [])])].sort())
+
+            const { count: off, error: offError } = await manager.from('absences')
+                .select('id', { count: 'exact', head: true })
+                .eq('restaurant_id', ownRestaurantId).eq('status', 'approved')
+                .gte('ends_on', from).lte('starts_on', to)
+            expect(offError).toBeNull()
+            const { count: seen, error: awayError } = await employee.from('roster_away')
+                .select('employee_id', { count: 'exact', head: true })
+            expect(awayError).toBeNull()
+            expect(seen, 'roster_away leaves out time off in those weeks').toBe(off)
+        })
+
         it('roster_away says when, never why', async () => {
             const { data } = await employee.from('roster_away').select('*').limit(1)
             if (data?.length) {

@@ -279,3 +279,58 @@ describe('the note on a shift', () => {
         expect(selects[0]).toMatch(/\bnote\b/)
     })
 })
+
+// Who was on the team and who was off come from roster_colleagues and
+// roster_away, which give staff eight weeks either side of this one and no
+// more: nobody who left long ago, no time off from last year, and nobody's
+// leaving date months before it matters. So the week stops there too, rather
+// than opening on a week with nobody's name on it.
+describe('how far the week goes', () => {
+    it('stops eight weeks back and eight weeks ahead', async () => {
+        renderWithRouter(<MyShiftsPage />)
+        const back = await screen.findByRole('button', { name: 'Previous week' })
+        const next = screen.getByRole('button', { name: 'Next week' })
+
+        for (let i = 0; i < 8; i++) {
+            expect(back).toBeEnabled()
+            fireEvent.click(back)
+        }
+        await waitFor(() => expect(back).toBeDisabled())
+
+        for (let i = 0; i < 16; i++) {
+            await waitFor(() => expect(next).toBeEnabled())
+            fireEvent.click(next)
+        }
+        await waitFor(() => expect(next).toBeDisabled())
+    })
+})
+
+// A card about a shift in another week offers to open that week. A request
+// can be older than the weeks the page opens, one left waiting for months
+// say, and the link then opened the last week it could reach, which was not
+// the week on the card. So it is only offered when it can get there.
+describe('a request about another week', () => {
+    const thisWeek = weekStartOf(todayISO())
+    const bensShift = (id, weeks) => ({
+        id, restaurant_id: 'r1', employee_id: 'e2', shift_date: addDays(thisWeek, weeks * 7 + 1),
+        starts_at: '12:00:00', ends_at: '20:00:00', break_minutes: 30, note: null,
+        published_at: '2026-09-01T10:00:00Z',
+    })
+    const ask = (id, shiftId) => ({
+        id, restaurant_id: 'r1', from_employee_id: 'e2', to_employee_id: 'e1',
+        give_shift_id: shiftId, take_shift_id: null, status: 'asked', message: null,
+        created_at: '2026-09-01T10:00:00Z',
+    })
+
+    it('offers to open the week only when the page can open it', async () => {
+        tables({ shift_requests: { data: [ask('q1', 'far'), ask('q2', 'near')], error: null } })
+        const shifts = [bensShift('far', -12), bensShift('near', 2)]
+        const plain = db.from
+        db.from = vi.fn(table => (table === 'roster_published' ? filtered(shifts) : plain(table)))
+
+        renderWithRouter(<MyShiftsPage />)
+
+        expect(await screen.findAllByText(/Not this week\./)).toHaveLength(2)
+        expect(screen.getAllByRole('button', { name: 'Open that week' })).toHaveLength(1)
+    })
+})

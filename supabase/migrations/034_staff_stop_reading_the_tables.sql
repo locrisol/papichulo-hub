@@ -12,7 +12,9 @@
 --
 -- Owners, store managers and the super admin keep the whole row through
 -- restaurants_select, which is not touched, and nothing below narrows what a
--- manager reads.
+-- manager reads off a table. The one thing they see less of is My shifts:
+-- roster_colleagues and roster_away keep to the weeks that page opens for
+-- whoever opens it, and a manager's own screens read the tables instead.
 --
 -- Safe to run twice.
 
@@ -28,7 +30,8 @@ drop policy if exists "restaurants_select_own" on public.restaurants;
 
 drop policy if exists "employees_read_own" on public.employees;
 
-comment on view public.roster_colleagues is 'Who works at your restaurant, as far as anybody below a manager is allowed to know: a name, a position and its colour, and whether they have an account to answer a swap with. It is also how somebody finds their own name on the roster. The employees table itself stays closed, even for their own row, because it carries the hourly rate, the date of birth, the work permission and what a manager wrote in Notes, and a row policy cannot hide a column.';
+-- What roster_colleagues says about itself is written with the view, further
+-- down, where it is also kept to the weeks My shifts opens.
 
 -- The menu, managers only. Staff could read every dish's selling price, its
 -- VAT and how much of each thing goes into it, and the allergen rows behind
@@ -198,5 +201,57 @@ create policy "diary_entries_select" on public.diary_entries
         or (scope = 'private' and created_by = (select auth.uid())
             and (select public.get_my_role()) is not null)
     );
+
+-- Staff see the team and its time off for the weeks My shifts opens, and
+-- no further. roster_colleagues named everybody who ever worked here, with
+-- the day they started and the day they left, so a colleague's last day was
+-- there the moment a manager typed it, months before it mattered. roster_away
+-- was every holiday ever approved. My shifts steps eight weeks either way,
+-- and these give nine either side of today in Ireland, so the furthest week
+-- is never cut short. A start or leaving date outside that is left empty,
+-- which reads the same on every week they can open. Your own row is always
+-- there, since My shifts finds you by it. has_login stays the last column.
+
+create or replace view public.roster_colleagues as
+ select e.id,
+    e.restaurant_id,
+    e.full_name,
+    e.position_id,
+    p.name as position_name,
+    p.colour as position_colour,
+    e.sort_order,
+    case
+        when e.started_on >= (now() at time zone 'Europe/Dublin')::date - 63 then e.started_on
+    end as started_on,
+    case
+        when e.ended_on <= (now() at time zone 'Europe/Dublin')::date + 63 then e.ended_on
+    end as ended_on,
+    (exists ( select 1
+           from public.users u
+          where u.id = e.user_id and u.is_active)) as has_login
+   from public.employees e
+     left join public.positions p on p.id = e.position_id
+  where (e.restaurant_id = public.get_my_restaurant_id() or public.get_my_role() = 'super_admin'::text)
+    and (e.id = public.get_my_employee_id()
+        or ((e.started_on is null or e.started_on <= (now() at time zone 'Europe/Dublin')::date + 63)
+            and (e.ended_on is null or e.ended_on >= (now() at time zone 'Europe/Dublin')::date - 63)));
+
+comment on view public.roster_colleagues is 'Who works at your restaurant, as far as anybody below a manager is allowed to know: a name, a position and its colour, and whether they have an account to answer a swap with. It is also how somebody finds their own name on the roster. Only people on the team at some point from nine weeks before today to nine weeks after, the weeks My shifts opens and one more, and a start or leaving date only when it falls inside them. The employees table itself stays closed, even for their own row, because it carries the hourly rate, the date of birth, the work permission and what a manager wrote in Notes, and a row policy cannot hide a column.';
+
+create or replace view public.roster_away as
+ select a.employee_id,
+    a.restaurant_id,
+    a.starts_on,
+    a.ends_on,
+    a.cleared_shifts,
+    a.can_work_from,
+    a.can_work_to
+   from public.absences a
+  where a.status = 'approved'::text
+    and (a.restaurant_id = public.get_my_restaurant_id() or public.get_my_role() = 'super_admin'::text)
+    and a.ends_on >= (now() at time zone 'Europe/Dublin')::date - 63
+    and a.starts_on <= (now() at time zone 'Europe/Dublin')::date + 63;
+
+comment on view public.roster_away is 'The days somebody is not there, with no reason attached, the hours they can still work when it is only part of a day, and the shifts a freed day left going spare. Only time off that touches the weeks from nine before today to nine after, the weeks My shifts opens and one more. The kind, the note and the hours stay on the absences table, which nobody below a manager can read. This is what the staff week greys out, and it reads Not available the same way the picture that goes to the WhatsApp group does.';
 
 notify pgrst, 'reload schema';
