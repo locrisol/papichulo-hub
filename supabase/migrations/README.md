@@ -1,6 +1,10 @@
 # Migrations
 
-**`001` to `027` are in here. `001` to `022` are run on live, `023` to `027` are not yet, and the next one is `028`.**
+**`001` to `034` are in here. `001` to `027` are run on live, `028` to `034` are not yet, and the next one is `035`.**
+
+The order for `028` to `034`, which come in together: `028` to `033` before the
+branch is merged, in number order, and `034` only after it is merged and the
+new site is live. Each one's note below says why.
 
 The numbers started again at `001` on 20 September, because the folder was
 empty then. They were only ever there to put the files in order. Everything
@@ -76,31 +80,28 @@ through them as their owner, past row level security, and anybody with the
 website's key held write access to them. Reading does not change.
 `022` is run on live. It lets employees read MIX recipes, so what they
 count or log as waste is valued. Writing a recipe stays with managers.
-`023` is **not run yet**. It gives the allergen sheet a real date and a
+`023` is run on live. It gives the allergen sheet a real date and a
 reminder to print it again: `allergens_changed_at()`, the newest change that
 alters what the sheet says, for the customer page and the PDF, with an index
 so it stays quick; two columns on `restaurants` for when it was last printed
 and how many months it stays up; and `allergen_sheet_printed()`, which the PDF
 button calls, because an owner can print but cannot write the restaurant row.
-**Run it before the branch is merged.** Merging is what deploys the site, and
-until it is run the PDF button will not print the allergen sheet at all.
-`024` is **not run yet**. It guards a swap request from the moment it is sent:
+`024` is run on live. It guards a swap request from the moment it is sent:
 it starts as asked, gives the asker's own shift and takes one of the person
 asked, and after that the two of them can only answer it or take it back.
 Before, a hand written call could send one already agreed, or change it after
 the other person said yes.
-`025` is **not run yet**. It makes where a diary entry is on Google the
+`025` is run on live. It makes where a diary entry is on Google the
 calendar function's to write: a person saving an entry can no longer change
 the Google event ids, which a store manager could use to delete an owner's
 event from the group calendar. And a manager can no longer delete a place
 somebody watches or has listings from, nor delete a listing, which took the
 other restaurant's pairing and listings with it. A super admin still can.
-`026` is **not run yet**. It gives each delivery platform a key that never
+`026` is run on live. It gives each delivery platform a key that never
 changes, starting as the name it has now, and its figures are kept under
 that, so renaming or retiring a platform no longer loses its past weeks. Not
-one stored figure moves. It can go before or after the new app, which falls
-back to the name without it, but a rename only keeps its figures once it is run.
-`027` is **not run yet**. The nightly job keeps the photos of a checklist
+one stored figure moves.
+`027` is run on live. The nightly job keeps the photos of a checklist
 round still going, so a tick submitted days after its photo was taken still
 has it, and a tick is refused if its photo is no longer in storage.
 `028` is **not run yet**. It gives each place three columns saying how its
@@ -125,9 +126,8 @@ only for that person and the managers. A shift or a timesheet row can no
 longer start and finish at the same time, which came to 24 hours. If one is
 already saved, 029 stops and says so; `select * from timesheet_entries where
 starts_at = ends_at`, and the same on `roster_shifts`, finds it to put right
-first. **Run it before the branch is merged**:
-the roster calls that function to answer time off, and until it exists the
-answer buttons only show an error. My shifts reads `roster_published`, so
+first. **Run it before the branch is merged**: the roster calls that function
+to answer time off, and until it exists the answer buttons only show an error. My shifts reads `roster_published`, so
 without 029 every employee's home page fails to load as well. Redeploy
 `roster-calendar` and `roster-email` only after 029 is run, never before:
 both read `published_as`, and without it the phone calendars come back empty
