@@ -596,6 +596,22 @@ describe('the same show read from two pages', () => {
     it('keeps everything when nothing is there yet', () => {
         expect(notYetKnown(film(), null, { placeId: 'odeon', key: 'title' })).toHaveLength(1)
     })
+
+    // A show Ticketmaster has called off or stopped listing, still on the
+    // venue's own page, is news. Counted as known, it never came back at all.
+    it('does not count a feed night that is called off or no longer listed', () => {
+        const { rows } = eventsFrom(answer([{ name: 'Pentangle', date: '2026-11-19' }]), PAVILION)
+        for (const status of ['cancelled', 'canceled', 'Canceled', 'withdrawn']) {
+            const here = [{ place_id: 'pavilion', name: 'Pentangle', event_date: '2026-11-19', status }]
+            const nextDoor = [{ place_id: 'council', name: 'Pentangle', event_date: '2026-11-19', status }]
+            expect(notYetKnown(rows, here, { placeId: 'pavilion' })).toHaveLength(1)
+            expect(notYetKnown(rows, nextDoor, { placeId: 'pavilion' })).toHaveLength(1)
+        }
+        for (const status of ['onsale', 'offsale', 'postponed', null]) {
+            const here = [{ place_id: 'pavilion', name: 'Pentangle', event_date: '2026-11-19', status }]
+            expect(notYetKnown(rows, here, { placeId: 'pavilion' })).toEqual([])
+        }
+    })
 })
 
 describe('cleanName', () => {

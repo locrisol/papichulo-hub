@@ -233,6 +233,9 @@ async function readOne(admin: Admin, place: Place, key: string, now: Date, pairi
     // differently from the page will still slip through, and that is the honest
     // limit of comparing two strings nobody wrote together.
     //
+    // Not a night the feed has called off or stopped listing, though. If the
+    // page still has it on, that is worth a person's look. See notYetKnown.
+    //
     // **Nor does what a page next door already said.** The council's listings
     // and the Pavilion's own can both carry the same night, and both are
     // watched from Dun Laoghaire, so the places watched alongside this one are
@@ -245,7 +248,7 @@ async function readOne(admin: Admin, place: Place, key: string, now: Date, pairi
     const earliest = rows.reduce((first, r) => (r.event_date < first ? r.event_date : first), from)
     const { data: already } = await admin
         .from('events')
-        .select('place_id, name, event_date')
+        .select('place_id, name, event_date, status')
         .in('place_id', [place.id, ...watchedAlongside(pairings, place.id)])
         .gte('event_date', earliest)
         .lte('event_date', to)

@@ -594,6 +594,13 @@ export function watchedAlongside(pairings, placeId) {
     return [...(first || [])].filter(place => rest.every(others => others.has(place)))
 }
 
+// Statuses that mean a feed night is not going ahead. Ticketmaster spells it
+// canceled; the other spelling costs nothing to accept. withdrawn is the Hub's
+// own, written by nearby-events on a night the feed has stopped listing. The
+// same list nearby-events keeps, written out again because each function
+// deploys on its own.
+const OFF = ['cancelled', 'canceled', 'withdrawn']
+
 // The rows that are not already there, here or on a page next door.
 //
 // **Here** is matched the way this place keys its readings, so a cinema's film
@@ -608,13 +615,19 @@ export function watchedAlongside(pairings, placeId) {
 // for a cinema, because a film's title on its own would match any night next
 // door that shares the name.
 //
+// **A feed night that is off is not known.** Ticketmaster calling a show off,
+// or no longer listing it at all, while the venue's own page still has it on
+// is exactly what somebody needs to look at. Counted as known, the reading
+// never came back. So it is offered again, as found, for a person to settle.
+//
 // already is the events at this place and the places next door, place_id,
-// name and event_date. What arrived, never the name we chose, the same as the
-// reading key.
+// name, event_date and status. What arrived, never the name we chose, the same
+// as the reading key.
 export function notYetKnown(rows, already, { placeId, key = 'date' } = {}) {
     const here = new Set()
     const nextDoor = new Set()
     for (const e of already || []) {
+        if (OFF.includes(String(e.status || '').toLowerCase())) continue
         if (e.place_id === placeId) here.add(sourceKeyFor(e.event_date, e.name, key))
         else nextDoor.add(sourceKeyFor(e.event_date, e.name))
     }
