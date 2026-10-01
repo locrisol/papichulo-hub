@@ -2,10 +2,12 @@ import { fmtUnitCost } from '@/lib/format'
 import { useState, useEffect, useRef, Fragment, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
 import { useConfirm } from '@/context/confirm'
 import { calculateMixCost } from '@/lib/mixCost'
 import { EMPTY_PRICE, hasPrice, priceProblem, pricePayload } from '@/lib/productPrice'
+import { typedPriceEvent } from '@/lib/priceEvents'
 import { emptyAllergens } from '@/lib/allergens'
 import {
   sameName, sameSupplierCode, nameClashMessage, canBeIngredient, declaresAllergens,
@@ -143,6 +145,7 @@ const COLUMNS = [
 
 export default function ProductsPage() {
   const confirm = useConfirm()
+  const { user } = useAuth()
   const { activeRestaurant } = useRestaurant()
   const navigate = useNavigate()
   const [products, setProducts] = useState([])
@@ -369,6 +372,24 @@ export default function ProductsPage() {
 
   function getPreferredPrice(productId) {
     return prices.find(p => p.product_id === productId)
+  }
+
+  // A price typed on the form, written down for the chart on the product's
+  // Prices screen, which draws what the Hub costs from out of these events.
+  // The form wrote prices and recorded nothing, so that line stayed where an
+  // invoice last left it. typedPriceEvent says when there is nothing to
+  // record. The price is saved by then, so a failure here is said on the page
+  // rather than stopping the save.
+  async function recordPrice(productId, saved, before) {
+    const event = typedPriceEvent({ id: productId }, saved, {
+      before,
+      restaurantId: activeRestaurant.id,
+      userId: user?.id,
+      at: new Date().toISOString(),
+    })
+    if (!event) return
+    const { error: eventErr } = await supabase.from('product_price_events').insert(event)
+    if (eventErr) setError(`The price was saved, but the price history was not updated: ${friendlyError(eventErr)}`)
   }
 
   function getSupplierName(supplierId) {
@@ -602,6 +623,8 @@ export default function ProductsPage() {
           return
         }
 
+        await recordPrice(editingProduct.id, saved, existing || null)
+
         // The packs are replaced rather than reconciled. There are a handful of
         // them, they have no history worth keeping, and working out which one
         // somebody renamed is a lot of care for a list of three.
@@ -693,6 +716,8 @@ export default function ProductsPage() {
           fetchProducts()
           return
         }
+
+        await recordPrice(data.id, newPrice, null)
 
         // The packs, which belong to the price rather than to the product and
         // so have to wait for it the same way the recipe waits for the product.
