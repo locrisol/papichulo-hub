@@ -10,7 +10,7 @@ import {
     geohash, venuesUrl, venuesFrom, suggestions, geocodeUrl, pointFrom,
     distanceKm, walkMinutesFor, WALKABLE_MINUTES, sourceKeyFor, pointTyped,
     irishDate, stillToCome, feedError, feedProblem, emptyProblem, wholeAnswer, goneBetween,
-    endsMoved,
+    endsMoved, superseded,
 } from '../../supabase/functions/nearby-events/discovery'
 import {
     distanceKm as browserDistanceKm, walkMinutesFor as browserWalkMinutesFor,
@@ -589,5 +589,29 @@ describe('a run of days on a show that moves', () => {
             { ticketmaster_id: 't3', event_date: '2026-10-05' },
         ])).toEqual([])
         expect(endsMoved(null, [])).toEqual([])
+    })
+})
+
+// The feed supersedes a reading of the same night, so it does not land twice.
+// It was dismissing readings somebody had already kept as well, and the name
+// they gave it and the run of days they set went with it, with nothing said.
+describe('which readings the feed supersedes', () => {
+    const feed = [{ ticketmaster_id: 't1', name: 'An Evening with Fran Lebowitz', event_date: '2026-10-09' }]
+    const reading = (id, review, extra = {}) => ({
+        id, review, name: 'An Evening with Fran Lebowitz', event_date: '2026-10-09', ...extra,
+    })
+
+    it('dismisses a reading of the same night nobody has looked at', () => {
+        expect(superseded([reading('r1', 'found')], feed)).toEqual(['r1'])
+    })
+
+    it('leaves alone one somebody kept', () => {
+        expect(superseded([reading('r2', 'kept', { display_name: 'Fran Lebowitz', ends_on: '2026-10-10' })], feed))
+            .toEqual([])
+    })
+
+    it('leaves alone a reading of another night', () => {
+        expect(superseded([reading('r3', 'found', { event_date: '2026-10-10' })], feed)).toEqual([])
+        expect(superseded(null, feed)).toEqual([])
     })
 })

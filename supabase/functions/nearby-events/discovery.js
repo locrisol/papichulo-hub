@@ -124,6 +124,21 @@ export function sourceKeyFor(date, name) {
     return flat ? `${date}-${flat}` : ''
 }
 
+// The readings a feed's answer supersedes, by id.
+//
+// A reading of a night the feed also lists would otherwise sit beside it with
+// no time on it, asking somebody to approve what the feed already called a
+// fact. **Only one nobody has looked at.** One somebody kept may carry a name
+// they gave it and a run of days they set, and dismissing it lost both with
+// nothing said, since the feed's own row has neither. A kept reading and the
+// feed's listing of the same night can both show; that is the smaller harm.
+export function superseded(readings, fetched) {
+    const covers = new Set((fetched || []).map(e => sourceKeyFor(e.event_date, e.name)).filter(Boolean))
+    return (readings || [])
+        .filter(r => r?.review === 'found' && covers.has(sourceKeyFor(r.event_date, r.name)))
+        .map(r => r.id)
+}
+
 // ------------------------------------------------------------ how a feed went
 
 // Today in Ireland, as the date a listing is on.

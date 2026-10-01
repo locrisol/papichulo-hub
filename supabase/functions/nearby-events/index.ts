@@ -52,9 +52,10 @@
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
-    discoveryUrl, eventsFrom, isServiceRole, roleOf, sourceKeyFor,
+    discoveryUrl, eventsFrom, isServiceRole, roleOf,
     geocodeUrl, pointFrom, pointTyped, venuesUrl, venuesFrom, suggestions, refusalFor,
     irishDate, stillToCome, emptyProblem, feedError, feedProblem, goneBetween, endsMoved,
+    superseded,
 } from './discovery.js'
 
 // Asked of OpenStreetMap once when somebody adds a restaurant. They ask for a
@@ -208,19 +209,18 @@ async function syncOne(admin: Admin, place: Place, key: string) {
     //
     // Dismissed rather than deleted. The row is what was read and it stays,
     // which is also what stops next Monday's read offering it all over again.
-    const covers = new Set(fetched.map(e => sourceKeyFor(e.event_date, e.name)).filter(Boolean))
-
+    //
+    // Only a reading still waiting on somebody, never one they kept. See
+    // superseded.
     const { data: readings } = await admin
         .from('events')
-        .select('id, name, event_date')
+        .select('id, name, event_date, review')
         .eq('place_id', place.id)
         .eq('source', 'page')
-        .neq('review', 'dismissed')
-        .gte('event_date', new Date().toISOString().slice(0, 10))
+        .eq('review', 'found')
+        .gte('event_date', irishDate())
 
-    const stale = (readings || [])
-        .filter(r => covers.has(sourceKeyFor(r.event_date, r.name)))
-        .map(r => r.id)
+    const stale = superseded(readings, fetched)
 
     if (stale.length) {
         await admin.from('events').update({ review: 'dismissed' }).in('id', stale)
