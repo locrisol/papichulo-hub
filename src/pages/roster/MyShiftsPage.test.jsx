@@ -206,3 +206,38 @@ describe('my own week', () => {
         expect(asked()).not.toContain('employees')
     })
 })
+
+// A swap between two other people is theirs: who asked whom, the hours and
+// the message. All this page needs of it is that somebody has asked about the
+// shift, for the mark on the week, and roster_asks gives only that. Their own
+// requests still come whole, because the cards above the week are about them.
+describe('asks about other people\'s shifts', () => {
+    const monday = addDays(weekStartOf(todayISO()), 1)
+    const bens = {
+        id: 's5', restaurant_id: 'r1', employee_id: 'e2', shift_date: monday,
+        starts_at: '12:00:00', ends_at: '20:00:00', break_minutes: 30, published_at: '2026-09-01T10:00:00Z',
+    }
+
+    it('marks the shift without reading anybody else\'s request', async () => {
+        const requestFilters = []
+        const plain = db.from
+        db.from = vi.fn(table => {
+            if (table === 'roster_published') return filtered([bens])
+            if (table === 'roster_asks') return makeQuery({ data: [{ give_shift_id: 's5', take_shift_id: null, status: 'asked' }], error: null })
+            const query = plain(table)
+            if (table === 'shift_requests') {
+                query.or = vi.fn(filter => { requestFilters.push(filter); return query })
+            }
+            return query
+        })
+
+        renderWithRouter(<MyShiftsPage />)
+        fireEvent.click(await screen.findByRole('button', { name: 'Everyone' }))
+
+        expect(await screen.findByTitle('Somebody has asked about this')).toBeInTheDocument()
+        expect(requestFilters.length).toBeGreaterThan(0)
+        for (const filter of requestFilters) {
+            expect(filter).toBe('from_employee_id.eq.e1,to_employee_id.eq.e1')
+        }
+    })
+})

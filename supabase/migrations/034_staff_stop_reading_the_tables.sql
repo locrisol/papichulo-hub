@@ -135,4 +135,23 @@ create or replace trigger stock_takes_reopened_clears_value
 
 drop policy if exists "invoice_line_claims_read_own" on public.invoice_line_claims;
 
+-- Staff read only the swap requests they are part of. Anybody at the
+-- restaurant could read every request there: who asked whom, the hours and
+-- the message. Since 033 the mark on a colleague's shift comes from
+-- roster_asks, which has none of that. Answering and taking one back are
+-- unchanged, since both people in it still read it. Managers and above read
+-- every request at their restaurant, as before.
+
+drop policy if exists "shift_requests_read" on public.shift_requests;
+create policy "shift_requests_read" on public.shift_requests
+    for select
+    to authenticated
+    using (
+        (select public.get_my_role()) = 'super_admin'
+        or (restaurant_id = (select public.get_my_restaurant_id())
+            and ((select public.get_my_role()) = any (array['owner', 'store_manager'])
+                or from_employee_id = (select public.get_my_employee_id())
+                or to_employee_id = (select public.get_my_employee_id())))
+    );
+
 notify pgrst, 'reload schema';

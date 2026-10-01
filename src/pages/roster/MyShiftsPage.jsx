@@ -108,6 +108,9 @@ export default function MyShiftsPage() {
     const [openingHours, setOpeningHours] = useState(null)
     const [breakRules, setBreakRules] = useState(null)
     const [requests, setRequests] = useState([])
+    // Which of this week's shifts somebody has asked about, whoever it is
+    // between. Only the shift ids and the status, from roster_asks.
+    const [weekAsks, setWeekAsks] = useState([])
     // The shifts a request points at, which are often not in the week on
     // screen. Kept apart from `shifts` on purpose: these are two shifts fetched
     // by id so a card can say what it is about, not a week, and folding them in
@@ -139,7 +142,10 @@ export default function MyShiftsPage() {
     //
     // **Anything about this week's shifts, whoever it is between.** That one is
     // genuinely week shaped. It is what marks a cell as already asked about, so
-    // two people do not ask the same person for the same shift.
+    // two people do not ask the same person for the same shift. It needs only
+    // which shifts, so it comes from roster_asks, which has nothing else of the
+    // request: a swap between two other people, who asked whom, the hours and
+    // the message, is theirs, and since 034 staff cannot read it at all.
     //
     // Then the shifts those requests name, by id, because a card cannot say
     // what it is about without them and half of them are in another week.
@@ -150,20 +156,22 @@ export default function MyShiftsPage() {
     // something before it is written.
     async function loadAsks(weekShifts, meId = me?.id) {
         const ids = (weekShifts || []).map(s => s.id)
-        const wanted = [
-            ...(meId ? [`from_employee_id.eq.${meId}`, `to_employee_id.eq.${meId}`] : []),
-            ...(ids.length > 0
-                ? [`give_shift_id.in.(${ids.join(',')})`, `take_shift_id.in.(${ids.join(',')})`]
-                : []),
-        ]
-        if (wanted.length === 0) { setRequests([]); setAskShifts([]); return }
+        const nothing = Promise.resolve({ data: [] })
+        const [mineRes, weekRes] = await Promise.all([
+            meId
+                ? supabase.from('shift_requests').select('*')
+                    .or(`from_employee_id.eq.${meId},to_employee_id.eq.${meId}`)
+                    .order('created_at', { ascending: false })
+                : nothing,
+            ids.length > 0
+                ? supabase.from('roster_asks').select('give_shift_id, take_shift_id, status')
+                    .or(`give_shift_id.in.(${ids.join(',')}),take_shift_id.in.(${ids.join(',')})`)
+                : nothing,
+        ])
 
-        const { data } = await supabase.from('shift_requests').select('*')
-            .or(wanted.join(','))
-            .order('created_at', { ascending: false })
-
-        const asks = data || []
+        const asks = mineRes.data || []
         setRequests(asks)
+        setWeekAsks(weekRes.data || [])
 
         // Only the ones the week does not already have. Nothing is fetched at
         // all on a week where every request happens to be about it, which is
@@ -374,8 +382,9 @@ export default function MyShiftsPage() {
     const rows = weekRows(roster, shifts, dates)
     const span = weekSpan(Object.fromEntries(dates.map(d => [d, hoursOn(d)])), shifts)
 
-    // Everything about this week that is still going somewhere.
-    const liveAsks = requests.filter(r => LIVE_STATES.includes(r.status))
+    // Everything about this week that is still going somewhere: mine, and
+    // whichever shifts anybody else has asked about.
+    const liveAsks = [...requests, ...weekAsks].filter(r => LIVE_STATES.includes(r.status))
 
     // This week's shifts first, then the ones fetched because a request points
     // at them. A card cannot say what it is about without the shift, so a

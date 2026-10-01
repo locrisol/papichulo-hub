@@ -163,7 +163,9 @@ the tables 034 closes to staff. Nothing in it breaks the site as it is, so
 
 - `staff_restaurants`, their restaurant with the name, opening hours, break
   and roster rules and nothing else;
-- `my_claims`, the delivery problems they logged, without what each was worth.
+- `my_claims`, the delivery problems they logged, without what each was worth;
+- `roster_asks`, which shifts somebody has asked about, for the mark on My
+  shifts, without who asked whom or the message.
 
 It also stops a switched off account reading its own private diary entries;
 nobody still working loses anything.
@@ -183,7 +185,9 @@ uses, now that the new site reads only what it needs:
   it. From then on the database clears it whenever one is reopened;
 - `invoice_line_claims`, which carries what a delivery problem was worth once
   matched to a line, and what came back. They read `my_claims` instead, and
-  still log one the same way.
+  still log one the same way;
+- swap requests between two other people. They read their own, whole, and
+  `roster_asks` for the rest.
 
 **Run it after merging, once the new site is live**: the site before that
 reads these tables, so staff would be told the Hub cannot open, My shifts

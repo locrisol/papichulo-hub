@@ -327,6 +327,35 @@ maybe('what each role can see and do', () => {
             expect((data || []).filter(w => w.log_date !== today || w.restaurant_id !== ownRestaurantId)).toEqual([])
         })
 
+        // Since 034. A swap between two other people is theirs: who asked
+        // whom, the hours and the message. My shifts reads their own whole,
+        // and of everybody else's only which shifts were asked about, from
+        // roster_asks.
+        it('reads only the swap requests they are part of', async ({ skip }) => {
+            const { data: me } = await employee.rpc('get_my_employee_id')
+            skip(!me, 'the test employee is not joined to anybody on the team')
+            const { data, error } = await employee.from('shift_requests').select('from_employee_id, to_employee_id, message')
+            expect(error).toBeNull()
+            expect((data || []).filter(r => r.from_employee_id !== me && r.to_employee_id !== me),
+                'an employee read a swap between two other people').toEqual([])
+
+            const { count: theirs } = await manager.from('shift_requests').select('id', { count: 'exact', head: true })
+                .eq('restaurant_id', ownRestaurantId).or(`from_employee_id.eq.${me},to_employee_id.eq.${me}`)
+            expect((data || []).length, 'an employee cannot read a request they are part of').toBe(theirs)
+        })
+
+        it('sees which shifts somebody has asked about, and nothing else of the ask', async () => {
+            const { data, error } = await employee.from('roster_asks').select('*')
+            expect(error?.message || '', 'roster_asks is missing, so 033 has not been run').toBe('')
+            if (data?.length) expect(Object.keys(data[0]).sort()).toEqual(['give_shift_id', 'status', 'take_shift_id'])
+
+            // Every live ask at their restaurant, and only those.
+            const { data: live } = await manager.from('shift_requests').select('give_shift_id, take_shift_id')
+                .eq('restaurant_id', ownRestaurantId).in('status', ['asked', 'accepted'])
+            const key = r => `${r.give_shift_id}/${r.take_shift_id}`
+            expect((data || []).map(key).sort()).toEqual((live || []).map(key).sort())
+        })
+
         // Since 034. Once a manager matches a note from the door to a line it
         // carries what it was worth and what came back, and no staff screen
         // shows a euro of it. Delivery problems reads my_claims instead, and
@@ -521,6 +550,16 @@ maybe('what each role can see and do', () => {
             expect(error).toBeNull()
             skip(!data?.length, 'nothing is switched off, so there is nothing to look for')
             expect(data.length).toBeGreaterThan(0)
+        })
+
+        // The request desk on the roster answers every swap at the restaurant.
+        it('still reads every swap request at their restaurant', async () => {
+            const { data, error } = await manager.from('shift_requests').select('restaurant_id, message')
+            expect(error).toBeNull()
+            expect((data || []).filter(r => r.restaurant_id !== ownRestaurantId)).toEqual([])
+            const { count } = await superadmin.from('shift_requests').select('id', { count: 'exact', head: true })
+                .eq('restaurant_id', ownRestaurantId)
+            expect((data || []).length).toBe(count)
         })
 
         // Delivery problems, the invoices and the report all work with what a
@@ -762,7 +801,7 @@ maybe('what each role can see and do', () => {
         })
 
         it('no view answers to somebody not signed in', async () => {
-            for (const view of ['roster_colleagues', 'roster_away', 'roster_published', 'staff_restaurants', 'my_claims']) {
+            for (const view of ['roster_colleagues', 'roster_away', 'roster_published', 'staff_restaurants', 'my_claims', 'roster_asks']) {
                 const { count } = await countVisible(anon, view)
                 expect(count, `${view} is readable by anybody`).toBe(0)
             }
@@ -785,6 +824,8 @@ maybe('what each role can see and do', () => {
                 'staff_restaurants can be changed by an employee').toBe(true)
             expect(await changesRefused(employee, 'my_claims', 'id', { what: 'x' }),
                 'my_claims can be changed by an employee').toBe(true)
+            expect(await changesRefused(employee, 'roster_asks', 'give_shift_id', { status: 'approved' }),
+                'roster_asks can be changed by an employee').toBe(true)
         })
     })
 

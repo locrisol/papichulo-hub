@@ -232,6 +232,31 @@ describe('what staff are given of their delivery problems', () => {
     })
 })
 
+describe('what staff are given of the swap requests', () => {
+    // Their own, whole, because the cards on My shifts are about them. Of
+    // everybody else's, only which shifts somebody has asked about, for the
+    // mark on the week: not who asked whom, the hours or the message.
+    it('gives an employee only the requests they are part of', () => {
+        const read = policiesOn('shift_requests')
+            .find(p => p.startsWith('CREATE POLICY "shift_requests_read"')) || ''
+        expect(read, 'found no shift_requests_read').toContain('"from_employee_id" = ( SELECT "public"."get_my_employee_id"() )')
+        expect(read).toContain('"to_employee_id" = ( SELECT "public"."get_my_employee_id"() )')
+        expect(read).toContain(`ARRAY['owner'::"text", 'store_manager'::"text"]`)
+        // Before, anybody at the restaurant read every request there.
+        expect(read).not.toMatch(/OR \("restaurant_id" = \( SELECT "public"\."get_my_restaurant_id"\(\) \)\)\)\);$/)
+    })
+
+    it('marks the shifts asked about with nothing else of the request', () => {
+        const view = viewNamed('roster_asks')
+        expect(view, 'roster_asks is not in schema.sql').toContain('"shift_requests"')
+        const columns = [...view.slice(0, view.indexOf('FROM')).matchAll(/"r"\."(\w+)"/g)].map(m => m[1])
+        expect(columns).toEqual(['give_shift_id', 'take_shift_id', 'status'])
+        expect(view).toContain(`ARRAY['asked'::"text", 'accepted'::"text"]`)
+        expect(view).toMatch(/"r"\."restaurant_id" = \( SELECT "public"\."get_my_restaurant_id"\(\) \)/)
+        readOnlyForStaff('roster_asks')
+    })
+})
+
 describe('a switched off account', () => {
     // get_my_role() answers nothing for an account that is not active, which
     // is how every rule refuses a leaver the night after their last day. A

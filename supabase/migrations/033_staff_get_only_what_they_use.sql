@@ -83,4 +83,23 @@ comment on view public.my_claims is 'The delivery problems you logged at the doo
 revoke all on public.my_claims from anon, authenticated, public;
 grant select on public.my_claims to authenticated;
 
+-- Which shifts at your restaurant somebody has asked about and is still
+-- waiting on, for the Asked mark on My shifts, so two people do not ask for
+-- the same shift. Only the two shift ids and the status: not who asked whom,
+-- the hours or the message, which belong to the two people in it. Their read
+-- of everybody else's requests goes in 034.
+
+create or replace view public.roster_asks as
+ select r.give_shift_id,
+    r.take_shift_id,
+    r.status
+   from public.shift_requests r
+  where r.status = any (array['asked', 'accepted'])
+    and r.restaurant_id = (select public.get_my_restaurant_id());
+
+comment on view public.roster_asks is 'Which shifts at your restaurant somebody has asked about and is still waiting on, for the mark on My shifts: the shift given, the shift asked for and the status. Not who asked whom, the hours or the message, which only the two people in it and the managers read on shift_requests.';
+
+revoke all on public.roster_asks from anon, authenticated, public;
+grant select on public.roster_asks to authenticated;
+
 notify pgrst, 'reload schema';
