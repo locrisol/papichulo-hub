@@ -5,20 +5,21 @@ import { signInAs, anonClient, countVisible, writeRefused, changesRefused, crede
 // a page is a convenience. This is the part that actually protects the data.
 //
 // Nothing here creates a row. Reads are harmless, and a write that is meant to
-// be refused changes nothing by definition. That does leave one gap: we do not
-// prove an allowed write succeeds, because doing so would put rows into the
-// live sales data.
+// be refused changes nothing by definition. An allowed write is proved without
+// making one, by pointing it at something that cannot exist and seeing that
+// the rules let it through to fail on that instead: see wasteRefusal below.
 
 const run = credentialsPresent()
 const maybe = run ? describe : describe.skip
 
-// A waste entry for a product that cannot exist, so no row is ever made. The
-// rules are checked before the product is, which makes the code say which of
-// the two stopped it: the rules, or the missing product after the rules had
-// let it through. An allowed write proved without touching the live waste.
+// A write that points at something that cannot exist, so no row is ever
+// made. The rules are checked before the key is, which makes the code say
+// which of the two stopped it: the rules, or the missing key after the rules
+// had let it through. An allowed write proved without touching live rows.
 const REFUSED_BY_THE_RULES = '42501'
-const MISSING_PRODUCT = '23503'
+const PAST_THE_RULES = '23503'
 
+// A waste entry for a product that cannot exist.
 async function wasteRefusal(client, restaurantId) {
     const { error } = await client.from('waste_logs').insert({
         restaurant_id: restaurantId,
@@ -26,6 +27,20 @@ async function wasteRefusal(client, restaurantId) {
         log_date: '2020-01-01',
         quantity_wasted: 1,
         reason: 'other',
+    })
+    return error?.code ?? null
+}
+
+// The same trick for an account: one for a login that cannot exist, so the
+// missing login is what stops it once the rules have let it through. Before
+// 031 an owner got that far with a store manager or an employee at their own
+// restaurant, and a store manager with an employee.
+async function accountRefusal(client, restaurantId, role) {
+    const { error } = await client.from('users').insert({
+        id: NOBODY,
+        full_name: 'RLS test account, should never exist',
+        role,
+        restaurant_id: restaurantId,
     })
     return error?.code ?? null
 }
@@ -325,6 +340,12 @@ maybe('what each role can see and do', () => {
             expect(error, 'a manager stamped the other restaurant allergen sheet').not.toBeNull()
         })
 
+        // Since 031. Accounts are a super admin job; a store manager links a
+        // login to a person on Team, which writes the person.
+        it('cannot add or change an employee account', async () => {
+            expect(await accountRefusal(manager, ownRestaurantId, 'employee')).toBe(REFUSED_BY_THE_RULES)
+        })
+
         it('only sees users from their own restaurant', async () => {
             const { data } = await manager.from('users').select('restaurant_id')
             const strays = (data || []).filter(u => u.restaurant_id && u.restaurant_id !== ownRestaurantId)
@@ -376,6 +397,23 @@ maybe('what each role can see and do', () => {
             })
             expect(refused).toBe(true)
         })
+
+        // Since 031. Making an employee a store manager through the API
+        // opened the takings and everybody's pay rate to them.
+        it('cannot add or change a store manager or an employee account', async () => {
+            expect(await accountRefusal(owner, ownRestaurantId, 'store_manager')).toBe(REFUSED_BY_THE_RULES)
+            expect(await accountRefusal(owner, ownRestaurantId, 'employee')).toBe(REFUSED_BY_THE_RULES)
+        })
+
+        // Choosing your own landing page goes through its own function, so
+        // it keeps working with the account rule closed. Set to what it
+        // already is, so nothing changes.
+        it('can still choose their own landing page', async () => {
+            const { data: auth } = await owner.auth.getUser()
+            const { data: me } = await owner.from('users').select('landing_page').eq('id', auth.user.id).single()
+            const { error } = await owner.rpc('set_my_landing_page', { page: me.landing_page })
+            expect(error).toBeNull()
+        })
     })
 
     describe('super admin', () => {
@@ -414,7 +452,12 @@ maybe('what each role can see and do', () => {
             const elsewhere = restaurants.find(r => r.id !== me.restaurant_id).id
 
             expect(await wasteRefusal(superadmin, elsewhere), 'the rules refused a super admin waste elsewhere')
-                .toBe(MISSING_PRODUCT)
+                .toBe(PAST_THE_RULES)
+        })
+
+        // The one role the account rule still lets through.
+        it('is not stopped by the rules when adding an account', async () => {
+            expect(await accountRefusal(superadmin, ownRestaurantId, 'employee')).toBe(PAST_THE_RULES)
         })
     })
 
@@ -430,7 +473,7 @@ maybe('what each role can see and do', () => {
         // And their own still goes past the rules, so the two above are
         // refused for the restaurant and not for the role.
         it('is not what stops a store manager at their own', async () => {
-            expect(await wasteRefusal(manager, ownRestaurantId)).toBe(MISSING_PRODUCT)
+            expect(await wasteRefusal(manager, ownRestaurantId)).toBe(PAST_THE_RULES)
         })
     })
 

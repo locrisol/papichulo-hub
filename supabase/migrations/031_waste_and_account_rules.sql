@@ -1,5 +1,5 @@
--- Who may write waste, and which day an employee sees, both found by the
--- audit of 28 September.
+-- Who may write waste and accounts, and which day an employee sees, all found
+-- by the audit of 28 September.
 --
 -- Safe to run twice.
 
@@ -58,5 +58,28 @@ create policy "waste_logs_select_today" on public.waste_logs
         and restaurant_id = (select public.get_my_restaurant_id())
         and log_date = (now() at time zone 'Europe/Dublin')::date
     );
+
+
+-- 3. Only a super admin changes an account.
+--
+-- The Users page has been the super admin's alone since 8 September. But
+-- users_write still let an owner change the store managers and employees at
+-- their restaurant, and a store manager the employees, straight through the
+-- API: their role, their name, whether they can sign in, or delete the row.
+-- Nothing in the app offers any of it, and an owner making an employee a store
+-- manager opens the takings and everybody's pay rate to them.
+--
+-- Nothing that writes an account today goes through this rule except the
+-- Users page. Choosing your own landing page and the nightly switch off of
+-- leavers are functions that run as the owner of the table, a new login gets
+-- its row from a trigger, and the mail functions use the service key. Linking
+-- a login to a person on Team writes the person, not the account. Reading is
+-- not changed.
+
+drop policy if exists "users_write" on public.users;
+create policy "users_write" on public.users
+    to authenticated
+    using ((select public.get_my_role()) = 'super_admin')
+    with check ((select public.get_my_role()) = 'super_admin');
 
 notify pgrst, 'reload schema';

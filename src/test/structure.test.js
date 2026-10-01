@@ -98,7 +98,7 @@ describe('every file in lib has a test', () => {
     // state of things; what this stops is an eighth. Take one off the list
     // when you write its test, and the list can only ever get shorter.
     const NO_TEST_YET = [
-        'access', 'controlStyles', 'donut', 'productPrice', 'reportCharts',
+        'controlStyles', 'donut', 'productPrice', 'reportCharts',
         'timeOffPdf', 'wasteReasons',
     ]
 

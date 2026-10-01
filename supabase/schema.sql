@@ -2102,13 +2102,13 @@ $$;
 
 -- Saving your own landing page without being able to save anything else.
 --
--- users_write is deliberately one sided: you may write the rows below you and
--- never your own, which is right and is also why nobody could save their own
--- preference. A policy works on rows, so it cannot say "this column only", and
--- widening users_write to include your own row would let anybody make
--- themselves a super admin. A function that writes one column of one row can.
--- The id comes from the session rather than from a parameter, so there is
--- nothing to pass it that would reach somebody else.
+-- Only a super admin may write an account row, and nobody else may write even
+-- their own, because that row is where their role is: opening users_write to
+-- your own row would let anybody make themselves a super admin. A policy works
+-- on rows, so it cannot say "this column only", which is why nobody could save
+-- their own preference. A function that writes one column of one row can. The
+-- id comes from the session rather than from a parameter, so there is nothing
+-- to pass it that would reach somebody else.
 CREATE OR REPLACE FUNCTION "public"."set_my_landing_page"("page" "text") RETURNS "void"
     LANGUAGE "sql" SECURITY DEFINER
     SET "search_path" TO 'public', 'pg_temp'
@@ -3212,7 +3212,12 @@ CREATE POLICY "users_select" ON "public"."users" FOR SELECT TO "authenticated" U
 
 CREATE POLICY "users_select_own" ON "public"."users" FOR SELECT TO "authenticated" USING ((("id" = ( SELECT "auth"."uid"() )) AND "is_active"));
 
-CREATE POLICY "users_write" ON "public"."users" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = 'owner'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND ("role" IN ('store_manager', 'employee'))) OR ((( SELECT "public"."get_my_role"() ) = 'store_manager'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND (("role")::"text" = 'employee'::"text")))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = 'owner'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND ("role" IN ('store_manager', 'employee'))) OR ((( SELECT "public"."get_my_role"() ) = 'store_manager'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND (("role")::"text" = 'employee'::"text"))));
+-- Only a super admin changes an account, the same as the Users page, which has
+-- been theirs alone since 8 September. An owner or a store manager reads the
+-- accounts at their restaurant, to link one to a person on Team, which writes
+-- the person and not the account. Your own landing page and the nightly
+-- switch off of leavers are functions that run as the owner of the table.
+CREATE POLICY "users_write" ON "public"."users" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text")) WITH CHECK ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text"));
 
 ALTER TABLE "public"."positions" ENABLE ROW LEVEL SECURITY;
 

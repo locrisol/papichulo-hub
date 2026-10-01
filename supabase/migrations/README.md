@@ -111,7 +111,10 @@ which is what `set expression` arrived in.
 `031` is **not run yet**. A super admin can log and delete waste at any
 restaurant, the same as on every other table, rather than only at their own.
 And the waste an employee sees is today's in Ireland rather than the server's
-UTC date, so what they log after midnight in summer stays on their list.
+UTC date, so what they log after midnight in summer stays on their list. And
+only a super admin can change an account: an owner or a store manager could
+change the accounts below them through the API, role included, which nothing
+in the app offers.
 `032` is **not run yet**. It gives `public_products` the section, so the
 customer allergen page can tell a food product nobody entered allergens for
 (it asks the customer to see staff) from a dip pot, which has nothing to
