@@ -162,4 +162,22 @@ comment on view public.staff_places is 'A place near us, as the roster and the c
 revoke all on public.staff_places from anon, authenticated, public;
 grant select on public.staff_places to authenticated;
 
+-- Staff read MIX recipes through staff_mix_recipes: what goes into each MIX
+-- and how much, which values what they count and log as waste (his decision
+-- of 29 September, 022). Not the notes beside each line, which no staff
+-- screen shows. Their read of the table goes in 034.
+
+create or replace view public.staff_mix_recipes as
+ select r.id,
+    r.mix_product_id,
+    r.ingredient_product_id,
+    r.quantity
+   from public.mix_recipes r
+  where (select public.get_my_role()) is not null;
+
+comment on view public.staff_mix_recipes is 'What goes into each MIX and how much, which is what values a MIX that staff count or log as waste. Not the notes beside each line, which stay on mix_recipes for the managers. A switched off account reads nothing.';
+
+revoke all on public.staff_mix_recipes from anon, authenticated, public;
+grant select on public.staff_mix_recipes to authenticated;
+
 notify pgrst, 'reload schema';

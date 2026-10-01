@@ -121,8 +121,10 @@ export default function WasteLogPage() {
             setProducts((prods || []).filter(p => p.is_active))
 
             // Needed to cost a MIX, which has no supplier price of its own.
+            // What goes in and how much, without the notes, which is what
+            // staff are given of the recipes.
             const { data: recipes, error: rErr } = await supabase
-                .from('mix_recipes')
+                .from('staff_mix_recipes')
                 .select('*')
 
             if (rErr) { setError(friendlyError(rErr)); setLoading(false); return }

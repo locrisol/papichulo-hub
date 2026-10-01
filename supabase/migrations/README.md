@@ -171,7 +171,9 @@ the tables 034 closes to staff. Nothing in it breaks the site as it is, so
 - `staff_diary`, what is on, without where each entry is on Google or who
   wrote it;
 - `staff_places`, a place nearby with its name and size, without its page
-  address, Ticketmaster id or reading settings.
+  address, Ticketmaster id or reading settings;
+- `staff_mix_recipes`, what goes into each MIX and how much, without the
+  notes.
 
 `034` is **not run yet**. It takes away from staff what no staff screen
 uses, now that the new site reads only what it needs:
@@ -206,7 +208,9 @@ uses, now that the new site reads only what it needs:
 - the places table, the other restaurant's pairings, and listings that were
   dismissed or are at a place their restaurant does not watch. Only the
   employee side narrows: the rule on deleting a place reads the pairings and
-  the listings as the manager, so managers keep all of them.
+  the listings as the manager, so managers keep all of them;
+- `mix_recipes`, with its notes. A count and the Waste page read
+  `staff_mix_recipes`, so a MIX is valued the same as before.
 
 **Run it after merging, once the new site is live**: the site before that
 reads these tables, so staff would be told the Hub cannot open, My shifts

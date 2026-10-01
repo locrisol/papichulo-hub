@@ -42,7 +42,7 @@ function setUp({ products = [CHEDDAR], prices, recipes = [], failing = null, hol
         stock_take_lines: [],
         product_supplier_prices: prices,
         price_count_units: CASES,
-        mix_recipes: recipes,
+        staff_mix_recipes: recipes,
         users: [{ id: 'u9', full_name: 'Maria' }],
     }
     db = {
@@ -178,6 +178,17 @@ describe('the products on a count', () => {
         expect(await screen.findByText('Cheddar')).toBeInTheDocument()
         expect(db.from.mock.calls.map(([table]) => table)).not.toContain('products')
     })
+
+    // And the recipes through staff_mix_recipes, without the notes beside them.
+    it('take their recipes from the staff view', async () => {
+        user = { id: 'u2', role: 'employee', full_name: 'Maria' }
+        setUp({ prices: [AT_POINT_CAMPUS] })
+        open()
+        await screen.findByText('Cheddar')
+        const asked = db.from.mock.calls.map(([table]) => table)
+        expect(asked).toContain('staff_mix_recipes')
+        expect(asked).not.toContain('mix_recipes')
+    })
 })
 
 // Closed by a manager while somebody is still counting. An employee cannot
@@ -239,7 +250,7 @@ describe('a read that fails', () => {
         user = { id: 'u0', role: 'store_manager', full_name: 'Leandro' }
     })
 
-    it.each(['stock_take_lines', 'product_supplier_prices', 'price_count_units', 'mix_recipes'])(
+    it.each(['stock_take_lines', 'product_supplier_prices', 'price_count_units', 'staff_mix_recipes'])(
         'says so when %s cannot be read, rather than counting on without it',
         async table => {
             setUp({ prices: [AT_POINT_CAMPUS], failing: table })

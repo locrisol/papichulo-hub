@@ -323,11 +323,21 @@ maybe('what each role can see and do', () => {
         })
 
         // Since 022. A MIX is valued from its recipe, and without it every
-        // MIX an employee counted or wasted was saved at nothing.
+        // MIX an employee counted or wasted was saved at nothing. Since 033
+        // through staff_mix_recipes, and since 034 never the table: what goes
+        // in and how much, not the notes beside each line.
         it('can read MIX recipes, which value what they count and waste', async () => {
-            const { count, error } = await countVisible(employee, 'mix_recipes')
-            expect(error).toBeNull()
-            expect(count).toBeGreaterThan(0)
+            const { data, error } = await employee.from('staff_mix_recipes').select('*')
+            expect(error?.message || '', 'staff_mix_recipes is missing, so 033 has not been run').toBe('')
+            expect(data.length).toBeGreaterThan(0)
+            expect(Object.keys(data[0]).sort()).toEqual(['id', 'ingredient_product_id', 'mix_product_id', 'quantity'])
+            const { count: all } = await manager.from('mix_recipes').select('id', { count: 'exact', head: true })
+            expect(data.length).toBe(all)
+        })
+
+        it('cannot read the recipes table itself, with its notes', async () => {
+            const { count } = await countVisible(employee, 'mix_recipes')
+            expect(count, 'an employee can read mix_recipes').toBe(0)
         })
 
         // Today's, so two people do not log the same thing twice, and since
@@ -668,6 +678,14 @@ maybe('what each role can see and do', () => {
             expect(events).toBe(every)
         })
 
+        // The recipe page, the menu and the report read every line, notes
+        // included.
+        it('still reads the recipes with their notes', async () => {
+            const { data, error } = await manager.from('mix_recipes').select('id, quantity, notes').limit(1)
+            expect(error).toBeNull()
+            expect(data.length).toBeGreaterThan(0)
+        })
+
         // The roster itself, drafts and every note included.
         it('still reads the roster table, drafts and notes included', async () => {
             const { error } = await manager.from('roster_shifts').select('id, note, published_at').limit(1)
@@ -991,7 +1009,7 @@ maybe('what each role can see and do', () => {
         })
 
         it('no view answers to somebody not signed in', async () => {
-            for (const view of ['roster_colleagues', 'roster_away', 'roster_published', 'staff_restaurants', 'my_claims', 'roster_asks', 'staff_products', 'staff_diary', 'staff_places']) {
+            for (const view of ['roster_colleagues', 'roster_away', 'roster_published', 'staff_restaurants', 'my_claims', 'roster_asks', 'staff_products', 'staff_diary', 'staff_places', 'staff_mix_recipes']) {
                 const { count } = await countVisible(anon, view)
                 expect(count, `${view} is readable by anybody`).toBe(0)
             }
@@ -1022,6 +1040,8 @@ maybe('what each role can see and do', () => {
                 'staff_diary can be changed by an employee').toBe(true)
             expect(await changesRefused(employee, 'staff_places', 'id', { name: 'x' }),
                 'staff_places can be changed by an employee').toBe(true)
+            expect(await changesRefused(employee, 'staff_mix_recipes', 'id', { quantity: 1 }),
+                'staff_mix_recipes can be changed by an employee').toBe(true)
         })
     })
 

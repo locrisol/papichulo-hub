@@ -304,4 +304,14 @@ create policy "events_select_staff" on public.events
         )
     );
 
+-- Staff stop reading mix_recipes. Since 033 a count and the Waste page read
+-- staff_mix_recipes, which has what goes in and how much and not the notes.
+-- They still value a MIX the same way, which was the point of 022.
+
+drop policy if exists "mix_recipes_select" on public.mix_recipes;
+create policy "mix_recipes_select" on public.mix_recipes
+    for select
+    to authenticated
+    using ((select public.get_my_role()) = any (array['super_admin', 'owner', 'store_manager']));
+
 notify pgrst, 'reload schema';

@@ -400,6 +400,26 @@ describe('what staff are given of what is on near us', () => {
     })
 })
 
+describe('what staff are given of the recipes', () => {
+    // What goes into a MIX and how much, which values what they count and log
+    // as waste (his decision of 29 September), through staff_mix_recipes. Not
+    // the notes beside each line, which no staff screen shows.
+    it('gives the quantities without the notes', () => {
+        const view = viewNamed('staff_mix_recipes')
+        expect(view, 'staff_mix_recipes is not in schema.sql').toContain('"public"."mix_recipes"')
+        const columns = [...view.slice(0, view.indexOf('FROM')).matchAll(/"r"\."(\w+)"/g)].map(m => m[1])
+        expect(columns.sort()).toEqual(['id', 'ingredient_product_id', 'mix_product_id', 'quantity'])
+        expect(view).toContain('( SELECT "public"."get_my_role"() ) IS NOT NULL')
+        readOnlyForStaff('staff_mix_recipes')
+    })
+
+    it('gives an employee no read of the table itself', () => {
+        const policies = policiesOn('mix_recipes')
+        expect(policies.length, 'found no policies on mix_recipes to check').toBeGreaterThan(0)
+        expect(policies.filter(p => p.includes("'employee'"))).toEqual([])
+    })
+})
+
 describe('a switched off account', () => {
     // get_my_role() answers nothing for an account that is not active, which
     // is how every rule refuses a leaver the night after their last day. A

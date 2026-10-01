@@ -193,8 +193,10 @@ export default function StockTakeCountPage() {
         }
         setFormatsByProductId(formatsMap)
 
+        // What goes into each MIX and how much, without the notes, which is
+        // what staff are given of the recipes.
         const { data: recipesData, error: recipesErr } = await supabase
-            .from('mix_recipes')
+            .from('staff_mix_recipes')
             .select('*')
         if (recipesErr) { setError(friendlyError(recipesErr)); setLoading(false); return }
         setRecipeLines(recipesData || [])

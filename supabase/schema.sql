@@ -3485,8 +3485,10 @@ CREATE POLICY "product_aliases_write" ON "public"."product_aliases" TO "authenti
 ALTER TABLE "public"."mix_recipes" ENABLE ROW LEVEL SECURITY;
 
 -- Employees read recipes too: a MIX is valued from its recipe, and counting
--- stock and logging waste are their job. Writing one stays with managers.
-CREATE POLICY "mix_recipes_select" ON "public"."mix_recipes" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text", 'employee'::"text"])));
+-- stock and logging waste are their job. They read them through
+-- staff_mix_recipes (with the views, below), which has what goes in and how
+-- much and not the notes. Writing one stays with managers.
+CREATE POLICY "mix_recipes_select" ON "public"."mix_recipes" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
 CREATE POLICY "mix_recipes_write" ON "public"."mix_recipes" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
@@ -3929,6 +3931,10 @@ CREATE POLICY "change_log_select" ON "public"."change_log" FOR SELECT TO "authen
 -- Two kinds, and both exist because row level security picks rows and cannot
 -- pick columns.
 --
+-- The staff views are what staff read instead of a table, because the table
+-- has columns no staff screen uses. His rule of 1 October 2026: the database
+-- sends staff a cut-down of only what they need to see.
+--
 -- roster_colleagues and roster_away let staff see who they are working with
 -- and who is off, without their pay rate, date of birth, immigration status,
 -- or the reason somebody is away. roster_published is the week as it went
@@ -3940,10 +3946,11 @@ CREATE POLICY "change_log_select" ON "public"."change_log" FOR SELECT TO "authen
 -- logged without what each was worth, and roster_asks which shifts somebody
 -- has asked about, without the request. staff_products gives them the
 -- products without the notes or the weight loss, staff_diary what is on
--- without where each entry is on Google, and staff_places a place nearby
--- without how it is set up. They read past row level
--- security on purpose and their own where clause is the wall between the two
--- restaurants, which is covered by the database tests.
+-- without where each entry is on Google, staff_places a place nearby without
+-- how it is set up, and staff_mix_recipes the recipes without their notes.
+-- They read past row level security on purpose and their own where clause is
+-- the wall between the two restaurants, which is covered by the database
+-- tests.
 --
 -- The public_ views are what a customer scanning the QR code is given. The
 -- tables behind them answer to nobody who is not signed in. No quantity
@@ -4106,6 +4113,16 @@ CREATE OR REPLACE VIEW "public"."staff_places" AS
     "p"."short_name",
     "p"."capacity"
    FROM "public"."places" "p"
+  WHERE (( SELECT "public"."get_my_role"() ) IS NOT NULL);
+
+-- Every recipe, since a MIX can contain a MIX and the products are shared.
+-- Anybody signed in and switched on.
+CREATE OR REPLACE VIEW "public"."staff_mix_recipes" AS
+ SELECT "r"."id",
+    "r"."mix_product_id",
+    "r"."ingredient_product_id",
+    "r"."quantity"
+   FROM "public"."mix_recipes" "r"
   WHERE (( SELECT "public"."get_my_role"() ) IS NOT NULL);
 
 -- Yours and at your restaurant, so an account switched off reads nothing,
@@ -4297,6 +4314,7 @@ COMMENT ON VIEW "public"."roster_away" IS 'The days somebody is not there, with 
 COMMENT ON VIEW "public"."roster_colleagues" IS 'Who works at your restaurant, as far as anybody below a manager is allowed to know: a name, a position and its colour, and whether they have an account to answer a swap with. It is also how somebody finds their own name on the roster. Only people on the team at some point from nine weeks before today to nine weeks after, the weeks My shifts opens and one more, and a start or leaving date only when it falls inside them. The employees table itself stays closed, even for their own row, because it carries the hourly rate, the date of birth, the work permission and what a manager wrote in Notes, and a row policy cannot hide a column.';
 COMMENT ON VIEW "public"."my_claims" IS 'The delivery problems you logged at the door, at your restaurant, as Delivery problems shows them to staff: what it was, how many, the docket and whether it is still waiting. Not what it was worth, what came back or the invoice it was matched to, which stay on invoice_line_claims for the managers. A switched off account reads nothing.';
 COMMENT ON VIEW "public"."staff_diary" IS 'What is on, as the calendar and My shifts show it to staff: the group''s entries, your restaurant''s and your own private ones, with who to contact and whether it is on Google. Not where each one is on Google or who wrote it, which stay on diary_entries for the managers and the calendar function. A switched off account reads nothing.';
+COMMENT ON VIEW "public"."staff_mix_recipes" IS 'What goes into each MIX and how much, which is what values a MIX that staff count or log as waste. Not the notes beside each line, which stay on mix_recipes for the managers. A switched off account reads nothing.';
 COMMENT ON VIEW "public"."staff_places" IS 'A place near us, as the roster and the calendar draw it for staff: the name, the short name and how many it holds. Not the page address, the Ticketmaster id, how the page is read or how the last read and sync went, which stay on places for the managers. A switched off account reads nothing.';
 COMMENT ON VIEW "public"."staff_products" IS 'The products, as far as a count and the Waste page need them: the name, where it is kept, its unit, whether it is a MIX and what a batch makes, whose it is and whether it is still in use. Not the notes, the weight loss, what one piece weighs or how often it is counted, which stay on the products table for the managers. A switched off account reads nothing.';
 COMMENT ON VIEW "public"."staff_restaurants" IS 'Your restaurant, as far as anybody below a manager needs it: the name, the opening hours, the break and roster rules, and whether city events are watched. The restaurants table itself is closed to staff, because it carries the cost targets, the default cost per hour and the addresses the report and the hours are mailed to, and a row policy cannot hide a column.';
@@ -4331,6 +4349,7 @@ revoke all on public.roster_asks              from anon, authenticated, public;
 revoke all on public.staff_products           from anon, authenticated, public;
 revoke all on public.staff_diary              from anon, authenticated, public;
 revoke all on public.staff_places             from anon, authenticated, public;
+revoke all on public.staff_mix_recipes        from anon, authenticated, public;
 revoke all on public.checklist_last_done      from anon, authenticated, public;
 revoke all on public.labour_by_day            from anon, authenticated, public;
 revoke all on public.invoice_cost_by_category from anon, authenticated, public;
@@ -4343,6 +4362,7 @@ grant select on public.roster_asks              to authenticated;
 grant select on public.staff_products           to authenticated;
 grant select on public.staff_diary              to authenticated;
 grant select on public.staff_places             to authenticated;
+grant select on public.staff_mix_recipes        to authenticated;
 grant select on public.checklist_last_done      to authenticated;
 grant select on public.labour_by_day            to authenticated;
 grant select on public.invoice_cost_by_category to authenticated;

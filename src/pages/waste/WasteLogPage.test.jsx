@@ -32,7 +32,7 @@ function setUp({
     deleted = []
     const tables = {
         staff_products: products,
-        mix_recipes: recipes,
+        staff_mix_recipes: recipes,
         product_supplier_prices: prices,
         waste_logs: logs,
     }
@@ -78,6 +78,16 @@ beforeEach(() => {
 })
 
 describe('an employee logging a MIX', () => {
+    // Staff read recipes through staff_mix_recipes: what goes in and how much,
+    // which is what values a MIX, and not the notes beside it.
+    it('reads the recipe from the staff view', async () => {
+        await pick('House Salsa', '2')
+        expect(screen.getByText('2 KG at €2.50')).toBeInTheDocument()
+        const asked = db.from.mock.calls.map(([table]) => table)
+        expect(asked).toContain('staff_mix_recipes')
+        expect(asked).not.toContain('mix_recipes')
+    })
+
     // Since 29 September an employee can read recipes, so a MIX they throw
     // out is worth the same as one a manager throws out.
     it('values it from its recipe and saves the value', async () => {
