@@ -225,14 +225,23 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
         // Both guards matter. A place another restaurant watches is theirs, and
         // a place with listings against it would take them with it, since
         // events cascade from a place. Either one and it stays.
-        const [{ count: watchers }, { count: listings }] = await Promise.all([
+        //
+        // **Only when both counts came back, and both are exactly none.** A
+        // count that fails comes back as nothing, and nothing read as none:
+        // a dropped signal on a phone between the two steps deleted the Arena
+        // and every listing ever read from it. A place left behind costs
+        // nothing, since save names whichever place holds a venue id, so when
+        // in doubt it stays. The take off itself has worked either way.
+        const [watching, listed] = await Promise.all([
             supabase.from('restaurant_places')
                 .select('id', { count: 'exact', head: true }).eq('place_id', row.place.id),
             supabase.from('events')
                 .select('id', { count: 'exact', head: true }).eq('place_id', row.place.id),
         ])
 
-        if (!watchers && !listings) {
+        const surelyUnused = !watching.error && !listed.error
+            && watching.count === 0 && listed.count === 0
+        if (surelyUnused) {
             await supabase.from('places').delete().eq('id', row.place.id)
         }
 
