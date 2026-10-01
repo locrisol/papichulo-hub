@@ -157,11 +157,17 @@ on `menu_items` and `menu_categories`. It checks first, and if any of them is
 empty it stops, names the table and changes nothing. **Run it before the
 branch is merged**, or the new page asks customers to see staff about every
 dish that comes in a pot.
-`033` is **not run yet**. Staff read their restaurant through a new view,
-`staff_restaurants`, with the name, opening hours, break and roster rules and
-nothing else. It also stops a switched off account reading its own private
-diary entries; nobody still working loses anything. Neither change breaks the
-site as it is, so **run it any time before merging**.
+`033` is **not run yet**. It adds the views the new site reads instead of
+the tables 034 closes to staff. Nothing in it breaks the site as it is, so
+**run it any time before merging**:
+
+- `staff_restaurants`, their restaurant with the name, opening hours, break
+  and roster rules and nothing else;
+- `my_claims`, the delivery problems they logged, without what each was worth.
+
+It also stops a switched off account reading its own private diary entries;
+nobody still working loses anything.
+
 `034` is **not run yet**. It takes away from staff what no staff screen
 uses, now that the new site reads only what it needs:
 
@@ -174,11 +180,14 @@ uses, now that the new site reads only what it needs:
 - the suppliers that were switched off;
 - every stock take but the one being counted, with what each was worth. A
   stock take reopened before this still holds its old value, and 034 clears
-  it. From then on the database clears it whenever one is reopened.
+  it. From then on the database clears it whenever one is reopened;
+- `invoice_line_claims`, which carries what a delivery problem was worth once
+  matched to a line, and what came back. They read `my_claims` instead, and
+  still log one the same way.
 
 **Run it after merging, once the new site is live**: the site before that
-asks the restaurants and employees tables, so staff would be told the Hub
-cannot open and My shifts would say they are not on the team list.
+reads these tables, so staff would be told the Hub cannot open, My shifts
+would say they are not on the team list and Delivery problems would be empty.
 
 ## What was here before
 

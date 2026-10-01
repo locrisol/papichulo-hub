@@ -327,6 +327,37 @@ maybe('what each role can see and do', () => {
             expect((data || []).filter(w => w.log_date !== today || w.restaurant_id !== ownRestaurantId)).toEqual([])
         })
 
+        // Since 034. Once a manager matches a note from the door to a line it
+        // carries what it was worth and what came back, and no staff screen
+        // shows a euro of it. Delivery problems reads my_claims instead, and
+        // the cost view, which reads the table as the person asking, goes
+        // empty with it.
+        it('cannot read the money on their own delivery problems', async () => {
+            for (const table of ['invoice_line_claims', 'invoice_cost_by_category']) {
+                const { count } = await countVisible(employee, table)
+                expect(count, `an employee can read ${table}`).toBe(0)
+            }
+            const { data, error } = await employee.from('my_claims').select('*').limit(1)
+            expect(error?.message || '', 'my_claims is missing, so 033 has not been run').toBe('')
+            if (data?.length) {
+                for (const hidden of ['amount', 'credited_amount', 'invoice_id', 'invoice_line_id', 'credit_invoice_id']) {
+                    expect(Object.keys(data[0]), `my_claims is handing over ${hidden}`).not.toContain(hidden)
+                }
+            }
+        })
+
+        // What Delivery problems lists for them: theirs, and nobody else's.
+        // Shown as skipped when the test employee has never logged one.
+        it('still reads the delivery problems they logged, and only those', async ({ skip }) => {
+            const { data: auth } = await employee.auth.getUser()
+            const { data: raised } = await manager.from('invoice_line_claims').select('id')
+                .eq('raised_by', auth.user.id).eq('restaurant_id', ownRestaurantId)
+            const { data, error } = await employee.from('my_claims').select('id, restaurant_id, status, what')
+            expect(error).toBeNull()
+            expect((data || []).map(c => c.id).sort()).toEqual((raised || []).map(c => c.id).sort())
+            skip(!raised?.length, 'the test employee has never logged a delivery problem')
+        })
+
         // Since 034. Every dish's selling price, its VAT and how much of each
         // thing goes into it. No staff screen reads them, and the allergen
         // page reads the public_ views, which leave all of that out.
@@ -490,6 +521,15 @@ maybe('what each role can see and do', () => {
             expect(error).toBeNull()
             skip(!data?.length, 'nothing is switched off, so there is nothing to look for')
             expect(data.length).toBeGreaterThan(0)
+        })
+
+        // Delivery problems, the invoices and the report all work with what a
+        // claim was worth and what came back.
+        it('still reads the money on delivery problems', async () => {
+            const { error } = await manager.from('invoice_line_claims').select('id, amount, credited_amount').limit(1)
+            expect(error).toBeNull()
+            const { error: viewError } = await manager.from('invoice_cost_by_category').select('amount').limit(1)
+            expect(viewError).toBeNull()
         })
 
         // The history on Stock Takes, and the summary of each closed count.
@@ -712,7 +752,7 @@ maybe('what each role can see and do', () => {
         })
 
         it('no view shows the other restaurant', async () => {
-            for (const view of ['roster_colleagues', 'roster_away', 'roster_published']) {
+            for (const view of ['roster_colleagues', 'roster_away', 'roster_published', 'my_claims']) {
                 const { data } = await employee.from(view).select('restaurant_id')
                 const strays = (data || []).filter(r => r.restaurant_id !== ownRestaurantId)
                 expect(strays, `${view} leaked rows from another restaurant`).toHaveLength(0)
@@ -722,7 +762,7 @@ maybe('what each role can see and do', () => {
         })
 
         it('no view answers to somebody not signed in', async () => {
-            for (const view of ['roster_colleagues', 'roster_away', 'roster_published', 'staff_restaurants']) {
+            for (const view of ['roster_colleagues', 'roster_away', 'roster_published', 'staff_restaurants', 'my_claims']) {
                 const { count } = await countVisible(anon, view)
                 expect(count, `${view} is readable by anybody`).toBe(0)
             }
@@ -743,6 +783,8 @@ maybe('what each role can see and do', () => {
                 'roster_published can be changed by an employee').toBe(true)
             expect(await changesRefused(employee, 'staff_restaurants', 'id', { name: 'x' }),
                 'staff_restaurants can be changed by an employee').toBe(true)
+            expect(await changesRefused(employee, 'my_claims', 'id', { what: 'x' }),
+                'my_claims can be changed by an employee').toBe(true)
         })
     })
 

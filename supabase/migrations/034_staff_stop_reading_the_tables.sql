@@ -1,16 +1,18 @@
--- Staff stop reading the restaurants table, which carries the cost targets,
--- the default cost per hour and the addresses the report and the hours are
--- mailed to. Since 033 they read staff_restaurants, which has everything
--- their screens use and none of that. They also stop reading their own row
--- on the team list.
+-- Staff stop reading what no staff screen uses. Each part below says what
+-- goes and why. The first is the restaurants table, which carries the cost
+-- targets, the default cost per hour and the addresses the report and the
+-- hours are mailed to. Since 033 they read staff_restaurants, which has
+-- everything their screens use and none of that. They also stop reading
+-- their own row on the team list.
 --
 -- Run it after the branch is merged and the new site is live, never before.
--- The site before that still asks both tables, so a member of staff opening
+-- The site before that still asks these tables, so a member of staff opening
 -- it would be told the Hub cannot open, and My shifts would say they are not
 -- on the team list.
 --
 -- Owners, store managers and the super admin keep the whole row through
--- restaurants_select, which is not touched.
+-- restaurants_select, which is not touched, and nothing below narrows what a
+-- manager reads.
 --
 -- Safe to run twice.
 
@@ -123,5 +125,14 @@ create or replace trigger stock_takes_reopened_clears_value
     for each row
     when (new.status = 'in_progress' and old.status is distinct from 'in_progress')
     execute function public.stock_take_reopened_clears_value();
+
+-- Staff stop reading invoice_line_claims. Since 033 they read their own
+-- through my_claims, which has no euros. The table carries what a claim was
+-- worth once a manager matches it to a line, and what came back. They still
+-- raise one, through invoice_line_claims_raise, which needs no read. And
+-- invoice_cost_by_category, which reads the table as the person asking, has
+-- nothing for them any more.
+
+drop policy if exists "invoice_line_claims_read_own" on public.invoice_line_claims;
 
 notify pgrst, 'reload schema';

@@ -34,8 +34,8 @@ import DoorClaimModal from '@/components/invoices/DoorClaimModal'
 // so the forgotten ones are real money. This list is what makes them visible.
 //
 // Everybody can open it and everybody can log one, which is the whole point.
-// An employee sees their own notes and nothing else, here and in the database,
-// because a claim carries an amount once it is matched to a line.
+// An employee sees their own notes and none of the money, here and in the
+// database, because a claim carries an amount once it is matched to a line.
 
 const LOOK_BACK_DAYS = 60
 
@@ -70,7 +70,12 @@ export default function ClaimsPage() {
 
             const [sup, cl, inv] = await Promise.all([
                 supabase.from('suppliers').select('id, name').eq('is_active', true),
-                supabase.from('invoice_line_claims')
+                // An employee reads their own through my_claims, which has no
+                // euros: no amount, nothing credited, no invoice. With no
+                // amount a claim is still waiting for as long as it is open,
+                // which is what claimIsOpen says, and a credit that covers it
+                // in full closes it.
+                supabase.from(manager ? 'invoice_line_claims' : 'my_claims')
                     .select('*')
                     .eq('restaurant_id', restaurantId)
                     .gte('raised_on', from)

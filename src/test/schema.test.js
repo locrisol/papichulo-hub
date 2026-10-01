@@ -95,12 +95,24 @@ const policiesOn = table => schema.match(
     new RegExp(String.raw`CREATE POLICY "\w+" ON "public"\."${table}"[^;]*;`, 'g'),
 ) || []
 
+// One view's definition, from its CREATE to the end of its where clause.
+const viewNamed = name => {
+    const start = schema.indexOf(`CREATE OR REPLACE VIEW "public"."${name}"`)
+    return start < 0 ? '' : schema.slice(start, schema.indexOf(';', start))
+}
+
+// Read only, and only for people signed in. A view over one table is one the
+// database would otherwise write through as its owner. See 021.
+const readOnlyForStaff = name => {
+    expect(schema).toMatch(new RegExp(String.raw`revoke all on public\.${name}\s+from anon, authenticated, public;`))
+    expect(schema).toMatch(new RegExp(String.raw`grant select on public\.${name}\s+to authenticated;`))
+}
+
 describe('what staff are given of their restaurant', () => {
     // A row policy picks rows and cannot pick columns. So the only way to give
     // staff their restaurant without its money and its mail addresses is a
     // view that leaves them out, and no policy on the table for them at all.
-    const start = schema.indexOf('CREATE OR REPLACE VIEW "public"."staff_restaurants"')
-    const view = start < 0 ? '' : schema.slice(start, schema.indexOf(';', start))
+    const view = viewNamed('staff_restaurants')
 
     it('has the hours and rules My shifts needs', () => {
         for (const column of ['opening_hours', 'break_rules', 'roster_rules', 'watch_city_events']) {
@@ -123,8 +135,7 @@ describe('what staff are given of their restaurant', () => {
     })
 
     it('can be read by people signed in and changed by nobody', () => {
-        expect(schema).toMatch(/revoke all on public\.staff_restaurants\s+from anon, authenticated, public;/)
-        expect(schema).toMatch(/grant select on public\.staff_restaurants\s+to authenticated;/)
+        readOnlyForStaff('staff_restaurants')
     })
 })
 
@@ -188,6 +199,36 @@ describe('what staff are given of the stock takes', () => {
         expect(trigger).toContain(`WHEN (((("new"."status")::"text" = 'in_progress'::"text") AND (("old"."status")::"text" IS DISTINCT FROM 'in_progress'::"text")))`)
         const start = schema.indexOf('CREATE OR REPLACE FUNCTION "public"."stock_take_reopened_clears_value"()')
         expect(schema.slice(start, schema.indexOf('$$;', start))).toContain('new.total_value := null;')
+    })
+})
+
+describe('what staff are given of their delivery problems', () => {
+    // The notes they took at the door, through my_claims. Once a manager
+    // matches one to a line it carries what it was worth and what came back,
+    // and a row policy cannot hide a column, so no policy on the table lets
+    // an employee read it. Raising one is still theirs.
+    const view = viewNamed('my_claims')
+
+    it('leaves out the money and the invoice it was matched to', () => {
+        expect(view, 'my_claims is not in schema.sql').toContain('"invoice_line_claims"')
+        for (const column of ['amount', 'credited_amount', 'invoice_id', 'invoice_line_id', 'credit_invoice_id', 'counted_week']) {
+            expect(view, `my_claims hands over ${column}`).not.toContain(`"c"."${column}"`)
+        }
+    })
+
+    it('gives each person their own, at their own restaurant', () => {
+        expect(view).toMatch(/"c"\."raised_by" = \( SELECT "auth"\."uid"\(\) \)/)
+        expect(view).toMatch(/"c"\."restaurant_id" = \( SELECT "public"\."get_my_restaurant_id"\(\) \)/)
+    })
+
+    it('gives an employee no read of the table itself', () => {
+        const reads = policiesOn('invoice_line_claims').filter(p => !p.includes('FOR INSERT'))
+        expect(reads.length, 'found no policies on invoice_line_claims to check').toBeGreaterThan(0)
+        expect(reads.filter(p => p.includes("'employee'"))).toEqual([])
+    })
+
+    it('can be read by people signed in and changed by nobody', () => {
+        readOnlyForStaff('my_claims')
     })
 })
 

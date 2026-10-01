@@ -41,12 +41,14 @@ const db = {
 }
 
 vi.mock('@/lib/supabase', () => ({ supabase: new Proxy({}, { get: (_, k) => db[k] }) }))
-vi.mock('@/context/auth', () => ({ useAuth: () => ({ user: { id: 'u1', role: 'store_manager' } }) }))
+let user
+vi.mock('@/context/auth', () => ({ useAuth: () => ({ user }) }))
 vi.mock('@/context/restaurant', () => ({ useRestaurant: () => ({ activeRestaurant: { id: 'r1', name: 'Point Campus' } }) }))
 
 const { default: ClaimsPage } = await import('./ClaimsPage')
 
 beforeEach(() => {
+    user = { id: 'u1', role: 'store_manager' }
     updated = []
     tables = {
         suppliers: [{ id: 's1', name: 'Sysco Ireland', is_active: true }],
@@ -99,5 +101,41 @@ describe('putting a note from the door against its line', () => {
         tables.weekly_reports = [{ id: 'w1', restaurant_id: 'r1', week_start: DELIVERY_WEEK, status: 'draft' }]
         const { row } = await attach()
         expect(row).toMatchObject({ counted_week: DELIVERY_WEEK })
+    })
+})
+
+// An employee sees the notes they took at the door and nothing about money.
+// Once a manager matches one to a line it carries what it was worth and what
+// came back, so they read it through my_claims, which leaves the euros out.
+describe('an employee looking at their own', () => {
+    // What my_claims gives: no amount, nothing credited, no invoice.
+    const MINE = {
+        id: 'c2', restaurant_id: 'r1', supplier_id: 's1', kind: 'damaged', what: 'Two bags of rice split',
+        cases: 0, units: 2, docket_number: null, raised_on: '2026-09-29', status: 'open', note: null,
+    }
+    const DONE = { ...MINE, id: 'c3', what: 'Lettuce warm', status: 'settled' }
+
+    beforeEach(() => {
+        user = { id: 'u2', role: 'employee' }
+        db.from.mockClear()
+        tables.my_claims = [MINE, DONE]
+        tables.invoice_line_claims = []
+    })
+
+    it('reads them without the money, and never the table', async () => {
+        renderWithRouter(<ClaimsPage />)
+        await screen.findByText('Two bags of rice split')
+        const asked = db.from.mock.calls.map(([table]) => table)
+        expect(asked).toContain('my_claims')
+        expect(asked).not.toContain('invoice_line_claims')
+        expect(asked).not.toContain('invoices')
+    })
+
+    it('still says which are waiting and which are finished', async () => {
+        renderWithRouter(<ClaimsPage />)
+        const waiting = (await screen.findByText('Still waiting')).closest('div').parentElement
+        expect(waiting).toHaveTextContent('Two bags of rice split')
+        expect(waiting).not.toHaveTextContent('Lettuce warm')
+        expect((await screen.findByText('Finished')).parentElement).toHaveTextContent('Lettuce warm')
     })
 })

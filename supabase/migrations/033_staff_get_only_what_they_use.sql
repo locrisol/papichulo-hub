@@ -1,5 +1,7 @@
--- Staff get their restaurant without its money or its mail addresses, and a
--- switched off account stops reading its own private diary entries.
+-- Staff get only what their screens use, through views that leave the rest
+-- out, and a switched off account stops reading its own private diary entries.
+-- His rule of 1 October: the database sends staff a cut-down of only what
+-- they need to see.
 --
 -- Found by the audit of 28 September. Every page an employee opened read the
 -- whole restaurant row, and restaurants_select_own let them: the food, labour
@@ -11,9 +13,9 @@
 -- name, the opening hours, the break and roster rules, and whether city events
 -- are watched. Their policy on the table goes in 034.
 --
--- The view only adds, so this can be run any time before the branch is
--- merged. The site as it is still reads the table and the new one reads the
--- view, so staff can open the Hub with either. 034 takes the table away from
+-- The views only add, so this can be run any time before the branch is
+-- merged. The site as it is still reads the tables and the new one reads the
+-- views, so staff can use the Hub with either. 034 takes the tables away from
 -- them, and is run once the new site is live.
 --
 -- Safe to run twice.
@@ -54,5 +56,31 @@ create policy "diary_entries_select" on public.diary_entries
         or (scope = 'private' and created_by = (select auth.uid())
             and (select public.get_my_role()) is not null)
     );
+
+-- Staff read their own delivery problems through my_claims: the notes they
+-- took at the door, with no euros. Once a manager matches one to a line it
+-- carries what it was worth and what came back, and a row policy cannot hide
+-- a column. Their read of the table goes in 034. Raising one is unchanged.
+
+create or replace view public.my_claims as
+ select c.id,
+    c.restaurant_id,
+    c.supplier_id,
+    c.docket_number,
+    c.what,
+    c.kind,
+    c.cases,
+    c.units,
+    c.status,
+    c.raised_on,
+    c.note
+   from public.invoice_line_claims c
+  where c.raised_by = (select auth.uid())
+    and c.restaurant_id = (select public.get_my_restaurant_id());
+
+comment on view public.my_claims is 'The delivery problems you logged at the door, at your restaurant, as Delivery problems shows them to staff: what it was, how many, the docket and whether it is still waiting. Not what it was worth, what came back or the invoice it was matched to, which stay on invoice_line_claims for the managers. A switched off account reads nothing.';
+
+revoke all on public.my_claims from anon, authenticated, public;
+grant select on public.my_claims to authenticated;
 
 notify pgrst, 'reload schema';

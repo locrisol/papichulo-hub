@@ -3601,18 +3601,17 @@ CREATE POLICY "supplier_documents_all" ON "public"."supplier_documents" TO "auth
 -- point of taking the note at the door: the person signing for it knows within
 -- a minute and has forgotten by Friday.
 --
--- They may raise one and read back the ones they raised. They may not read
--- anybody else's, because a claim carries an amount once it has been matched to
--- a line and what things cost is not an employee's business. They may not
--- change one afterwards either: a note taken at the door is a record of what
--- was said at the door.
+-- They may raise one. They read back the ones they raised through my_claims
+-- (with the views, below), and not the table, even for their own: a claim
+-- carries an amount once it has been matched to a line, and what came back,
+-- and what things cost is not an employee's business. They may not change one
+-- afterwards either: a note taken at the door is a record of what was said at
+-- the door.
 ALTER TABLE "public"."invoice_line_claims" ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "invoice_line_claims_manage" ON "public"."invoice_line_claims" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
 CREATE POLICY "invoice_line_claims_raise" ON "public"."invoice_line_claims" FOR INSERT TO "authenticated" WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'employee'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND ("raised_by" = ( SELECT "auth"."uid"() )) AND ("amount" IS NULL) AND ("credited_amount" = (0)::numeric) AND ("status" = 'open'::"text") AND ("invoice_line_id" IS NULL) AND ("credit_invoice_id" IS NULL)));
-
-CREATE POLICY "invoice_line_claims_read_own" ON "public"."invoice_line_claims" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'employee'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND ("raised_by" = ( SELECT "auth"."uid"() ))));
 
 ALTER TABLE "public"."labour_entries" ENABLE ROW LEVEL SECURITY;
 
@@ -3911,9 +3910,10 @@ CREATE POLICY "change_log_select" ON "public"."change_log" FOR SELECT TO "authen
 -- the draft the manager is working on, and a shift's note only to the person
 -- it is on and to the managers. staff_restaurants gives them their own
 -- restaurant without its cost targets, its default cost per hour or the
--- addresses its mail goes to. They read past row level security on purpose
--- and their own where clause is the wall between the two restaurants, which
--- is covered by the database tests.
+-- addresses its mail goes to. my_claims gives them the delivery problems they
+-- logged without what each was worth. They read past row level security on
+-- purpose and their own where clause is the wall between the two restaurants,
+-- which is covered by the database tests.
 --
 -- The public_ views are what a customer scanning the QR code is given. The
 -- tables behind them answer to nobody who is not signed in. No quantity
@@ -4003,6 +4003,23 @@ CREATE OR REPLACE VIEW "public"."staff_restaurants" AS
     "r"."watch_city_events"
    FROM "public"."restaurants" "r"
   WHERE (("r"."is_active" = true) AND (("r"."id" = "public"."get_my_restaurant_id"()) OR ("public"."get_my_role"() = 'super_admin'::"text")));
+
+-- Yours and at your restaurant, so an account switched off reads nothing,
+-- the same as every rule that asks get_my_role.
+CREATE OR REPLACE VIEW "public"."my_claims" AS
+ SELECT "c"."id",
+    "c"."restaurant_id",
+    "c"."supplier_id",
+    "c"."docket_number",
+    "c"."what",
+    "c"."kind",
+    "c"."cases",
+    "c"."units",
+    "c"."status",
+    "c"."raised_on",
+    "c"."note"
+   FROM "public"."invoice_line_claims" "c"
+  WHERE (("c"."raised_by" = ( SELECT "auth"."uid"() )) AND ("c"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )));
 
 -- What labour cost, per day, for everything that asks: the cost dashboard, the
 -- report and the weekly report. None of them has to know the answer comes from
@@ -4173,6 +4190,7 @@ CREATE OR REPLACE VIEW "public"."public_restaurants" AS
 COMMENT ON VIEW "public"."roster_published" IS 'The week as it went out to staff, at your restaurant: every published shift as it stands, and a shift changed since the week went out as it was then, from published_as. Changing a shift takes it back to a draft so the roster can say so, and without this it vanished from somebody''s week and phone until the week was published again. The note is there only for the person the shift is on and for the managers. My shifts reads this rather than roster_shifts.';
 COMMENT ON VIEW "public"."roster_away" IS 'The days somebody is not there, with no reason attached, the hours they can still work when it is only part of a day, and the shifts a freed day left going spare. The kind, the note and the hours stay on the absences table, which nobody below a manager can read. This is what the staff week greys out, and it reads Not available the same way the picture that goes to the WhatsApp group does.';
 COMMENT ON VIEW "public"."roster_colleagues" IS 'Who works at your restaurant, as far as anybody below a manager is allowed to know: a name, a position and its colour, and whether they have an account to answer a swap with. It is also how somebody finds their own name on the roster. The employees table itself stays closed, even for their own row, because it carries the hourly rate, the date of birth, the work permission and what a manager wrote in Notes, and a row policy cannot hide a column.';
+COMMENT ON VIEW "public"."my_claims" IS 'The delivery problems you logged at the door, at your restaurant, as Delivery problems shows them to staff: what it was, how many, the docket and whether it is still waiting. Not what it was worth, what came back or the invoice it was matched to, which stay on invoice_line_claims for the managers. A switched off account reads nothing.';
 COMMENT ON VIEW "public"."staff_restaurants" IS 'Your restaurant, as far as anybody below a manager needs it: the name, the opening hours, the break and roster rules, and whether city events are watched. The restaurants table itself is closed to staff, because it carries the cost targets, the default cost per hour and the addresses the report and the hours are mailed to, and a row policy cannot hide a column.';
 
 -- The day each thing on a checklist was last done. The third kind, and the
@@ -4200,6 +4218,7 @@ revoke all on public.roster_colleagues        from anon, authenticated, public;
 revoke all on public.roster_away              from anon, authenticated, public;
 revoke all on public.roster_published         from anon, authenticated, public;
 revoke all on public.staff_restaurants        from anon, authenticated, public;
+revoke all on public.my_claims                from anon, authenticated, public;
 revoke all on public.checklist_last_done      from anon, authenticated, public;
 revoke all on public.labour_by_day            from anon, authenticated, public;
 revoke all on public.invoice_cost_by_category from anon, authenticated, public;
@@ -4207,6 +4226,7 @@ grant select on public.roster_colleagues        to authenticated;
 grant select on public.roster_away              to authenticated;
 grant select on public.roster_published         to authenticated;
 grant select on public.staff_restaurants        to authenticated;
+grant select on public.my_claims                to authenticated;
 grant select on public.checklist_last_done      to authenticated;
 grant select on public.labour_by_day            to authenticated;
 grant select on public.invoice_cost_by_category to authenticated;
