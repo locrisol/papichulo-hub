@@ -5,7 +5,7 @@ import { categoryStyle, statusNote, dayName } from '@/lib/events'
 import {
     placeName, elsewhere, walkWords, hostOf, agoWords, whenWords, eventName, offFor,
 } from '@/lib/nearby'
-import { fullDate, toISODate } from '@/lib/dates'
+import { fullDate, toISODate, todayISO } from '@/lib/dates'
 import { fmtMoney } from '@/lib/format'
 import {
     badge, fieldClass, labelClass, dateField, secondaryButton, checkbox, checkRow, hintClass,
@@ -111,7 +111,9 @@ export default function EventModal({ row, canEdit = false, sameName = 0, onRenam
     // fact and a reading. A feed needs no such line: the venue itself said so.
     const source = hostOf(event.source_url)
     if (fromAPage && source) {
-        const when = agoWords(event.found_at, new Date().toISOString().slice(0, 10))
+        // Today here, the way agoWords counts. The UTC date put a reading found
+        // the evening before on today, from midnight to one all summer.
+        const when = agoWords(event.found_at, todayISO())
         rows.push({ label: 'Read from', value: when ? `${source}, ${when}` : source })
     }
 

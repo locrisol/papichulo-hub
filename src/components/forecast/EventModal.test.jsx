@@ -1,7 +1,15 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import EventModal from '@/components/forecast/EventModal'
+
+// Today, as the rest of the app works it out. Fixed far from the real date, so
+// a modal that asks the clock any other way says something else.
+vi.mock('@/lib/dates', async importOriginal => ({
+    ...(await importOriginal()),
+    todayISO: () => '2030-01-02',
+}))
+
+const { default: EventModal } = await import('@/components/forecast/EventModal')
 
 // Putting right a time that was read wrong.
 //
@@ -105,5 +113,24 @@ describe('a night that is not going ahead', () => {
             onClose={() => {}}
         />)
         expect(screen.queryByText('Last listed')).toBeNull()
+    })
+})
+
+// Today was the UTC date, while the words it is compared with are local. From
+// midnight to one in the morning all summer, a reading found the evening
+// before said today and one found ten minutes ago gave a date.
+describe('how long ago a reading was found', () => {
+    it('counts from today in Ireland, the same as everywhere else', () => {
+        render(<EventModal
+            row={{
+                ...row({
+                    id: 'e4', name: 'Quiz night', event_date: '2030-01-09', source: 'page',
+                    source_url: 'https://www.theccd.ie/all-events/', found_at: '2030-01-01T12:00:00Z',
+                }),
+                checked: false,
+            }}
+            onClose={() => {}}
+        />)
+        expect(screen.getByText('theccd.ie, yesterday')).toBeInTheDocument()
     })
 })

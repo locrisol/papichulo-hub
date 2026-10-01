@@ -99,18 +99,29 @@ describe('syncIsDue', () => {
     })
 
     it('is due when nothing has ever been fetched', () => {
-        expect(syncIsDue()).toBe(true)
+        expect(syncIsDue('pc')).toBe(true)
     })
 
     it('is not due straight after a fetch', () => {
-        markSynced()
-        expect(syncIsDue()).toBe(false)
+        markSynced('pc')
+        expect(syncIsDue('pc')).toBe(false)
     })
 
     it('is due again after twelve hours', () => {
-        const thirteenHoursAgo = Date.now() - 13 * 60 * 60 * 1000
-        localStorage.setItem('eventsLastSync', String(thirteenHoursAgo))
-        expect(syncIsDue()).toBe(true)
+        markSynced('pc')
+        const later = Date.now() + 13 * 60 * 60 * 1000
+        const spy = vi.spyOn(Date, 'now').mockReturnValue(later)
+        expect(syncIsDue('pc')).toBe(true)
+        spy.mockRestore()
+    })
+
+    // One stamp per browser covered every restaurant, so a super admin who
+    // opened Point Campus's calendar and then switched to Dun Laoghaire gave
+    // Dun Laoghaire no check from that browser for twelve hours.
+    it('keeps a stamp for each restaurant', () => {
+        markSynced('pc')
+        expect(syncIsDue('pc')).toBe(false)
+        expect(syncIsDue('dl')).toBe(true)
     })
 })
 

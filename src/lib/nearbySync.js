@@ -27,7 +27,11 @@ import { functionError } from '@/lib/errors'
 // braces: a page opened at nine on a morning the cron has not run yet still
 // shows tonight.
 const SYNC_EVERY_HOURS = 12
-const SYNC_KEY = 'eventsLastSync'
+
+// One stamp for each restaurant. It was one for the whole browser, so a super
+// admin who opened Point Campus's calendar and then switched to Dun Laoghaire
+// gave Dun Laoghaire no check from here for twelve hours.
+const syncKey = restaurantId => `eventsLastSync:${restaurantId || ''}`
 
 // Bring the table up to date, and say what that added.
 //
@@ -55,12 +59,12 @@ export async function syncEvents(supabase, restaurantId) {
     return { added: data?.added || 0, total: data?.total || 0 }
 }
 
-// Whether it is worth fetching. Kept per browser, which is fine: the point is
-// to avoid pointless calls, and with the free tier allowing 5,000 a day even a
-// busy team is nowhere near it.
-export function syncIsDue() {
+// Whether it is worth fetching for this restaurant. Kept per browser, which is
+// fine: the point is to avoid pointless calls, and with the free tier allowing
+// 5,000 a day even a busy team is nowhere near it.
+export function syncIsDue(restaurantId) {
     try {
-        const last = localStorage.getItem(SYNC_KEY)
+        const last = localStorage.getItem(syncKey(restaurantId))
         if (!last) return true
         const hours = (Date.now() - Number(last)) / 1000 / 60 / 60
         return hours >= SYNC_EVERY_HOURS
@@ -70,9 +74,9 @@ export function syncIsDue() {
     }
 }
 
-export function markSynced() {
+export function markSynced(restaurantId) {
     try {
-        localStorage.setItem(SYNC_KEY, String(Date.now()))
+        localStorage.setItem(syncKey(restaurantId), String(Date.now()))
     } catch {
         // Not being able to remember is harmless, it only means we fetch again.
     }

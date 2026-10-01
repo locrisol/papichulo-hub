@@ -159,7 +159,7 @@ export default function CalendarPage() {
         if (!activeRestaurant || !canWrite) return undefined
         const id = activeRestaurant.id
         const out = checking.current?.id === id ? checking.current.run : null
-        if (!out && !syncIsDue()) return undefined
+        if (!out && !syncIsDue(id)) return undefined
         let alive = true
 
         async function check() {
@@ -171,7 +171,7 @@ export default function CalendarPage() {
             setSyncing(true)
             try {
                 const r = await run
-                markSynced()
+                markSynced(id)
                 if (!alive) return
                 if (r.added > 0) {
                     setNote(`Found ${r.added} new ${r.added === 1 ? 'thing' : 'things'} happening nearby.`)
