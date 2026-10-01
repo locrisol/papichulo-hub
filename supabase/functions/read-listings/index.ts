@@ -56,7 +56,7 @@
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
-    endpoint, readable, promptFor, SCHEMA, answerFrom, eventsFrom, notYetKnown, watchedAlongside,
+    readable, promptFor, geminiRequest, failedWords, answerFrom, eventsFrom, notYetKnown, watchedAlongside,
     urlsFor, joinPages, isServiceRole, roleOf, refusalFor,
 } from './reading.js'
 import { readPage } from './fetching.js'
@@ -141,32 +141,33 @@ function windowOf(now: Date) {
     return { from: now.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) }
 }
 
+// The key travels in a header, and anything that goes wrong is said as what
+// failed and where rather than as the error's own message, which names the
+// address it was sending to. See geminiRequest and failedWords in reading.js.
 async function ask(key: string, prompt: string) {
-    const res = await fetch(`${endpoint()}?key=${encodeURIComponent(key)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(ASK_WAIT_MS),
-        body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: {
-                // JSON out, held to the shape in reading.js. That takes care of
-                // the shape and none of the sense, which is what the checks in
-                // eventsFrom are for.
-                responseMimeType: 'application/json',
-                responseSchema: SCHEMA,
-                // As close to no invention as the dial goes. This is a reading
-                // job and there is nothing here worth being creative about.
-                temperature: 0,
-            },
-        }),
-    })
+    const { url, init } = geminiRequest(key, prompt)
+
+    let res: Response
+    try {
+        res = await fetch(url, { ...init, signal: AbortSignal.timeout(ASK_WAIT_MS) })
+    } catch (err) {
+        throw new Error(failedWords('Asking Gemini', err, url))
+    }
 
     if (!res.ok) {
+        res.body?.cancel().catch(() => {})
         // Deliberately not the body. An API error can carry the key back.
         throw new Error(`Gemini said no (${res.status}).`)
     }
 
-    return answerFrom(await res.json())
+    let answer: unknown
+    try {
+        answer = await res.json()
+    } catch (err) {
+        throw new Error(failedWords("Reading Gemini's answer", err, url))
+    }
+
+    return answerFrom(answer)
 }
 
 // One page read, checked, and written.

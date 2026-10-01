@@ -3,7 +3,7 @@ import {
     textFrom, promptFor, answerFrom, eventsFrom, cleanName, sourceKeyFor,
     endpoint, SCHEMA, MOST_TEXT, MOST_NAME, MOST_ROWS, LONGEST_RUN_DAYS,
     dropRepeats, readable, MOST_REPEATS, urlsFor, monthsBetween, joinPages, MOST_ALL_TEXT,
-    isServiceRole, roleOf, refusalFor, watchedAlongside, notYetKnown,
+    isServiceRole, roleOf, refusalFor, watchedAlongside, notYetKnown, geminiRequest, failedWords,
 } from '../../supabase/functions/read-listings/reading'
 import { refusalFor as nearbyRefusalFor } from '../../supabase/functions/nearby-events/discovery'
 import {
@@ -634,6 +634,42 @@ describe('endpoint', () => {
     it('asks a free tier model', () => {
         expect(endpoint()).toContain('flash-lite')
         expect(endpoint()).toContain(':generateContent')
+    })
+})
+
+// The key used to travel in the address, and a fetch that fails on the network
+// names the whole address in its message. So a dropped connection carried the
+// key into the function's log.
+describe('asking Gemini', () => {
+    it('sends the key in a header and never in the address', () => {
+        const { url, init } = geminiRequest('sekret-key', 'the page')
+        expect(url).toBe(endpoint())
+        expect(url).not.toContain('sekret-key')
+        expect(init.headers['x-goog-api-key']).toBe('sekret-key')
+        expect(init.body).not.toContain('sekret-key')
+    })
+
+    it('asks for JSON held to the shape, with nothing creative about it', () => {
+        const body = JSON.parse(geminiRequest('k', 'the page').init.body)
+        expect(body.contents[0].parts[0].text).toBe('the page')
+        expect(body.generationConfig).toMatchObject({
+            responseMimeType: 'application/json',
+            responseSchema: SCHEMA,
+            temperature: 0,
+        })
+    })
+
+    it('says what failed and where, and never the address or the key', () => {
+        const err = new TypeError(
+            'error sending request for url (https://generativelanguage.googleapis.com/v1beta/models/x:generateContent?key=sekret-key): connection reset',
+        )
+        const words = failedWords('Asking Gemini', err, endpoint())
+        expect(words).toBe('Asking Gemini failed (TypeError at generativelanguage.googleapis.com)')
+        expect(words).not.toContain('sekret-key')
+    })
+
+    it('copes with something thrown that is not an error, and an address that is not one', () => {
+        expect(failedWords('Asking Gemini', 'nope', 'not an address')).toBe('Asking Gemini failed (Error)')
     })
 })
 

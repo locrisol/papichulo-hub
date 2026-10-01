@@ -299,6 +299,49 @@ export const SCHEMA = {
     required: ['events'],
 }
 
+// What to send Gemini, as a fetch takes it.
+//
+// **The key goes in a header, never in the address.** It used to go on the end
+// of the address, and a fetch that fails on the network, a dropped connection or
+// a name that will not look up, puts the whole address in its message. So a bad
+// minute at Google wrote the key into the function's log. Found by the audit of
+// 28 September.
+export function geminiRequest(key, prompt, model = MODEL) {
+    return {
+        url: endpoint(model),
+        init: {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+            body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: {
+                    // JSON out, held to the shape above. That takes care of
+                    // the shape and none of the sense, which is what the
+                    // checks in eventsFrom are for.
+                    responseMimeType: 'application/json',
+                    responseSchema: SCHEMA,
+                    // As close to no invention as the dial goes. This is a
+                    // reading job and there is nothing here worth being
+                    // creative about.
+                    temperature: 0,
+                },
+            }),
+        },
+    }
+}
+
+// Something that failed, said without the address it was going to.
+//
+// The kind of error and the host are enough to tell a timeout from a refusal
+// and Google from anywhere else, and neither can carry a key. The message is
+// left out on purpose, because the message is where the address is.
+export function failedWords(what, err, address) {
+    let host = ''
+    try { host = new URL(address).host } catch { /* not an address, so none to name */ }
+    const kind = (err && typeof err === 'object' && err.name) || 'Error'
+    return `${what} failed (${host ? `${kind} at ${host}` : kind})`
+}
+
 // The text Gemini put in its answer, wherever it decided to put it.
 export function answerFrom(payload) {
     const parts = payload?.candidates?.[0]?.content?.parts || []
