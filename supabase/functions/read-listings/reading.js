@@ -390,8 +390,8 @@ export const MOST_ROWS = 40
 //
 // This is the gate, and it is worth being blunt about what it is for: the model
 // is a reader and readers misread. Every row that survives here is one whose
-// date is a real date, inside the window we asked about, with a name on it, and
-// no two rows describing the same thing twice.
+// date is a real date, on at some point in the window we asked about, with a
+// name on it, and no two rows describing the same thing twice.
 export function eventsFrom(answer, { placeId, url, from, to, now, key = 'date' }) {
     let parsed
     try {
@@ -412,7 +412,6 @@ export function eventsFrom(answer, { placeId, url, from, to, now, key = 'date' }
 
         const date = String(one?.date || '').trim()
         if (!realDate(date)) continue
-        if (from && date < from) continue
         if (to && date > to) continue
 
         let ends = String(one?.ends || '').trim()
@@ -422,6 +421,17 @@ export function eventsFrom(answer, { placeId, url, from, to, now, key = 'date' }
             const days = (new Date(`${ends}T00:00:00Z`) - new Date(`${date}T00:00:00Z`)) / 86400000
             if (days > LONGEST_RUN_DAYS) ends = ''
         }
+
+        // Still on, rather than starting inside the window. The prompt asks
+        // for a run's first day, so a festival that began on the Friday comes
+        // back with Friday's date when it is read on the Monday, and asking
+        // whether it starts after the read day threw it away. On the day a page
+        // is added, or after a week the read failed, that was the one thing on.
+        //
+        // Asked only once the end has been checked, so a run whose end was
+        // dropped as too long falls back to its first day and a season that
+        // began months ago is still left out.
+        if (from && (ends || date) < from) continue
 
         const reading = sourceKeyFor(date, name, key)
         if (!reading || seen.has(reading)) continue

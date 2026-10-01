@@ -235,11 +235,17 @@ async function readOne(admin: Admin, place: Place, key: string, now: Date) {
     // case or punctuation is not a second event. A feed that names a night
     // differently from the page will still slip through, and that is the honest
     // limit of comparing two strings nobody wrote together.
+    //
+    // From the earliest day any row starts on, not from the read day. A run
+    // that began last Friday is kept now, and the feed's own row for it starts
+    // last Friday too, so looking from today would miss it and offer the same
+    // run a second time.
+    const earliest = rows.reduce((first, r) => (r.event_date < first ? r.event_date : first), from)
     const { data: already } = await admin
         .from('events')
         .select('name, event_date')
         .eq('place_id', place.id)
-        .gte('event_date', from)
+        .gte('event_date', earliest)
         .lte('event_date', to)
 
     const known = new Set(

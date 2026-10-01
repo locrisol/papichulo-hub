@@ -345,6 +345,25 @@ describe('what survives the check', () => {
         expect(rows.map(r => r.name)).toEqual(['In range'])
     })
 
+    // Read on the Monday, a festival that began on the Friday is still on. The
+    // model is asked for a run's first day and gives it, and the check used to
+    // throw the row away for starting before the window. What matters is
+    // whether it is still on.
+    it('keeps a run that began before the read day and is still on', () => {
+        const { rows } = eventsFrom(answer([
+            { name: 'Festival', date: '2026-10-25', ends: '2026-11-05' },
+            { name: 'Ends today', date: '2026-10-28', ends: '2026-11-01' },
+            { name: 'Over already', date: '2026-10-19', ends: '2026-10-30' },
+            // Too long to be one event, so the end is dropped and it falls back
+            // to its first day, which is before the window.
+            { name: 'A whole season', date: '2026-10-19', ends: '2027-01-30' },
+        ]), WHEN)
+        expect(rows.map(r => [r.name, r.event_date, r.ends_on])).toEqual([
+            ['Festival', '2026-10-25', '2026-11-05'],
+            ['Ends today', '2026-10-28', '2026-11-01'],
+        ])
+    })
+
     it('drops one with no name at all', () => {
         const { rows } = eventsFrom(answer([{ name: '   ', date: '2026-11-19' }]), WHEN)
         expect(rows).toEqual([])
