@@ -16,7 +16,7 @@
 
 import { num } from '@/lib/format'
 import { weekStartOf, addDays } from '@/lib/dates'
-import { recognisesSysco, readSyscoInvoice, readPackSize } from '@/lib/invoiceSysco'
+import { recognisesSysco, readSyscoInvoice, readPackSize, packItems } from '@/lib/invoiceSysco'
 import { documentStatus } from '@/lib/supplierDocuments'
 
 // Every format the Hub can read.
@@ -404,8 +404,22 @@ export function unitsPatch(row) {
     return {
         units_per_case: units,
         unit_price: to(num(row.line.price_per_case) / units, 4),
-        quantity: to(num(row.line.cases) * units + num(row.line.units), 3),
+        quantity: lineQuantity(row.line, units),
     }
+}
+
+// The whole line in the product's own unit: what is stored as its quantity.
+//
+// Their UNIT column counts items of the pack, a bag of a "4X500 GM" case, and
+// cases are in the product's unit, so the two cannot simply be added. For
+// Chorizo counted in kilos a loose bag went in as a kilo, and the credit for
+// three bags as 3 rather than 1.5. Each item is its share of a case. Where the
+// pack does not say how many items it holds, the sum it always was. Nothing
+// reads this yet; anything that costs from it later starts right.
+function lineQuantity(line, units) {
+    const items = packItems(line.pack_size)
+    const each = items ? units / items : 1
+    return to(num(line.cases) * units + num(line.units) * each, 3)
 }
 
 // Every line, with what the Hub already knows about it.
@@ -583,7 +597,7 @@ export function linePayload(row, invoiceId) {
         units: line.units,
         // The whole line in units, where the pack size can be read. Null rather
         // than a confident guess where it cannot.
-        quantity: units != null ? to(num(line.cases) * units + num(line.units), 3) : null,
+        quantity: units != null ? lineQuantity(line, units) : null,
         price_per_case: line.price_per_case,
         unit_price: perUnit,
         line_total: line.value,

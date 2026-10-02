@@ -767,6 +767,47 @@ describe('what gets written', () => {
         expect(again.price.id).toBe('pr1')
     })
 
+    // Their UNIT column counts items of the pack, a bag of a "4X500 GM" case,
+    // and it was added to cases in the product's own unit, so for Chorizo
+    // counted in kilos a bag was stored as a kilo.
+    describe('the whole line in the product\'s unit', () => {
+        const chorizo = over => line({
+            code: '5016842', description: 'CHORIZO CUBES', pack_size: '4X500 GM',
+            pack: { count: 4, size: 0.5, unit: 'KG', total: 2, printed: '4X500 GM' }, price_per_case: 27.99, ...over,
+        })
+
+        it('counts a single bag on the credit as the half kilo it is', () => {
+            const credited = chorizo({
+                pack_size: '1X500 GM', pack: { count: 1, size: 0.5, unit: 'KG', total: 0.5, printed: '1X500 GM' },
+                cases: 0, units: -3, price_per_case: 7, value: -21,
+            })
+            expect(linePayload({ line: credited, wantedUnits: 0.5 }, 'i1').quantity).toBe(-1.5)
+        })
+
+        it('counts a case and two bags of a kilo product as three kilos', () => {
+            expect(linePayload({ line: chorizo({ cases: 1, units: 2 }), wantedUnits: 2 }, 'i1').quantity).toBe(3)
+        })
+
+        it('leaves a product counted in bags as it was', () => {
+            expect(linePayload({ line: chorizo({ cases: 1, units: 2 }), wantedUnits: 4 }, 'i1').quantity).toBe(6)
+        })
+
+        // Six of four or four of six: no telling, so the sum it always was.
+        it('adds the two up as before where the pack does not say how many items', () => {
+            const unclear = chorizo({ pack_size: '6X4', pack: { count: 24, size: null, unit: null, total: 24 }, cases: 1, units: 2 })
+            expect(linePayload({ line: unclear, wantedUnits: 24 }, 'i1').quantity).toBe(26)
+        })
+
+        it('is the same when the review puts the pack right', () => {
+            const stored = { units_per_case: 1 }
+            const credited = { pack_size: '1X500 GM', cases: 0, units: -3, price_per_case: 7 }
+            expect(unitsPatch({ wantedUnits: 0.5, stored, line: credited }))
+                .toEqual({ units_per_case: 0.5, unit_price: 14, quantity: -1.5 })
+            expect(unitsPatch({ wantedUnits: 2, stored, line: { pack_size: '4X500 GM', cases: 1, units: 2, price_per_case: 27.99 } }))
+                .toMatchObject({ quantity: 3 })
+        })
+    })
+
     it('says nothing rather than guessing when the pack size could not be read', () => {
         const [row] = matchLines({
             lines: [line({ pack_size: null, pack: null })], supplier: SUPPLIER,
