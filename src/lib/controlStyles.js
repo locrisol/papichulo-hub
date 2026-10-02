@@ -140,6 +140,16 @@ export const warningNote = 'text-sm text-amber-900 bg-amber-50 border border-amb
 // hand. They can move over when those screens are next worked on.
 export const urgentNote = 'text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg p-3'
 
+// The same note in blue, for a question or a sum to check before going ahead,
+// like which price a claim should have been or which invoice line its money
+// comes off. Nothing is wrong yet, so it is not warningNote. Blue 900 on the
+// pale blue is well over 7 to 1.
+//
+// The invoice document card and the fill-in form each have one written out by
+// hand, with less padding. They can move over when those screens are next
+// worked on.
+export const infoNote = 'text-sm text-blue-900 bg-blue-50 border border-blue-200 rounded-lg p-3'
+
 export const labelClass = 'text-xs text-gray-500 mb-1 block'
 
 // The small caps line over a figure: "Waste this week", "Margin", "Net sales".

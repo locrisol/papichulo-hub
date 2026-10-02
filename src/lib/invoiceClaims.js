@@ -22,10 +22,10 @@
 // both. Which of the two, and which week it lands in, is the whole of
 // `creditLands` below.
 
-import { num } from '@/lib/format'
+import { num, fmtMoney } from '@/lib/format'
 import { weekStartOf, addDays } from '@/lib/dates'
 import { similarWords, documentTotal, lineCost } from '@/lib/invoiceImport'
-import { packItems } from '@/lib/invoiceSysco'
+import { packItems, readPackSize } from '@/lib/invoiceSysco'
 
 // What can be wrong with a delivery.
 //
@@ -240,13 +240,7 @@ export function claimAmount(claim, line, { agreedPerCase = null } = {}) {
     if (!line) return null
     const perCase = num(line.price_per_case)
     const perPack = num(line.units_per_case)
-    const items = packItems(line.pack_size)
-    let cases = Math.abs(num(claim?.cases))
-    let units = Math.abs(num(claim?.units))
-    if (items) {
-        cases += Math.floor(units / items)
-        units %= items
-    }
+    const { cases, units, items } = claimCount(claim, line)
     const share = money => (items ? round2(money / items) : perPack > 0 ? money / perPack : null)
 
     const printed = num(line.line_total)
@@ -266,6 +260,114 @@ export function claimAmount(claim, line, { agreedPerCase = null } = {}) {
 
     const perUnit = share(perCase) ?? num(line.unit_price)
     return round2((cases * perCase + units * perUnit) * (1 + vatShare + depositShare))
+}
+
+// The claim as whole cases and single items of this line's pack, a whole case
+// of single items counted as the case. `items` is null where the pack cannot
+// be read. A one item pack is left as single items, the way Sysco prints a
+// loose sale under UNIT, and an item of it is the case price all the same.
+function claimCount(claim, line) {
+    const items = packItems(line?.pack_size)
+    let cases = Math.abs(num(claim?.cases))
+    let units = Math.abs(num(claim?.units))
+    if (items > 1) {
+        cases += Math.floor(units / items)
+        units %= items
+    }
+    return { cases, units, items }
+}
+
+// What putting a claim on a line comes to, in words, shown before anything is
+// written: "3 of the 4 x 500 g in a case at €27.99 a case: €21.00". On the
+// Chorizo of 2 October the money and the delivery were only seen after the
+// tap, in the message saying they had already moved. Said in the pack's own
+// words, a bag read as a kilo, or a claim for more than the line billed, is
+// seen before it costs anything.
+//
+// `problem` is why it cannot go on this line at all.
+export function claimWorking(claim, line, priced = {}) {
+    const amount = claimAmount(claim, line, priced)
+    if (amount == null || amount <= 0) {
+        // A few cents a case split over a case of cans can come to nothing,
+        // and that is not the price typed being wrong.
+        const tiny = claim?.kind === 'price' && amount === 0
+        return {
+            amount: null,
+            words: '',
+            problem: tiny ? 'That difference comes to less than a cent.'
+                : claim?.kind === 'price'
+                    ? 'Say what they should have charged a case, and it has to be less than what they did.'
+                    : 'That line has no price on it to work the claim out from.',
+        }
+    }
+
+    const { cases, units, items } = claimCount(claim, line)
+    const perPack = num(line.units_per_case)
+    const count = countWords(cases, units, items, line)
+
+    // A line billed with no count on it, a typed one, has nothing to check
+    // against.
+    const had = claimCount({ cases: line.cases, units: line.units }, line)
+    const per = items || (perPack > 0 ? perPack : null)
+    const billed = per ? had.cases * per + had.units : null
+    if (billed && cases * per + units > billed + 0.0001) {
+        return {
+            amount: null,
+            words: '',
+            problem: `That line only billed ${countWords(had.cases, had.units, null, { units_per_case: 0 }, false)}, `
+                + 'less than this claim. Pick another line, or check the numbers on the note.',
+        }
+    }
+
+    const vat = num(line.vat_amount) > 0
+    const deposit = num(line.deposit_amount) > 0
+    // On a one item pack the price of a case is the price of each.
+    const rate = items === 1 && !cases ? 'each' : 'a case'
+    if (claim?.kind === 'price') {
+        const over = round2(num(line.price_per_case) - num(priced.agreedPerCase))
+        return {
+            amount,
+            words: `${count.replace(/,$/, '')}, ${fmtMoney(over)} ${rate} over the agreed price${vat ? ', with its VAT' : ''}: ${fmtMoney(amount)}`,
+            problem: null,
+        }
+    }
+    const extras = vat && deposit ? ', with its VAT and deposit' : vat ? ', with its VAT' : deposit ? ', with its deposit' : ''
+    return {
+        amount,
+        words: `${count} at ${fmtMoney(line.price_per_case)} ${rate}${extras}: ${fmtMoney(amount)}`,
+        problem: null,
+    }
+}
+
+// "1 case and 3 of the 4 x 500 g in a case". Plain single items where the
+// pack cannot be read, saying what a case was taken as when it is asked to.
+function countWords(cases, units, items, line, taking = true) {
+    const parts = []
+    if (cases) parts.push(`${cases} ${cases === 1 ? 'case' : 'cases'}`)
+    if (units) {
+        const perPack = num(line?.units_per_case)
+        const single = `${units} single ${units === 1 ? 'item' : 'items'}`
+        parts.push(items > 1
+            ? `${units} of the ${itemsInCase(line.pack_size, items)} in a case`
+            : !items && taking && perPack > 0 ? `${single}, taking a case as ${perPack} of them,` : single)
+    }
+    return parts.join(' and ')
+}
+
+// "4 x 500 g", "24 x 330 ml", "10 packs of 10", or just the count.
+function itemsInCase(packSize, items) {
+    const pack = readPackSize(packSize)
+    if (!pack?.unit || (pack.unit === 'Units' && pack.count === 1)) return String(items)
+    if (pack.unit === 'Units') return `${pack.count} packs of ${pack.size}`
+    const small = pack.size < 1
+    const size = Math.round((small ? pack.size * 1000 : pack.size) * 1000) / 1000
+    const word = pack.unit === 'KG' ? (small ? 'g' : 'kg') : (small ? 'ml' : 'l')
+    return `${pack.count} x ${size} ${word}`
+}
+
+// The invoice a claim is going on is not the docket written on the note.
+export function notTheDocket(claim, invoice) {
+    return !!claim?.docket_number && String(invoice?.invoice_number) !== String(claim.docket_number)
 }
 
 // What is still being chased.

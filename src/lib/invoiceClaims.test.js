@@ -4,7 +4,7 @@ import {
     CLAIM_KINDS, NOT_LOGGED, claimKind, emptyDoorClaim, doorClaimProblem, doorClaimPayload,
     claimAmount, claimBalance, claimIsOpen, claimTakesOff, claimCandidates, claimMatch,
     creditSettles, creditTakenBack, voidedBy, sentBack, chasingList, isLate, claimsForWeek, bySupplier,
-    claimWeek, sentWeeks, fromEarlierWeeks, otherDeliveries, byInvoice,
+    claimWeek, sentWeeks, fromEarlierWeeks, otherDeliveries, byInvoice, claimWorking, notTheDocket,
 } from '@/lib/invoiceClaims'
 
 const LINE = {
@@ -231,6 +231,95 @@ describe('what a single item out of a case is worth', () => {
         expect(claimAmount({ kind: 'price', cases: 0, units: 6 }, coke, { agreedPerCase: 18.44 })).toBe(0.03)
         expect(claimAmount({ kind: 'price', cases: 0, units: 23 }, { ...coke, vat_amount: 0 }, { agreedPerCase: 18.24 }))
             .toBe(0.29)
+    })
+})
+
+// What is shown before a claim is put on a line, so a wrong reading of the
+// numbers is seen before any money moves.
+describe('the working shown before a claim goes on a line', () => {
+    const chorizo = {
+        raw_description: 'CHORIZO CUBES', pack_size: '4X500 GM', units_per_case: 2, price_per_case: 27.99,
+        line_total: 27.99, vat_amount: 0, deposit_amount: 0, cases: 1, units: 0,
+    }
+
+    it('says it in the pack\'s own words', () => {
+        expect(claimWorking({ cases: 0, units: 3 }, chorizo)).toEqual({
+            amount: 21, words: '3 of the 4 x 500 g in a case at €27.99 a case: €21.00', problem: null,
+        })
+    })
+
+    it('names whole cases and both together', () => {
+        const two = { ...chorizo, cases: 2, line_total: 55.98 }
+        expect(claimWorking({ cases: 1, units: 0 }, two).words).toBe('1 case at €27.99 a case: €27.99')
+        expect(claimWorking({ cases: 1, units: 1 }, two).words)
+            .toBe('1 case and 1 of the 4 x 500 g in a case at €27.99 a case: €34.99')
+    })
+
+    it('says when the VAT and the deposit come off with it', () => {
+        const coke = {
+            pack_size: '24X330 ML', price_per_case: 18.54, units_per_case: 24,
+            line_total: 37.08, vat_amount: 8.52, deposit_amount: 7.2, cases: 2, units: 0,
+        }
+        expect(claimWorking({ cases: 0, units: 6 }, coke).words)
+            .toBe('6 of the 24 x 330 ml in a case at €18.54 a case, with its VAT and deposit: €6.58')
+    })
+
+    // Where the pack cannot be read, it says what it took a case to be, so a
+    // case of kilos is seen for what it is.
+    it('says what a case was taken as when the pack cannot be read', () => {
+        expect(claimWorking({ cases: 0, units: 3 }, { ...chorizo, pack_size: null, cases: 2 }).words)
+            .toBe('3 single items, taking a case as 2 of them, at €27.99 a case: €41.99')
+    })
+
+    it('says what was charged over on a price query', () => {
+        const over = { ...chorizo, price_per_case: 31.99, line_total: 31.99 }
+        expect(claimWorking({ kind: 'price', cases: 0, units: 3 }, over, { agreedPerCase: 27.99 }).words)
+            .toBe('3 of the 4 x 500 g in a case, €4.00 a case over the agreed price: €3.00')
+    })
+
+    // Against the right docket, the old kilo reading would have claimed more
+    // than the whole line, and nothing said so.
+    it('refuses a claim for more than the line billed, and says what the line had', () => {
+        const out = claimWorking({ cases: 2, units: 0 }, chorizo)
+        expect(out.problem).toBe('That line only billed 1 case, less than this claim. '
+            + 'Pick another line, or check the numbers on the note.')
+        expect(claimWorking({ cases: 0, units: 5 }, chorizo).problem).toMatch(/^That line only billed 1 case,/)
+        expect(claimWorking({ cases: 0, units: 4 }, chorizo).problem).toBeNull()
+    })
+
+    // Sysco prints a loose sale as a one item pack with the count under UNIT,
+    // so the working says single items too, the way the paper does.
+    it('keeps to single items on a line of one item packs', () => {
+        const loose = {
+            pack_size: '1X500 GM', units_per_case: 0.5, price_per_case: 7, line_total: 7,
+            vat_amount: 0, deposit_amount: 0, cases: 0, units: 3,
+        }
+        expect(claimWorking({ cases: 0, units: 3 }, loose)).toEqual({
+            amount: 21, words: '3 single items at €7.00 each: €21.00', problem: null,
+        })
+        expect(claimWorking({ cases: 0, units: 4 }, loose).problem).toMatch(/^That line only billed 3 single items,/)
+    })
+
+    it('says why when there is nothing to work it out from', () => {
+        expect(claimWorking({ cases: 1 }, { ...chorizo, price_per_case: 0, units_per_case: 0 }).problem)
+            .toBe('That line has no price on it to work the claim out from.')
+        expect(claimWorking({ kind: 'price', cases: 1 }, chorizo).problem)
+            .toBe('Say what they should have charged a case, and it has to be less than what they did.')
+    })
+
+    // Lower than they charged, and still nothing once split over the cans.
+    it('says when a price query comes to less than a cent', () => {
+        const coke = { pack_size: '24X330 ML', price_per_case: 18.54, units_per_case: 24, line_total: 18.54, cases: 1, units: 0 }
+        expect(claimWorking({ kind: 'price', cases: 0, units: 1 }, coke, { agreedPerCase: 18.53 }).problem)
+            .toBe('That difference comes to less than a cent.')
+    })
+})
+
+describe('a docket that is not the invoice', () => {
+    it('is only when a docket was written and the numbers differ', () => {
+        expect(notTheDocket({ docket_number: '45747318' }, { invoice_number: '45607444' })).toBe(true)
+        expect(notTheDocket({ docket_number: '45747318' }, { invoice_number: '45747318' })).toBe(false)
+        expect(notTheDocket({ docket_number: null }, { invoice_number: '45607444' })).toBe(false)
     })
 })
 

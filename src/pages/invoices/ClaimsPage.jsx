@@ -10,12 +10,12 @@ import { numberField } from '@/lib/numberInput'
 import { friendlyError } from '@/lib/errors'
 import { can, MANAGERS } from '@/lib/access'
 import {
-    claimKind, doorClaimPayload, claimAmount, claimIsOpen, claimWeek, sentWeeks, fromEarlierWeeks,
+    claimKind, doorClaimPayload, claimWorking, notTheDocket, claimIsOpen, claimWeek, sentWeeks, fromEarlierWeeks,
     claimCandidates, claimMatch, otherDeliveries, byInvoice, chasingList, isLate, LATE_AFTER_DAYS, bySupplier,
 } from '@/lib/invoiceClaims'
 import {
     card, cardHeader, pageTitle, primaryButton, secondaryButton, rowButton, badge,
-    hintClass, captionClass, tableCard, tableHeadRow, tableHeadCell, compactField,
+    hintClass, captionClass, tableCard, tableHeadRow, tableHeadCell, compactField, infoNote,
 } from '@/lib/controlStyles'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import DoorClaimModal from '@/components/invoices/DoorClaimModal'
@@ -38,6 +38,28 @@ import DoorClaimModal from '@/components/invoices/DoorClaimModal'
 // database, because a claim carries an amount once it is matched to a line.
 
 const LOOK_BACK_DAYS = 60
+
+// Where a claim's money now comes off, once it is written. claimWeek's answer.
+function landsSaid(amount, { week, delivered, moved }) {
+    if (!moved) return `${fmtMoney(amount)} is coming off the week that delivery landed in.`
+    return `The report for the week of ${shortDate(delivered)} has already been sent, `
+        + `so ${fmtMoney(amount)} is coming off the week of ${shortDate(week)} instead, `
+        + `shown as from the delivery in the week of ${shortDate(delivered)}.`
+}
+
+// A write guarded on how the claim was when the page read it changes nothing
+// once it has moved on, a credit settling it say, and that has to be said
+// rather than reported as done. Null when it went through.
+function changedSince(rows) {
+    return rows && !rows.length
+        ? 'Nothing changed: that problem has moved on since this page was read. Have a look again.'
+        : null
+}
+
+// A line as the claim row and the panels name it: what it is and its pack.
+function lineName(line) {
+    return [line?.raw_description, line?.pack_size].filter(Boolean).join(' ')
+}
 
 export default function ClaimsPage() {
     const { user } = useAuth()
@@ -144,24 +166,41 @@ export default function ClaimsPage() {
     // nothing would ever say so, so it is always somebody's tap. The Hub only
     // suggests one when the docket number was written down and one line on
     // that document plainly matches. Everything else is a list to choose from.
-    async function attach(claim, line, invoice, priced = {}) {
-        const amount = claimAmount(claim, line, priced)
-        if (amount == null) {
-            setError(claim.kind === 'price'
-                ? 'Say what they should have charged a case, and it has to be less than what they did.'
-                : 'That line has no price on it to work the claim out from.')
-            return
-        }
-        setBusy(claim.id)
-        setError('')
-
+    //
+    // **Nothing is written until the money has been read back** (weigh, then
+    // the panel on the row). On 2 October one tap put a note for docket
+    // 45747318 on another delivery's line, priced three bags as three kilos,
+    // and moved it a week, and all of it was only said afterwards.
+    async function weigh(claim, line, invoice, priced = {}) {
+        const working = claimWorking(claim, line, priced)
+        if (working.problem) return { problem: working.problem }
         // Which weeks have gone out already, so the money lands in a report.
         // See claimWeek.
         const { weeks: sent, error: e0 } = await sentWeeks(supabase, restaurantId)
-        if (e0) { setBusy(''); setError(friendlyError(e0)); return }
-        const { week, delivered, moved } = claimWeek(invoice.invoice_date, sent)
+        if (e0) return { problem: friendlyError(e0) }
+        return { ...working, ...claimWeek(invoice.invoice_date, sent) }
+    }
 
-        const { error: e1 } = await supabase.from('invoice_line_claims')
+    // `otherDelivery` is the panel having said, in bold, that this is not the
+    // invoice written on the note. Without it a mismatch is refused, so
+    // nothing can put a note on another delivery without that being said.
+    async function attach(claim, line, invoice, { otherDelivery = false, ...priced } = {}) {
+        setError('')
+        setSaid('')
+        if (notTheDocket(claim, invoice) && !otherDelivery) {
+            setError(`That isn't invoice ${claim.docket_number}, the one written on the note.`)
+            return false
+        }
+        setBusy(claim.id)
+        const weighed = await weigh(claim, line, invoice, priced)
+        if (weighed.problem) { setBusy(''); setError(weighed.problem); return false }
+        const { amount, week } = weighed
+
+        // Only while it is still waiting for its line with nothing back on it.
+        // The panel stays open until the yes, and a credit for its docket can
+        // settle it meanwhile; a write then would move money a credit already
+        // put in its week.
+        const { data, error: e1 } = await supabase.from('invoice_line_claims')
             .update({
                 invoice_id: invoice.id,
                 invoice_line_id: line.id,
@@ -170,16 +209,18 @@ export default function ClaimsPage() {
                 counted_week: week,
             })
             .eq('id', claim.id)
+            .eq('status', 'open')
+            .is('invoice_line_id', null)
+            .eq('credited_amount', 0)
+            .is('credit_invoice_id', null)
+            .select('id')
 
         setBusy('')
-        if (e1) { setError(friendlyError(e1)); return }
-        if (!moved) setSaid(`${fmtMoney(amount)} is coming off the week that delivery landed in.`)
-        else {
-            setSaid(`The report for the week of ${shortDate(delivered)} has already been sent, `
-                + `so ${fmtMoney(amount)} is coming off the week of ${shortDate(week)} instead, `
-                + `shown as from the delivery in the week of ${shortDate(delivered)}.`)
-        }
+        if (e1) { setError(friendlyError(e1)); return false }
+        // True either way, so the panel closes and the row shows it as it is now.
+        setSaid(changedSince(data) || landsSaid(amount, weighed))
         setRefresh(n => n + 1)
+        return true
     }
 
     async function close(claim, status) {
@@ -261,6 +302,7 @@ export default function ClaimsPage() {
                                     busy={busy === claim.id}
                                     suppliers={suppliers}
                                     invoices={invoices}
+                                    onWeigh={weigh}
                                     onAttach={attach}
                                     onClose={close}
                                 />
@@ -360,7 +402,7 @@ export default function ClaimsPage() {
 }
 
 function ClaimRow({
-    claim, balance, days, late, manager, busy, suppliers, invoices, onAttach, onClose,
+    claim, balance, days, late, manager, busy, suppliers, invoices, onWeigh, onAttach, onClose,
 }) {
     const kind = claimKind(claim.kind)
     const supplier = suppliers.find(s => s.id === claim.supplier_id)
@@ -371,11 +413,30 @@ function ClaimRow({
     // A price query is worth the difference, so it waits here for the price
     // that should have been charged before it is put against the line.
     const [pricing, setPricing] = useState(null)
+    // The money read back before anything is written, with the invoice, the
+    // week it comes off, and whether it is the docket on the note.
+    const [confirming, setConfirming] = useState(null)
+    const [problem, setProblem] = useState('')
+    const [weighing, setWeighing] = useState(false)
 
-    function choose(line, invoice) {
-        if (claim.kind !== 'price') { onAttach(claim, line, invoice); return }
-        const costingFrom = line.product_supplier_prices?.price_per_case
-        setPricing({ line, invoice, agreed: costingFrom == null ? '' : String(costingFrom) })
+    async function choose(line, invoice, priced = null) {
+        setProblem('')
+        if (claim.kind === 'price' && !priced) {
+            const costingFrom = line.product_supplier_prices?.price_per_case
+            setPricing({ line, invoice, agreed: costingFrom == null ? '' : String(costingFrom) })
+            return
+        }
+        setWeighing(true)
+        const weighed = await onWeigh(claim, line, invoice, priced || {})
+        setWeighing(false)
+        if (weighed.problem) { setProblem(weighed.problem); return }
+        setPricing(null)
+        setConfirming({ line, invoice, priced: priced || {}, other: notTheDocket(claim, invoice), ...weighed })
+    }
+
+    async function yes() {
+        const { line, invoice, priced, other } = confirming
+        if (await onAttach(claim, line, invoice, { ...priced, otherDelivery: other })) setConfirming(null)
     }
 
     // A claim whose delivery's report had already gone out comes off a later
@@ -426,20 +487,27 @@ function ClaimRow({
 
             {manager && !claim.invoice_line_id && (
                 <div className="mt-3">
-                    {found.waiting ? (
+                    {problem && <ErrorBanner className="mb-2">{problem}</ErrorBanner>}
+                    {/* One thing at a time: while a line is being priced or
+                        read back, the list it came from waits. */}
+                    {!pricing && !confirming && (found.waiting ? (
                         <>
                             <p className="text-sm text-gray-900 mb-2">
                                 {`Invoice ${claim.docket_number} isn't in the Hub yet. `
                                     + "Once it's imported, its lines show here."}
                             </p>
-                            <button type="button" onClick={() => setOther(o => !o)} className={rowButton()}>
+                            <button
+                                type="button"
+                                onClick={() => { setProblem(''); setOther(o => !o) }}
+                                className={rowButton()}
+                            >
                                 {other ? 'Never mind' : 'It was a different delivery'}
                             </button>
                             {other && (
                                 <LinePicker
                                     lines={otherDeliveries(claim, invoices)}
                                     note={`None of these is invoice ${claim.docket_number}.`}
-                                    busy={busy}
+                                    busy={busy || weighing}
                                     onChoose={choose}
                                 />
                             )}
@@ -453,7 +521,7 @@ function ClaimRow({
                             </p>
                             <button
                                 type="button"
-                                disabled={busy}
+                                disabled={busy || weighing}
                                 onClick={() => choose(suggestion.line, suggestion.invoice)}
                                 className={rowButton('good')}
                             >
@@ -464,21 +532,21 @@ function ClaimRow({
                         <>
                             <button
                                 type="button"
-                                onClick={() => setPicking(p => !p)}
+                                onClick={() => { setProblem(''); setPicking(p => !p) }}
                                 className={rowButton('edit')}
                             >
                                 {picking ? 'Never mind' : 'Say which line this was'}
                             </button>
-                            {picking && <LinePicker lines={found.lines} busy={busy} onChoose={choose} />}
+                            {picking && <LinePicker lines={found.lines} busy={busy || weighing} onChoose={choose} />}
                         </>
-                    )}
+                    ))}
 
                     {/* The goods arrived and were kept, so what is coming back is
                         the overcharge and not the line. It starts from what the
                         Hub costs that product at, which is the price that was
                         agreed unless somebody says otherwise. */}
                     {pricing && (
-                        <div className="mt-3 border border-blue-200 bg-blue-50 rounded-lg p-3">
+                        <div className={`mt-3 ${infoNote}`}>
                             <label className="text-xs text-blue-900 block mb-1" htmlFor={`agreed-${claim.id}`}>
                                 <strong className="font-bold">{pricing.line.raw_description}</strong> came in at{' '}
                                 {fmtMoney(pricing.line.price_per_case)} a case. What should they have charged?
@@ -495,15 +563,19 @@ function ClaimRow({
                                 />
                                 <button
                                     type="button"
-                                    disabled={busy || pricing.agreed === ''}
-                                    onClick={() => onAttach(claim, pricing.line, pricing.invoice, {
+                                    disabled={busy || weighing || pricing.agreed === ''}
+                                    onClick={() => choose(pricing.line, pricing.invoice, {
                                         agreedPerCase: Number(pricing.agreed),
                                     })}
                                     className={rowButton('good')}
                                 >
                                     That is the price
                                 </button>
-                                <button type="button" onClick={() => setPricing(null)} className={rowButton()}>
+                                <button
+                                    type="button"
+                                    onClick={() => { setProblem(''); setPricing(null) }}
+                                    className={rowButton()}
+                                >
                                     Never mind
                                 </button>
                             </div>
@@ -511,6 +583,35 @@ function ClaimRow({
                                 The claim is the difference on {Number(claim.cases) || 0} cases
                                 {Number(claim.units) ? ` and ${claim.units} units` : ''}, not the whole line.
                             </p>
+                        </div>
+                    )}
+
+                    {confirming && (
+                        <div className={`mt-3 ${infoNote} space-y-1`}>
+                            <p className="font-semibold">{confirming.words}</p>
+                            <p>
+                                On invoice {confirming.invoice.invoice_number} of{' '}
+                                {shortDate(confirming.invoice.invoice_date)}, {lineName(confirming.line)}.
+                            </p>
+                            <p>
+                                {confirming.moved
+                                    ? `The report for the week of ${shortDate(confirming.delivered)} has gone out, `
+                                        + `so it comes off the week of ${shortDate(confirming.week)}.`
+                                    : `It comes off the week of ${shortDate(confirming.week)}.`}
+                            </p>
+                            {confirming.other && (
+                                <p className="font-bold">
+                                    {`This isn't invoice ${claim.docket_number}, the one written on the note.`}
+                                </p>
+                            )}
+                            <div className="flex flex-wrap gap-2 pt-2">
+                                <button type="button" disabled={busy} onClick={yes} className={rowButton('good')}>
+                                    Yes, that line
+                                </button>
+                                <button type="button" onClick={() => setConfirming(null)} className={rowButton()}>
+                                    Never mind
+                                </button>
+                            </div>
                         </div>
                     )}
                 </div>
