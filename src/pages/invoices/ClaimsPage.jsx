@@ -11,7 +11,7 @@ import { friendlyError } from '@/lib/errors'
 import { can, MANAGERS } from '@/lib/access'
 import {
     claimKind, doorClaimPayload, claimAmount, claimIsOpen, claimWeek, sentWeeks, fromEarlierWeeks,
-    claimCandidates, claimMatch, chasingList, isLate, LATE_AFTER_DAYS, bySupplier,
+    claimCandidates, claimMatch, otherDeliveries, byInvoice, chasingList, isLate, LATE_AFTER_DAYS, bySupplier,
 } from '@/lib/invoiceClaims'
 import {
     card, cardHeader, pageTitle, primaryButton, secondaryButton, rowButton, badge,
@@ -84,9 +84,11 @@ export default function ClaimsPage() {
                 // are only asked for where they can be used.
                 manager
                     ? supabase.from('invoices')
-                        .select('id, invoice_number, invoice_date, supplier_id, document_type, total_amount, invoice_lines(id, raw_description, pack_size, price_per_case, units_per_case, unit_price, line_total, vat_amount, deposit_amount, supplier_code, product_supplier_prices(price_per_case))')
+                        .select('id, invoice_number, invoice_date, supplier_id, document_type, total_amount, invoice_lines(id, raw_description, pack_size, cases, units, price_per_case, units_per_case, unit_price, line_total, vat_amount, deposit_amount, supplier_code, product_supplier_prices(price_per_case))')
                         .eq('restaurant_id', restaurantId)
                         .gte('invoice_date', from)
+                        .order('invoice_date', { ascending: false })
+                        .order('id')
                     : Promise.resolve({ data: [] }),
             ])
 
@@ -117,14 +119,21 @@ export default function ClaimsPage() {
     const owed = waiting.reduce((total, w) => total + (w.balance || 0), 0)
 
     async function logIt(form) {
-        const { error: e1 } = await supabase.from('invoice_line_claims')
-            .insert(doorClaimPayload(form, {
-                restaurantId, raisedBy: user?.id, today: todayISO(),
-            }))
+        const row = doorClaimPayload(form, {
+            restaurantId, raisedBy: user?.id, today: todayISO(),
+        })
+        const { error: e1 } = await supabase.from('invoice_line_claims').insert(row)
         if (e1) return friendlyError(e1)
 
         setLogging(false)
-        setSaid('Logged. It will be matched to the invoice when that comes in.')
+        // Told to wait only when there is nothing to pick from yet. Its
+        // invoice can already be in, and a note with no docket is offered the
+        // deliveries around that day straight away.
+        setSaid(!manager
+            ? 'Logged. A manager will put it against the invoice once it comes in.'
+            : claimCandidates(row, invoices).lines.length
+                ? 'Logged. Say which line it was below.'
+                : 'Logged. Once its invoice is imported, say which line it was below.')
         setRefresh(n => n + 1)
         return null
     }
@@ -132,9 +141,9 @@ export default function ClaimsPage() {
     // Putting a note against the line it was about.
     //
     // Attaching a claim to the wrong line moves money off the wrong product and
-    // nothing would ever say so, so the Hub only does this on its own when the
-    // docket number was written down and one line on that document plainly
-    // matches. Everything else is a list to choose from.
+    // nothing would ever say so, so it is always somebody's tap. The Hub only
+    // suggests one when the docket number was written down and one line on
+    // that document plainly matches. Everything else is a list to choose from.
     async function attach(claim, line, invoice, priced = {}) {
         const amount = claimAmount(claim, line, priced)
         if (amount == null) {
@@ -356,6 +365,9 @@ function ClaimRow({
     const kind = claimKind(claim.kind)
     const supplier = suppliers.find(s => s.id === claim.supplier_id)
     const [picking, setPicking] = useState(false)
+    // The docket written down is not in the Hub, and somebody says it was a
+    // different delivery anyway, a number copied wrong.
+    const [other, setOther] = useState(false)
     // A price query is worth the difference, so it waits here for the price
     // that should have been charged before it is put against the line.
     const [pricing, setPricing] = useState(null)
@@ -370,9 +382,11 @@ function ClaimRow({
     // week (claimWeek). Said here so nobody looks for it in the wrong report.
     const from = manager ? fromEarlierWeeks([claim], invoices, claim.counted_week)[0] : null
 
-    // Offered rather than done, unless the docket number makes it exact.
-    const suggestion = manager && !claim.invoice_line_id ? claimMatch(claim, invoices) : null
-    const options = manager && !claim.invoice_line_id ? claimCandidates(claim, invoices).slice(0, 6) : []
+    // Always offered rather than done. With a docket number, only that
+    // document's lines, and nothing until it is imported.
+    const open = manager && !claim.invoice_line_id
+    const suggestion = open ? claimMatch(claim, invoices) : null
+    const found = open ? claimCandidates(claim, invoices) : null
 
     return (
         <div className={`border rounded-lg p-3 ${late ? 'border-amber-300 bg-amber-50/50' : 'border-border'}`}>
@@ -412,7 +426,25 @@ function ClaimRow({
 
             {manager && !claim.invoice_line_id && (
                 <div className="mt-3">
-                    {suggestion ? (
+                    {found.waiting ? (
+                        <>
+                            <p className="text-sm text-gray-900 mb-2">
+                                {`Invoice ${claim.docket_number} isn't in the Hub yet. `
+                                    + "Once it's imported, its lines show here."}
+                            </p>
+                            <button type="button" onClick={() => setOther(o => !o)} className={rowButton()}>
+                                {other ? 'Never mind' : 'It was a different delivery'}
+                            </button>
+                            {other && (
+                                <LinePicker
+                                    lines={otherDeliveries(claim, invoices)}
+                                    note={`None of these is invoice ${claim.docket_number}.`}
+                                    busy={busy}
+                                    onChoose={choose}
+                                />
+                            )}
+                        </>
+                    ) : suggestion ? (
                         <>
                             <p className="text-xs text-muted mb-2">
                                 Docket {claim.docket_number} has{' '}
@@ -437,32 +469,7 @@ function ClaimRow({
                             >
                                 {picking ? 'Never mind' : 'Say which line this was'}
                             </button>
-                            {picking && (
-                                <ul className="mt-2 space-y-1">
-                                    {options.length === 0 && (
-                                        <li className={hintClass}>
-                                            No document from them has come in yet for around that day.
-                                        </li>
-                                    )}
-                                    {options.map(({ line, invoice }) => (
-                                        <li key={line.id}>
-                                            <button
-                                                type="button"
-                                                disabled={busy}
-                                                onClick={() => choose(line, invoice)}
-                                                className="w-full text-left text-sm px-3 py-2 rounded-lg border border-border hover:bg-gray-50"
-                                            >
-                                                <span className="font-semibold">{line.raw_description}</span>
-                                                <span className="text-xs text-muted">
-                                                    {' '}on {invoice.invoice_number} of{' '}
-                                                    {shortDate(invoice.invoice_date)},{' '}
-                                                    {fmtMoney(line.price_per_case)} a case
-                                                </span>
-                                            </button>
-                                        </li>
-                                    ))}
-                                </ul>
-                            )}
+                            {picking && <LinePicker lines={found.lines} busy={busy} onChoose={choose} />}
                         </>
                     )}
 
@@ -522,9 +529,66 @@ function ClaimRow({
 
             {!manager && (
                 <p className={`${captionClass} mt-2 normal-case tracking-normal font-normal text-muted`}>
-                    Logged. Somebody will match it to the invoice when that comes in.
+                    Logged. A manager will put it against the invoice once it comes in.
                 </p>
             )}
+        </div>
+    )
+}
+
+// The lines to choose from, under a heading for each delivery so nobody takes
+// one delivery's Chorizo for another's. The closest words come first in each,
+// and a long invoice shows its first few until asked for the rest.
+const FIRST_LINES = 5
+
+function LinePicker({ lines, note, busy, onChoose }) {
+    const [whole, setWhole] = useState(() => new Set())
+    const groups = byInvoice(lines)
+
+    if (!groups.length) {
+        return <p className={`${hintClass} mt-2`}>No invoice from them has come in for around that day.</p>
+    }
+
+    return (
+        <div className="mt-2 space-y-3">
+            {note && <p className="text-xs text-muted">{note}</p>}
+            {groups.map(({ invoice, lines: on }) => {
+                const shown = whole.has(invoice.id) ? on : on.slice(0, FIRST_LINES)
+                return (
+                    <div key={invoice.id}>
+                        <p className="text-xs font-semibold text-gray-700 mb-1">
+                            Invoice {invoice.invoice_number}, {shortDate(invoice.invoice_date)}
+                        </p>
+                        <ul className="space-y-1">
+                            {shown.map(({ line }) => (
+                                <li key={line.id}>
+                                    <button
+                                        type="button"
+                                        disabled={busy}
+                                        onClick={() => onChoose(line, invoice)}
+                                        className="w-full text-left text-sm px-3 py-2 rounded-lg border border-border hover:bg-gray-50"
+                                    >
+                                        <span className="font-semibold">{line.raw_description}</span>
+                                        <span className="text-xs text-muted">
+                                            {' '}{[line.pack_size, `${fmtMoney(line.price_per_case)} a case`]
+                                                .filter(Boolean).join(', ')}
+                                        </span>
+                                    </button>
+                                </li>
+                            ))}
+                        </ul>
+                        {shown.length < on.length && (
+                            <button
+                                type="button"
+                                onClick={() => setWhole(all => new Set(all).add(invoice.id))}
+                                className={`${rowButton()} mt-1`}
+                            >
+                                Show all {on.length} lines
+                            </button>
+                        )}
+                    </div>
+                )
+            })}
         </div>
     )
 }

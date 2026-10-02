@@ -17,8 +17,8 @@ import {
 //
 // The fifth is the docket number off the paper the driver leaves. It is not
 // required, because a note with no number is worth far more than no note, and
-// it is worth asking for because it turns the note into an exact match against
-// the invoice when that turns up a few days later.
+// it is worth asking for because when that invoice turns up a few days later
+// only its lines are offered, not every delivery from that supplier.
 //
 // There is no money on this form and there is none on the row it writes.
 // Whoever is at the door knows how many trays and has no business knowing what
@@ -70,8 +70,8 @@ export default function DoorClaimModal({ suppliers, onClose, onSave }) {
                             placeholder="Off the paper they leave"
                         />
                         <p className={hintClass}>
-                            Worth thirty seconds of looking. With it the Hub matches this to the
-                            right line on its own when the invoice comes in.
+                            Worth thirty seconds of looking. It tells a manager which invoice this
+                            was on, so it goes against the right delivery.
                         </p>
                     </div>
                 </div>

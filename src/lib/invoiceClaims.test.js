@@ -4,7 +4,7 @@ import {
     CLAIM_KINDS, NOT_LOGGED, claimKind, emptyDoorClaim, doorClaimProblem, doorClaimPayload,
     claimAmount, claimBalance, claimIsOpen, claimTakesOff, claimCandidates, claimMatch,
     creditSettles, creditTakenBack, voidedBy, sentBack, chasingList, isLate, claimsForWeek, bySupplier,
-    claimWeek, sentWeeks, fromEarlierWeeks,
+    claimWeek, sentWeeks, fromEarlierWeeks, otherDeliveries, byInvoice,
 } from '@/lib/invoiceClaims'
 
 const LINE = {
@@ -331,6 +331,7 @@ describe('matching a note to a line', () => {
             id: 'i1',
             supplier_id: 's1',
             invoice_number: '45612214',
+            invoice_date: '2026-09-13',
             document_type: 'invoice',
             invoice_lines: [
                 { id: 'l1', raw_description: 'CHICKEN BREAST DICED' },
@@ -341,6 +342,7 @@ describe('matching a note to a line', () => {
             id: 'i2',
             supplier_id: 's1',
             invoice_number: '45612570',
+            invoice_date: '2026-09-15',
             document_type: 'invoice',
             invoice_lines: [{ id: 'l3', raw_description: 'RICE LONG GRAIN' }],
         },
@@ -353,10 +355,49 @@ describe('matching a note to a line', () => {
         expect(found.line.id).toBe('l1')
     })
 
-    it('offers a short list when the docket number is missing', () => {
-        const ranked = claimCandidates(claim({ docket_number: null, what: 'chicken breast' }), invoices)
-        expect(ranked[0].line.id).toBe('l1')
-        expect(claimMatch(claim({ docket_number: null, what: 'chicken breast' }), invoices)).toBeNull()
+    it('offers only the lines of the docket written down', () => {
+        const { waiting, lines } = claimCandidates(claim({ docket_number: '45612214', what: 'rice' }), invoices)
+        expect(waiting).toBe(false)
+        expect(lines.map(c => c.line.id).sort()).toEqual(['l1', 'l2'])
+    })
+
+    // The Chorizo of 2 October: docket 45747318 was not imported yet, and
+    // every Sysco invoice of the last sixty days was offered instead, so it
+    // went on the Chorizo of 13 September.
+    it('waits for a docket that is not in the Hub yet rather than offering other deliveries', () => {
+        const note = claim({ docket_number: '45747318', what: 'chicken breast' })
+        expect(claimCandidates(note, invoices)).toMatchObject({ waiting: true, lines: [] })
+        expect(claimMatch(note, invoices)).toBeNull()
+    })
+
+    it('offers the deliveries around the day when the docket number is missing, nearest first', () => {
+        const note = claim({ docket_number: null, what: 'chicken breast', raised_on: '2026-09-15' })
+        const { waiting, lines } = claimCandidates(note, invoices)
+        expect(waiting).toBe(false)
+        expect(lines.map(c => c.line.id)).toEqual(['l3', 'l1', 'l2'])
+        expect(claimMatch(note, invoices)).toBeNull()
+    })
+
+    // A delivery six weeks before the note is not the one it is about.
+    it('leaves out deliveries more than a week before the note, or more than two days after', () => {
+        const note = claim({ docket_number: null, what: 'chicken breast', raised_on: '2026-10-27' })
+        expect(claimCandidates(note, invoices).lines).toEqual([])
+        const before = claim({ docket_number: null, what: 'rice', raised_on: '2026-09-12' })
+        expect(claimCandidates(before, invoices).lines.map(c => c.line.id)).toEqual(['l1', 'l2'])
+        const tooEarly = claim({ docket_number: null, what: 'rice', raised_on: '2026-09-10' })
+        expect(claimCandidates(tooEarly, invoices).lines).toEqual([])
+    })
+
+    // A docket number written down wrong would otherwise wait for ever.
+    it('offers the deliveries around the day when somebody says it was a different one', () => {
+        const note = claim({ docket_number: '45747318', what: 'rice', raised_on: '2026-09-16' })
+        expect(otherDeliveries(note, invoices).map(c => c.line.id)).toEqual(['l3', 'l1', 'l2'])
+    })
+
+    it('groups lines under the invoice they are on, in the order given', () => {
+        const note = claim({ docket_number: null, what: 'chicken breast', raised_on: '2026-09-15' })
+        const groups = byInvoice(claimCandidates(note, invoices).lines)
+        expect(groups.map(g => [g.invoice.id, g.lines.map(c => c.line.id)])).toEqual([['i2', ['l3']], ['i1', ['l1', 'l2']]])
     })
 
     // Attaching a claim to the wrong line moves money off the wrong product and
@@ -385,7 +426,7 @@ describe('matching a note to a line', () => {
             id: 'i3', supplier_id: 's1', document_type: 'credit',
             invoice_lines: [{ id: 'l9', raw_description: 'CHICKEN BREAST DICED' }],
         }]
-        expect(claimCandidates(claim({ what: 'chicken breast' }), withCredit)
+        expect(claimCandidates(claim({ what: 'chicken breast' }), withCredit).lines
             .some(c => c.invoice.id === 'i3')).toBe(false)
     })
 })

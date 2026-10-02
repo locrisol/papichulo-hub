@@ -291,12 +291,12 @@ describe('after an import', () => {
         expect(await screen.findByText(`On Review: 1 document imported. ${SAID_ON_REVIEW}`)).toBeInTheDocument()
     })
 
-    it('stays and says so when nothing needs a decision', async () => {
+    it('stays and says so when nothing is waiting on Review', async () => {
         DOCS['a.pdf'] = doc('45000001', '2026-09-28', [RICE])
         renderImport()
         await choose('a.pdf')
         await importThem()
-        expect(await screen.findByText('1 document imported. Nothing needs a decision.')).toBeInTheDocument()
+        expect(await screen.findByText('1 document imported. Nothing is waiting on Review.')).toBeInTheDocument()
     })
 
     // Leaving would throw away a file that still needs something.
@@ -350,6 +350,57 @@ describe('after an import', () => {
         await userEvent.click(await screen.findByRole('button', { name: 'Fill that one in' }))
         await userEvent.click(await screen.findByRole('button', { name: 'Fill it in' }))
         expect(await screen.findByText(`On Review: Filled in. ${SAID_ON_REVIEW}`)).toBeInTheDocument()
+    })
+})
+
+// A note from the door with the docket number on it waits for that invoice.
+// Nothing puts it on a line by itself, so the import says it is there to do.
+describe('a note from the door waiting on the invoice imported', () => {
+    const note = extra => ({
+        id: 'n1', restaurant_id: 'r1', supplier_id: 's1', kind: 'short', what: 'Chorizo',
+        docket_number: '45000001', status: 'open', amount: null, invoice_id: null, ...extra,
+    })
+
+    it('says which line is still to be said, and writes nothing on the note', async () => {
+        tables.invoice_line_claims.push(note())
+        DOCS['a.pdf'] = doc('45000001', '2026-09-28', [RICE])
+        renderImport()
+        await choose('a.pdf')
+        await importThem()
+        expect(await screen.findByText('1 document imported. 1 delivery problem logged at the door is on invoice '
+            + '45000001. Say which line on Delivery problems. Nothing is waiting on Review.')).toBeInTheDocument()
+        expect(writes.filter(w => w.table === 'invoice_line_claims')).toEqual([])
+    })
+
+    // A docket number is only unique to one supplier, so another supplier's
+    // note with the same number is not this invoice's.
+    it('counts them, and only open ones for that docket, supplier and restaurant with no money on them yet', async () => {
+        tables.invoice_line_claims.push(
+            note(), note({ id: 'n2' }), note({ id: 'n3', docket_number: '45000099' }),
+            note({ id: 'n4', amount: 21 }), note({ id: 'n5', status: 'refused' }),
+            note({ id: 'n6', supplier_id: 's2' }), note({ id: 'n7', restaurant_id: 'r2' }),
+        )
+        DOCS['a.pdf'] = doc('45000001', '2026-09-28', [RICE])
+        renderImport()
+        await choose('a.pdf')
+        await importThem()
+        expect(await screen.findByText(/2 delivery problems logged at the door are on invoice 45000001\./))
+            .toBeInTheDocument()
+    })
+
+    it('says it after filling in a typed invoice too', async () => {
+        tables.invoice_line_claims.push(note())
+        tables.invoices.push({
+            id: 'typed', restaurant_id: 'r1', supplier_id: 's1', invoice_number: null,
+            invoice_date: '2026-09-28', document_type: 'invoice', total_amount: 14.5,
+        })
+        DOCS['a.pdf'] = doc('45000001', '2026-09-28', [RICE])
+        renderImport()
+        await choose('a.pdf')
+        await userEvent.click(await screen.findByRole('button', { name: 'Fill that one in' }))
+        await userEvent.click(await screen.findByRole('button', { name: 'Fill it in' }))
+        expect(await screen.findByText(/1 delivery problem logged at the door is on invoice 45000001\./))
+            .toBeInTheDocument()
     })
 })
 

@@ -299,27 +299,66 @@ export function claimTakesOff(claim) {
 // Which line this note was about.
 //
 // The docket number is exact, so when somebody wrote it down this is a lookup
-// and not a guess. Without it there is still the supplier and the day, and the
-// words they used, which is enough to offer a short list rather than the whole
-// delivery.
+// and not a guess, and only that document's lines are offered. **When that
+// document is not in the Hub yet, nothing is offered: it is waiting.** It used
+// to fall back to every invoice from the supplier in the last sixty days, and
+// the Chorizo of 2 October went on the Chorizo of a delivery three weeks
+// before, which moved its money to the wrong week.
+//
+// Without a docket there is still the supplier and the day: the deliveries
+// around it (otherDeliveries), nearest first, and the words they used.
 export function claimCandidates(claim, invoices) {
-    const mine = (invoices || []).filter(i => (
+    if (!claim?.docket_number) {
+        return { waiting: false, exact: false, lines: otherDeliveries(claim, invoices) }
+    }
+    const docket = ofSupplier(claim, invoices)
+        .filter(i => String(i.invoice_number) === String(claim.docket_number))
+    if (!docket.length) return { waiting: true, exact: false, lines: [] }
+    return { waiting: false, exact: true, lines: linesOf(claim, docket, true) }
+}
+
+// A delivery is offered for a note from a week before it was written down,
+// because a note is often a day or two late, to two days after, because an
+// invoice can be dated after the day it came.
+export const NEAR_BEFORE_DAYS = 7
+export const NEAR_AFTER_DAYS = 2
+
+// The supplier's deliveries around the day the note was written, nearest day
+// first and the closest words first within each. For a note with no docket,
+// and for one whose docket somebody says was not that delivery after all,
+// because a number written down wrong would otherwise wait for ever.
+export function otherDeliveries(claim, invoices) {
+    const from = addDays(claim.raised_on, -NEAR_BEFORE_DAYS)
+    const to = addDays(claim.raised_on, NEAR_AFTER_DAYS)
+    const near = ofSupplier(claim, invoices)
+        .filter(i => i.invoice_date >= from && i.invoice_date <= to)
+        .map(i => ({ invoice: i, away: Math.abs(daysBetween(claim.raised_on, i.invoice_date)) }))
+        .sort((a, b) => a.away - b.away || String(b.invoice.invoice_date).localeCompare(String(a.invoice.invoice_date)))
+        .map(n => n.invoice)
+    return near.flatMap(invoice => linesOf(claim, [invoice], false))
+}
+
+// Lines in the order given, under the invoice each is on, for a heading per
+// delivery.
+export function byInvoice(lines) {
+    const groups = new Map()
+    for (const c of lines || []) {
+        if (!groups.has(c.invoice.id)) groups.set(c.invoice.id, { invoice: c.invoice, lines: [] })
+        groups.get(c.invoice.id).lines.push(c)
+    }
+    return [...groups.values()]
+}
+
+function ofSupplier(claim, invoices) {
+    return (invoices || []).filter(i => (
         i.supplier_id === claim.supplier_id && i.document_type !== 'credit'
     ))
+}
 
-    const bydocket = claim.docket_number
-        ? mine.filter(i => String(i.invoice_number) === String(claim.docket_number))
-        : []
-    const pool = bydocket.length ? bydocket : mine
-
-    return pool
-        .flatMap(invoice => (invoice.invoice_lines || []).map(line => ({
-            invoice,
-            line,
-            exact: bydocket.length > 0,
-            score: similarWords(claim.what, line.raw_description),
-        })))
-        .sort((a, b) => b.score - a.score)
+function linesOf(claim, invoices, exact) {
+    return invoices.flatMap(invoice => (invoice.invoice_lines || [])
+        .map(line => ({ invoice, line, exact, score: similarWords(claim.what, line.raw_description) }))
+        .sort((a, b) => b.score - a.score))
 }
 
 // The one the Hub is willing to pick on its own.
@@ -332,7 +371,7 @@ export const CLAIM_MATCH = 0.7
 
 export function claimMatch(claim, invoices) {
     if (claim?.invoice_line_id) return null
-    const ranked = claimCandidates(claim, invoices)
+    const ranked = [...claimCandidates(claim, invoices).lines].sort((a, b) => b.score - a.score)
     const best = ranked[0]
     if (!best?.exact || best.score < CLAIM_MATCH) return null
     if (ranked[1]?.score >= best.score) return null

@@ -46,6 +46,12 @@ let user
 vi.mock('@/context/auth', () => ({ useAuth: () => ({ user }) }))
 vi.mock('@/context/restaurant', () => ({ useRestaurant: () => ({ activeRestaurant: { id: 'r1', name: 'Point Campus' } }) }))
 
+// The door form has tests of its own. Here it only hands over a note.
+let doorNote
+vi.mock('@/components/invoices/DoorClaimModal', () => ({
+    default: ({ onSave }) => <button type="button" onClick={() => onSave(doorNote)}>Save the note</button>,
+}))
+
 const { default: ClaimsPage } = await import('./ClaimsPage')
 
 beforeEach(() => {
@@ -105,6 +111,63 @@ describe('putting a note from the door against its line', () => {
         tables.weekly_reports = [{ id: 'w1', restaurant_id: 'r1', week_start: DELIVERY_WEEK, status: 'draft' }]
         const { row } = await attach()
         expect(row).toMatchObject({ counted_week: DELIVERY_WEEK })
+    })
+})
+
+// The Chorizo of 2 October. Docket 45747318 was written on the note and was not
+// imported yet, so every Sysco invoice of the last sixty days was offered, and
+// it went on the Chorizo of 13 September.
+describe('a note whose docket is not in the Hub yet', () => {
+    const CHORIZO = {
+        ...CLAIM, id: 'c9', what: '1 Unit of Chorizo delivered instead of 1 case.', cases: 0, units: 3,
+        docket_number: '45747318', raised_on: '2026-10-02', counted_week: NOTED_WEEK,
+    }
+    const chorizoOn = (id, number, date) => ({
+        ...INVOICE, id, invoice_number: number, invoice_date: date,
+        invoice_lines: [{
+            id: `${id}-l`, raw_description: 'CHORIZO CUBES', pack_size: '4X500 GM', price_per_case: 27.99,
+            units_per_case: 2, unit_price: 13.995, line_total: 27.99, vat_amount: 0, deposit_amount: 0, cases: 1, units: 0,
+        }],
+    })
+
+    beforeEach(() => {
+        tables.invoice_line_claims = [CHORIZO]
+        tables.invoices = [chorizoOn('old', '45607444', '2026-09-13'), chorizoOn('near', '45730001', '2026-09-30')]
+    })
+
+    it('says it is waiting for that invoice and offers no other delivery\'s lines', async () => {
+        renderWithRouter(<ClaimsPage />)
+        expect(await screen.findByText(
+            'Invoice 45747318 isn\'t in the Hub yet. Once it\'s imported, its lines show here.',
+        )).toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: 'Say which line this was' })).toBeNull()
+        expect(screen.queryByRole('button', { name: /CHORIZO CUBES/ })).toBeNull()
+    })
+
+    // It used to say wait for the import even when its invoice was already in.
+    it('says to wait for the import only when its invoice is not in yet', async () => {
+        tables.invoice_line_claims = []
+        doorNote = { supplierId: 's1', kind: 'short', what: 'Chorizo', cases: '', units: '3', docket: '45730001', note: '' }
+        renderWithRouter(<ClaimsPage />)
+        await userEvent.click(await screen.findByRole('button', { name: 'Log a problem' }))
+        await userEvent.click(screen.getByRole('button', { name: 'Save the note' }))
+        expect(await screen.findByText('Logged. Say which line it was below.')).toBeInTheDocument()
+
+        await userEvent.click(await screen.findByRole('button', { name: 'Log a problem' }))
+        doorNote = { ...doorNote, docket: '45747318' }
+        await userEvent.click(screen.getByRole('button', { name: 'Save the note' }))
+        expect(await screen.findByText('Logged. Once its invoice is imported, say which line it was below.'))
+            .toBeInTheDocument()
+    })
+
+    it('offers the deliveries around that day, under their own invoice, when it was a different one', async () => {
+        renderWithRouter(<ClaimsPage />)
+        await userEvent.click(await screen.findByRole('button', { name: 'It was a different delivery' }))
+        expect(screen.getByText('None of these is invoice 45747318.')).toBeInTheDocument()
+        expect(screen.getByText(`Invoice 45730001, ${shortDate('2026-09-30')}`)).toBeInTheDocument()
+        expect(screen.getAllByRole('button', { name: /CHORIZO CUBES/ })).toHaveLength(1)
+        // Nineteen days before the note is not the delivery it is about.
+        expect(screen.queryByText(/Invoice 45607444/)).toBeNull()
     })
 })
 

@@ -322,9 +322,11 @@ export default function InvoiceImportPage() {
         // document meant inserting it, then inserting it again, and the unique
         // key stopping the second one dead halfway through a batch.
         const seen = new Map()
+        // Notes from the door that name an invoice in this batch.
+        const notes = []
 
         for (const file of inOrder) {
-            failed = await writeDocument(file, seen)
+            failed = await writeDocument(file, seen, notes)
             if (failed) break
             done += 1
             setFiles(all => all.filter(f => f.key !== file.key))
@@ -333,7 +335,7 @@ export default function InvoiceImportPage() {
         failed = failed || await writeCodes(seen)
         setSaving(false)
         readAgain()
-        const imported = `${done} ${done === 1 ? 'document' : 'documents'} imported.`
+        const imported = `${done} ${done === 1 ? 'document' : 'documents'} imported.${notesSaid(notes)}`
         // Something went wrong part of the way, so it stays where the files
         // are and says what went in.
         if (failed) {
@@ -364,7 +366,7 @@ export default function InvoiceImportPage() {
         setOnReview(waiting)
         setSaid(waiting
             ? `${already} ${waiting} ${waiting === 1 ? 'line is' : 'lines are'} waiting on Review.`
-            : `${already} Nothing needs a decision.`)
+            : `${already} Nothing is waiting on Review.`)
     }
 
     async function writeCodes(seen) {
@@ -415,7 +417,7 @@ export default function InvoiceImportPage() {
         }
     }
 
-    async function writeDocument(file, seen) {
+    async function writeDocument(file, seen, notes) {
         const { doc, where, matched, supplier } = file
 
         const { data: invoice, error: e1 } = await supabase.from('invoices')
@@ -448,6 +450,8 @@ export default function InvoiceImportPage() {
         if (doc.kind === 'credit') {
             const failed = await settleWith(doc, invoice, where, matched)
             if (failed) return failed
+        } else {
+            notes.push({ number: doc.number, count: await doorNotesOn(doc, where) })
         }
 
         // If the portal list has been pasted, this closes the gap it was
@@ -459,6 +463,23 @@ export default function InvoiceImportPage() {
             .eq('document_id', doc.number)
 
         return null
+    }
+
+    // How many notes from the door name this invoice and are not on a line
+    // yet. Nothing puts one on a line by itself, because the wrong line moves
+    // money off the wrong product, so the import only says they are there.
+    // Only a reminder: a read that fails says nothing rather than spoil an
+    // import that worked.
+    async function doorNotesOn(doc, where) {
+        if (doc.kind === 'credit' || !doc.number) return 0
+        const { data, error: e1 } = await supabase.from('invoice_line_claims')
+            .select('id')
+            .eq('restaurant_id', where.restaurantId)
+            .eq('supplier_id', where.supplierId)
+            .eq('docket_number', String(doc.number))
+            .eq('status', 'open')
+            .is('amount', null)
+        return e1 ? 0 : (data || []).length
     }
 
     // A credit note, and the claims it settles.
@@ -589,9 +610,10 @@ export default function InvoiceImportPage() {
                 ? { ...h, invoice_number: doc.number, total_amount: documentTotal(doc) }
                 : h)),
         }))
+        const notes = notesSaid([{ number: doc.number, count: await doorNotesOn(doc, where) }])
         const filled = claimed
-            ? `Filled in. ${claim.amount.toFixed(2)} is on the claims list as a shortage.`
-            : 'Filled in.'
+            ? `Filled in. ${claim.amount.toFixed(2)} is on the claims list as a shortage.${notes}`
+            : `Filled in.${notes}`
         if (after.length) {
             setSaid(filled)
             return after.join(' ')
@@ -794,6 +816,17 @@ function withCredit(file, placed, known) {
 // nobody misses that it did not go in.
 function stillNeeded(cards) {
     return cards.filter(f => f.state !== 'already_here').length
+}
+
+// What the import says about notes from the door waiting on what went in,
+// with a space in front, or nothing.
+function notesSaid(notes) {
+    const on = (notes || []).filter(n => n.count > 0)
+    if (!on.length) return ''
+    const each = on.map(({ number, count }) => (count === 1
+        ? `1 delivery problem logged at the door is on invoice ${number}.`
+        : `${count} delivery problems logged at the door are on invoice ${number}.`))
+    return ` ${each.join(' ')} Say which line on Delivery problems.`
 }
 
 function stateOf({ where, place, blocks }) {
