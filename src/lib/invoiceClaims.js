@@ -423,6 +423,54 @@ export function claimOverLine(claim, line, { changing = false } = {}) {
             : 'Pick another line, or check the numbers on the note.')
 }
 
+// Where the box asking what they should have charged a case starts: what the
+// Hub costs the product at, which is the price agreed unless somebody says
+// otherwise.
+//
+// **Only as it is when the Hub costs the same pack.** A line is matched to its
+// price row even when the packs differ, so cabbage costed at 1.43 for one met
+// a case of ten at 14.33, the box started at 1.43, and pressing it as it was
+// claimed 12.90 a case on cabbages priced right. With another pack the case is
+// worked out from the price of one, and `from` says so; with nothing to work
+// it out from, the box starts empty.
+//
+// **A price query on this line having its count changed starts at the price
+// it was worked out on**, worked back from its amount and count, because that
+// price is not kept and the Hub's can be another. It can be a cent out, which
+// is fine for where a box starts.
+//
+// `from.start` is where the box started, kept apart from what is typed in it.
+export function priceQueryStart(line, claim = null) {
+    const before = claimedPrice(claim, line)
+    if (before) return { agreed: before, from: { start: before, claimed: true } }
+    const row = line?.product_supplier_prices
+    const pack = num(line?.units_per_case)
+    if (row?.price_per_case != null && row.units_per_case != null && line?.units_per_case != null
+        && Math.abs(num(row.units_per_case) - pack) < 0.0005) {
+        return { agreed: num(row.price_per_case).toFixed(2), from: null }
+    }
+    if (row?.price_per_unit != null && pack > 0) {
+        const agreed = round2(num(row.price_per_unit) * pack).toFixed(2)
+        return { agreed, from: { start: agreed, perUnit: num(row.price_per_unit), unit: row.products?.unit || null } }
+    }
+    return { agreed: '', from: null }
+}
+
+// claimAmount for a price query, the other way round: the amount is the
+// overcharge on the cases and their share of a case for the single items,
+// with its VAT.
+function claimedPrice(claim, line) {
+    if (claim?.kind !== 'price' || claim.amount == null || !line) return null
+    const { cases, units, items } = claimCount(claim, line)
+    const perPack = num(line.units_per_case)
+    const share = cases + (items ? units / items : perPack > 0 ? units / perPack : 0)
+    const printed = num(line.line_total)
+    const vatShare = printed ? num(line.vat_amount) / printed : 0
+    if (share <= 0) return null
+    const agreed = round2(num(line.price_per_case) - num(claim.amount) / (1 + vatShare) / share)
+    return agreed > 0 ? agreed.toFixed(2) : null
+}
+
 // "1 case and 3 of the 4 x 500 g in a case". Plain single items where the
 // pack cannot be read, saying what a case was taken as when it is asked to.
 function countWords(cases, units, items, line, taking = true) {

@@ -139,6 +139,48 @@ describe('asking before a claim goes on a line', () => {
         expect(updated[0].row).toMatchObject({ amount: 2.46 })
     })
 
+    // Cabbage costed at 1.43 for one, the line a case of ten at 14.33. The box
+    // started at 1.43, and pressing it claimed 12.90 a case on cabbages that
+    // were priced right.
+    it('starts a price query at the case price, worked out when the Hub costs another pack', async () => {
+        tables.invoice_line_claims = [{ ...CLAIM, kind: 'price', what: 'Cabbage', docket_number: null }]
+        tables.invoices = [{
+            ...INVOICE,
+            invoice_lines: [{
+                id: 'cab', raw_description: 'CABBAGE WHITE', pack_size: '1X10 EA', price_per_case: 14.33, units_per_case: 10,
+                unit_price: 1.433, line_total: 14.33, vat_amount: 0, deposit_amount: 0, cases: 1, units: 0,
+                product_supplier_prices: { price_per_case: 1.43, units_per_case: 1, price_per_unit: 1.43, products: { unit: 'Units' } },
+            }],
+        }]
+        renderWithRouter(<ClaimsPage />)
+        await userEvent.click(await screen.findByRole('button', { name: 'Say which line this was' }))
+        await userEvent.click(screen.getByRole('button', { name: /CABBAGE WHITE/ }))
+        expect(screen.getByLabelText(/What should they have charged/)).toHaveValue('14.30')
+        expect(screen.getByText('It starts at €14.30 a case, from the €1.43 each the Hub costs it at.')).toBeInTheDocument()
+
+        // It said it started at whatever was typed, and at €0.00 once cleared.
+        const box = screen.getByLabelText(/What should they have charged/)
+        await userEvent.clear(box)
+        expect(screen.getByText('It starts at €14.30 a case, from the €1.43 each the Hub costs it at.')).toBeInTheDocument()
+        await userEvent.type(box, '13.50')
+        expect(screen.getByText('It starts at €14.30 a case, from the €1.43 each the Hub costs it at.')).toBeInTheDocument()
+    })
+
+    it('starts a price query at the price the Hub costs, when it is the same pack', async () => {
+        tables.invoice_line_claims = [{ ...CLAIM, kind: 'price' }]
+        tables.invoices = [{
+            ...INVOICE,
+            invoice_lines: [{
+                ...INVOICE.invoice_lines[0],
+                product_supplier_prices: { price_per_case: 16.16, units_per_case: 24, price_per_unit: 0.6733, products: { unit: 'Units' } },
+            }],
+        }]
+        renderWithRouter(<ClaimsPage />)
+        await userEvent.click(await screen.findByRole('button', { name: 'That is the one' }))
+        expect(screen.getByLabelText(/What should they have charged/)).toHaveValue('16.16')
+        expect(screen.queryByText(/^It starts at/)).toBeNull()
+    })
+
     it('refuses a claim for more than the line billed, and says what the line had', async () => {
         tables.invoice_line_claims = [{ ...CLAIM, cases: 2 }]
         tables.invoices = [{ ...INVOICE, invoice_lines: [{ ...INVOICE.invoice_lines[0], cases: 1, units: 0 }] }]
@@ -574,7 +616,8 @@ describe('changing a claim after it was logged', () => {
         const [columns] = db.from.mock.results[at].value.select.mock.calls[0]
         expect(columns).toContain('delivery:invoices!invoice_line_claims_invoice_id_fkey(invoice_number, invoice_date)')
         expect(columns).toContain('invoice_lines(id, raw_description, pack_size, cases, units, price_per_case, units_per_case, '
-            + 'unit_price, line_total, vat_amount, deposit_amount, supplier_code, product_supplier_prices(price_per_case')
+            + 'unit_price, line_total, vat_amount, deposit_amount, supplier_code, '
+            + 'product_supplier_prices(price_per_case, price_per_unit, units_per_case, products(unit)))')
     })
 
     // That report stays as it was sent.
@@ -642,6 +685,9 @@ describe('changing a claim after it was logged', () => {
         await userEvent.click(await screen.findByRole('button', { name: 'Edit' }))
         await userEvent.click(screen.getByRole('button', { name: 'Save the note' }))
         const box = await screen.findByLabelText(/What should they have charged/)
+        // The price it was worked out on, not one it never had.
+        expect(box).toHaveValue('16.16')
+        expect(screen.getByText('It starts at €16.16 a case, the price this claim was worked out on.')).toBeInTheDocument()
         await userEvent.clear(box)
         await userEvent.type(box, '15.16')
         await userEvent.click(screen.getByRole('button', { name: 'That is the price' }))

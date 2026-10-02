@@ -10,9 +10,10 @@ import { orderByUse } from '@/lib/supplierOrder'
 import { numberField } from '@/lib/numberInput'
 import { friendlyError } from '@/lib/errors'
 import { can, MANAGERS } from '@/lib/access'
+import { unitWord } from '@/lib/invoiceReport'
 import {
     claimKind, doorClaimPayload, claimWorking, notTheDocket, claimDetached, canDetach, claimReopened, claimTakesOff, claimIsOpen, claimSaid, claimCountSaid, claimWeek, sentWeeks, fromEarlierWeeks,
-    canEditClaim, claimChanged, keepsItsAmount, claimOverLine,
+    canEditClaim, claimChanged, keepsItsAmount, claimOverLine, priceQueryStart,
     claimCandidates, claimMatch, otherDeliveries, byInvoice, chasingList, isLate, LATE_AFTER_DAYS, bySupplier,
 } from '@/lib/invoiceClaims'
 import {
@@ -45,7 +46,8 @@ const LOOK_BACK_DAYS = 60
 // invoices to pick from and with each claim already on one, so a change to its
 // count can be worked out again.
 const LINE_COLUMNS = 'id, raw_description, pack_size, cases, units, price_per_case, units_per_case, unit_price, '
-    + 'line_total, vat_amount, deposit_amount, supplier_code, product_supplier_prices(price_per_case)'
+    + 'line_total, vat_amount, deposit_amount, supplier_code, '
+    + 'product_supplier_prices(price_per_case, price_per_unit, units_per_case, products(unit))'
 
 // Where a claim's money now comes off, once it is written. claimWeek's answer.
 function landsSaid(amount, { week, delivered, moved }) {
@@ -76,13 +78,6 @@ function keptSaid({ week, gone }) {
     return gone
         ? `The report for the week of ${shortDate(week)} has already gone out. That report stays as it was sent.`
         : `It still comes off the week of ${shortDate(week)}.`
-}
-
-// What the price query box starts at: what the Hub costs that product at,
-// which is the price that was agreed unless somebody says otherwise.
-function startingPrice(line) {
-    const costingFrom = line?.product_supplier_prices?.price_per_case
-    return costingFrom == null ? '' : String(costingFrom)
 }
 
 export default function ClaimsPage() {
@@ -631,7 +626,7 @@ function ClaimRow({
         const of = change?.of || claim
         setProblem('')
         if (of.kind === 'price' && !priced) {
-            setPricing({ line, invoice, agreed: startingPrice(line), change })
+            setPricing({ line, invoice, ...priceQueryStart(line), change })
             return
         }
         setWeighing(true)
@@ -675,7 +670,7 @@ function ClaimRow({
             const over = claimOverLine(change.of, line, { changing: true })
             if (over) return over
             setEditing(false)
-            setPricing({ line, invoice: claim.delivery, agreed: startingPrice(line), change })
+            setPricing({ line, invoice: claim.delivery, ...priceQueryStart(line, claim), change })
             return null
         }
         const weighed = await onReweigh(claim, change.of, line)
@@ -799,8 +794,9 @@ function ClaimRow({
 
                     {/* The goods arrived and were kept, so what is coming back is
                         the overcharge and not the line. It starts from what the
-                        Hub costs that product at, which is the price that was
-                        agreed unless somebody says otherwise. */}
+                        Hub costs that product at, or a changed claim's own
+                        price (priceQueryStart), and says so when it was worked
+                        out, at where it started whatever is typed after. */}
                     {pricing && (
                         <div className={`mt-3 ${infoNote}`}>
                             <label className="text-xs text-blue-900 block mb-1" htmlFor={`agreed-${claim.id}`}>
@@ -835,6 +831,14 @@ function ClaimRow({
                                     Never mind
                                 </button>
                             </div>
+                            {pricing.from && (
+                                <p className="text-xs text-blue-900 mt-1">
+                                    {pricing.from.claimed
+                                        ? `It starts at ${fmtMoney(pricing.from.start)} a case, the price this claim was worked out on.`
+                                        : `It starts at ${fmtMoney(pricing.from.start)} a case, from the `
+                                            + `${fmtMoney(pricing.from.perUnit)} ${unitWord(pricing.from.unit)} the Hub costs it at.`}
+                                </p>
+                            )}
                             <p className="text-xs text-blue-900 mt-1">
                                 The claim is the difference on {claimCountSaid(priced.cases, priced.units)}, not the
                                 whole line.

@@ -6,7 +6,7 @@ import {
     creditSettles, creditTakenBack, voidedBy, sentBack, chasingList, isLate, claimsForWeek, bySupplier,
     claimWeek, sentWeeks, fromEarlierWeeks, otherDeliveries, byInvoice, claimWorking, notTheDocket,
     claimDetached, canDetach, claimReopened, claimCountSaid, claimSaid, canEditClaim, claimForm, claimChanged,
-    keepsItsAmount, claimOverLine,
+    keepsItsAmount, claimOverLine, priceQueryStart,
 } from '@/lib/invoiceClaims'
 
 const LINE = {
@@ -569,6 +569,57 @@ describe('what a price query is worth', () => {
 
         const drinks = { price_per_case: 20, units_per_case: 24, line_total: 20, vat_amount: 4.6, deposit_amount: 3.6 }
         expect(claimAmount({ kind: 'price', cases: 1, units: 0 }, drinks, { agreedPerCase: 18 })).toBe(2.46)
+    })
+})
+
+// The box asking what they should have charged a case starts at what the Hub
+// costs the product at. Cabbage is costed at 1.43 for one, and the line was a
+// case of ten at 14.33: it started at 1.43, and pressing it as it was claimed
+// 12.90 a case on cabbages priced right.
+describe('where a price query starts', () => {
+    const cabbage = { price_per_case: 14.33, units_per_case: 10 }
+    const each = { price_per_case: 1.43, units_per_case: 1, price_per_unit: 1.43, products: { unit: 'Units' } }
+
+    it('starts at the case price when the Hub costs the same pack', () => {
+        const coke = { price_per_case: 18.54, units_per_case: 24 }
+        const row = { price_per_case: 18.16, units_per_case: 24, price_per_unit: 0.7567 }
+        expect(priceQueryStart({ ...coke, product_supplier_prices: row })).toEqual({ agreed: '18.16', from: null })
+    })
+
+    // Where it started is kept apart from the box, so the words under it
+    // still say 14.30 once something else is typed.
+    it('works out the case from the price of one when the packs differ, and says so', () => {
+        expect(priceQueryStart({ ...cabbage, product_supplier_prices: each })).toEqual({
+            agreed: '14.30', from: { start: '14.30', perUnit: 1.43, unit: 'Units' },
+        })
+    })
+
+    // The price typed for it is not kept, and the Hub's can be another, so a
+    // count fixed would otherwise claim at a price nobody agreed.
+    it('starts a price query being changed at the price it was worked out on', () => {
+        const coke = {
+            pack_size: '24X330 ML', price_per_case: 18.16, units_per_case: 24, line_total: 18.16, vat_amount: 4.18,
+            product_supplier_prices: { price_per_case: 18.16, units_per_case: 24 },
+        }
+        expect(priceQueryStart(coke, { kind: 'price', cases: 1, units: 0, amount: 2.46 })).toEqual({
+            agreed: '16.16', from: { start: '16.16', claimed: true },
+        })
+        const chorizo = { pack_size: '4X500 GM', price_per_case: 31.99, units_per_case: 2, line_total: 31.99, vat_amount: 0 }
+        expect(priceQueryStart(chorizo, { kind: 'price', cases: 0, units: 3, amount: 3 }).agreed).toBe('27.99')
+    })
+
+    it('starts where the Hub costs it for anything that was not a price query', () => {
+        expect(priceQueryStart({ ...cabbage, product_supplier_prices: each }, { kind: 'short', cases: 1, units: 0, amount: 14.33 }))
+            .toMatchObject({ agreed: '14.30' })
+        expect(priceQueryStart(cabbage, { kind: 'price', cases: 0, units: 0, amount: 2 })).toEqual({ agreed: '', from: null })
+    })
+
+    it('starts empty when there is nothing to work it out from', () => {
+        expect(priceQueryStart(cabbage)).toEqual({ agreed: '', from: null })
+        expect(priceQueryStart({ ...cabbage, product_supplier_prices: { ...each, price_per_unit: null } }))
+            .toEqual({ agreed: '', from: null })
+        expect(priceQueryStart({ ...cabbage, units_per_case: null, product_supplier_prices: each }))
+            .toEqual({ agreed: '', from: null })
     })
 })
 
