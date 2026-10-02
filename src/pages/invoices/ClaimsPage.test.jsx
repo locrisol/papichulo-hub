@@ -65,10 +65,14 @@ let ask
 let asked
 vi.mock('@/context/confirm', () => ({ useConfirm: () => options => { asked.push(options); return ask(options) } }))
 
-// The door form has tests of its own. Here it only hands over a note.
+// The door form has tests of its own. Here it only hands over a note, and
+// keeps what the page answered: a problem to show in the form, or nothing.
 let doorNote
+let answered
 vi.mock('@/components/invoices/DoorClaimModal', () => ({
-    default: ({ onSave }) => <button type="button" onClick={() => onSave(doorNote)}>Save the note</button>,
+    default: ({ onSave }) => (
+        <button type="button" onClick={async () => { answered = await onSave(doorNote) }}>Save the note</button>
+    ),
 }))
 
 const { default: ClaimsPage } = await import('./ClaimsPage')
@@ -79,6 +83,7 @@ beforeEach(() => {
     reply = () => ({ data: [{ id: 'c1' }], error: null })
     asked = []
     ask = async () => true
+    answered = undefined
     tables = {
         suppliers: [{ id: 's1', name: 'Sysco Ireland', is_active: true }],
         invoice_line_claims: [CLAIM],
@@ -506,6 +511,185 @@ describe('closing a claim, and opening it again', () => {
     })
 })
 
+// Three full cases typed for three single items could only be taken back and
+// logged again.
+describe('changing a claim after it was logged', () => {
+    // The Chorizo, on its own delivery this time, logged as three full cases.
+    const CHORIZO_LINE = {
+        id: 'ch-l', raw_description: 'CHORIZO CUBES', pack_size: '4X500 GM', price_per_case: 27.99, units_per_case: 2,
+        unit_price: 13.995, line_total: 83.97, vat_amount: 0, deposit_amount: 0, cases: 3, units: 0,
+    }
+    const ON = {
+        ...CLAIM, what: 'Chorizo', cases: 3, units: 0, docket_number: '45747318', raised_on: '2026-10-02',
+        invoice_id: 'ch', invoice_line_id: 'ch-l', amount: 83.97, counted_week: NOTED_WEEK,
+        delivery: { invoice_number: '45747318', invoice_date: '2026-10-01' },
+        invoice_lines: CHORIZO_LINE,
+    }
+    const asLogged = { supplierId: 's1', kind: 'short', what: 'Chorizo', cases: '', units: '3', docket: '45747318', note: '' }
+
+    it('saves a change to a note on no line, only while it is as the page read it', async () => {
+        doorNote = { ...asLogged, what: 'COKE ZERO', docket: '45690933' }
+        renderWithRouter(<ClaimsPage />)
+        await userEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+        await userEvent.click(screen.getByRole('button', { name: 'Save the note' }))
+        await waitFor(() => expect(updated).toHaveLength(1))
+        expect(updated[0].row).toEqual({
+            supplier_id: 's1', kind: 'short', what: 'COKE ZERO', cases: 0, units: 3, docket_number: '45690933', note: null,
+        })
+        expect(updated[0].guards).toEqual(expect.arrayContaining([
+            ['eq', 'id', 'c1'], ['eq', 'status', 'open'], ['eq', 'credited_amount', 0],
+            ['is', 'credit_invoice_id', null], ['is', 'invoice_line_id', null],
+        ]))
+        expect(await screen.findByText('Changes saved.')).toBeInTheDocument()
+        expect(answered).toBeNull()
+    })
+
+    // On a line the money comes from the count, so it is worked out again and
+    // read back before anything is written, the same as putting it on one.
+    it('works the money out again on a line and shows it before saving', async () => {
+        tables.invoice_line_claims = [ON]
+        doorNote = asLogged
+        db.from.mockClear()
+        renderWithRouter(<ClaimsPage />)
+        await userEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+        await userEvent.click(screen.getByRole('button', { name: 'Save the note' }))
+        expect(await screen.findByText('3 of the 4 x 500 g in a case at €27.99 a case: €21.00')).toBeInTheDocument()
+        expect(screen.getByText('This changes the claim from €83.97 to €21.00.')).toBeInTheDocument()
+        expect(screen.getByText(`On invoice 45747318 of ${shortDate('2026-10-01')}, CHORIZO CUBES 4X500 GM.`)).toBeInTheDocument()
+        expect(screen.getByText(`It still comes off the week of ${shortDate(NOTED_WEEK)}.`)).toBeInTheDocument()
+        expect(updated).toEqual([])
+
+        await userEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+        await waitFor(() => expect(updated).toHaveLength(1))
+        expect(updated[0].row).toEqual({ kind: 'short', what: 'Chorizo', cases: 0, units: 3, note: null, amount: 21 })
+        expect(updated[0].guards).toEqual(expect.arrayContaining([
+            ['eq', 'id', 'c1'], ['eq', 'status', 'open'], ['eq', 'credited_amount', 0],
+            ['is', 'credit_invoice_id', null], ['eq', 'invoice_line_id', 'ch-l'],
+        ]))
+        expect(await screen.findByText('Changes saved. The claim is €21.00 now.')).toBeInTheDocument()
+
+        // The mock hands the line over whatever is asked for, so what the
+        // working needs is checked on the read itself.
+        const at = db.from.mock.calls.findIndex(([table]) => table === 'invoice_line_claims')
+        const [columns] = db.from.mock.results[at].value.select.mock.calls[0]
+        expect(columns).toContain('delivery:invoices!invoice_line_claims_invoice_id_fkey(invoice_number, invoice_date)')
+        expect(columns).toContain('invoice_lines(id, raw_description, pack_size, cases, units, price_per_case, units_per_case, '
+            + 'unit_price, line_total, vat_amount, deposit_amount, supplier_code, product_supplier_prices(price_per_case')
+    })
+
+    // That report stays as it was sent.
+    it('says when its week\'s report has already gone out', async () => {
+        tables.invoice_line_claims = [ON]
+        tables.weekly_reports = [{ id: 'w1', restaurant_id: 'r1', week_start: NOTED_WEEK, status: 'published' }]
+        doorNote = asLogged
+        renderWithRouter(<ClaimsPage />)
+        await userEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+        await userEvent.click(screen.getByRole('button', { name: 'Save the note' }))
+        expect(await screen.findByText(`The report for the week of ${shortDate(NOTED_WEEK)} has already gone out. `
+            + 'That report stays as it was sent.')).toBeInTheDocument()
+    })
+
+    // Changed once already, its amount is the first change's and not what
+    // that report took off, so no figure is put on the report.
+    it('names no figure for a report already sent, which a changed claim no longer knows', async () => {
+        tables.invoice_line_claims = [{ ...ON, cases: 0, units: 3, amount: 21 }]
+        tables.weekly_reports = [{ id: 'w1', restaurant_id: 'r1', week_start: NOTED_WEEK, status: 'published' }]
+        doorNote = { ...asLogged, note: 'Rang them on Friday' }
+        renderWithRouter(<ClaimsPage />)
+        await userEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+        await userEvent.click(screen.getByRole('button', { name: 'Save the note' }))
+        expect(await screen.findByText(/has already gone out\. That report stays as it was sent\.$/)).toBeInTheDocument()
+        expect(screen.queryByText(/off it/)).toBeNull()
+        expect(screen.queryByText(/^This changes the claim/)).toBeNull()
+    })
+
+    it('refuses a count for more than the line billed, in the form', async () => {
+        tables.invoice_line_claims = [ON]
+        doorNote = { ...asLogged, cases: '4', units: '' }
+        renderWithRouter(<ClaimsPage />)
+        await userEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+        await userEvent.click(screen.getByRole('button', { name: 'Save the note' }))
+        await waitFor(() => expect(answered).toMatch(/^That line only billed 3 cases, less than this claim\./))
+        // There is no list of lines on the form, only Not this line.
+        expect(answered).toMatch(/use Not this line/)
+        expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull()
+        expect(updated).toEqual([])
+    })
+
+    // It used to ask the price first and refuse on the row afterwards, and
+    // the changes made in the form were lost on the way back to it.
+    it('refuses a price query count for more than the line billed in the form, before its price', async () => {
+        tables.invoice_line_claims = [{ ...ON, kind: 'price', amount: 12 }]
+        doorNote = { ...asLogged, kind: 'price', cases: '4', units: '' }
+        renderWithRouter(<ClaimsPage />)
+        await userEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+        await userEvent.click(screen.getByRole('button', { name: 'Save the note' }))
+        await waitFor(() => expect(answered).toMatch(/^That line only billed 3 cases, less than this claim\./))
+        expect(screen.queryByLabelText(/What should they have charged/)).toBeNull()
+        expect(updated).toEqual([])
+    })
+
+    const QUERY = {
+        ...ON, kind: 'price', cases: 1, what: 'COKE ZERO 24X330ML', amount: 2.46, invoice_line_id: 'line1',
+        delivery: { invoice_number: '45690932', invoice_date: DELIVERED },
+        invoice_lines: { ...INVOICE.invoice_lines[0], cases: 1, units: 0 },
+    }
+
+    it('asks the agreed price again when a price query\'s count changes', async () => {
+        tables.invoice_line_claims = [QUERY]
+        doorNote = { ...asLogged, kind: 'price', what: 'COKE ZERO 24X330ML', cases: '', units: '12' }
+        renderWithRouter(<ClaimsPage />)
+        await userEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+        await userEvent.click(screen.getByRole('button', { name: 'Save the note' }))
+        const box = await screen.findByLabelText(/What should they have charged/)
+        await userEvent.clear(box)
+        await userEvent.type(box, '15.16')
+        await userEvent.click(screen.getByRole('button', { name: 'That is the price' }))
+        expect(await screen.findByText('12 single items, taking a case as 24 of them, €3.00 a case over the agreed price, '
+            + 'with its VAT: €1.85')).toBeInTheDocument()
+        expect(screen.getByText('This changes the claim from €2.46 to €1.85.')).toBeInTheDocument()
+        await userEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+        await waitFor(() => expect(updated).toHaveLength(1))
+        expect(updated[0].row).toMatchObject({ kind: 'price', cases: 0, units: 12, amount: 1.85 })
+    })
+
+    // The price agreed is not kept, so a note fixed had its price asked
+    // again, and pressing on could change the money.
+    it('saves a price query with only its words changed straight away, money and all', async () => {
+        tables.invoice_line_claims = [QUERY]
+        doorNote = { ...asLogged, kind: 'price', what: 'Coke Zero, 24 cans', cases: '1', units: '', note: 'Rang them' }
+        renderWithRouter(<ClaimsPage />)
+        await userEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+        await userEvent.click(screen.getByRole('button', { name: 'Save the note' }))
+        await waitFor(() => expect(updated).toHaveLength(1))
+        expect(screen.queryByLabelText(/What should they have charged/)).toBeNull()
+        expect(updated[0].row).toEqual({
+            kind: 'price', what: 'Coke Zero, 24 cans', cases: 1, units: 0, note: 'Rang them', amount: 2.46,
+        })
+        expect(updated[0].guards).toEqual(expect.arrayContaining([['eq', 'invoice_line_id', 'line1']]))
+        expect(await screen.findByText('Changes saved.')).toBeInTheDocument()
+        expect(answered).toBeNull()
+    })
+
+    it('says nothing changed when it moved on before the save', async () => {
+        reply = () => ({ data: [], error: null })
+        doorNote = asLogged
+        renderWithRouter(<ClaimsPage />)
+        await userEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+        await userEvent.click(screen.getByRole('button', { name: 'Save the note' }))
+        expect(await screen.findByText(/^Nothing changed: that problem has moved on/)).toBeInTheDocument()
+        expect(screen.queryByText('Changes saved.')).toBeNull()
+    })
+
+    // Once a credit has touched it, the money belongs to that credit.
+    it('is not offered once anything has been credited', async () => {
+        tables.invoice_line_claims = [{ ...ON, credited_amount: 10 }]
+        renderWithRouter(<ClaimsPage />)
+        await screen.findByText(/On invoice 45747318/)
+        expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull()
+    })
+})
+
 // The row said "3 units", which says neither missing nor delivered, bag nor
 // kilo, and one case was "1 cases".
 describe('how a claim reads back on its row', () => {
@@ -580,11 +764,12 @@ describe('an employee looking at their own', () => {
         expect(asked).not.toContain('invoices')
     })
 
-    it('cannot ask again or close one, which only a manager can', async () => {
+    it('cannot ask again, change or close one, which only a manager can', async () => {
         tables.my_claims = [MINE, { ...DONE, status: 'refused' }]
         renderWithRouter(<ClaimsPage />)
         await screen.findByText('Lettuce warm')
         expect(screen.queryByRole('button', { name: 'Ask again' })).toBeNull()
+        expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull()
         expect(screen.queryByRole('button', { name: 'They said no' })).toBeNull()
     })
 

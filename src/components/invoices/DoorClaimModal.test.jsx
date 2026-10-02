@@ -97,6 +97,12 @@ describe('the note taken at the door', () => {
         expect(onSave).not.toHaveBeenCalled()
     })
 
+    it('says it is logging a new one', () => {
+        open()
+        expect(screen.getByRole('dialog', { name: 'What was wrong with it?' })).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Log it' })).toBeInTheDocument()
+    })
+
     it('hands over the same note as before', async () => {
         const onSave = open()
         await userEvent.selectOptions(screen.getByLabelText('Who delivered it'), 's1')
@@ -108,5 +114,79 @@ describe('the note taken at the door', () => {
         expect(onSave).toHaveBeenCalledWith({
             supplierId: 's1', kind: 'short', what: 'Chorizo', cases: '', units: '3', docket: '45747318', note: '',
         })
+    })
+})
+
+// Three full cases typed for three single items could only be taken back and
+// logged again.
+describe('changing a note already logged', () => {
+    const CHORIZO = {
+        id: 'c9', supplier_id: 's1', kind: 'short', what: 'Chorizo', cases: 3, units: 0,
+        docket_number: '45747318', note: null, invoice_line_id: null,
+    }
+
+    function change(claim, onSave = vi.fn(async () => null)) {
+        render(<DoorClaimModal claim={claim} suppliers={SUPPLIERS} onClose={() => {}} onSave={onSave} />)
+        return onSave
+    }
+
+    it('opens with what was logged, and saves the change', async () => {
+        const onSave = change(CHORIZO)
+        expect(screen.getByRole('dialog', { name: 'Change this problem' })).toBeInTheDocument()
+        expect(screen.getByLabelText('What it was')).toHaveValue('Chorizo')
+        expect(screen.getByLabelText('Full cases')).toHaveValue('3')
+        expect(screen.getByLabelText('Docket number')).toHaveValue('45747318')
+        expect(screen.getByText('How many are missing?')).toBeInTheDocument()
+
+        await userEvent.clear(screen.getByLabelText('Full cases'))
+        await userEvent.type(screen.getByLabelText('Single items'), '3')
+        await pick('Save changes')
+        expect(onSave).toHaveBeenCalledWith({
+            supplierId: 's1', kind: 'short', what: 'Chorizo', cases: '', units: '3', docket: '45747318', note: '',
+        })
+    })
+
+    // On a line, the supplier and the docket are that delivery's.
+    it('keeps the delivery as it is once it is on a line, and says how to change it', async () => {
+        const onSave = change({ ...CHORIZO, invoice_line_id: 'l1' })
+        expect(screen.getByLabelText('Who delivered it')).toBeDisabled()
+        expect(screen.getByLabelText('Who delivered it')).toHaveValue('Sysco Ireland')
+        expect(screen.getByLabelText('Docket number')).toBeDisabled()
+        expect(screen.getByText('Use Not this line to change the delivery.')).toBeInTheDocument()
+        // The money is worked out and shown before anything is saved.
+        await pick('Next')
+        expect(onSave).toHaveBeenCalled()
+    })
+
+    // Next saves nothing yet: the money is read back on the row first.
+    it('says it is working the money out while Next is pressed, and saving otherwise', async () => {
+        const waiting = () => new Promise(() => {})
+        change({ ...CHORIZO, invoice_line_id: 'l1' }, vi.fn(waiting))
+        await pick('Next')
+        expect(screen.getByRole('button', { name: 'Working it out...' })).toBeDisabled()
+    })
+
+    it('says it is saving a change to one on no line', async () => {
+        change(CHORIZO, vi.fn(() => new Promise(() => {})))
+        await pick('Save changes')
+        expect(screen.getByRole('button', { name: 'Saving...' })).toBeDisabled()
+    })
+
+    // Its price agreed is not kept, so only its words changed saves straight
+    // away with the money it has.
+    it('saves a price query on a line straight away while only its words change', async () => {
+        const query = { ...CHORIZO, kind: 'price', invoice_line_id: 'l1' }
+        change(query)
+        await userEvent.type(screen.getByLabelText('Anything else'), 'Rang them')
+        expect(screen.getByRole('button', { name: 'Save changes' })).toBeInTheDocument()
+        await userEvent.type(screen.getByLabelText('Single items'), '2')
+        expect(screen.getByRole('button', { name: 'Next' })).toBeInTheDocument()
+    })
+
+    it('shows what was wrong with the change and stays open', async () => {
+        change({ ...CHORIZO, invoice_line_id: 'l1' }, vi.fn(async () => 'That line only billed 1 case, less than this claim.'))
+        await pick('Next')
+        expect(screen.getByRole('alert')).toHaveTextContent('That line only billed 1 case')
+        expect(screen.getByRole('dialog', { name: 'Change this problem' })).toBeInTheDocument()
     })
 })

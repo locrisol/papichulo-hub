@@ -2,10 +2,12 @@ import { useState } from 'react'
 import Modal from '@/components/ui/Modal'
 import AutoTextarea from '@/components/ui/AutoTextarea'
 import { numberField } from '@/lib/numberInput'
-import { CLAIM_KINDS, claimKind, claimCountSaid, emptyDoorClaim, doorClaimProblem } from '@/lib/invoiceClaims'
+import {
+    CLAIM_KINDS, claimKind, claimCountSaid, emptyDoorClaim, doorClaimProblem, claimForm, keepsItsAmount,
+} from '@/lib/invoiceClaims'
 import {
     modalFooter, secondaryButton, primaryButton, labelClass, fieldClass, hintClass,
-    errorBanner,
+    errorBanner, lockedField,
 } from '@/lib/controlStyles'
 
 // The note taken at the delivery door.
@@ -31,14 +33,29 @@ import {
 // Whoever is at the door knows how many trays and has no business knowing what
 // a tray costs, and the database policy that lets them write it refuses a row
 // with an amount on it.
-export default function DoorClaimModal({ suppliers, onClose, onSave }) {
-    const [form, setForm] = useState(emptyDoorClaim())
+//
+// **With a `claim` it changes that one** (managers only, from Delivery
+// problems). On a line the supplier and the docket are that delivery's, so they
+// are shown and not offered, and the money is worked out and read back on the
+// row before anything is saved, which is why the button there says Next. Only
+// the words of a price query changed keep its money (keepsItsAmount), and that
+// saves straight away.
+// Greyed the way a locked field is everywhere else, at the size of the boxes
+// beside it.
+const locked = `${lockedField} w-full px-3 py-2.5 text-base`
+
+export default function DoorClaimModal({ suppliers, claim = null, onClose, onSave }) {
+    const [form, setForm] = useState(() => (claim ? claimForm(claim) : emptyDoorClaim()))
     const [problem, setProblem] = useState('')
     const [busy, setBusy] = useState(false)
 
     const set = (field, value) => setForm(f => ({ ...f, [field]: value }))
     const kind = form.kind ? claimKind(form.kind) : null
     const count = claimCountSaid(form.cases, form.units)
+    const onLine = !!claim?.invoice_line_id
+    // Next works the money out and saves nothing yet.
+    const next = onLine && !keepsItsAmount(claim, form)
+    const supplierName = (suppliers || []).find(s => s.id === form.supplierId)?.name || ''
 
     async function go() {
         const wrong = doorClaimProblem(form)
@@ -50,40 +67,51 @@ export default function DoorClaimModal({ suppliers, onClose, onSave }) {
     }
 
     return (
-        <Modal title="What was wrong with it?" onClose={onClose} width="max-w-lg">
+        <Modal title={claim ? 'Change this problem' : 'What was wrong with it?'} onClose={onClose} width="max-w-lg">
             <div className="px-6 py-4">
                 {problem && <p className={`${errorBanner} mb-3`} role="alert">{problem}</p>}
 
                 <div className="grid gap-4 sm:grid-cols-2">
                     <div>
                         <label className={labelClass} htmlFor="claim-supplier">Who delivered it</label>
-                        <select
-                            id="claim-supplier"
-                            value={form.supplierId}
-                            onChange={e => set('supplierId', e.target.value)}
-                            className={fieldClass}
-                        >
-                            <option value="">Pick a supplier</option>
-                            {(suppliers || []).map(s => (
-                                <option key={s.id} value={s.id}>{s.name}</option>
-                            ))}
-                        </select>
+                        {onLine ? (
+                            <input id="claim-supplier" value={supplierName} disabled readOnly className={locked} />
+                        ) : (
+                            <select
+                                id="claim-supplier"
+                                value={form.supplierId}
+                                onChange={e => set('supplierId', e.target.value)}
+                                className={fieldClass}
+                            >
+                                <option value="">Pick a supplier</option>
+                                {(suppliers || []).map(s => (
+                                    <option key={s.id} value={s.id}>{s.name}</option>
+                                ))}
+                            </select>
+                        )}
                     </div>
                     <div>
                         <label className={labelClass} htmlFor="claim-docket">Docket number</label>
-                        <input
-                            id="claim-docket"
-                            value={form.docket}
-                            onChange={e => set('docket', e.target.value)}
-                            className={fieldClass}
-                            placeholder="Off the paper they leave"
-                        />
-                        <p className={hintClass}>
-                            Worth thirty seconds of looking. It tells a manager which invoice this
-                            was on, so it goes against the right delivery.
-                        </p>
+                        {onLine ? (
+                            <input id="claim-docket" value={form.docket} disabled readOnly className={locked} />
+                        ) : (
+                            <>
+                                <input
+                                    id="claim-docket"
+                                    value={form.docket}
+                                    onChange={e => set('docket', e.target.value)}
+                                    className={fieldClass}
+                                    placeholder="Off the paper they leave"
+                                />
+                                <p className={hintClass}>
+                                    Worth thirty seconds of looking. It tells a manager which invoice this
+                                    was on, so it goes against the right delivery.
+                                </p>
+                            </>
+                        )}
                     </div>
                 </div>
+                {onLine && <p className={hintClass}>Use Not this line to change the delivery.</p>}
 
                 {/* Names only, two to a row, so all ten fit on a phone without
                     scrolling past them to the question. The one picked says
@@ -177,7 +205,7 @@ export default function DoorClaimModal({ suppliers, onClose, onSave }) {
             <div className={modalFooter}>
                 <button type="button" onClick={onClose} className={secondaryButton}>Cancel</button>
                 <button type="button" disabled={busy} onClick={go} className={primaryButton('md', 'good')}>
-                    {busy ? 'Saving...' : 'Log it'}
+                    {busy ? (next ? 'Working it out...' : 'Saving...') : !claim ? 'Log it' : next ? 'Next' : 'Save changes'}
                 </button>
             </div>
         </Modal>

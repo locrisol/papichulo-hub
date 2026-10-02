@@ -12,6 +12,7 @@ import { friendlyError } from '@/lib/errors'
 import { can, MANAGERS } from '@/lib/access'
 import {
     claimKind, doorClaimPayload, claimWorking, notTheDocket, claimDetached, canDetach, claimReopened, claimTakesOff, claimIsOpen, claimSaid, claimCountSaid, claimWeek, sentWeeks, fromEarlierWeeks,
+    canEditClaim, claimChanged, keepsItsAmount, claimOverLine,
     claimCandidates, claimMatch, otherDeliveries, byInvoice, chasingList, isLate, LATE_AFTER_DAYS, bySupplier,
 } from '@/lib/invoiceClaims'
 import {
@@ -40,6 +41,12 @@ import DoorClaimModal from '@/components/invoices/DoorClaimModal'
 
 const LOOK_BACK_DAYS = 60
 
+// What a line needs for a claim's money to be worked out on it, read with the
+// invoices to pick from and with each claim already on one, so a change to its
+// count can be worked out again.
+const LINE_COLUMNS = 'id, raw_description, pack_size, cases, units, price_per_case, units_per_case, unit_price, '
+    + 'line_total, vat_amount, deposit_amount, supplier_code, product_supplier_prices(price_per_case)'
+
 // Where a claim's money now comes off, once it is written. claimWeek's answer.
 function landsSaid(amount, { week, delivered, moved }) {
     if (!moved) return `${fmtMoney(amount)} is coming off the week that delivery landed in.`
@@ -60,6 +67,22 @@ function changedSince(rows) {
 // A line as the claim row and the panels name it: what it is and its pack.
 function lineName(line) {
     return [line?.raw_description, line?.pack_size].filter(Boolean).join(' ')
+}
+
+// Where a changed claim's money comes off: the week it already had (reweigh).
+// What that report took off is not said. The claim's amount now is the last
+// change's, not what it was the day the report went out.
+function keptSaid({ week, gone }) {
+    return gone
+        ? `The report for the week of ${shortDate(week)} has already gone out. That report stays as it was sent.`
+        : `It still comes off the week of ${shortDate(week)}.`
+}
+
+// What the price query box starts at: what the Hub costs that product at,
+// which is the price that was agreed unless somebody says otherwise.
+function startingPrice(line) {
+    const costingFrom = line?.product_supplier_prices?.price_per_case
+    return costingFrom == null ? '' : String(costingFrom)
 }
 
 export default function ClaimsPage() {
@@ -107,7 +130,7 @@ export default function ClaimsPage() {
                 supabase.from(manager ? 'invoice_line_claims' : 'my_claims')
                     .select(manager
                         ? '*, delivery:invoices!invoice_line_claims_invoice_id_fkey(invoice_number, invoice_date), '
-                            + 'invoice_lines(raw_description, pack_size)'
+                            + `invoice_lines(${LINE_COLUMNS})`
                         : '*')
                     .eq('restaurant_id', restaurantId)
                     .gte('raised_on', from)
@@ -116,7 +139,7 @@ export default function ClaimsPage() {
                 // are only asked for where they can be used.
                 manager
                     ? supabase.from('invoices')
-                        .select('id, invoice_number, invoice_date, supplier_id, document_type, total_amount, invoice_lines(id, raw_description, pack_size, cases, units, price_per_case, units_per_case, unit_price, line_total, vat_amount, deposit_amount, supplier_code, product_supplier_prices(price_per_case))')
+                        .select(`id, invoice_number, invoice_date, supplier_id, document_type, total_amount, invoice_lines(${LINE_COLUMNS})`)
                         .eq('restaurant_id', restaurantId)
                         .gte('invoice_date', from)
                         .order('invoice_date', { ascending: false })
@@ -231,6 +254,46 @@ export default function ClaimsPage() {
         setSaid(changedSince(data) || landsSaid(amount, weighed))
         setRefresh(n => n + 1)
         return true
+    }
+
+    // The same working for a claim already on a line whose count was changed.
+    // Its week was decided when it went on the line and stays. A report sent
+    // for that week stays as it was sent, so that is said rather than left to
+    // be found.
+    async function reweigh(claim, changed, line, priced = {}) {
+        const working = claimWorking(changed, line, priced, { changing: true })
+        if (working.problem) return { problem: working.problem }
+        const { weeks: sent, error: e0 } = await sentWeeks(supabase, restaurantId)
+        if (e0) return { problem: friendlyError(e0) }
+        return { ...working, kept: { week: claim.counted_week, gone: sent.includes(claim.counted_week) } }
+    }
+
+    // Three full cases typed for three single items, say. Only while it is as
+    // the page read it: still open, nothing credited, on the same line or
+    // none, so a page left open cannot change a claim a credit has just
+    // touched or another manager has just moved. A problem comes back for the
+    // form to show; null when it went through.
+    async function change(claim, patch) {
+        setError('')
+        setSaid('')
+        setBusy(claim.id)
+        const guarded = supabase.from('invoice_line_claims')
+            .update(patch)
+            .eq('id', claim.id)
+            .eq('status', 'open')
+            .eq('credited_amount', 0)
+            .is('credit_invoice_id', null)
+        const { data, error: e1 } = await (claim.invoice_line_id
+            ? guarded.eq('invoice_line_id', claim.invoice_line_id)
+            : guarded.is('invoice_line_id', null)
+        ).select('id')
+        setBusy('')
+        if (e1) return friendlyError(e1)
+        const moved = claim.invoice_line_id && Number(patch.amount) !== Number(claim.amount)
+        setSaid(changedSince(data)
+            || (moved ? `Changes saved. The claim is ${fmtMoney(patch.amount)} now.` : 'Changes saved.'))
+        setRefresh(n => n + 1)
+        return null
     }
 
     // Off the line it was put on, back to waiting for the right invoice. Only
@@ -427,7 +490,9 @@ export default function ClaimsPage() {
                                     suppliers={suppliers}
                                     invoices={invoices}
                                     onWeigh={weigh}
+                                    onReweigh={reweigh}
                                     onAttach={attach}
+                                    onChange={change}
                                     onDetach={detach}
                                     onClose={close}
                                 />
@@ -537,7 +602,7 @@ export default function ClaimsPage() {
 }
 
 function ClaimRow({
-    claim, balance, days, late, manager, busy, suppliers, invoices, onWeigh, onAttach, onDetach, onClose,
+    claim, balance, days, late, manager, busy, suppliers, invoices, onWeigh, onReweigh, onAttach, onChange, onDetach, onClose,
 }) {
     const kind = claimKind(claim.kind)
     const supplier = suppliers.find(s => s.id === claim.supplier_id)
@@ -556,25 +621,69 @@ function ClaimRow({
     const [confirming, setConfirming] = useState(null)
     const [problem, setProblem] = useState('')
     const [weighing, setWeighing] = useState(false)
+    const [editing, setEditing] = useState(false)
 
-    async function choose(line, invoice, priced = null) {
+    // `change` is a claim on a line having its count changed: the form, and
+    // the claim as it would be. Its new money goes through the same price and
+    // read back panels as putting a note on a line, and saves rather than
+    // attaches.
+    async function choose(line, invoice, priced = null, change = null) {
+        const of = change?.of || claim
         setProblem('')
-        if (claim.kind === 'price' && !priced) {
-            const costingFrom = line.product_supplier_prices?.price_per_case
-            setPricing({ line, invoice, agreed: costingFrom == null ? '' : String(costingFrom) })
+        if (of.kind === 'price' && !priced) {
+            setPricing({ line, invoice, agreed: startingPrice(line), change })
             return
         }
         setWeighing(true)
-        const weighed = await onWeigh(claim, line, invoice, priced || {})
+        const weighed = change
+            ? await onReweigh(claim, of, line, priced || {})
+            : await onWeigh(claim, line, invoice, priced || {})
         setWeighing(false)
         if (weighed.problem) { setProblem(weighed.problem); return }
         setPricing(null)
-        setConfirming({ line, invoice, priced: priced || {}, other: notTheDocket(claim, invoice), ...weighed })
+        setConfirming({ line, invoice, priced: priced || {}, change, other: !change && notTheDocket(claim, invoice), ...weighed })
     }
 
     async function yes() {
-        const { line, invoice, priced, other } = confirming
+        const { line, invoice, priced, other, change, amount } = confirming
+        if (change) {
+            const failed = await onChange(claim, claimChanged(claim, change.form, { amount }))
+            if (failed) setProblem(failed)
+            else setConfirming(null)
+            return
+        }
         if (await onAttach(claim, line, invoice, { ...priced, otherDelivery: other })) setConfirming(null)
+    }
+
+    // From the form. On no line it saves as it is, and so does a price query
+    // with only its words changed (keepsItsAmount). On a line the money is
+    // worked out first, and a count the line cannot hold goes back to the
+    // form, where the numbers can be fixed, a price query's before its price
+    // is asked; that price is then asked on the row, the same as putting it
+    // on a line.
+    async function edited(form) {
+        if (!claim.invoice_line_id || keepsItsAmount(claim, form)) {
+            const failed = await onChange(claim, claimChanged(claim, form, { amount: claim.amount }))
+            if (!failed) setEditing(false)
+            return failed
+        }
+        const change = { form, of: { ...claim, ...claimChanged(claim, form) } }
+        const line = claim.invoice_lines
+        setProblem('')
+        setConfirming(null)
+        if (change.of.kind === 'price') {
+            const over = claimOverLine(change.of, line, { changing: true })
+            if (over) return over
+            setEditing(false)
+            setPricing({ line, invoice: claim.delivery, agreed: startingPrice(line), change })
+            return null
+        }
+        const weighed = await onReweigh(claim, change.of, line)
+        if (weighed.problem) return weighed.problem
+        setEditing(false)
+        setPricing(null)
+        setConfirming({ line, invoice: claim.delivery, priced: {}, change, other: false, ...weighed })
+        return null
     }
 
     // A claim whose delivery's report had already gone out comes off a later
@@ -585,6 +694,9 @@ function ClaimRow({
     // Always offered rather than done. With a docket number, only that
     // document's lines, and nothing until it is imported.
     const open = manager && !claim.invoice_line_id
+    // The count a price query is the difference on: the changed one, while
+    // a change is being priced.
+    const priced = pricing?.change?.of || claim
     const suggestion = open ? claimMatch(claim, invoices) : null
     const found = open ? claimCandidates(claim, invoices) : null
 
@@ -629,12 +741,12 @@ function ClaimRow({
                 </div>
             </div>
 
-            {manager && !claim.invoice_line_id && (
+            {manager && (!claim.invoice_line_id || problem || pricing || confirming) && (
                 <div className="mt-3">
                     {problem && <ErrorBanner className="mb-2">{problem}</ErrorBanner>}
                     {/* One thing at a time: while a line is being priced or
                         read back, the list it came from waits. */}
-                    {!pricing && !confirming && (found.waiting ? (
+                    {!claim.invoice_line_id && !pricing && !confirming && (found.waiting ? (
                         <>
                             <p className="text-sm text-gray-900 mb-2">
                                 {`Invoice ${claim.docket_number} isn't in the Hub yet. `
@@ -710,7 +822,7 @@ function ClaimRow({
                                     disabled={busy || weighing || pricing.agreed === ''}
                                     onClick={() => choose(pricing.line, pricing.invoice, {
                                         agreedPerCase: Number(pricing.agreed),
-                                    })}
+                                    }, pricing.change)}
                                     className={rowButton('good')}
                                 >
                                     That is the price
@@ -724,7 +836,7 @@ function ClaimRow({
                                 </button>
                             </div>
                             <p className="text-xs text-blue-900 mt-1">
-                                The claim is the difference on {claimCountSaid(claim.cases, claim.units)}, not the
+                                The claim is the difference on {claimCountSaid(priced.cases, priced.units)}, not the
                                 whole line.
                             </p>
                         </div>
@@ -733,15 +845,22 @@ function ClaimRow({
                     {confirming && (
                         <div className={`mt-3 ${infoNote} space-y-1`}>
                             <p className="font-semibold">{confirming.words}</p>
+                            {/* A change says what the claim was as well, so
+                                old money priced a new way is seen moving. */}
+                            {confirming.change && Number(claim.amount) !== confirming.amount && (
+                                <p>{`This changes the claim from ${fmtMoney(claim.amount)} to ${fmtMoney(confirming.amount)}.`}</p>
+                            )}
                             <p>
                                 On invoice {confirming.invoice.invoice_number} of{' '}
                                 {shortDate(confirming.invoice.invoice_date)}, {lineName(confirming.line)}.
                             </p>
                             <p>
-                                {confirming.moved
-                                    ? `The report for the week of ${shortDate(confirming.delivered)} has gone out, `
-                                        + `so it comes off the week of ${shortDate(confirming.week)}.`
-                                    : `It comes off the week of ${shortDate(confirming.week)}.`}
+                                {confirming.kept
+                                    ? keptSaid(confirming.kept)
+                                    : confirming.moved
+                                        ? `The report for the week of ${shortDate(confirming.delivered)} has gone out, `
+                                            + `so it comes off the week of ${shortDate(confirming.week)}.`
+                                        : `It comes off the week of ${shortDate(confirming.week)}.`}
                             </p>
                             {confirming.other && (
                                 <p className="font-bold">
@@ -750,7 +869,7 @@ function ClaimRow({
                             )}
                             <div className="flex flex-wrap gap-2 pt-2">
                                 <button type="button" disabled={busy} onClick={yes} className={rowButton('good')}>
-                                    Yes, that line
+                                    {confirming.change ? 'Save changes' : 'Yes, that line'}
                                 </button>
                                 <button type="button" onClick={() => setConfirming(null)} className={rowButton()}>
                                     Never mind
@@ -761,8 +880,22 @@ function ClaimRow({
                 </div>
             )}
 
+            {editing && (
+                <DoorClaimModal claim={claim} suppliers={suppliers} onClose={() => setEditing(false)} onSave={edited} />
+            )}
+
             {manager && (
                 <div className="mt-3 flex flex-wrap gap-2">
+                    {canEditClaim(claim) && (
+                        <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => { setProblem(''); setEditing(true) }}
+                            className={rowButton('edit')}
+                        >
+                            Edit
+                        </button>
+                    )}
                     {canDetach(claim) && (
                         <button type="button" disabled={busy} onClick={() => onDetach(claim)} className={rowButton()}>
                             Not this line

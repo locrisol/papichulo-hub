@@ -358,8 +358,9 @@ function claimCount(claim, line) {
 // words, a bag read as a kilo, or a claim for more than the line billed, is
 // seen before it costs anything.
 //
-// `problem` is why it cannot go on this line at all.
-export function claimWorking(claim, line, priced = {}) {
+// `problem` is why it cannot go on this line at all. `changing` is a claim
+// already on this line having its count changed (claimOverLine).
+export function claimWorking(claim, line, priced = {}, { changing = false } = {}) {
     const amount = claimAmount(claim, line, priced)
     if (amount == null || amount <= 0) {
         // A few cents a case split over a case of cans can come to nothing,
@@ -376,22 +377,10 @@ export function claimWorking(claim, line, priced = {}) {
     }
 
     const { cases, units, items } = claimCount(claim, line)
-    const perPack = num(line.units_per_case)
     const count = countWords(cases, units, items, line)
 
-    // A line billed with no count on it, a typed one, has nothing to check
-    // against.
-    const had = claimCount({ cases: line.cases, units: line.units }, line)
-    const per = items || (perPack > 0 ? perPack : null)
-    const billed = per ? had.cases * per + had.units : null
-    if (billed && cases * per + units > billed + 0.0001) {
-        return {
-            amount: null,
-            words: '',
-            problem: `That line only billed ${countWords(had.cases, had.units, null, { units_per_case: 0 }, false)}, `
-                + 'less than this claim. Pick another line, or check the numbers on the note.',
-        }
-    }
+    const tooMany = claimOverLine(claim, line, { changing })
+    if (tooMany) return { amount: null, words: '', problem: tooMany }
 
     const vat = num(line.vat_amount) > 0
     const deposit = num(line.deposit_amount) > 0
@@ -411,6 +400,27 @@ export function claimWorking(claim, line, priced = {}) {
         words: `${count} at ${fmtMoney(line.price_per_case)} ${rate}${extras}: ${fmtMoney(amount)}`,
         problem: null,
     }
+}
+
+// A claim for more than the line billed, said the way the working says it, or
+// null. A line billed with no count on it, a typed one, has nothing to check
+// against. On its own so a price query being changed can be checked before
+// its price is asked, and the numbers fixed in the form.
+//
+// `changing` is a claim already on this line. There is no list of lines to
+// pick another from there, only Not this line, so it says that instead.
+export function claimOverLine(claim, line, { changing = false } = {}) {
+    const { cases, units, items } = claimCount(claim, line)
+    const perPack = num(line?.units_per_case)
+    const had = claimCount({ cases: line?.cases, units: line?.units }, line)
+    const per = items || (perPack > 0 ? perPack : null)
+    const billed = per ? had.cases * per + had.units : null
+    if (!billed || cases * per + units <= billed + 0.0001) return null
+    return `That line only billed ${countWords(had.cases, had.units, null, { units_per_case: 0 }, false)}, `
+        + 'less than this claim. '
+        + (changing
+            ? 'Check the numbers, or use Not this line if it is on the wrong line.'
+            : 'Pick another line, or check the numbers on the note.')
 }
 
 // "1 case and 3 of the 4 x 500 g in a case". Plain single items where the
@@ -452,6 +462,57 @@ export function claimDetached(claim) {
 export function canDetach(claim) {
     return claim?.status === 'open' && !!claim.invoice_line_id
         && num(claim.credited_amount) === 0 && !claim.credit_invoice_id
+}
+
+// Changing what was logged, for three full cases typed when three single items
+// were meant. It used to mean Take it back and logging it again. Only while
+// nothing has come back on it, the same as canDetach, and only where its money
+// comes from its count: a shortage made by a fill in has money and no count.
+export function canEditClaim(claim) {
+    return claim?.status === 'open' && num(claim.credited_amount) === 0 && !claim.credit_invoice_id
+        && (!!claim.invoice_line_id || claim.amount == null)
+}
+
+// The door form, filled in with what the claim says now.
+export function claimForm(claim) {
+    const count = n => (num(n) ? String(num(n)) : '')
+    return {
+        supplierId: claim.supplier_id || '',
+        kind: claim.kind || '',
+        what: claim.what || '',
+        cases: count(claim.cases),
+        units: count(claim.units),
+        docket: claim.docket_number || '',
+        note: claim.note || '',
+    }
+}
+
+// What changes on the row. On a line the supplier and the docket are that
+// delivery's, and Not this line is how they change, so they stay; the money is
+// worked out again from the new count (claimWorking) and handed in.
+export function claimChanged(claim, form, { amount = null } = {}) {
+    const said = {
+        kind: form.kind,
+        what: String(form.what || '').trim(),
+        cases: num(form.cases),
+        units: num(form.units),
+        note: String(form.note || '').trim() || null,
+    }
+    if (claim.invoice_line_id) return { ...said, amount }
+    return {
+        supplier_id: form.supplierId,
+        ...said,
+        docket_number: String(form.docket || '').trim() || null,
+    }
+}
+
+// A price query on a line with only its words or its note changed keeps the
+// amount it has. The price agreed is not kept on the claim, so working the
+// money out again means asking that price again, and fixing a note would
+// change what is claimed whenever it was typed differently.
+export function keepsItsAmount(claim, form) {
+    return !!claim?.invoice_line_id && claim.kind === 'price' && form?.kind === 'price'
+        && num(form.cases) === num(claim.cases) && num(form.units) === num(claim.units)
 }
 
 // Asking again after "They said no" or "Take it back", both pressed by mistake

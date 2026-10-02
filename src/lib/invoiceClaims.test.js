@@ -5,7 +5,8 @@ import {
     claimAmount, claimBalance, claimIsOpen, claimTakesOff, claimCandidates, claimMatch,
     creditSettles, creditTakenBack, voidedBy, sentBack, chasingList, isLate, claimsForWeek, bySupplier,
     claimWeek, sentWeeks, fromEarlierWeeks, otherDeliveries, byInvoice, claimWorking, notTheDocket,
-    claimDetached, canDetach, claimReopened, claimCountSaid, claimSaid,
+    claimDetached, canDetach, claimReopened, claimCountSaid, claimSaid, canEditClaim, claimForm, claimChanged,
+    keepsItsAmount, claimOverLine,
 } from '@/lib/invoiceClaims'
 
 const LINE = {
@@ -355,6 +356,22 @@ describe('the working shown before a claim goes on a line', () => {
         expect(claimWorking({ cases: 0, units: 4 }, chorizo).problem).toBeNull()
     })
 
+    // A claim already on this line being changed has no list of lines to
+    // pick another from, only Not this line.
+    it('says to use Not this line when a claim on it is changed to more than it billed', () => {
+        expect(claimWorking({ cases: 2, units: 0 }, chorizo, {}, { changing: true }).problem)
+            .toBe('That line only billed 1 case, less than this claim. '
+                + 'Check the numbers, or use Not this line if it is on the wrong line.')
+    })
+
+    // A price query has no money until its price is typed, and the count can
+    // be wrong before then.
+    it('checks the count against the line with no price to go on', () => {
+        expect(claimOverLine({ kind: 'price', cases: 2, units: 0 }, chorizo)).toMatch(/^That line only billed 1 case,/)
+        expect(claimOverLine({ kind: 'price', cases: 1, units: 0 }, chorizo)).toBeNull()
+        expect(claimOverLine({ cases: 9, units: 0 }, { ...chorizo, cases: null, units: null })).toBeNull()
+    })
+
     // Sysco prints a loose sale as a one item pack with the count under UNIT,
     // so the working says single items too, the way the paper does.
     it('keeps to single items on a line of one item packs', () => {
@@ -402,6 +419,65 @@ describe('taking a claim off its line', () => {
         expect(canDetach({ ...on, credited_amount: 5 })).toBe(false)
         expect(canDetach({ ...on, credit_invoice_id: 'cr1' })).toBe(false)
         expect(canDetach({ ...on, status: 'refused' })).toBe(false)
+    })
+})
+
+// Three full cases typed for three single items could only be taken back and
+// logged again.
+describe('changing a claim after it was logged', () => {
+    const note = claim({
+        amount: null, cases: 0, units: 3, what: 'Chorizo', docket_number: '45747318', note: null, invoice_id: null, invoice_line_id: null,
+    })
+    const onLine = { ...note, invoice_id: 'i1', invoice_line_id: 'l1', amount: 41.99 }
+
+    // Once a credit has touched it, the money belongs to that credit.
+    it('is only offered while it is open with nothing credited', () => {
+        expect(canEditClaim(note)).toBe(true)
+        expect(canEditClaim(onLine)).toBe(true)
+        expect(canEditClaim({ ...onLine, credited_amount: 5 })).toBe(false)
+        expect(canEditClaim({ ...onLine, credit_invoice_id: 'cr1' })).toBe(false)
+        expect(canEditClaim({ ...note, status: 'refused' })).toBe(false)
+    })
+
+    // A shortage made when a typed invoice was filled in has money and no
+    // count: there is nothing to change the money from.
+    it('is not offered on money that never came from a count', () => {
+        expect(canEditClaim({ ...note, amount: 12.5, invoice_id: 'i1', cases: 0, units: 0 })).toBe(false)
+    })
+
+    it('opens the form with what was logged', () => {
+        expect(claimForm(note)).toEqual({
+            supplierId: 's1', kind: 'short', what: 'Chorizo', cases: '', units: '3', docket: '45747318', note: '',
+        })
+    })
+
+    it('changes everything that was logged while it is on no line', () => {
+        const form = { ...claimForm(note), supplierId: 's2', kind: 'damaged', what: ' Chorizo bags ', cases: '1', units: '', docket: ' 45747319 ', note: ' Split ' }
+        expect(claimChanged(note, form)).toEqual({
+            supplier_id: 's2', kind: 'damaged', what: 'Chorizo bags', cases: 1, units: 0, docket_number: '45747319', note: 'Split',
+        })
+        expect(claimChanged(note, { ...form, docket: '', note: '' })).toMatchObject({ docket_number: null, note: null })
+    })
+
+    // The supplier and the docket are the delivery, and Not this line is how
+    // that changes. The money is worked out again from the new count.
+    it('keeps the delivery on a line, and takes the money it is given', () => {
+        const form = { ...claimForm(onLine), supplierId: 's2', docket: '1', cases: '', units: '2' }
+        expect(claimChanged(onLine, form, { amount: 14 })).toEqual({
+            kind: 'short', what: 'Chorizo', cases: 0, units: 2, note: null, amount: 14,
+        })
+    })
+
+    // The price agreed is not kept on the claim, so asking it again for a
+    // note fixed could only guess, and pressing on would change the money.
+    it('keeps the amount of a price query on a line when only its words change', () => {
+        const query = { ...onLine, kind: 'price', cases: 1, units: 0 }
+        const form = claimForm(query)
+        expect(keepsItsAmount(query, { ...form, what: 'Bowls', note: 'Rang them' })).toBe(true)
+        expect(keepsItsAmount(query, { ...form, units: '2' })).toBe(false)
+        expect(keepsItsAmount(query, { ...form, kind: 'short' })).toBe(false)
+        expect(keepsItsAmount({ ...query, kind: 'short' }, { ...form, kind: 'price' })).toBe(false)
+        expect(keepsItsAmount({ ...query, invoice_line_id: null }, form)).toBe(false)
     })
 })
 
