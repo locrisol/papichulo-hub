@@ -333,6 +333,19 @@ export function pairCredits(rows) {
     return { pairs, loose }
 }
 
+// The credits the list says are for one invoice, by their numbers.
+//
+// A credit imported before its invoice was in the Hub had nothing to pair
+// with, and the invoice it credits is not kept on the credit itself, only on
+// this list. So when the invoice turns up, this is how its credits are found.
+export function creditsFor(documents, supplierId, invoiceNumber) {
+    if (!invoiceNumber) return []
+    return (documents || [])
+        .filter(d => d.supplier_id === supplierId && d.document_type === 'credit'
+            && String(d.order_reference || '') === String(invoiceNumber))
+        .map(d => d.document_id)
+}
+
 // How long a credit took to arrive, in days, for each pair.
 //
 // Over the month this was designed against every credit came the same day or

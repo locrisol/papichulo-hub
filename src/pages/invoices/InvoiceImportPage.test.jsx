@@ -104,9 +104,17 @@ function table(name) {
             writes.push({ table: name, op, rows: list })
             return { data: Array.isArray(payload) ? list : list[0], error: null }
         }
-        const joined = all.map(r => (columns.includes('invoices!inner')
-            ? { ...r, invoices: (tables.invoices || []).find(i => i.id === r.invoice_id) }
-            : r))
+        // The joins the page asks for by name, built from the rows here, so a
+        // join dropped or misspelt is seen rather than handed over regardless.
+        const joined = all.map(r => {
+            const invoice = (tables.invoices || []).find(i => i.id === r.invoice_id)
+            let row = r
+            if (columns.includes('invoices!inner')) row = { ...row, invoices: invoice }
+            if (columns.includes('delivery:invoices!invoice_line_claims_invoice_id_fkey(invoice_number)')) {
+                row = { ...row, delivery: invoice ? { invoice_number: invoice.invoice_number } : null }
+            }
+            return row
+        })
         const hit = joined.filter(r => filters.every(f => f(r)))
         if (op === 'update') {
             for (const h of hit) Object.assign(all.find(r => r.id === h.id), payload)
@@ -152,7 +160,12 @@ const { default: InvoiceImportPage } = await import('./InvoiceImportPage')
 // Review stands in as a page that says what it was handed.
 function ReviewStandIn() {
     const { state } = useLocation()
-    return <p>On Review: {state?.said || 'nothing said'}</p>
+    return (
+        <>
+            <p>On Review: {state?.said || 'nothing said'}</p>
+            {state?.warned && <p>Warned on Review: {state.warned}</p>}
+        </>
+    )
 }
 
 function renderImport() {
@@ -401,6 +414,136 @@ describe('a note from the door waiting on the invoice imported', () => {
         await userEvent.click(await screen.findByRole('button', { name: 'Fill it in' }))
         expect(await screen.findByText(/1 delivery problem logged at the door is on invoice 45000001\./))
             .toBeInTheDocument()
+    })
+})
+
+// The Chorizo, had it stayed open on the delivery of 13 September: the credit
+// for its docket paid into it there, and it showed money owed for ever.
+describe('a credit whose docket names a delivery problem on another invoice', () => {
+    const OLD = {
+        id: 'old', restaurant_id: 'r1', supplier_id: 's1', invoice_number: '44000001',
+        invoice_date: '2026-09-14', document_type: 'invoice', total_amount: 14.5,
+    }
+    const PROBLEM = {
+        id: 'n1', restaurant_id: 'r1', supplier_id: 's1', kind: 'short', what: 'Chorizo', docket_number: '45000001',
+        status: 'open', amount: 41.99, credited_amount: 0, credit_invoice_id: null, invoice_id: 'old',
+        invoice_line_id: 'old-1', raised_on: '2026-09-27', counted_week: '2026-09-13',
+    }
+    const CREDIT = () => doc('C45000009', '2026-09-29', [{ ...RICE, value: -14.5, cases: -1 }],
+        { kind: 'credit', orderReference: '45000001' })
+
+    it('leaves the problem as it is, keeps the credit out of the cost, and says so until it is seen', async () => {
+        tables.invoices.push(OLD)
+        tables.invoice_line_claims.push({ ...PROBLEM })
+        DOCS['c.pdf'] = CREDIT()
+        renderImport()
+        await choose('c.pdf')
+        await importThem()
+        const warned = await screen.findByText(new RegExp(
+            '^The credit note C45000009 matches a delivery problem by its docket, but that problem is on '
+            + 'invoice 44000001\\. Until that is put right, the problem\'s own amount comes off rather than the '
+            + 'credit for it\\. Check it on Delivery problems\\. If it is on the wrong invoice, use Not this line, '
+            + 'then delete this credit note and import it again\\.',
+        ))
+        // Amber and apart, not in the green message that goes with the next tap.
+        expect(screen.getByText(/^1 document imported\./)).not.toHaveTextContent('C45000009')
+        expect(writes.filter(w => w.table === 'invoice_line_claims')).toEqual([])
+        const credit = tables.invoices.find(i => i.invoice_number === 'C45000009')
+        expect(writes.filter(w => w.table === 'invoices' && w.op === 'update' && 'counts_in_cost' in w.patch))
+            .toEqual([expect.objectContaining({ ids: [credit.id], patch: { counts_in_cost: false } })])
+
+        await userEvent.click(screen.getByRole('button', { name: 'Got it' }))
+        expect(warned).not.toBeInTheDocument()
+    })
+
+    // Not this line is only there while nothing has been credited on it.
+    it('does not point at Not this line for a problem with something already credited', async () => {
+        tables.invoices.push(OLD)
+        tables.invoice_line_claims.push({ ...PROBLEM, credited_amount: 7, credit_invoice_id: 'cr-earlier' })
+        DOCS['c.pdf'] = CREDIT()
+        renderImport()
+        await choose('c.pdf')
+        await importThem()
+        expect(await screen.findByText(/Something has already been credited on that problem, so it cannot come off that invoice\./))
+            .toBeInTheDocument()
+        expect(screen.queryByText(/Not this line/)).toBeNull()
+    })
+
+    it('says another invoice when the one it is on has no number', async () => {
+        tables.invoices.push({ ...OLD, invoice_number: null })
+        tables.invoice_line_claims.push({ ...PROBLEM })
+        DOCS['c.pdf'] = CREDIT()
+        renderImport()
+        await choose('c.pdf')
+        await importThem()
+        expect(await screen.findByText(/but that problem is on another invoice\./)).toBeInTheDocument()
+    })
+
+    // Review clears what was said at its first decision. This has to stay.
+    it('takes the warning to Review apart from what was said', async () => {
+        tables.invoices.push(OLD)
+        tables.invoice_line_claims.push({ ...PROBLEM })
+        DOCS['c.pdf'] = CREDIT()
+        DOCS['a.pdf'] = doc('45000002', '2026-09-28', [BEANS])
+        renderImport()
+        await choose('a.pdf', 'c.pdf')
+        await importThem()
+        expect(await screen.findByText(/^Warned on Review: The credit note C45000009 matches/)).toBeInTheDocument()
+        expect(screen.getByText(/^On Review:/)).not.toHaveTextContent('C45000009')
+    })
+})
+
+// A credit imported before its invoice had nothing to pair with, so a delivery
+// sent back in full still asked about its prices. Only the supplier's list
+// keeps the invoice a credit is for.
+describe('an invoice whose credit came in first', () => {
+    // Fresh each time: the database here writes into the rows it holds.
+    const credit = extra => ({
+        id: 'cr', restaurant_id: 'r1', supplier_id: 's1', invoice_number: 'C45000009', invoice_date: '2026-09-29',
+        document_type: 'credit', total_amount: -14.5, credit_of_invoice_id: null, ...extra,
+    })
+    const LISTED = {
+        id: 'sd1', restaurant_id: 'r1', supplier_id: 's1', document_id: 'C45000009', order_reference: '45000001',
+        document_type: 'credit', document_date: '2026-09-29', value: -14.5,
+    }
+
+    it('pairs the credit with it once it is imported', async () => {
+        tables.invoices.push(credit())
+        tables.supplier_documents.push(LISTED)
+        DOCS['a.pdf'] = doc('45000001', '2026-09-28', [RICE])
+        renderImport()
+        await choose('a.pdf')
+        await importThem()
+        await screen.findByText(/1 document imported/)
+        const invoice = tables.invoices.find(i => i.invoice_number === '45000001')
+        expect(tables.invoices.find(i => i.id === 'cr').credit_of_invoice_id).toBe(invoice.id)
+    })
+
+    it('leaves a credit already paired, and another supplier\'s, alone', async () => {
+        tables.invoices.push(credit({ credit_of_invoice_id: 'elsewhere' }), credit({ id: 'cr2', supplier_id: 's2' }))
+        tables.supplier_documents.push(LISTED, { ...LISTED, id: 'sd2', supplier_id: 's2' })
+        DOCS['a.pdf'] = doc('45000001', '2026-09-28', [RICE])
+        renderImport()
+        await choose('a.pdf')
+        await importThem()
+        await screen.findByText(/1 document imported/)
+        expect(tables.invoices.find(i => i.id === 'cr').credit_of_invoice_id).toBe('elsewhere')
+        expect(tables.invoices.find(i => i.id === 'cr2').credit_of_invoice_id).toBeNull()
+    })
+
+    it('pairs it when a typed invoice is filled in too', async () => {
+        tables.invoices.push({
+            id: 'typed', restaurant_id: 'r1', supplier_id: 's1', invoice_number: null,
+            invoice_date: '2026-09-28', document_type: 'invoice', total_amount: 14.5,
+        }, credit())
+        tables.supplier_documents.push(LISTED)
+        DOCS['a.pdf'] = doc('45000001', '2026-09-28', [RICE])
+        renderImport()
+        await choose('a.pdf')
+        await userEvent.click(await screen.findByRole('button', { name: 'Fill that one in' }))
+        await userEvent.click(await screen.findByRole('button', { name: 'Fill it in' }))
+        await screen.findByText(/Filled in/)
+        expect(tables.invoices.find(i => i.id === 'cr').credit_of_invoice_id).toBe('typed')
     })
 })
 

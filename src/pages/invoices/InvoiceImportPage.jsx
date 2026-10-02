@@ -14,14 +14,16 @@ import {
     documentTotal, typedAgain,
 } from '@/lib/invoiceImport'
 import { mainCategory } from '@/lib/invoiceCategories'
-import { creditSettles, sentWeeks } from '@/lib/invoiceClaims'
+import { creditSettles, sentWeeks, canDetach } from '@/lib/invoiceClaims'
 import { orderByUse, USE_WINDOW_DAYS } from '@/lib/supplierOrder'
 import { codeRow, seenAgain } from '@/lib/priceEvents'
+import { creditsFor } from '@/lib/supplierDocuments'
 import { readToDecide } from '@/lib/invoiceReview'
 import {
     card, cardHeader, pageTitle, primaryButton, secondaryButton, hintClass,
 } from '@/lib/controlStyles'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import WarningUntilSeen from '@/components/ui/WarningUntilSeen'
 import DocumentCard from '@/components/invoices/DocumentCard'
 import LinkAccountModal from '@/components/invoices/LinkAccountModal'
 import FillInModal from '@/components/invoices/FillInModal'
@@ -58,6 +60,9 @@ export default function InvoiceImportPage() {
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState('')
     const [said, setSaid] = useState('')
+    // A credit left waiting on a delivery problem on another invoice, kept
+    // apart from what was said until somebody has seen it (astraySaid).
+    const [warned, setWarned] = useState('')
     // Lines waiting on Review, for the link beside what was said.
     const [onReview, setOnReview] = useState(0)
     const [known, setKnown] = useState(null)
@@ -322,11 +327,13 @@ export default function InvoiceImportPage() {
         // document meant inserting it, then inserting it again, and the unique
         // key stopping the second one dead halfway through a batch.
         const seen = new Map()
-        // Notes from the door that name an invoice in this batch.
+        // Notes from the door that name an invoice in this batch, and claims
+        // a credit in it matched by docket on another invoice.
         const notes = []
+        const astray = []
 
         for (const file of inOrder) {
-            failed = await writeDocument(file, seen, notes)
+            failed = await writeDocument(file, seen, notes, astray)
             if (failed) break
             done += 1
             setFiles(all => all.filter(f => f.key !== file.key))
@@ -336,6 +343,9 @@ export default function InvoiceImportPage() {
         setSaving(false)
         readAgain()
         const imported = `${done} ${done === 1 ? 'document' : 'documents'} imported.${notesSaid(notes)}`
+        // Added to one not seen yet from an earlier batch, never over it.
+        const warn = astraySaid(astray)
+        if (warn) setWarned(w => [w, warn].filter(Boolean).join(' '))
         // Something went wrong part of the way, so it stays where the files
         // are and says what went in.
         if (failed) {
@@ -343,15 +353,15 @@ export default function InvoiceImportPage() {
             if (done) setSaid(imported)
             return
         }
-        if (done) await thenReview(imported, stillNeeded(cards) - done)
+        if (done) await thenReview(imported, stillNeeded(cards) - done, [warned, warn].filter(Boolean).join(' '))
     }
 
     // Whether anything is waiting on Review, and Review if it is. `left` is
     // how many files are still on the page that are worth staying for. Import
     // waits until every file chosen has been read, and nothing more can be
     // chosen while it imports, so the cards it was pressed over are all there
-    // are.
-    async function thenReview(already, left) {
+    // are. `warn` goes to Review with it, to stay there until it is seen.
+    async function thenReview(already, left, warn = '') {
         const { lines, error: e1 } = await readToDecide(restaurantId)
         if (e1) {
             setSaid(already)
@@ -360,7 +370,7 @@ export default function InvoiceImportPage() {
         }
         const waiting = lines.length
         if (waiting && !left) {
-            navigate('/invoices/review', { state: { said: `${already} ${ON_REVIEW}` } })
+            navigate('/invoices/review', { state: { said: `${already} ${ON_REVIEW}`, warned: warn } })
             return
         }
         setOnReview(waiting)
@@ -417,7 +427,7 @@ export default function InvoiceImportPage() {
         }
     }
 
-    async function writeDocument(file, seen, notes) {
+    async function writeDocument(file, seen, notes, astray) {
         const { doc, where, matched, supplier } = file
 
         const { data: invoice, error: e1 } = await supabase.from('invoices')
@@ -448,10 +458,11 @@ export default function InvoiceImportPage() {
         gather(seen, file)
 
         if (doc.kind === 'credit') {
-            const failed = await settleWith(doc, invoice, where, matched)
+            const failed = await settleWith(doc, invoice, where, matched, astray)
             if (failed) return failed
         } else {
             notes.push({ number: doc.number, count: await doorNotesOn(doc, where) })
+            await pairEarlierCredits(doc, invoice.id, where)
         }
 
         // If the portal list has been pasted, this closes the gap it was
@@ -482,13 +493,31 @@ export default function InvoiceImportPage() {
         return e1 ? 0 : (data || []).length
     }
 
+    // A credit already in the Hub for this invoice, imported before it, so it
+    // had nothing to pair with: without the pair a delivery sent back in full
+    // still asks about its prices (voidedBy, sentBack). The credit does not
+    // keep the invoice it is for, so only the supplier's list, where it has
+    // been pasted, can say. Only a tidy up: one that fails leaves the two
+    // unpaired, the way they were.
+    async function pairEarlierCredits(doc, invoiceId, where) {
+        const credits = creditsFor(known.documents, where.supplierId, doc.number)
+        if (!credits.length) return
+        await supabase.from('invoices')
+            .update({ credit_of_invoice_id: invoiceId })
+            .eq('restaurant_id', where.restaurantId)
+            .eq('supplier_id', where.supplierId)
+            .eq('document_type', 'credit')
+            .in('invoice_number', credits)
+            .is('credit_of_invoice_id', null)
+    }
+
     // A credit note, and the claims it settles.
     //
     // The claim is where money coming back is taken off, in the week the
     // delivery happened. So a credit that settles one is kept and matched and
     // does not count on its own, and a credit with no claim behind it counts on
     // its own date the ordinary way. See creditSettles.
-    async function settleWith(doc, invoice, where, matched) {
+    async function settleWith(doc, invoice, where, matched, astray) {
         let against = null
         if (doc.orderReference) {
             const { data } = await supabase.from('invoices')
@@ -507,7 +536,7 @@ export default function InvoiceImportPage() {
         // Read fresh for every credit, because the one before it in the batch
         // may have just settled some of them.
         const { data: open, error: e1 } = await supabase.from('invoice_line_claims')
-            .select('*, invoice_lines(supplier_code)')
+            .select('*, invoice_lines(supplier_code), delivery:invoices!invoice_line_claims_invoice_id_fkey(invoice_number)')
             .eq('restaurant_id', where.restaurantId)
             .eq('status', 'open')
         if (e1) return friendlyError(e1)
@@ -542,6 +571,9 @@ export default function InvoiceImportPage() {
             const { error: e4 } = await supabase.from('invoices')
                 .update({ counts_in_cost: false }).eq('id', invoice.id)
             if (e4) return friendlyError(e4)
+        }
+        for (const claim of result.mismatched) {
+            astray.push({ credit: doc.number, on: claim.delivery?.invoice_number || null, detach: canDetach(claim) })
         }
         return null
     }
@@ -610,6 +642,7 @@ export default function InvoiceImportPage() {
                 ? { ...h, invoice_number: doc.number, total_amount: documentTotal(doc) }
                 : h)),
         }))
+        await pairEarlierCredits(doc, invoice.id, where)
         const notes = notesSaid([{ number: doc.number, count: await doorNotesOn(doc, where) }])
         const filled = claimed
             ? `Filled in. ${claim.amount.toFixed(2)} is on the claims list as a shortage.${notes}`
@@ -651,6 +684,7 @@ export default function InvoiceImportPage() {
             </div>
 
             {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
+            {warned && <WarningUntilSeen className="mb-4" onSeen={() => setWarned('')}>{warned}</WarningUntilSeen>}
             {said && (
                 <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">
                     {said}
@@ -827,6 +861,28 @@ function notesSaid(notes) {
         ? `1 delivery problem logged at the door is on invoice ${number}.`
         : `${count} delivery problems logged at the door are on invoice ${number}.`))
     return ` ${each.join(' ')} Say which line on Delivery problems.`
+}
+
+// A credit that matched a delivery problem by its docket and left it alone,
+// because the problem is on another invoice (creditSettles). Meanwhile the
+// problem's own amount comes off and the credit for it does not, or the same
+// money would come off twice. Put right, deleting the credit and importing it
+// again settles the problem the ordinary way; between the two, nothing comes
+// off for it, so they are said together.
+//
+// Not this line is only there while nothing has been credited on the problem
+// (canDetach), so it is only offered then.
+function astraySaid(astray) {
+    return (astray || []).map(({ credit, on, detach }) => (
+        `The credit note ${credit} matches a delivery problem by its docket, but that problem is on `
+        + `${on ? `invoice ${on}` : 'another invoice'}. Until that is put right, the problem's own amount `
+        + 'comes off rather than the credit for it. '
+        + (detach
+            ? 'Check it on Delivery problems. If it is on the wrong invoice, use Not this line, then delete this '
+                + 'credit note and import it again. Nothing comes off for it between the two, so do them together.'
+            : 'Something has already been credited on that problem, so it cannot come off that invoice. '
+                + 'Check it on Delivery problems.')
+    )).join(' ')
 }
 
 function stateOf({ where, place, blocks }) {

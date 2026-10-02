@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { makeQuery, renderWithRouter } from '@/test/helpers'
 
@@ -105,5 +106,23 @@ describe('opened by an import', () => {
             </MemoryRouter>,
         )
         expect(await screen.findByText('3 documents imported.')).toBeInTheDocument()
+    })
+
+    // A credit note waiting on a delivery problem put right has the money
+    // wrong until then, and went with the green message at the first tap.
+    it('keeps what has to be put right until it is seen, whatever is decided', async () => {
+        const warned = 'The credit note C45000009 matches a delivery problem by its docket.'
+        tables.invoice_lines = [line('l1', '777001', 'BASMATI RICE', 14.5)]
+        render(
+            <MemoryRouter initialEntries={[{ pathname: '/invoices/review', state: { said: '3 documents imported.', warned } }]}>
+                <InvoiceReviewPage />
+            </MemoryRouter>,
+        )
+        expect(await screen.findByText(warned)).toBeInTheDocument()
+        await userEvent.click((await screen.findAllByRole('button', { name: 'Leave this one' }))[0])
+        await waitFor(() => expect(screen.queryByText('3 documents imported.')).toBeNull())
+        expect(screen.getByText(warned)).toBeInTheDocument()
+        await userEvent.click(screen.getByRole('button', { name: 'Got it' }))
+        expect(screen.queryByText(warned)).toBeNull()
     })
 })

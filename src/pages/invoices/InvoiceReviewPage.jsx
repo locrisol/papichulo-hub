@@ -19,6 +19,7 @@ import {
     hintClass,
 } from '@/lib/controlStyles'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import WarningUntilSeen from '@/components/ui/WarningUntilSeen'
 import MatchLineModal from '@/components/invoices/MatchLineModal'
 
 // What the week's invoices want somebody to decide.
@@ -74,15 +75,17 @@ export default function InvoiceReviewPage() {
 
     const [data, setData] = useState(null)
     const [error, setError] = useState('')
-    // Opened by an import, which says what went in.
+    // Opened by an import, which says what went in, and what has to be put
+    // right. That stays until it is seen: a decision clears only what was said.
     const [said, setSaid] = useState(() => location.state?.said || '')
+    const [warned, setWarned] = useState(() => location.state?.warned || '')
     const [busy, setBusy] = useState('')
     const [matching, setMatching] = useState(null)
     const [refresh, setRefresh] = useState(0)
 
     // Said once. Left in the history, a reload would say it again.
     useEffect(() => {
-        if (location.state?.said) navigate(location.pathname, { replace: true, state: null })
+        if (location.state?.said || location.state?.warned) navigate(location.pathname, { replace: true, state: null })
     }, [location, navigate])
 
     useEffect(() => {
@@ -583,6 +586,7 @@ export default function InvoiceReviewPage() {
             </div>
 
             {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
+            {warned && <WarningUntilSeen className="mb-4" onSeen={() => setWarned('')}>{warned}</WarningUntilSeen>}
             {said && <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{said}</div>}
 
             {waiting === 0 && (

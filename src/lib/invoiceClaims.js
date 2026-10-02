@@ -764,15 +764,28 @@ export async function sentWeeks(db, restaurantId) {
 // gets its first money here take the first week still open, the same as
 // putting a note against its line. A claim that already had money on it had
 // its week decided then, and keeps it. `sent` is sentWeeks' list.
+//
+// **A claim with this docket that is on another invoice is not settled.** Had
+// the Chorizo of 2 October stayed open on the delivery of 13 September, the
+// credit for its docket would have paid 21.00 into a 41.99 claim there, which
+// would then show 20.99 owed for ever on the wrong invoice. It comes back in
+// `mismatched` for the import to say so. Meanwhile the credit does not count
+// on its own, and money left over is not made into a claim of its own: that
+// claim's whole ask is already coming off, and counting the credit as well
+// would take the same money off twice. Deleted and imported again once the
+// claim is put right, the credit settles it the ordinary way.
 export function creditSettles({ credit, lines = [], against = null, claims = [], supplierId, restaurantId, sent = [] }) {
     const reference = credit.orderReference || null
-    const mine = (claims || [])
+    const onIt = c => !!against && c.invoice_id === against.id
+    const byDocket = c => !!reference && !!c.docket_number && String(c.docket_number) === String(reference)
+    const theirs = (claims || [])
         .filter(c => c.status === 'open' && (!supplierId || !c.supplier_id || c.supplier_id === supplierId))
-        .filter(c => (against && c.invoice_id === against.id)
-            || (reference && c.docket_number && String(c.docket_number) === String(reference)))
+    const mismatched = theirs.filter(c => !onIt(c) && byDocket(c) && !!c.invoice_id)
+    const mine = theirs
+        .filter(c => onIt(c) || (byDocket(c) && !c.invoice_id))
         .sort((a, b) => String(a.raised_on).localeCompare(String(b.raised_on)))
 
-    if (!mine.length) return { settle: [], extra: null, countsInCost: true }
+    if (!mine.length) return { settle: [], extra: null, countsInCost: !mismatched.length, mismatched }
 
     // What each claim can still take. A note from the door with no line behind
     // it has no amount yet, and takes whatever the credit says it was worth.
@@ -843,7 +856,7 @@ export function creditSettles({ credit, lines = [], against = null, claims = [],
         })
 
     const surplus = round2(pots.reduce((t, p) => t + p.money, 0))
-    const extra = surplus > 0.004 ? {
+    const extra = surplus > 0.004 && !mismatched.length ? {
         restaurant_id: restaurantId,
         supplier_id: supplierId || null,
         invoice_id: against?.id || null,
@@ -862,7 +875,7 @@ export function creditSettles({ credit, lines = [], against = null, claims = [],
         note: 'Nothing was logged at the door for this part of the credit.',
     } : null
 
-    return { settle, extra, countsInCost: false }
+    return { settle, extra, countsInCost: false, mismatched }
 }
 
 // Deleting a credit note that settled claims.

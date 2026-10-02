@@ -768,7 +768,55 @@ describe('when the credit note turns up', () => {
 
     it('counts on its own when there is no claim behind it', () => {
         const out = creditSettles({ credit, against: invoice, claims: [], supplierId: 's1' })
-        expect(out).toEqual({ settle: [], extra: null, countsInCost: true })
+        expect(out).toEqual({ settle: [], extra: null, countsInCost: true, mismatched: [] })
+    })
+
+    // The Chorizo, had it stayed open on the delivery of 13 September: the
+    // credit for its docket found it and paid 21.00 into a 41.99 claim, which
+    // then showed 20.99 owed for ever, on the wrong invoice.
+    //
+    // Its whole ask is still coming off, so the credit counting as well
+    // would take the same money off twice.
+    it('leaves a claim with its docket on another invoice unsettled, hands it back, and does not count', () => {
+        const wrong = claim({ invoice_id: 'i9', invoice_line_id: 'l9', docket_number: '45612214', amount: 41.99 })
+        const out = creditSettles({ credit, against: invoice, claims: [wrong], supplierId: 's1' })
+        expect(out).toMatchObject({ settle: [], extra: null, countsInCost: false })
+        expect(out.mismatched).toEqual([wrong])
+    })
+
+    // What is left over is most likely that claim's, and its ask is already
+    // coming off, so it is not made into a claim of its own and counted again.
+    it('makes nothing of money left over while a claim with its docket is on another invoice', () => {
+        const mine = claim({ id: 'c1', invoice_id: 'i1', amount: 20 })
+        const wrong = claim({ id: 'c2', invoice_id: 'i9', invoice_line_id: 'l9', docket_number: '45612214', amount: 41.99 })
+        const out = creditSettles({ credit, against: invoice, claims: [mine, wrong], supplierId: 's1', restaurantId: 'r1' })
+        expect(out.settle).toEqual([{ id: 'c1', patch: expect.objectContaining({ credited_amount: 20, status: 'settled' }) }])
+        expect(out.extra).toBeNull()
+        expect(out.countsInCost).toBe(false)
+        expect(out.mismatched).toEqual([wrong])
+    })
+
+    it('hands it back when the invoice it credits is not in the Hub either', () => {
+        const wrong = claim({ invoice_id: 'i9', invoice_line_id: 'l9', docket_number: '45612214', amount: 41.99 })
+        const out = creditSettles({ credit, against: null, claims: [wrong], supplierId: 's1' })
+        expect(out.settle).toEqual([])
+        expect(out.mismatched).toEqual([wrong])
+    })
+
+    // Put on another delivery on purpose, the invoice it is on is the answer.
+    it('still settles a claim on the invoice it credits whatever docket was written', () => {
+        const moved = claim({ invoice_id: 'i1', docket_number: '45000000' })
+        const out = creditSettles({ credit, against: invoice, claims: [moved], supplierId: 's1' })
+        expect(out.settle).toHaveLength(1)
+        expect(out.mismatched).toEqual([])
+    })
+
+    // Before its invoice is in the Hub, the docket is all there is.
+    it('settles a note from the door by its docket when the invoice it credits is not in yet', () => {
+        const door = claim({ invoice_id: null, docket_number: '45612214', amount: null, raised_on: '2026-09-14' })
+        const out = creditSettles({ credit, against: null, claims: [door], supplierId: 's1' })
+        expect(out.settle[0].patch).toMatchObject({ credited_amount: 69.98, status: 'settled', counted_week: '2026-09-13' })
+        expect(out.mismatched).toEqual([])
     })
 
     // Written down at the door before the invoice was even in the Hub.
