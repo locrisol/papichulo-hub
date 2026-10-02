@@ -1058,6 +1058,13 @@ export default function ReportPage() {
             if (e2) return friendlyError(e2)
         }
 
+        // Back on for a claim asked again, and words brought up to date. One
+        // write each, because each has words of its own.
+        for (const { id, patch } of [...jobs.reopen, ...jobs.relabel]) {
+            const { error: e3 } = await supabase.from('report_items').update(patch).eq('id', id)
+            if (e3) return friendlyError(e3)
+        }
+
         setRefresh(n => n + 1)
         return null
     }
@@ -1220,7 +1227,9 @@ export default function ReportPage() {
         const failed = await putClaimsOnList(jobs)
         setPriceBusy('')
         if (failed) { setError(failed); return }
-        setPriceSaid('The support list has them now, and they stay on it until they are ticked.')
+        setPriceSaid(jobs.add.length
+            ? 'The support list has them now, and they stay on it until they are ticked.'
+            : 'The support list is up to date.')
     }
 
     async function addRefund(platform) {

@@ -42,12 +42,15 @@ const { default: ReportPage } = await import('./ReportPage')
 
 // The report itself answers .single(); the year of reports behind it for the
 // charts is a list. The restaurant row fails when it is asked for a column
-// the live database has not got yet.
-function answer({ changedAt, head = HEAD, failing = [], waiting = {}, lines = [] }) {
+// the live database has not got yet. `items` is the one chain every write to
+// the report's lines goes through, for a test to look at.
+function answer({ changedAt, head = HEAD, failing = [], waiting = {}, lines = [], claims = [], items = null }) {
     db.from.mockImplementation(table => {
         if (failing.includes(table)) {
             return makeQuery({ data: null, error: { message: `Could not read ${table}` } })
         }
+        if (table === 'invoice_line_claims') return makeQuery({ data: claims, error: null })
+        if (table === 'report_items' && items) return items
         // Invoice lines nobody has decided on Review, honouring the date they
         // are asked up to, the way the database would.
         if (table === 'invoice_lines') {
@@ -281,6 +284,61 @@ describe('lines still waiting on Review', () => {
         renderReport()
         expect(await screen.findByText('Could not read invoice_lines')).toBeInTheDocument()
         expect(screen.getByRole('button', { name: 'Publish and send' })).toBeDisabled()
+    })
+})
+
+// Putting claims on the support list is the only place a job the Hub crossed
+// off is put back and stale money in its words is brought up to date. The
+// lists of what to write have tests of their own; this is the writing.
+describe('the support list kept from the claims', () => {
+    const fine = { changedAt: { data: null, error: null } }
+    const CLAIM = {
+        id: 'k1', restaurant_id: 'r1', what: 'Bowls charged 49.73', kind: 'price', amount: 24.75,
+        credited_amount: 0, status: 'open', raised_on: WEEK, counted_week: WEEK,
+    }
+    const STALE = 'Chase the credit for Bowls charged 49.73 (price query) (10.00)'
+    const withJob = job => ({
+        ...HEAD,
+        report_sections: [
+            ...HEAD.report_sections,
+            { id: 's2', key: 'prices_suppliers', title: 'Prices and suppliers', sort_order: 2, report_items: [] },
+            {
+                id: 's3', key: 'support_actions', title: 'Support / actions needed', sort_order: 3,
+                report_items: [{ id: 'a1', kind: 'action', key: 'claim:k1', sort_order: 0, opened_on: WEEK, ...job }],
+            },
+        ],
+    })
+
+    it('puts back a job the Hub crossed off, with its money brought up to date', async () => {
+        const items = makeQuery({ data: null, error: null })
+        answer({ ...fine, claims: [CLAIM], items, head: withJob({ done_on: addDays(WEEK, 8), label: STALE }) })
+        renderReport()
+        fireEvent.click((await screen.findAllByRole('button', { name: 'Update the support list' }))[0])
+        await waitFor(() => expect(items.update).toHaveBeenCalledWith({
+            done_on: null, label: 'Chase the credit for Bowls charged 49.73 (price query) (24.75)',
+        }))
+        expect(items.eq).toHaveBeenCalledWith('id', 'a1')
+        expect(items.insert).not.toHaveBeenCalled()
+        expect(await screen.findByText('The support list is up to date.')).toBeInTheDocument()
+    })
+
+    it('brings the money in the words of a job still open up to date', async () => {
+        const items = makeQuery({ data: null, error: null })
+        answer({ ...fine, claims: [CLAIM], items, head: withJob({ done_on: null, label: STALE }) })
+        renderReport()
+        fireEvent.click((await screen.findAllByRole('button', { name: 'Update the support list' }))[0])
+        await waitFor(() => expect(items.update).toHaveBeenCalledWith({
+            label: 'Chase the credit for Bowls charged 49.73 (price query) (24.75)',
+        }))
+        expect(items.eq).toHaveBeenCalledWith('id', 'a1')
+    })
+
+    // Somebody rang them and ticked it while the claim is still open.
+    it('offers nothing for a job ticked by hand', async () => {
+        answer({ ...fine, claims: [CLAIM], head: withJob({ done_on: WEEK, label: STALE }) })
+        renderReport()
+        await screen.findAllByText('Bowls charged 49.73')
+        expect(screen.queryByRole('button', { name: /support list/ })).toBeNull()
     })
 })
 

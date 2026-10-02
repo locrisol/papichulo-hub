@@ -41,7 +41,7 @@ import { addDays, dayMonth } from '@/lib/dates'
 import { samePrice, sameWords, SAME_WORDS, byPieceWeight } from '@/lib/invoiceImport'
 import { readPackSize, mend } from '@/lib/invoiceSysco'
 import {
-    claimBalance, claimIsOpen, claimKind, NOT_LOGGED, voidedBy, sentBack, fromEarlierWeeks,
+    claimBalance, claimIsOpen, claimKind, CLAIM_KINDS, NOT_LOGGED, voidedBy, sentBack, fromEarlierWeeks,
 } from '@/lib/invoiceClaims'
 
 // How far back a code's last delivery is looked for. Half a year covers the
@@ -1083,17 +1083,47 @@ export function claimActions(claims, items, weekStart) {
     // A claim that has been settled, refused or taken back since the list was
     // made. The line stays on the report and gets crossed off, which is the
     // whole point of it being a task rather than a figure.
+    //
+    // **And the other way.** A job the Hub crossed off when they said no,
+    // whose claim was asked again that same week, goes back on (`reopen`):
+    // nothing else would chase it until next week's report added it fresh.
+    // Only one the Hub crossed off, which is dated the day the button was
+    // pressed. A tick by hand is dated the report's own week, and stays: the
+    // claim is still open after a phone call, and somebody saying it is done
+    // is theirs to say.
+    //
+    // A job still open whose money has moved, a claim changed, put on its
+    // line or part credited, has its words brought up to date (`relabel`).
+    // Both only change words the Hub wrote; what somebody typed over stays
+    // theirs.
     const tick = []
+    const reopen = []
+    const relabel = []
     const byKey = new Map((claims || []).map(c => [claimKey(c), c]))
     for (const [key, item] of onList) {
-        if (item.done_on) continue
         const claim = byKey.get(key)
-        if (claim && claimIsOpen(claim)) continue
-        tick.push(item)
+        const open = !!claim && claimIsOpen(claim)
+        const label = open && CLAIM_LABEL.test(item.label || '') && item.label !== claimLabel(claim)
+            ? { label: claimLabel(claim) }
+            : {}
+        if (item.done_on) {
+            if (open && item.done_on !== weekStart) reopen.push({ id: item.id, patch: { done_on: null, ...label } })
+        } else if (!open) {
+            tick.push(item)
+        } else if (label.label) {
+            relabel.push({ id: item.id, patch: label })
+        }
     }
 
-    return { add, tick }
+    return { add, tick, reopen, relabel }
 }
+
+// The words claimLabel writes, with or without the money on the end, and
+// nothing typed after them. The bracket has to be one of the reasons, any of
+// them because a claim's reason can be changed, so a remark typed in brackets
+// on the end, "(rang Tuesday)", is not taken for the Hub's own words.
+const KIND_WORDS = [...CLAIM_KINDS, NOT_LOGGED].map(k => k.label.toLowerCase()).join('|')
+const CLAIM_LABEL = new RegExp(String.raw`^Chase the credit for .+ \((?:${KIND_WORDS})\)( \(\d+\.\d{2}\))?$`)
 
 export function claimLabel(claim) {
     const kind = claimKind(claim.kind).label.toLowerCase()

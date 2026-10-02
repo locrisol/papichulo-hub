@@ -909,6 +909,92 @@ describe('the claims that belong on the list of jobs', () => {
         expect(tick).toEqual([])
     })
 
+    // Crossed off when they said no, and asked again the same week. Nothing
+    // offered to put it back, so the list stopped chasing a claim that was
+    // still owed.
+    it('puts back a job crossed off whose claim is open again, with its money brought up to date', () => {
+        const items = [{
+            id: 'a1', kind: 'action', key: 'claim:c1', done_on: '2026-09-20',
+            label: 'Chase the credit for two trays of chicken (short) (69.98)',
+        }]
+        const { add, tick, reopen } = claimActions([claim({ credited_amount: 20 })], items, '2026-09-13')
+        expect(add).toEqual([])
+        expect(tick).toEqual([])
+        expect(reopen).toEqual([{
+            id: 'a1', patch: { done_on: null, label: 'Chase the credit for two trays of chicken (short) (49.98)' },
+        }])
+    })
+
+    it('leaves a crossed off job alone while its claim stays closed', () => {
+        const items = [{ id: 'a1', kind: 'action', key: 'claim:c1', done_on: '2026-09-20', label: 'Chase it' }]
+        expect(claimActions([claim({ status: 'refused' })], items, '2026-09-13').reopen).toEqual([])
+    })
+
+    // A tick by hand is dated the report's own week, and the Hub's the day
+    // its button was pressed. Somebody who rang them and ticked it while the
+    // claim is still open had it unticked by the next press of the button.
+    it('leaves a job ticked by hand alone while its claim is still open', () => {
+        const items = [{ id: 'a1', kind: 'action', key: 'claim:c1', done_on: '2026-09-13', label: claimLabel(claim()) }]
+        expect(claimActions([claim()], items, '2026-09-13').reopen).toEqual([])
+    })
+
+    // Changed, put on its line, or part credited, the money in the words goes
+    // stale while the claim is still being chased.
+    it('brings the words up to date on a job still open', () => {
+        const items = [{
+            id: 'a1', kind: 'action', key: 'claim:c1', done_on: null,
+            label: 'Chase the credit for 3 cases of chorizo (short)',
+        }]
+        expect(claimActions([claim({ what: 'Chorizo', amount: 21 })], items, '2026-09-13').relabel).toEqual([{
+            id: 'a1', patch: { label: 'Chase the credit for Chorizo (short) (21.00)' },
+        }])
+    })
+
+    it('has nothing to bring up to date when the words are right', () => {
+        const items = [{ id: 'a1', kind: 'action', key: 'claim:c1', done_on: null, label: claimLabel(claim()) }]
+        expect(claimActions([claim()], items, '2026-09-13').relabel).toEqual([])
+    })
+
+    // The words can be typed over on the report, and what somebody wrote is
+    // theirs.
+    it('leaves words somebody typed over alone', () => {
+        const typed = 'Chase the credit for two trays of chicken (short) (69.98), rang them Tuesday'
+        const open = [{ id: 'a1', kind: 'action', key: 'claim:c1', done_on: null, label: typed }]
+        expect(claimActions([claim({ amount: 21 })], open, '2026-09-13').relabel).toEqual([])
+        const done = [{ ...open[0], done_on: '2026-09-20' }]
+        expect(claimActions([claim({ amount: 21 })], done, '2026-09-13').reopen).toEqual([
+            { id: 'a1', patch: { done_on: null } },
+        ])
+    })
+
+    // A remark in brackets on the end was read as the reason, and the
+    // remark went when the words were brought up to date.
+    it('leaves a remark typed in brackets on the end alone', () => {
+        for (const typed of [
+            'Chase the credit for two trays of chicken (short) (69.98) (rang Tuesday)',
+            'Chase the credit for two trays of chicken (rang them, said Friday)',
+        ]) {
+            const open = [{ id: 'a1', kind: 'action', key: 'claim:c1', done_on: null, label: typed }]
+            expect(claimActions([claim({ amount: 21 })], open, '2026-09-13').relabel).toEqual([])
+            const done = [{ ...open[0], done_on: '2026-09-20' }]
+            expect(claimActions([claim({ amount: 21 })], done, '2026-09-13').reopen).toEqual([
+                { id: 'a1', patch: { done_on: null } },
+            ])
+        }
+    })
+
+    // A claim's reason can be changed, and the words the Hub wrote for the
+    // old one are still its own. Brackets in what it was are its own too.
+    it('still brings its own words up to date after the reason changed', () => {
+        const items = [{
+            id: 'a1', kind: 'action', key: 'claim:c1', done_on: null,
+            label: 'Chase the credit for Chorizo (sliced) (no reason logged) (41.99)',
+        }]
+        expect(claimActions([claim({ what: 'Chorizo (sliced)', amount: 21 })], items, '2026-09-13').relabel).toEqual([{
+            id: 'a1', patch: { label: 'Chase the credit for Chorizo (sliced) (short) (21.00)' },
+        }])
+    })
+
     it('says what is being chased and what it is worth', () => {
         expect(claimLabel(claim({ credited_amount: 20 }))).toBe(
             'Chase the credit for two trays of chicken (short) (49.98)',
