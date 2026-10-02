@@ -11,7 +11,7 @@ import { numberField } from '@/lib/numberInput'
 import { friendlyError } from '@/lib/errors'
 import { can, MANAGERS } from '@/lib/access'
 import {
-    claimKind, doorClaimPayload, claimWorking, notTheDocket, claimDetached, canDetach, claimTakesOff, claimIsOpen, claimWeek, sentWeeks, fromEarlierWeeks,
+    claimKind, doorClaimPayload, claimWorking, notTheDocket, claimDetached, canDetach, claimReopened, claimTakesOff, claimIsOpen, claimWeek, sentWeeks, fromEarlierWeeks,
     claimCandidates, claimMatch, otherDeliveries, byInvoice, chasingList, isLate, LATE_AFTER_DAYS, bySupplier,
 } from '@/lib/invoiceClaims'
 import {
@@ -264,13 +264,96 @@ export default function ClaimsPage() {
         setRefresh(n => n + 1)
     }
 
+    // They said no, or it was logged by mistake. Asked first, with what it
+    // does to the money, because on 2 October one was pressed seven seconds
+    // after another button by mistake. Ask again under Finished undoes either.
+    //
+    // The money that stops is what the claim takes off now less what it will
+    // take off after, not its amount: a claim part credited keeps what came
+    // back on its week when it is refused.
+    //
+    // What was written at the door goes on a line of its own, never into the
+    // sentence: it is somebody's own words, often a sentence already.
     async function close(claim, status) {
+        const stops = claimTakesOff(claim) - claimTakesOff({ ...claim, status })
+        const money = stops > 0
+            ? `${fmtMoney(stops)} stops coming off the week of ${shortDate(claim.counted_week)}.`
+            : 'Nothing comes off any week for it.'
+        const problem = [{ label: 'Problem', value: claim.what }]
+        const ok = await confirm(status === 'refused'
+            ? {
+                title: 'They said no?',
+                message: `This problem will be marked as refused. ${money} `
+                    + 'If they credit it after all, use Ask again under Finished first.',
+                details: problem,
+                confirmLabel: 'They said no',
+            }
+            : {
+                title: 'Take it back?',
+                message: `It will be removed from the list and won't count anywhere.${stops > 0 ? ` ${money}` : ''}`,
+                details: problem,
+                confirmLabel: 'Take it back',
+                tone: 'danger',
+                dangerNote: 'You can ask again from Finished.',
+            })
+        if (!ok) return
+
+        setError('')
+        setSaid('')
         setBusy(claim.id)
-        const { error: e1 } = await supabase.from('invoice_line_claims')
+        // Only while it is still open, so a page left open cannot refuse a
+        // claim a credit has just settled.
+        const { data, error: e1 } = await supabase.from('invoice_line_claims')
             .update({ status, settled_on: todayISO() })
             .eq('id', claim.id)
+            .eq('status', 'open')
+            .select('id')
         setBusy('')
         if (e1) { setError(friendlyError(e1)); return }
+        setSaid(changedSince(data) || (status === 'refused'
+            ? 'Marked as refused. You can still ask again from Finished.'
+            : 'Taken back. You can still ask again from Finished.'))
+        setRefresh(n => n + 1)
+    }
+
+    // Back on Still waiting after a refusal or a take back. Its money comes
+    // back on its week, or on the first week still open if that week's report
+    // went out while it was closed (claimReopened), and that is said the same
+    // way putting it on a line says it.
+    async function reopen(claim) {
+        setError('')
+        setSaid('')
+        const { weeks: sent, publishedOn, error: e0 } = await sentWeeks(supabase, restaurantId)
+        if (e0) { setError(friendlyError(e0)); return }
+        const back = claimReopened(claim, { deliveredOn: claim.delivery?.invoice_date, sent, publishedOn })
+        const again = { ...claim, ...back.patch }
+        const comes = claimTakesOff(again)
+        // Moved, it never came off the new week before, so not "again".
+        const shifted = back.patch.counted_week != null
+        const ok = await confirm({
+            title: 'Ask again?',
+            message: (comes <= 0
+                ? 'It goes back on Still waiting.'
+                : shifted
+                    ? `It goes back on Still waiting. The report for the week of ${shortDate(claim.counted_week)} `
+                        + `has gone out, so ${fmtMoney(comes)} comes off the week of ${shortDate(back.week)} instead.`
+                    : `It goes back on Still waiting, and ${fmtMoney(comes)} comes off the week of ${shortDate(back.week)} again.`)
+                + (canDetach(again) && claim.delivery
+                    ? ` It is still on invoice ${claim.delivery.invoice_number}. If that is the wrong one, use Not this line.`
+                    : ''),
+            confirmLabel: 'Ask again',
+        })
+        if (!ok) return
+
+        setBusy(claim.id)
+        const { data, error: e1 } = await supabase.from('invoice_line_claims')
+            .update(back.patch)
+            .eq('id', claim.id)
+            .eq('status', claim.status)
+            .select('id')
+        setBusy('')
+        if (e1) { setError(friendlyError(e1)); return }
+        setSaid(changedSince(data) || (comes > 0 ? landsSaid(comes, back) : 'It is back on Still waiting.'))
         setRefresh(n => n + 1)
     }
 
@@ -432,6 +515,16 @@ export default function ClaimsPage() {
                                         <span className="text-xs font-semibold text-green-700 tabular-nums">
                                             {fmtMoney(claim.credited_amount)} back
                                         </span>
+                                    )}
+                                    {manager && ['refused', 'void'].includes(claim.status) && (
+                                        <button
+                                            type="button"
+                                            disabled={busy === claim.id}
+                                            onClick={() => reopen(claim)}
+                                            className={rowButton()}
+                                        >
+                                            Ask again
+                                        </button>
                                     )}
                                 </div>
                             )

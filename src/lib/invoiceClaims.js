@@ -380,6 +380,35 @@ export function canDetach(claim) {
         && num(claim.credited_amount) === 0 && !claim.credit_invoice_id
 }
 
+// Asking again after "They said no" or "Take it back", both pressed by mistake
+// at least once. Open again with no end date. What it had been credited stays,
+// because a part credit is still part of it.
+//
+// **Its money comes back on its week**, unless that week's report went out
+// while it was closed. That report never had it, and no later one would, so
+// it comes off the first week still open (claimWeek). One still open when the
+// report went out stays put: that report already took the whole of it off,
+// and moving it would take it off a second one too. Closed the same day the
+// report went out, there is no telling which came first, so it stays put
+// then as well, and never counts twice.
+//
+// `deliveredOn` is the day of the invoice it is on, and `sent` and
+// `publishedOn` are sentWeeks'. `week`, `delivered` and `moved` are
+// claimWeek's, for saying where the money now comes off.
+export function claimReopened(claim, { deliveredOn = null, sent = [], publishedOn = {} } = {}) {
+    const day = deliveredOn || claim.raised_on
+    const patch = { status: 'open', settled_on: null }
+    let week = claim.counted_week
+    const out = publishedOn?.[claim.counted_week]
+    const closedFirst = !!claim.settled_on && !!out && claim.settled_on < out
+    if (claim.amount != null && (sent || []).includes(claim.counted_week) && closedFirst) {
+        week = claimWeek(day, sent).week
+        patch.counted_week = week
+    }
+    const delivered = weekStartOf(day)
+    return { patch, week, delivered, moved: week !== delivered }
+}
+
 // The invoice a claim is going on is not the docket written on the note.
 export function notTheDocket(claim, invoice) {
     return !!claim?.docket_number && String(invoice?.invoice_number) !== String(claim.docket_number)
@@ -551,13 +580,22 @@ export function fromEarlierWeeks(claims, invoices, weekStart) {
 // The weeks whose report has gone out, for claimWeek. Published is what
 // closes a week; a draft can still take the money. One row a week, so it is
 // a few dozen a year and never needs paging.
+//
+// `publishedOn` is the day each went out, for claimReopened.
 export async function sentWeeks(db, restaurantId) {
     const { data, error } = await db.from('weekly_reports')
-        .select('week_start')
+        .select('week_start, published_at')
         .eq('restaurant_id', restaurantId)
         .eq('status', 'published')
-    if (error) return { weeks: null, error }
-    return { weeks: (data || []).map(r => r.week_start), error: null }
+    if (error) return { weeks: null, publishedOn: null, error }
+    const rows = data || []
+    return {
+        weeks: rows.map(r => r.week_start),
+        publishedOn: Object.fromEntries(rows
+            .filter(r => r.published_at)
+            .map(r => [r.week_start, String(r.published_at).slice(0, 10)])),
+        error: null,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -869,6 +907,9 @@ export function bySupplier(claims, suppliers, today) {
     const byId = new Map()
 
     for (const claim of claims || []) {
+        // Taken back means logged by mistake, so it was never asked of them
+        // and would only drag their share back down.
+        if (claim.status === 'void') continue
         const id = claim.supplier_id || 'none'
         if (!byId.has(id)) {
             byId.set(id, {

@@ -5,7 +5,7 @@ import {
     claimAmount, claimBalance, claimIsOpen, claimTakesOff, claimCandidates, claimMatch,
     creditSettles, creditTakenBack, voidedBy, sentBack, chasingList, isLate, claimsForWeek, bySupplier,
     claimWeek, sentWeeks, fromEarlierWeeks, otherDeliveries, byInvoice, claimWorking, notTheDocket,
-    claimDetached, canDetach,
+    claimDetached, canDetach, claimReopened,
 } from '@/lib/invoiceClaims'
 
 const LINE = {
@@ -335,6 +335,53 @@ describe('taking a claim off its line', () => {
         expect(canDetach({ ...on, credited_amount: 5 })).toBe(false)
         expect(canDetach({ ...on, credit_invoice_id: 'cr1' })).toBe(false)
         expect(canDetach({ ...on, status: 'refused' })).toBe(false)
+    })
+})
+
+// "They said no" pressed by mistake on 2 October could not be undone.
+describe('asking again after a refusal or a take back', () => {
+    const refused = claim({ status: 'refused', settled_on: '2026-10-02', amount: 21, counted_week: '2026-09-27' })
+
+    it('is open again, waiting, in the same week while that week is not sent', () => {
+        const out = claimReopened(refused, { deliveredOn: '2026-10-01', sent: ['2026-09-20'] })
+        expect(out.patch).toEqual({ status: 'open', settled_on: null })
+        expect(out.week).toBe('2026-09-27')
+        expect(claimTakesOff({ ...refused, ...out.patch })).toBe(21)
+    })
+
+    // Refused before its week's report went out, it was in no report, and
+    // money put back into a week already sent would be in none either.
+    it('moves to the first week still open when it was closed before its week was sent', () => {
+        const out = claimReopened(refused, {
+            deliveredOn: '2026-10-01', sent: ['2026-09-27'], publishedOn: { '2026-09-27': '2026-10-05' },
+        })
+        expect(out.patch).toEqual({ status: 'open', settled_on: null, counted_week: '2026-10-04' })
+        expect(out).toMatchObject({ week: '2026-10-04', delivered: '2026-09-27', moved: true })
+    })
+
+    // Still open when the report went out, that report already took the whole
+    // amount off. Moving it would take it off a second report as well.
+    it('stays in its week when it was still open as that week was sent', () => {
+        const late = { ...refused, settled_on: '2026-10-06' }
+        const out = claimReopened(late, {
+            deliveredOn: '2026-10-01', sent: ['2026-09-27'], publishedOn: { '2026-09-27': '2026-10-05' },
+        })
+        expect(out.patch).toEqual({ status: 'open', settled_on: null })
+        expect(out.week).toBe('2026-09-27')
+    })
+
+    // Which came first cannot be told on the same day, so it stays put and
+    // never counts twice.
+    it('stays in its week when it was closed the day the report went out, or the day is not known', () => {
+        const sameDay = { '2026-09-27': '2026-10-02' }
+        expect(claimReopened(refused, { sent: ['2026-09-27'], publishedOn: sameDay }).patch)
+            .toEqual({ status: 'open', settled_on: null })
+        expect(claimReopened(refused, { sent: ['2026-09-27'] }).patch).toEqual({ status: 'open', settled_on: null })
+    })
+
+    it('leaves the week of a note with no money on it alone', () => {
+        const note = { ...refused, amount: null }
+        expect(claimReopened(note, { sent: ['2026-09-27'] }).patch).toEqual({ status: 'open', settled_on: null })
     })
 })
 
@@ -986,6 +1033,12 @@ describe('how a supplier does on claims', () => {
         expect(summary.map(r => r.supplierId)).toEqual(['s1', 's2'])
     })
 
+    // One taken back was logged by mistake, so it was never asked of them.
+    it('leaves out what was taken back', () => {
+        const withVoid = bySupplier([...rows, claim({ id: 'v', status: 'void', amount: 41.99 })], suppliers, '2026-09-20')
+        expect(withVoid.find(r => r.supplierId === 's1')).toMatchObject({ raised: 3, asked: 134.98, backPct: 59.3 })
+    })
+
     it('says nothing rather than nought where nothing has been asked', () => {
         const none = bySupplier([claim({ amount: null })], suppliers, '2026-09-20')
         expect(none[0].backPct).toBeNull()
@@ -1034,8 +1087,16 @@ describe('sentWeeks', () => {
     }
 
     it('reads the published weeks of one restaurant', async () => {
-        const db = client({ data: [{ week_start: '2026-09-20' }, { week_start: '2026-09-27' }], error: null })
-        expect(await sentWeeks(db, 'r1')).toEqual({ weeks: ['2026-09-20', '2026-09-27'], error: null })
+        const db = client({
+            data: [
+                { week_start: '2026-09-20', published_at: '2026-09-28T09:15:00+00:00' },
+                { week_start: '2026-09-27', published_at: null },
+            ],
+            error: null,
+        })
+        expect(await sentWeeks(db, 'r1')).toEqual({
+            weeks: ['2026-09-20', '2026-09-27'], publishedOn: { '2026-09-20': '2026-09-28' }, error: null,
+        })
         expect(db.asked).toEqual(expect.arrayContaining([
             ['from', 'weekly_reports'], ['eq', 'restaurant_id', 'r1'], ['eq', 'status', 'published'],
         ]))
@@ -1043,7 +1104,8 @@ describe('sentWeeks', () => {
 
     it('hands the error back rather than a week with nothing sent', async () => {
         const failed = { message: 'Failed to fetch' }
-        expect(await sentWeeks(client({ data: null, error: failed }), 'r1')).toEqual({ weeks: null, error: failed })
+        expect(await sentWeeks(client({ data: null, error: failed }), 'r1'))
+            .toEqual({ weeks: null, publishedOn: null, error: failed })
     })
 })
 

@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { makeQuery, renderWithRouter, tableOf } from '@/test/helpers'
-import { shortDate } from '@/lib/dates'
+import { shortDate, todayISO } from '@/lib/dates'
 
 // A case of Coke Zero short on the Saturday delivery, written down at the door
 // on the Sunday, which is already the next week. Invented figures.
@@ -357,6 +357,155 @@ describe('a claim on a line', () => {
     })
 })
 
+// On 2 October "They said no" was pressed seven seconds after the claim went
+// on a line, by mistake, and nothing could undo it.
+describe('closing a claim, and opening it again', () => {
+    const PRICED = {
+        ...CLAIM, invoice_id: 'i1', invoice_line_id: 'line1', amount: 22.34, counted_week: DELIVERY_WEEK,
+        delivery: { invoice_number: '45690932', invoice_date: DELIVERED },
+    }
+
+    it('asks before marking it refused, and writes nothing when told no', async () => {
+        tables.invoice_line_claims = [PRICED]
+        ask = async () => false
+        renderWithRouter(<ClaimsPage />)
+        await userEvent.click(await screen.findByRole('button', { name: 'They said no' }))
+        await waitFor(() => expect(asked).toHaveLength(1))
+        expect(asked[0]).toMatchObject({
+            title: 'They said no?', confirmLabel: 'They said no', details: [{ label: 'Problem', value: 'COKE ZERO 24X330ML' }],
+        })
+        expect(asked[0].message).toBe('This problem will be marked as refused. '
+            + `€22.34 stops coming off the week of ${shortDate(DELIVERY_WEEK)}. `
+            + 'If they credit it after all, use Ask again under Finished first.')
+        expect(updated).toEqual([])
+    })
+
+    // The words written at the door are a whole sentence of their own, full
+    // stop and all, so they go on a line of their own and not into this one.
+    it('keeps what was written at the door out of the question', async () => {
+        const what = '1 Unit of Chorizo delivered instead of 1 case.'
+        tables.invoice_line_claims = [{ ...PRICED, what }]
+        ask = async () => false
+        renderWithRouter(<ClaimsPage />)
+        await userEvent.click(await screen.findByRole('button', { name: 'They said no' }))
+        await userEvent.click(await screen.findByRole('button', { name: 'Take it back' }))
+        await waitFor(() => expect(asked).toHaveLength(2))
+        for (const question of asked) {
+            expect(question.message).not.toContain('Chorizo')
+            expect(question.details).toEqual([{ label: 'Problem', value: what }])
+        }
+        expect(asked[1].message).toBe('It will be removed from the list and won\'t count anywhere. '
+            + `€22.34 stops coming off the week of ${shortDate(DELIVERY_WEEK)}.`)
+    })
+
+    it('marks it refused once said yes, only while it is still open, and says how to undo it', async () => {
+        tables.invoice_line_claims = [PRICED]
+        renderWithRouter(<ClaimsPage />)
+        await userEvent.click(await screen.findByRole('button', { name: 'They said no' }))
+        await waitFor(() => expect(updated).toHaveLength(1))
+        expect(updated[0].row).toEqual({ status: 'refused', settled_on: todayISO() })
+        expect(updated[0].guards).toEqual(expect.arrayContaining([['eq', 'status', 'open']]))
+        expect(await screen.findByText('Marked as refused. You can still ask again from Finished.')).toBeInTheDocument()
+    })
+
+    it('says nothing comes off any week for a note with no money on it', async () => {
+        renderWithRouter(<ClaimsPage />)
+        await userEvent.click(await screen.findByRole('button', { name: 'They said no' }))
+        await waitFor(() => expect(asked).toHaveLength(1))
+        expect(asked[0].message).toMatch(/will be marked as refused\. Nothing comes off any week for it\./)
+    })
+
+    // The green message about where the money was going stayed up after the
+    // refusal, saying something no longer true.
+    it('clears what was said about the money before saying what changed', async () => {
+        await attach()
+        expect(await screen.findByText('€22.34 is coming off the week that delivery landed in.')).toBeInTheDocument()
+        // The refusal fails, so nothing replaces the old message: only the
+        // clearing takes it away.
+        reply = n => (n === 2 ? { data: null, error: { message: 'the write failed' } } : { data: [{ id: 'c1' }], error: null })
+        await userEvent.click(await screen.findByRole('button', { name: 'They said no' }))
+        expect(await screen.findByText('the write failed')).toBeInTheDocument()
+        expect(screen.queryByText('€22.34 is coming off the week that delivery landed in.')).toBeNull()
+        expect(screen.queryByText(/^Marked as refused/)).toBeNull()
+    })
+
+    it('says nothing changed when the claim moved on before They said no', async () => {
+        tables.invoice_line_claims = [PRICED]
+        reply = () => ({ data: [], error: null })
+        renderWithRouter(<ClaimsPage />)
+        await userEvent.click(await screen.findByRole('button', { name: 'They said no' }))
+        expect(await screen.findByText(/^Nothing changed: that problem has moved on/)).toBeInTheDocument()
+        expect(screen.queryByText(/Marked as refused/)).toBeNull()
+    })
+
+    it('says nothing changed when Ask again finds it already moved on', async () => {
+        tables.invoice_line_claims = [{ ...PRICED, status: 'refused', settled_on: '2026-10-01' }]
+        reply = () => ({ data: [], error: null })
+        renderWithRouter(<ClaimsPage />)
+        await userEvent.click(await screen.findByRole('button', { name: 'Ask again' }))
+        expect(await screen.findByText(/^Nothing changed: that problem has moved on/)).toBeInTheDocument()
+        expect(screen.queryByText(/is coming off the week/)).toBeNull()
+    })
+
+    // It can be undone now, so the dialog must not say it cannot.
+    it('asks before taking it back, without saying it cannot be undone', async () => {
+        tables.invoice_line_claims = [PRICED]
+        renderWithRouter(<ClaimsPage />)
+        await userEvent.click(await screen.findByRole('button', { name: 'Take it back' }))
+        await waitFor(() => expect(updated).toHaveLength(1))
+        expect(asked[0]).toMatchObject({
+            title: 'Take it back?', confirmLabel: 'Take it back', tone: 'danger', dangerNote: 'You can ask again from Finished.',
+        })
+        expect(updated[0].row).toEqual({ status: 'void', settled_on: todayISO() })
+    })
+
+    it('asks again from Finished, back to waiting in the same week', async () => {
+        tables.invoice_line_claims = [{ ...PRICED, status: 'refused', settled_on: '2026-10-01' }]
+        renderWithRouter(<ClaimsPage />)
+        await userEvent.click(await screen.findByRole('button', { name: 'Ask again' }))
+        await waitFor(() => expect(updated).toHaveLength(1))
+        expect(asked[0].title).toBe('Ask again?')
+        expect(updated[0].row).toEqual({ status: 'open', settled_on: null })
+        expect(updated[0].guards).toEqual(expect.arrayContaining([['eq', 'status', 'refused']]))
+        expect(await screen.findByText('€22.34 is coming off the week that delivery landed in.')).toBeInTheDocument()
+    })
+
+    // Taken back before that report went out, so the report never had it.
+    it('moves it to the first week still open when its week\'s report went out after it closed, and says so', async () => {
+        tables.invoice_line_claims = [{ ...PRICED, status: 'void', settled_on: '2026-10-01' }]
+        tables.weekly_reports = [{
+            id: 'w1', restaurant_id: 'r1', week_start: DELIVERY_WEEK, status: 'published', published_at: '2026-10-02T09:00:00+00:00',
+        }]
+        renderWithRouter(<ClaimsPage />)
+        await userEvent.click(await screen.findByRole('button', { name: 'Ask again' }))
+        await waitFor(() => expect(updated).toHaveLength(1))
+        expect(asked[0].message.startsWith(`It goes back on Still waiting. The report for the week of ${shortDate(DELIVERY_WEEK)} `
+            + `has gone out, so €22.34 comes off the week of ${shortDate(NOTED_WEEK)} instead.`)).toBe(true)
+        expect(updated[0].row).toEqual({ status: 'open', settled_on: null, counted_week: NOTED_WEEK })
+        expect(await screen.findByText(
+            `The report for the week of ${shortDate(DELIVERY_WEEK)} has already been sent, `
+            + `so €22.34 is coming off the week of ${shortDate(NOTED_WEEK)} instead, `
+            + `shown as from the delivery in the week of ${shortDate(DELIVERY_WEEK)}.`,
+        )).toBeInTheDocument()
+    })
+
+    // Still open when that report went out, the report already took it off.
+    // Moved, it would come off the next one as well.
+    it('keeps it in its week when it was still open as that week\'s report went out', async () => {
+        tables.invoice_line_claims = [{ ...PRICED, status: 'refused', settled_on: '2026-10-03' }]
+        tables.weekly_reports = [{
+            id: 'w1', restaurant_id: 'r1', week_start: DELIVERY_WEEK, status: 'published', published_at: '2026-10-02T09:00:00+00:00',
+        }]
+        renderWithRouter(<ClaimsPage />)
+        await userEvent.click(await screen.findByRole('button', { name: 'Ask again' }))
+        await waitFor(() => expect(updated).toHaveLength(1))
+        expect(asked[0].message.startsWith(
+            `It goes back on Still waiting, and €22.34 comes off the week of ${shortDate(DELIVERY_WEEK)} again.`,
+        )).toBe(true)
+        expect(updated[0].row).toEqual({ status: 'open', settled_on: null })
+    })
+})
+
 // Once put against its line, a claim whose delivery's report had already gone
 // out comes off a later week. The row says which, and which delivery it is
 // from, so nobody looks for it in the wrong report.
@@ -406,6 +555,14 @@ describe('an employee looking at their own', () => {
         expect(asked).toContain('my_claims')
         expect(asked).not.toContain('invoice_line_claims')
         expect(asked).not.toContain('invoices')
+    })
+
+    it('cannot ask again or close one, which only a manager can', async () => {
+        tables.my_claims = [MINE, { ...DONE, status: 'refused' }]
+        renderWithRouter(<ClaimsPage />)
+        await screen.findByText('Lettuce warm')
+        expect(screen.queryByRole('button', { name: 'Ask again' })).toBeNull()
+        expect(screen.queryByRole('button', { name: 'They said no' })).toBeNull()
     })
 
     it('still says which are waiting and which are finished', async () => {
