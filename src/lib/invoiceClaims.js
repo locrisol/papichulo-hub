@@ -365,6 +365,21 @@ function itemsInCase(packSize, items) {
     return `${pack.count} x ${size} ${word}`
 }
 
+// Taking a claim off the line it was put on, back to how it was logged at the
+// door: no line, no money, and the week it was written down in, the same as
+// doorClaimPayload gives. It then waits for the right invoice again, and a
+// credit for its docket still finds it.
+export function claimDetached(claim) {
+    return { invoice_id: null, invoice_line_id: null, amount: null, counted_week: weekStartOf(claim.raised_on) }
+}
+
+// Only while nothing has come back on it. Once a credit has touched a claim,
+// the money on it belongs to that credit, and clearing it would lose it.
+export function canDetach(claim) {
+    return claim?.status === 'open' && !!claim.invoice_line_id
+        && num(claim.credited_amount) === 0 && !claim.credit_invoice_id
+}
+
 // The invoice a claim is going on is not the docket written on the note.
 export function notTheDocket(claim, invoice) {
     return !!claim?.docket_number && String(invoice?.invoice_number) !== String(claim.docket_number)

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
+import { useConfirm } from '@/context/confirm'
 import { fmtMoney } from '@/lib/format'
 import { todayISO, shortDate, fullDate, addDays } from '@/lib/dates'
 import { orderByUse } from '@/lib/supplierOrder'
@@ -10,7 +11,7 @@ import { numberField } from '@/lib/numberInput'
 import { friendlyError } from '@/lib/errors'
 import { can, MANAGERS } from '@/lib/access'
 import {
-    claimKind, doorClaimPayload, claimWorking, notTheDocket, claimIsOpen, claimWeek, sentWeeks, fromEarlierWeeks,
+    claimKind, doorClaimPayload, claimWorking, notTheDocket, claimDetached, canDetach, claimTakesOff, claimIsOpen, claimWeek, sentWeeks, fromEarlierWeeks,
     claimCandidates, claimMatch, otherDeliveries, byInvoice, chasingList, isLate, LATE_AFTER_DAYS, bySupplier,
 } from '@/lib/invoiceClaims'
 import {
@@ -66,6 +67,7 @@ export default function ClaimsPage() {
     const { activeRestaurant } = useRestaurant()
     const restaurantId = activeRestaurant?.id
     const manager = can(user, MANAGERS)
+    const confirm = useConfirm()
 
     const [claims, setClaims] = useState([])
     const [invoices, setInvoices] = useState([])
@@ -97,8 +99,16 @@ export default function ClaimsPage() {
                 // amount a claim is still waiting for as long as it is open,
                 // which is what claimIsOpen says, and a credit that covers it
                 // in full closes it.
+                //
+                // A manager's comes with the invoice and line it is on, read
+                // through the claim rather than from the invoices below, which
+                // only go back sixty days by invoice date: a claim put on an
+                // older delivery would not be able to say which.
                 supabase.from(manager ? 'invoice_line_claims' : 'my_claims')
-                    .select('*')
+                    .select(manager
+                        ? '*, delivery:invoices!invoice_line_claims_invoice_id_fkey(invoice_number, invoice_date), '
+                            + 'invoice_lines(raw_description, pack_size)'
+                        : '*')
                     .eq('restaurant_id', restaurantId)
                     .gte('raised_on', from)
                     .order('raised_on', { ascending: false }),
@@ -223,6 +233,37 @@ export default function ClaimsPage() {
         return true
     }
 
+    // Off the line it was put on, back to waiting for the right invoice. Only
+    // while nothing has been credited on it (canDetach), and the write says so
+    // too, so a page left open cannot clear a claim a credit has just touched.
+    async function detach(claim) {
+        const on = claim.delivery
+        const off = claimTakesOff(claim)
+        const ok = await confirm({
+            title: 'Not this line?',
+            message: `Take it off invoice ${on?.invoice_number || ''} of ${on ? shortDate(on.invoice_date) : ''}? `
+                + (off > 0 ? `${fmtMoney(off)} stops coming off the week of ${shortDate(claim.counted_week)}, and it ` : 'It ')
+                + 'waits for the right invoice again.',
+            confirmLabel: 'Take it off',
+        })
+        if (!ok) return
+        setError('')
+        setSaid('')
+        setBusy(claim.id)
+        const { data, error: e1 } = await supabase.from('invoice_line_claims')
+            .update(claimDetached(claim))
+            .eq('id', claim.id)
+            .eq('status', 'open')
+            .eq('credited_amount', 0)
+            .is('credit_invoice_id', null)
+            .select('id')
+        setBusy('')
+        if (e1) { setError(friendlyError(e1)); return }
+        setSaid(changedSince(data)
+            || `It is off invoice ${on?.invoice_number || 'that invoice'} now, and waits for the right invoice again.`)
+        setRefresh(n => n + 1)
+    }
+
     async function close(claim, status) {
         setBusy(claim.id)
         const { error: e1 } = await supabase.from('invoice_line_claims')
@@ -304,6 +345,7 @@ export default function ClaimsPage() {
                                     invoices={invoices}
                                     onWeigh={weigh}
                                     onAttach={attach}
+                                    onDetach={detach}
                                     onClose={close}
                                 />
                             ))}
@@ -402,7 +444,7 @@ export default function ClaimsPage() {
 }
 
 function ClaimRow({
-    claim, balance, days, late, manager, busy, suppliers, invoices, onWeigh, onAttach, onClose,
+    claim, balance, days, late, manager, busy, suppliers, invoices, onWeigh, onAttach, onDetach, onClose,
 }) {
     const kind = claimKind(claim.kind)
     const supplier = suppliers.find(s => s.id === claim.supplier_id)
@@ -441,7 +483,8 @@ function ClaimRow({
 
     // A claim whose delivery's report had already gone out comes off a later
     // week (claimWeek). Said here so nobody looks for it in the wrong report.
-    const from = manager ? fromEarlierWeeks([claim], invoices, claim.counted_week)[0] : null
+    const landed = claim.delivery ? [{ id: claim.invoice_id, invoice_date: claim.delivery.invoice_date }] : invoices
+    const from = manager ? fromEarlierWeeks([claim], landed, claim.counted_week)[0] : null
 
     // Always offered rather than done. With a docket number, only that
     // document's lines, and nothing until it is imported.
@@ -467,6 +510,15 @@ function ClaimRow({
                         ].filter(Boolean).join(' and ')}
                     </p>
                     {claim.note && <p className="text-xs text-muted mt-1 italic">{claim.note}</p>}
+                    {manager && claim.delivery && (
+                        <p className="text-xs text-gray-700 mt-1">
+                            On invoice {claim.delivery.invoice_number} of {shortDate(claim.delivery.invoice_date)}
+                            {claim.invoice_lines ? `, ${lineName(claim.invoice_lines)}` : ''}
+                            {notTheDocket(claim, claim.delivery) && (
+                                <>, <strong className="font-bold">not the invoice written on the note</strong></>
+                            )}
+                        </p>
+                    )}
                     {from && (
                         <p className="text-xs text-muted mt-1">
                             Comes off the week of {shortDate(claim.counted_week)}, from the delivery in the week
@@ -619,6 +671,11 @@ function ClaimRow({
 
             {manager && (
                 <div className="mt-3 flex flex-wrap gap-2">
+                    {canDetach(claim) && (
+                        <button type="button" disabled={busy} onClick={() => onDetach(claim)} className={rowButton()}>
+                            Not this line
+                        </button>
+                    )}
                     <button type="button" disabled={busy} onClick={() => onClose(claim, 'refused')} className={rowButton()}>
                         They said no
                     </button>

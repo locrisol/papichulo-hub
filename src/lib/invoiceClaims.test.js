@@ -5,6 +5,7 @@ import {
     claimAmount, claimBalance, claimIsOpen, claimTakesOff, claimCandidates, claimMatch,
     creditSettles, creditTakenBack, voidedBy, sentBack, chasingList, isLate, claimsForWeek, bySupplier,
     claimWeek, sentWeeks, fromEarlierWeeks, otherDeliveries, byInvoice, claimWorking, notTheDocket,
+    claimDetached, canDetach,
 } from '@/lib/invoiceClaims'
 
 const LINE = {
@@ -312,6 +313,28 @@ describe('the working shown before a claim goes on a line', () => {
         const coke = { pack_size: '24X330 ML', price_per_case: 18.54, units_per_case: 24, line_total: 18.54, cases: 1, units: 0 }
         expect(claimWorking({ kind: 'price', cases: 0, units: 1 }, coke, { agreedPerCase: 18.53 }).problem)
             .toBe('That difference comes to less than a cent.')
+    })
+})
+
+// Put on the wrong line, it comes off it and waits for the right invoice
+// again, the same as it was logged at the door.
+describe('taking a claim off its line', () => {
+    it('clears the line and the money and puts it back in the week it was written down', () => {
+        const on = claim({ invoice_id: 'i1', invoice_line_id: 'l1', amount: 41.99, raised_on: '2026-10-02', counted_week: '2026-09-20' })
+        expect(claimDetached(on)).toEqual({
+            invoice_id: null, invoice_line_id: null, amount: null, counted_week: '2026-09-27',
+        })
+        expect(claimTakesOff({ ...on, ...claimDetached(on) })).toBe(0)
+    })
+
+    // Once a credit has touched it, the money belongs to that credit.
+    it('is only offered while it is open with nothing credited', () => {
+        const on = claim({ invoice_id: 'i1', invoice_line_id: 'l1' })
+        expect(canDetach(on)).toBe(true)
+        expect(canDetach({ ...on, invoice_line_id: null })).toBe(false)
+        expect(canDetach({ ...on, credited_amount: 5 })).toBe(false)
+        expect(canDetach({ ...on, credit_invoice_id: 'cr1' })).toBe(false)
+        expect(canDetach({ ...on, status: 'refused' })).toBe(false)
     })
 })
 

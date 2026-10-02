@@ -59,6 +59,11 @@ vi.mock('@/lib/supabase', () => ({ supabase: new Proxy({}, { get: (_, k) => db[k
 let user
 vi.mock('@/context/auth', () => ({ useAuth: () => ({ user }) }))
 vi.mock('@/context/restaurant', () => ({ useRestaurant: () => ({ activeRestaurant: { id: 'r1', name: 'Point Campus' } }) }))
+// What the are-you-sure question answers, and what it was asked. Yes, unless
+// a test says.
+let ask
+let asked
+vi.mock('@/context/confirm', () => ({ useConfirm: () => options => { asked.push(options); return ask(options) } }))
 
 // The door form has tests of its own. Here it only hands over a note.
 let doorNote
@@ -72,6 +77,8 @@ beforeEach(() => {
     user = { id: 'u1', role: 'store_manager' }
     updated = []
     reply = () => ({ data: [{ id: 'c1' }], error: null })
+    asked = []
+    ask = async () => true
     tables = {
         suppliers: [{ id: 's1', name: 'Sysco Ireland', is_active: true }],
         invoice_line_claims: [CLAIM],
@@ -277,6 +284,76 @@ describe('a note whose docket is not in the Hub yet', () => {
         await userEvent.click(screen.getByRole('button', { name: 'Yes, that line' }))
         await waitFor(() => expect(updated).toHaveLength(1))
         expect(updated[0].row).toMatchObject({ invoice_id: 'near', invoice_line_id: 'near-l', amount: 21 })
+    })
+})
+
+// After the wrong tap the Chorizo row only said "from the delivery in the
+// week of 13 Sep", and nothing could take it off that line.
+describe('a claim on a line', () => {
+    // As the claims read brings it, the invoice and the line joined on, so
+    // one older than the sixty days the page reads is still named.
+    const ON = {
+        ...CLAIM, invoice_id: 'old', invoice_line_id: 'old-l', amount: 41.99, counted_week: DELIVERY_WEEK,
+        docket_number: '45747318', raised_on: '2026-10-02',
+        delivery: { invoice_number: '45607444', invoice_date: '2026-09-13' },
+        invoice_lines: { raw_description: 'CHORIZO CUBES', pack_size: '1X500 GM' },
+    }
+
+    it('says which invoice and line it is on, and when that is not the docket on the note', async () => {
+        tables.invoice_line_claims = [ON]
+        renderWithRouter(<ClaimsPage />)
+        const said = await screen.findByText(`On invoice 45607444 of ${shortDate('2026-09-13')}, CHORIZO CUBES 1X500 GM`, { exact: false })
+        expect(said).toHaveTextContent('not the invoice written on the note')
+    })
+
+    it('does not say it is another invoice when it is the one on the note', async () => {
+        tables.invoice_line_claims = [{ ...ON, docket_number: '45607444' }]
+        renderWithRouter(<ClaimsPage />)
+        await screen.findByText(/On invoice 45607444/)
+        expect(screen.queryByText(/not the invoice written on the note/)).toBeNull()
+    })
+
+    it('comes off the line after asking, and waits for the right invoice again', async () => {
+        tables.invoice_line_claims = [ON]
+        renderWithRouter(<ClaimsPage />)
+        await userEvent.click(await screen.findByRole('button', { name: 'Not this line' }))
+        expect(asked[0].message).toBe(`Take it off invoice 45607444 of ${shortDate('2026-09-13')}? `
+            + `€41.99 stops coming off the week of ${shortDate(DELIVERY_WEEK)}, and it waits for the right invoice again.`)
+        await waitFor(() => expect(updated).toHaveLength(1))
+        expect(updated[0].row).toEqual({
+            invoice_id: null, invoice_line_id: null, amount: null, counted_week: NOTED_WEEK,
+        })
+        expect(updated[0].guards).toEqual(expect.arrayContaining([
+            ['eq', 'id', ON.id], ['eq', 'status', 'open'], ['eq', 'credited_amount', 0], ['is', 'credit_invoice_id', null],
+        ]))
+    })
+
+    // A credit touching it while the page was open stops the write, and that
+    // has to be said rather than reported as done.
+    it('says nothing changed when it moved on before Not this line', async () => {
+        tables.invoice_line_claims = [ON]
+        reply = () => ({ data: [], error: null })
+        renderWithRouter(<ClaimsPage />)
+        await userEvent.click(await screen.findByRole('button', { name: 'Not this line' }))
+        expect(await screen.findByText(/^Nothing changed: that problem has moved on/)).toBeInTheDocument()
+        expect(screen.queryByText(/^It is off invoice/)).toBeNull()
+    })
+
+    it('writes nothing when told no', async () => {
+        tables.invoice_line_claims = [ON]
+        ask = async () => false
+        renderWithRouter(<ClaimsPage />)
+        await userEvent.click(await screen.findByRole('button', { name: 'Not this line' }))
+        await waitFor(() => expect(asked).toHaveLength(1))
+        expect(updated).toEqual([])
+    })
+
+    // Once a credit has touched it, the money belongs to that credit.
+    it('is not offered once anything has been credited', async () => {
+        tables.invoice_line_claims = [{ ...ON, credited_amount: 10 }]
+        renderWithRouter(<ClaimsPage />)
+        await screen.findByText(/On invoice 45607444/)
+        expect(screen.queryByRole('button', { name: 'Not this line' })).toBeNull()
     })
 })
 
