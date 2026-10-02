@@ -25,6 +25,7 @@
 import { num } from '@/lib/format'
 import { weekStartOf, addDays } from '@/lib/dates'
 import { similarWords, documentTotal, lineCost } from '@/lib/invoiceImport'
+import { packItems } from '@/lib/invoiceSysco'
 
 // What can be wrong with a delivery.
 //
@@ -210,10 +211,10 @@ export function doorClaimPayload(form, { restaurantId, raisedBy, today }) {
 
 // Claims are quantities, not amounts.
 //
-// One case ordered and one unit delivered, four trays with one returned, three
-// boxes with one back: three different shapes and all of them counts, so a
-// claim carries cases and units the way the document does and the money is
-// worked out from the line's own price.
+// A whole case missing, three bags short out of a case of four, one tray sent
+// back: three different shapes and all of them counts of what is being claimed
+// for, never of what arrived. So a claim carries cases and single items the way
+// the document does and the money is worked out from the line's own price.
 //
 // **A price query is the exception, and it is worth the difference.** The goods
 // arrived and were kept; what is coming back is what they were overcharged. A
@@ -227,12 +228,26 @@ export function doorClaimPayload(form, { restaurantId, raisedBy, today }) {
 // back has to take off its VAT and its deposit too, or the week keeps them. A
 // price query takes the VAT on the overcharge and no deposit, because the
 // containers were kept.
+//
+// **A single item is one item of the pack**, a bag of a "4X500 GM" case, the
+// way the docket's UNIT column counts it. It used to be units_per_case, which
+// is the product's own unit, so for Chorizo counted in kilos three bags were
+// priced as three kilos: 41.99 for what Sysco credits at 7.00 a bag. Each item
+// is the case price split and rounded to the cent, the way they credit it, and
+// a whole case of them is the case. Only a pack that cannot be read (a typed
+// line) still goes by units_per_case.
 export function claimAmount(claim, line, { agreedPerCase = null } = {}) {
     if (!line) return null
     const perCase = num(line.price_per_case)
     const perPack = num(line.units_per_case)
-    const cases = Math.abs(num(claim?.cases))
-    const units = Math.abs(num(claim?.units))
+    const items = packItems(line.pack_size)
+    let cases = Math.abs(num(claim?.cases))
+    let units = Math.abs(num(claim?.units))
+    if (items) {
+        cases += Math.floor(units / items)
+        units %= items
+    }
+    const share = money => (items ? round2(money / items) : perPack > 0 ? money / perPack : null)
 
     const printed = num(line.line_total)
     const vatShare = printed ? num(line.vat_amount) / printed : 0
@@ -240,13 +255,16 @@ export function claimAmount(claim, line, { agreedPerCase = null } = {}) {
 
     if (claim?.kind === 'price') {
         if (agreedPerCase == null || agreedPerCase === '') return null
-        const over = perCase - num(agreedPerCase)
+        const over = round2(perCase - num(agreedPerCase))
         if (over <= 0) return null
-        const asked = cases * over + units * (perPack > 0 ? over / perPack : 0)
-        return round2(asked * (1 + vatShare))
+        // The overcharge is not a price they print per item, so it is split
+        // and multiplied before any rounding, or ten cents over on a case of
+        // 24 cans comes to nothing.
+        const perItem = items ? over / items : perPack > 0 ? over / perPack : 0
+        return round2((cases * over + units * perItem) * (1 + vatShare))
     }
 
-    const perUnit = perPack > 0 ? perCase / perPack : num(line.unit_price)
+    const perUnit = share(perCase) ?? num(line.unit_price)
     return round2((cases * perCase + units * perUnit) * (1 + vatShare + depositShare))
 }
 
@@ -446,7 +464,10 @@ export function creditSettles({ credit, lines = [], against = null, claims = [],
     // Same product code first, then anything still open, oldest first.
     for (const pot of pots) {
         for (const c of mine.filter(c => pot.code && c.code === pot.code)) {
-            if (pot.money > 0.004) pot.money = give(c, pot.money)
+            if (pot.money > 0.004) {
+                pot.money = give(c, pot.money)
+                pot.took = c
+            }
         }
     }
     for (const pot of pots) {
@@ -455,12 +476,25 @@ export function creditSettles({ credit, lines = [], against = null, claims = [],
         }
     }
 
+    // A few cents left on a line after the claim for that product took its
+    // share is rounding between their split price and ours, not money somebody
+    // asked for and never wrote down. So it goes to that claim, which asked
+    // for that much after all, rather than becoming a claim of its own with no
+    // reason on it.
+    for (const pot of pots) {
+        if (pot.took && pot.money > 0.004 && pot.money <= 0.05) {
+            got.set(pot.took.id, round2(got.get(pot.took.id) + pot.money))
+            pot.money = 0
+        }
+    }
+
     const on = credit.date || credit.invoice_date || null
     const settle = mine
         .filter(c => got.get(c.id) > 0)
         .map(c => {
             const credited = round2(num(c.credited_amount) + got.get(c.id))
-            const asked = c.amount == null ? credited : num(c.amount)
+            // Only those few cents ever make it more than was asked.
+            const asked = c.amount == null ? credited : Math.max(num(c.amount), credited)
             const done = credited + 0.004 >= asked
             return {
                 id: c.id,

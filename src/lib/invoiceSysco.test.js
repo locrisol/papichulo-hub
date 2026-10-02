@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-    rowsOf, cellsOf, findHeading, columnsFrom, bucket, readPackSize,
+    rowsOf, cellsOf, findHeading, columnsFrom, bucket, readPackSize, packItems,
     looksLikePackSize, paperDate, money, headField, footBlock, recognisesSysco,
     readSyscoInvoice, depositBox, shareOut, LINE_COLUMNS, mend,
 } from '@/lib/invoiceSysco'
@@ -775,6 +775,26 @@ describe('pack sizes', () => {
 
     it.each(['EACH', '', 'FLOUR TORTILLA'])('says nothing for %s', text => {
         expect(readPackSize(text)).toBeNull()
+    })
+
+    // One item out of the case, the way the UNIT column on their paper counts
+    // it: a bag of a 4X500 GM case, a can of a 24X330 ML one.
+    it.each([
+        ['4X500 GM', 4],
+        ['24X330 ML', 24],
+        ['10X10 EA', 10],
+        ['1X10 EA', 10],
+        ['24', 24],
+        ['1X5 KG', 1],
+        ['1X2 LT', 1],
+        ['1X500 GM', 1],
+    ])('counts the items in %s', (text, items) => {
+        expect(packItems(text)).toBe(items)
+    })
+
+    // Six of four, or four of six, or twenty four loose: nothing says which.
+    it.each(['6X4', 'FLOUR TORTILLA', '', null])('will not guess the items in %s', text => {
+        expect(packItems(text)).toBeNull()
     })
 
     it('can tell a pack size from a product name', () => {

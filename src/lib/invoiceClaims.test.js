@@ -160,6 +160,80 @@ describe('what a claim is worth', () => {
     })
 })
 
+// The Chorizo of 2 October: a case of four 500 g bags ordered, one bag came,
+// three logged as single items. The product is counted in kilos, so
+// units_per_case is 2 and a single item was priced as a kilo, 41.99 for what
+// Sysco credits at 7.00 a bag.
+describe('what a single item out of a case is worth', () => {
+    const chorizo = {
+        pack_size: '4X500 GM', units_per_case: 2, price_per_case: 27.99, unit_price: 13.995,
+        line_total: 55.98, vat_amount: 0, deposit_amount: 0,
+    }
+
+    it('is one item of the pack, at the price they split it at', () => {
+        expect(claimAmount({ cases: 0, units: 3 }, chorizo)).toBe(21)
+        expect(claimAmount({ cases: 1, units: 0 }, chorizo)).toBe(27.99)
+    })
+
+    // Four bags at 7.00 would be 28.00, more than the case cost.
+    it('counts a whole case of single items as the case', () => {
+        expect(claimAmount({ cases: 0, units: 4 }, chorizo)).toBe(27.99)
+    })
+
+    it('does not move with the unit the product is counted in', () => {
+        expect(claimAmount({ cases: 0, units: 3 }, { ...chorizo, units_per_case: 4 })).toBe(21)
+    })
+
+    // Sysco prints a loose sale or credit as its own line with a one item pack.
+    it('prices a line of single bags at its own price each', () => {
+        const loose = { pack_size: '1X500 GM', units_per_case: 0.5, price_per_case: 7, line_total: 7 }
+        expect(claimAmount({ cases: 0, units: 3 }, loose)).toBe(21)
+    })
+
+    it('counts eaches when the case is one pack of them', () => {
+        const cabbage = { pack_size: '1X10 EA', units_per_case: 12, price_per_case: 14.33, line_total: 14.33 }
+        expect(claimAmount({ cases: 0, units: 3 }, cabbage)).toBe(4.29)
+        const tortillas = { pack_size: '10X10 EA', units_per_case: 100, price_per_case: 30.3, line_total: 30.3 }
+        expect(claimAmount({ cases: 0, units: 3 }, tortillas)).toBe(9.09)
+    })
+
+    it('takes a single item of a one item case as the case', () => {
+        expect(claimAmount({ cases: 0, units: 1 }, { pack_size: '1X5 KG', units_per_case: 5, price_per_case: 14.5 }))
+            .toBe(14.5)
+    })
+
+    it('still takes the VAT and deposit off in the same share as the line', () => {
+        const coke = {
+            pack_size: '24X330 ML', price_per_case: 18.54, units_per_case: 24,
+            line_total: 37.08, vat_amount: 8.52, deposit_amount: 7.2,
+        }
+        expect(claimAmount({ cases: 0, units: 6 }, coke)).toBe(6.58)
+    })
+
+    // A typed line, or a pack nobody can read, has only units_per_case.
+    it('goes by units_per_case when the pack cannot be read', () => {
+        expect(claimAmount({ cases: 0, units: 3 }, { ...chorizo, pack_size: null })).toBe(41.99)
+        expect(claimAmount({ cases: 0, units: 3 }, { ...LINE, pack_size: '6X4' })).toBe(10.5)
+    })
+
+    it('prices a price query on single items per item too', () => {
+        const over = { ...chorizo, price_per_case: 31.99, line_total: 31.99 }
+        expect(claimAmount({ kind: 'price', cases: 0, units: 3 }, over, { agreedPerCase: 27.99 })).toBe(3)
+    })
+
+    // Ten cents over on a case of 24 is under half a cent a can. Rounded per
+    // can first, six cans came to nothing.
+    it('does not round a small price query on single items to nothing', () => {
+        const coke = {
+            pack_size: '24X330 ML', price_per_case: 18.54, units_per_case: 24,
+            line_total: 37.08, vat_amount: 8.52, deposit_amount: 7.2,
+        }
+        expect(claimAmount({ kind: 'price', cases: 0, units: 6 }, coke, { agreedPerCase: 18.44 })).toBe(0.03)
+        expect(claimAmount({ kind: 'price', cases: 0, units: 23 }, { ...coke, vat_amount: 0 }, { agreedPerCase: 18.24 }))
+            .toBe(0.29)
+    })
+})
+
 describe('what a price query is worth', () => {
     // The real case that prompted it: a bowl moved to a new code, came in at
     // 49.00 a case instead of 29.00, and the supplier is crediting the
@@ -445,6 +519,44 @@ describe('when the credit note turns up', () => {
             credit, against: invoice, claims: [claim({ invoice_id: 'i1' })], supplierId: 's1', sent: ['2026-09-13'],
         })
         expect(out.settle[0].patch).not.toHaveProperty('counted_week')
+    })
+
+    // Sysco credits the three Chorizo bags at 7.00 each, 21.00, the same as
+    // the claim is priced at.
+    it('settles three single bags with the credit for them and makes nothing else', () => {
+        const bags = claim({ invoice_id: 'i1', amount: 21, code: '485073', cases: 0, units: 3 })
+        const out = creditSettles({
+            credit, against: invoice, claims: [bags], lines: [{ code: '485073', value: -21 }], supplierId: 's1',
+        })
+        expect(out.settle[0].patch).toMatchObject({ credited_amount: 21, status: 'settled' })
+        expect(out.extra).toBeNull()
+    })
+
+    // A cent of rounding is not money somebody asked for and forgot to log.
+    it('gives a few cents over to the claim for the same product rather than a claim of their own', () => {
+        const bags = claim({ invoice_id: 'i1', amount: 20.99, code: '485073', cases: 0, units: 3 })
+        const out = creditSettles({
+            credit, against: invoice, claims: [bags], lines: [{ code: '485073', value: -21 }], supplierId: 's1',
+        })
+        expect(out.settle[0].patch).toMatchObject({ amount: 21, credited_amount: 21, status: 'settled' })
+        expect(out.extra).toBeNull()
+    })
+
+    it('still makes a claim of its own for more than a few cents', () => {
+        const bags = claim({ invoice_id: 'i1', amount: 20.9, code: '485073', cases: 0, units: 3 })
+        const out = creditSettles({
+            credit, against: invoice, claims: [bags], lines: [{ code: '485073', value: -21 }], supplierId: 's1',
+        })
+        expect(out.extra).toMatchObject({ amount: 0.1 })
+    })
+
+    // Priced as kilos it asked for twice what came back, and stays open.
+    it('leaves a claim priced wrong open with the rest still owed', () => {
+        const kilos = claim({ invoice_id: 'i1', amount: 41.99, code: '485073', cases: 0, units: 3 })
+        const out = creditSettles({
+            credit, against: invoice, claims: [kilos], lines: [{ code: '485073', value: -21 }], supplierId: 's1',
+        })
+        expect(out.settle[0].patch).toMatchObject({ credited_amount: 21, status: 'open' })
     })
 })
 

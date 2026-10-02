@@ -84,7 +84,7 @@ export default function ClaimsPage() {
                 // are only asked for where they can be used.
                 manager
                     ? supabase.from('invoices')
-                        .select('id, invoice_number, invoice_date, supplier_id, document_type, total_amount, invoice_lines(id, raw_description, price_per_case, units_per_case, unit_price, line_total, vat_amount, deposit_amount, supplier_code, product_supplier_prices(price_per_case))')
+                        .select('id, invoice_number, invoice_date, supplier_id, document_type, total_amount, invoice_lines(id, raw_description, pack_size, price_per_case, units_per_case, unit_price, line_total, vat_amount, deposit_amount, supplier_code, product_supplier_prices(price_per_case))')
                         .eq('restaurant_id', restaurantId)
                         .gte('invoice_date', from)
                     : Promise.resolve({ data: [] }),
