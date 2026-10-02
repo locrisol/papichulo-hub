@@ -41,11 +41,21 @@ import { packItems, readPackSize } from '@/lib/invoiceSysco'
 //
 // `colour` is the same colour as the dot, as a figure, for the report's bar and
 // for the mail, neither of which can read a class name.
+//
+// **`ask` is what the number means for that reason**, because it means
+// something different for each: everything on the docket, the part that did
+// not come, the ones damaged. With one pair of boxes for all ten, the owner
+// could not tell on 2 October whether to count what was missing or what came.
+// `example` is a worked line under the question, and `counted` is how the
+// claim is read back ("3 single items missing").
 export const CLAIM_KINDS = [
     {
         value: 'not_delivered',
         label: 'Not delivered',
         at_door: 'It was on the docket and never came',
+        ask: 'How many were on the docket?',
+        example: 'Everything that should have come. 2 cases on the docket and none came: 2 full cases.',
+        counted: 'not delivered',
         soft: 'bg-slate-100 text-slate-800 border-slate-300',
         dot: 'bg-slate-500',
         colour: '#64748B',
@@ -54,6 +64,9 @@ export const CLAIM_KINDS = [
         value: 'short',
         label: 'Short',
         at_door: 'It did not all turn up',
+        ask: 'How many are missing?',
+        example: 'Count what did not come, not what did. 1 case of 4 bags ordered and 1 bag came: 3 single items.',
+        counted: 'missing',
         soft: 'bg-amber-50 text-amber-800 border-amber-200',
         dot: 'bg-amber-500',
         colour: '#F59E0B',
@@ -62,6 +75,9 @@ export const CLAIM_KINDS = [
         value: 'damaged',
         label: 'Damaged',
         at_door: 'It arrived broken, split or leaking',
+        ask: 'How many are damaged?',
+        example: 'Only the broken or leaking ones. Two tins of a case of six: 2 single items.',
+        counted: 'damaged',
         soft: 'bg-orange-50 text-orange-800 border-orange-200',
         dot: 'bg-orange-500',
         colour: '#F97316',
@@ -70,6 +86,9 @@ export const CLAIM_KINDS = [
         value: 'quality',
         label: 'Bad quality',
         at_door: 'It was not good enough and went back',
+        ask: 'How many went back?',
+        example: 'Only the ones that went back, not the whole delivery.',
+        counted: 'sent back',
         soft: 'bg-red-50 text-red-800 border-red-200',
         dot: 'bg-red-500',
         colour: '#EF4444',
@@ -78,6 +97,9 @@ export const CLAIM_KINDS = [
         value: 'out_of_date',
         label: 'Out of date',
         at_door: 'Past its date, or too close to it to use',
+        ask: 'How many are out of date or too close?',
+        example: 'Only those ones, not the whole delivery.',
+        counted: 'out of date',
         soft: 'bg-pink-50 text-pink-800 border-pink-200',
         dot: 'bg-pink-500',
         colour: '#EC4899',
@@ -86,6 +108,9 @@ export const CLAIM_KINDS = [
         value: 'warm',
         label: 'Arrived warm',
         at_door: 'Chilled or frozen and not cold enough',
+        ask: 'How many arrived warm?',
+        example: 'Only the ones that were not cold enough.',
+        counted: 'arrived warm',
         soft: 'bg-cyan-50 text-cyan-800 border-cyan-200',
         dot: 'bg-cyan-500',
         colour: '#06B6D4',
@@ -94,6 +119,9 @@ export const CLAIM_KINDS = [
         value: 'wrong_item',
         label: 'Wrong item',
         at_door: 'They sent something we did not order',
+        ask: 'How many of the wrong thing came?',
+        example: 'Say what we should have got under Anything else.',
+        counted: 'sent in error',
         soft: 'bg-purple-50 text-purple-800 border-purple-200',
         dot: 'bg-purple-500',
         colour: '#A855F7',
@@ -102,6 +130,9 @@ export const CLAIM_KINDS = [
         value: 'price',
         label: 'Price query',
         at_door: 'The price on the docket looks wrong',
+        ask: 'How many were charged the wrong price?',
+        example: 'Usually everything on that line. The manager puts in the right price later.',
+        counted: 'charged the wrong price',
         soft: 'bg-blue-50 text-blue-800 border-blue-200',
         dot: 'bg-blue-500',
         colour: '#3B82F6',
@@ -110,6 +141,9 @@ export const CLAIM_KINDS = [
         value: 'mistake',
         label: 'Ordered by mistake',
         at_door: 'Our mistake: too much, or the wrong thing',
+        ask: 'How many are going back?',
+        example: 'Only what is going back to them.',
+        counted: 'going back',
         soft: 'bg-teal-50 text-teal-800 border-teal-200',
         dot: 'bg-teal-500',
         colour: '#14B8A6',
@@ -118,6 +152,9 @@ export const CLAIM_KINDS = [
         value: 'something_else',
         label: 'Something else',
         at_door: 'Say what under Anything else',
+        ask: 'How many were affected?',
+        example: 'Say what was wrong under Anything else.',
+        counted: 'affected',
         soft: 'bg-stone-100 text-stone-800 border-stone-300',
         dot: 'bg-stone-500',
         colour: '#78716C',
@@ -130,6 +167,9 @@ export const NOT_LOGGED = {
     value: 'other',
     label: 'No reason logged',
     at_door: '',
+    ask: '',
+    example: '',
+    counted: '',
     soft: 'bg-gray-100 text-gray-700 border-gray-300',
     dot: 'bg-gray-500',
     colour: '#9CA3AF',
@@ -142,6 +182,9 @@ export function claimKind(value) {
         value,
         label: value,
         at_door: '',
+        ask: '',
+        example: '',
+        counted: '',
         soft: 'bg-gray-100 text-gray-700 border-gray-300',
         dot: 'bg-gray-500',
         colour: NOT_LOGGED.colour,
@@ -170,13 +213,44 @@ export function doorClaimProblem(form) {
     if (!form?.supplierId) return 'Say who delivered it.'
     if (!form?.kind) return 'Say what was wrong.'
     if (!String(form?.what || '').trim()) return 'Say what it was, in your own words.'
-    if (num(form.cases) <= 0 && num(form.units) <= 0) return 'Say how many.'
-    // The one reason that means nothing without words, so the words are the
-    // reason.
-    if (form.kind === 'something_else' && !String(form?.note || '').trim()) {
-        return 'Say what was wrong, under Anything else.'
+    // In the reason's own words: "Say how many are missing."
+    if (num(form.cases) <= 0 && num(form.units) <= 0) {
+        const ask = claimKind(form.kind).ask
+        return ask ? ask.replace(/^How many/, 'Say how many').replace(/\?$/, '.') : 'Say how many.'
     }
+    // Things counted, so a dot is a mistake: 1.5 meant as one and a half, or
+    // as kilos. Refused rather than dropped, which made it 15.
+    if (!Number.isInteger(num(form.cases)) || !Number.isInteger(num(form.units))) {
+        return 'Count whole ones only. Half a case goes under Single items, as the bags or tins that make it up.'
+    }
+    // The one reason that means nothing without words, so the words are the
+    // reason. And the wrong item, which says what came but not what should
+    // have.
+    const note = String(form?.note || '').trim()
+    if (form.kind === 'something_else' && !note) return 'Say what was wrong, under Anything else.'
+    if (form.kind === 'wrong_item' && !note) return 'Say what we should have got, under Anything else.'
     return null
+}
+
+// A count read back: "1 case and 3 single items". Never "units", which said
+// nothing about bag or kilo, and never "1 cases".
+export function claimCountSaid(cases, units) {
+    const c = num(cases)
+    const u = num(units)
+    return [
+        c ? `${c} ${c === 1 ? 'case' : 'cases'}` : null,
+        u ? `${u} single ${u === 1 ? 'item' : 'items'}` : null,
+    ].filter(Boolean).join(' and ')
+}
+
+// A claim read back on its row, in the words of its reason: "3 single items
+// missing", "1 case damaged". So whoever logged it can spot their own mistake,
+// and so can the manager choosing its line.
+export function claimSaid(claim) {
+    const count = claimCountSaid(claim?.cases, claim?.units)
+    if (!count) return ''
+    const counted = claimKind(claim.kind).counted
+    return counted ? `${count} ${counted}` : count
 }
 
 // The row, as the database wants it.

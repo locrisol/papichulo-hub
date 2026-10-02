@@ -2,7 +2,7 @@ import { useState } from 'react'
 import Modal from '@/components/ui/Modal'
 import AutoTextarea from '@/components/ui/AutoTextarea'
 import { numberField } from '@/lib/numberInput'
-import { CLAIM_KINDS, emptyDoorClaim, doorClaimProblem } from '@/lib/invoiceClaims'
+import { CLAIM_KINDS, claimKind, claimCountSaid, emptyDoorClaim, doorClaimProblem } from '@/lib/invoiceClaims'
 import {
     modalFooter, secondaryButton, primaryButton, labelClass, fieldClass, hintClass,
     errorBanner,
@@ -20,6 +20,13 @@ import {
 // it is worth asking for because when that invoice turns up a few days later
 // only its lines are offered, not every delivery from that supplier.
 //
+// **How many is asked after what was wrong, in that reason's words**, because
+// the number means something different for each. On 2 October a case of four
+// bags came as one bag, and with two bare boxes called Cases and Loose units
+// the owner could not tell whether to count what was missing or what came.
+// Loose also means kilos everywhere else in the Hub. So the boxes wait for a
+// reason, ask its question, and read the answer back as it is typed.
+//
 // There is no money on this form and there is none on the row it writes.
 // Whoever is at the door knows how many trays and has no business knowing what
 // a tray costs, and the database policy that lets them write it refuses a row
@@ -30,6 +37,8 @@ export default function DoorClaimModal({ suppliers, onClose, onSave }) {
     const [busy, setBusy] = useState(false)
 
     const set = (field, value) => setForm(f => ({ ...f, [field]: value }))
+    const kind = form.kind ? claimKind(form.kind) : null
+    const count = claimCountSaid(form.cases, form.units)
 
     async function go() {
         const wrong = doorClaimProblem(form)
@@ -76,27 +85,66 @@ export default function DoorClaimModal({ suppliers, onClose, onSave }) {
                     </div>
                 </div>
 
+                {/* Names only, two to a row, so all ten fit on a phone without
+                    scrolling past them to the question. The one picked says
+                    what it means underneath, and has a ring in its own colour,
+                    as the diary's kinds do, because a pale tint alone is hard
+                    to pick out in daylight. */}
                 <div className="mt-4">
                     <span className={labelClass}>What was wrong</span>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                        {CLAIM_KINDS.map(kind => (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {CLAIM_KINDS.map(k => (
                             <button
-                                key={kind.value}
+                                key={k.value}
                                 type="button"
-                                onClick={() => set('kind', kind.value)}
-                                aria-pressed={form.kind === kind.value}
-                                className={`text-left px-3 py-2 rounded-lg border text-sm transition-colors ${
-                                    form.kind === kind.value
-                                        ? `${kind.soft} font-bold`
+                                onClick={() => set('kind', k.value)}
+                                aria-pressed={form.kind === k.value}
+                                className={`min-h-11 text-left px-3 py-2 rounded-lg border text-sm font-semibold transition-colors ${
+                                    form.kind === k.value
+                                        ? `${k.soft} ring-2 ring-inset ring-current`
                                         : 'bg-white border-gray-300 text-gray-800 hover:bg-gray-50'
                                 }`}
                             >
-                                <span className="block font-semibold">{kind.label}</span>
-                                <span className="block text-xs opacity-80">{kind.at_door}</span>
+                                {k.label}
                             </button>
                         ))}
                     </div>
                 </div>
+
+                {kind && (
+                    <div className="mt-4">
+                        <p className="text-xs text-muted">{kind.at_door}</p>
+                        <p className="text-sm font-bold text-gray-900 mt-2">{kind.ask}</p>
+                        <p className={hintClass}>{kind.example}</p>
+
+                        <div className="grid grid-cols-2 gap-4 mt-3">
+                            <div>
+                                <label className={labelClass} htmlFor="claim-cases">Full cases</label>
+                                <input
+                                    id="claim-cases"
+                                    {...numberField({ value: form.cases, onChange: v => set('cases', v), decimals: 3 })}
+                                    inputMode="numeric"
+                                    className={fieldClass}
+                                />
+                            </div>
+                            <div>
+                                <label className={labelClass} htmlFor="claim-units">Single items</label>
+                                <input
+                                    id="claim-units"
+                                    {...numberField({ value: form.units, onChange: v => set('units', v), decimals: 3 })}
+                                    inputMode="numeric"
+                                    className={fieldClass}
+                                />
+                            </div>
+                        </div>
+                        <p className={hintClass}>One bag, tin, bottle or tray out of a case. Not kilos.</p>
+                        {count && (
+                            <p className="text-sm text-gray-900 mt-2">
+                                You are claiming: {count} {kind.counted}.
+                            </p>
+                        )}
+                    </div>
+                )}
 
                 <div className="mt-4">
                     <label className={labelClass} htmlFor="claim-what">What it was</label>
@@ -111,25 +159,6 @@ export default function DoorClaimModal({ suppliers, onClose, onSave }) {
                         Your own words are better than a product name. It is what goes to the
                         supplier.
                     </p>
-                </div>
-
-                <div className="grid gap-4 sm:grid-cols-2 mt-4">
-                    <div>
-                        <label className={labelClass} htmlFor="claim-cases">Cases</label>
-                        <input
-                            id="claim-cases"
-                            {...numberField({ value: form.cases, onChange: v => set('cases', v), decimals: 3 })}
-                            className={fieldClass}
-                        />
-                    </div>
-                    <div>
-                        <label className={labelClass} htmlFor="claim-units">Loose units</label>
-                        <input
-                            id="claim-units"
-                            {...numberField({ value: form.units, onChange: v => set('units', v), decimals: 3 })}
-                            className={fieldClass}
-                        />
-                    </div>
                 </div>
 
                 <div className="mt-4">

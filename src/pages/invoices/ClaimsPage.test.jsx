@@ -506,6 +506,29 @@ describe('closing a claim, and opening it again', () => {
     })
 })
 
+// The row said "3 units", which says neither missing nor delivered, bag nor
+// kilo, and one case was "1 cases".
+describe('how a claim reads back on its row', () => {
+    it('says the count in the words of its reason', async () => {
+        tables.invoice_line_claims = [
+            CLAIM,
+            { ...CLAIM, id: 'c5', what: 'Chorizo', cases: 0, units: 3 },
+            { ...CLAIM, id: 'c6', what: 'Eggs', kind: 'damaged', cases: 0, units: 1 },
+        ]
+        renderWithRouter(<ClaimsPage />)
+        expect(await screen.findByText(/· 1 case missing$/)).toBeInTheDocument()
+        expect(screen.getByText(/· 3 single items missing$/)).toBeInTheDocument()
+        expect(screen.getByText(/· 1 single item damaged$/)).toBeInTheDocument()
+    })
+
+    it('leaves out a nought cases part on a price query', async () => {
+        tables.invoice_line_claims = [{ ...CLAIM, kind: 'price', cases: 0, units: 3 }]
+        renderWithRouter(<ClaimsPage />)
+        await userEvent.click(await screen.findByRole('button', { name: 'That is the one' }))
+        expect(screen.getByText('The claim is the difference on 3 single items, not the whole line.')).toBeInTheDocument()
+    })
+})
+
 // Once put against its line, a claim whose delivery's report had already gone
 // out comes off a later week. The row says which, and which delivery it is
 // from, so nobody looks for it in the wrong report.

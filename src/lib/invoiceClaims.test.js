@@ -5,7 +5,7 @@ import {
     claimAmount, claimBalance, claimIsOpen, claimTakesOff, claimCandidates, claimMatch,
     creditSettles, creditTakenBack, voidedBy, sentBack, chasingList, isLate, claimsForWeek, bySupplier,
     claimWeek, sentWeeks, fromEarlierWeeks, otherDeliveries, byInvoice, claimWorking, notTheDocket,
-    claimDetached, canDetach, claimReopened,
+    claimDetached, canDetach, claimReopened, claimCountSaid, claimSaid,
 } from '@/lib/invoiceClaims'
 
 const LINE = {
@@ -76,6 +76,43 @@ describe('what can be wrong with a delivery', () => {
     it('falls back rather than leaving a row with no words on it', () => {
         expect(claimKind('something').label).toBe('something')
     })
+
+    // The owner was not sure whether the boxes meant what was missing or what
+    // came. Each reason asks its own question, with a worked line under it.
+    it('asks every reason its own question of how many, with an example, and says it back', () => {
+        for (const kind of CLAIM_KINDS) {
+            expect(kind.ask).toMatch(/^How many .+\?$/)
+            expect(kind.example.trim()).not.toBe('')
+            expect(kind.counted.trim()).not.toBe('')
+        }
+        expect(claimKind('short').ask).toBe('How many are missing?')
+        expect(claimKind('short').example)
+            .toBe('Count what did not come, not what did. 1 case of 4 bags ordered and 1 bag came: 3 single items.')
+    })
+})
+
+// How a claim's count is read back, on the door form and on its row. It said
+// "3 units", which does not say missing or delivered, bag or kilo, and "1 cases".
+describe('reading a claim back', () => {
+    it.each([
+        [1, 0, '1 case'],
+        [2, 0, '2 cases'],
+        [0, 1, '1 single item'],
+        [0, 3, '3 single items'],
+        [1, 3, '1 case and 3 single items'],
+        [0, 0, ''],
+    ])('says %s cases and %s single items as "%s"', (cases, units, said) => {
+        expect(claimCountSaid(cases, units)).toBe(said)
+    })
+
+    it('says what happened to them, in the words of the reason', () => {
+        expect(claimSaid({ kind: 'short', cases: 0, units: 3 })).toBe('3 single items missing')
+        expect(claimSaid({ kind: 'damaged', cases: 1, units: 0 })).toBe('1 case damaged')
+        expect(claimSaid({ kind: 'price', cases: 2, units: 0 })).toBe('2 cases charged the wrong price')
+        expect(claimSaid({ kind: 'warm', cases: 0, units: 3 })).toBe('3 single items arrived warm')
+        expect(claimSaid({ kind: 'wrong_item', cases: 1, units: 0 })).toBe('1 case sent in error')
+        expect(claimSaid({ kind: 'other', cases: 0, units: 0 })).toBe('')
+    })
 })
 
 describe('taking the note at the door', () => {
@@ -100,6 +137,36 @@ describe('taking the note at the door', () => {
     it('wants the note when the reason is something else', () => {
         expect(doorClaimProblem({ ...filled, kind: 'something_else' })).toContain('under Anything else')
         expect(doorClaimProblem({ ...filled, kind: 'something_else', note: 'Box soaked through' })).toBeNull()
+    })
+
+    it('wants to know what should have come when it was the wrong item', () => {
+        expect(doorClaimProblem({ ...filled, kind: 'wrong_item' })).toBe('Say what we should have got, under Anything else.')
+        expect(doorClaimProblem({ ...filled, kind: 'wrong_item', note: 'Should be the 12 inch' })).toBeNull()
+    })
+
+    it('asks how many in the words of the reason', () => {
+        expect(doorClaimProblem({ ...filled, cases: '', units: '' })).toBe('Say how many are missing.')
+        expect(doorClaimProblem({ ...filled, kind: 'price', cases: '', units: '' }))
+            .toBe('Say how many were charged the wrong price.')
+        expect(doorClaimProblem({ ...filled, kind: 'something_else', note: 'x', cases: '', units: '' }))
+            .toBe('Say how many were affected.')
+        // The error is made from the question, so every question has to
+        // still read as a sentence once it is turned round.
+        for (const kind of CLAIM_KINDS) {
+            const said = doorClaimProblem({ ...filled, kind: kind.value, note: 'x', cases: '', units: '' })
+            expect(said).toMatch(/^Say how many .+\.$/)
+            expect(said).not.toMatch(/^Say how many (does|do|did) /)
+        }
+    })
+
+    // A dot typed into a box of whole things used to vanish, so 1.5 became
+    // 15 with nothing said. Now it stays and is refused.
+    it('refuses part of a case or of an item', () => {
+        expect(doorClaimProblem({ ...filled, cases: '', units: '1.5' })).toBe(
+            'Count whole ones only. Half a case goes under Single items, as the bags or tins that make it up.',
+        )
+        expect(doorClaimProblem({ ...filled, cases: '0.5', units: '' })).toMatch(/^Count whole ones only\./)
+        expect(doorClaimProblem({ ...filled, cases: '', units: '3' })).toBeNull()
     })
 
     it('does not insist on the docket number', () => {

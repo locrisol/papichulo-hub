@@ -11,7 +11,7 @@ import { numberField } from '@/lib/numberInput'
 import { friendlyError } from '@/lib/errors'
 import { can, MANAGERS } from '@/lib/access'
 import {
-    claimKind, doorClaimPayload, claimWorking, notTheDocket, claimDetached, canDetach, claimReopened, claimTakesOff, claimIsOpen, claimWeek, sentWeeks, fromEarlierWeeks,
+    claimKind, doorClaimPayload, claimWorking, notTheDocket, claimDetached, canDetach, claimReopened, claimTakesOff, claimIsOpen, claimSaid, claimCountSaid, claimWeek, sentWeeks, fromEarlierWeeks,
     claimCandidates, claimMatch, otherDeliveries, byInvoice, chasingList, isLate, LATE_AFTER_DAYS, bySupplier,
 } from '@/lib/invoiceClaims'
 import {
@@ -541,6 +541,9 @@ function ClaimRow({
 }) {
     const kind = claimKind(claim.kind)
     const supplier = suppliers.find(s => s.id === claim.supplier_id)
+    // "3 single items missing", so whoever logged it can spot their own
+    // mistake, and the manager choosing its line can too.
+    const said = claimSaid(claim)
     const [picking, setPicking] = useState(false)
     // The docket written down is not in the Hub, and somebody says it was a
     // different delivery anyway, a number copied wrong.
@@ -596,11 +599,7 @@ function ClaimRow({
                     <p className="text-xs text-muted mt-1">
                         {supplier?.name || 'Unknown supplier'}, {fullDate(claim.raised_on)}
                         {claim.docket_number ? `, docket ${claim.docket_number}` : ', no docket number'}
-                        {' '}&#183;{' '}
-                        {[
-                            Number(claim.cases) ? `${claim.cases} cases` : null,
-                            Number(claim.units) ? `${claim.units} units` : null,
-                        ].filter(Boolean).join(' and ')}
+                        {said && <>{' '}&#183; {said}</>}
                     </p>
                     {claim.note && <p className="text-xs text-muted mt-1 italic">{claim.note}</p>}
                     {manager && claim.delivery && (
@@ -725,8 +724,8 @@ function ClaimRow({
                                 </button>
                             </div>
                             <p className="text-xs text-blue-900 mt-1">
-                                The claim is the difference on {Number(claim.cases) || 0} cases
-                                {Number(claim.units) ? ` and ${claim.units} units` : ''}, not the whole line.
+                                The claim is the difference on {claimCountSaid(claim.cases, claim.units)}, not the
+                                whole line.
                             </p>
                         </div>
                     )}
