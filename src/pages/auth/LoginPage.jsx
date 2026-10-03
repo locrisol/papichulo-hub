@@ -47,7 +47,7 @@ export default function LoginPage() {
         <div className="flex flex-col items-center mb-8">
           <img src={logo} alt="Papi Chulo" className="h-16 mb-4" />
           <h1 className="text-2xl font-bold text-gray-900">Papi Chulo Hub</h1>
-          <p className="text-sm text-muted mt-1">Business Management System</p>
+          <p className="text-sm text-muted mt-1">Business management system</p>
         </div>
 
         {error && (
@@ -59,7 +59,7 @@ export default function LoginPage() {
         <form onSubmit={handleLogin}>
           <div className="mb-4">
             <label htmlFor="login-email" className={labelClass}>
-              Email Address
+              Email address
             </label>
             <input
               id="login-email"

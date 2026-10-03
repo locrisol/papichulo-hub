@@ -31,13 +31,13 @@ describe('ShowInactiveButton', () => {
     it.each(['store_manager', 'owner', 'super_admin'])('is there for a %s', role => {
         asRole(role)
         render(<ShowInactiveButton showing={false} onToggle={() => {}} />)
-        expect(screen.getByRole('button', { name: 'Show Inactive' })).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Show inactive' })).toBeInTheDocument()
     })
 
     it('says how to turn it off once it is on', () => {
         asRole('owner')
         render(<ShowInactiveButton showing onToggle={() => {}} />)
-        expect(screen.getByRole('button', { name: 'Hide Inactive' })).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Hide inactive' })).toBeInTheDocument()
     })
 
     it('says whether it is on, for anybody not reading the colour', () => {

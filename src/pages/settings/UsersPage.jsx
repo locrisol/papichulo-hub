@@ -173,7 +173,7 @@ export default function UsersPage() {
       const ok = await confirm({
         title: `Deactivate ${person.full_name || person.email}?`,
         message: 'They will not be able to sign in. Nothing they have entered is touched, and you can '
-          + 'turn them back on here whenever you want.',
+          + 'reactivate them here at any time.',
         details: [
           { label: 'Email', value: person.email || '' },
           { label: 'Role', value: roleLabel(person.role) },
@@ -245,7 +245,7 @@ export default function UsersPage() {
       {/* Adding a user is not built yet. Creating an account needs the service
           role key, which cannot go in the browser, so the plan is to let people
           sign themselves up and have a manager approve them. That is #81. */}
-      <PageHeader title="User Management" subtitle="Manage user accounts and access levels">
+      <PageHeader title="Users" subtitle="Manage user accounts and access levels">
         {/* Only a super admin reaches this page, and only a super admin can
             write a restaurant row, so the button does not need a guard the
             route has already applied. */}
@@ -259,7 +259,7 @@ export default function UsersPage() {
           title="Adding a user is not built yet. See issue #81."
           className={primaryButton('md')}
         >
-          + Add User
+          + Add user
         </button>
       </PageHeader>
 

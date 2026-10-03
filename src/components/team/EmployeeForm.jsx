@@ -135,9 +135,9 @@ export default function EmployeeForm({
                 <span>
                     <span className="block text-sm font-semibold text-gray-900">On trial</span>
                     <span className="block text-xs text-muted">
-                        Food safety training is not asked for while this is on, and the weekly report
-                        shows them as on trial. Everything else is, including a work permit. Turn it off
-                        when they are hired.
+                        While this is on, food safety training is not needed and the weekly report shows
+                        them as on trial. Everything else is still needed, including a work permit. Untick
+                        it when they are hired.
                     </span>
                 </span>
             </label>
@@ -160,8 +160,8 @@ export default function EmployeeForm({
                     </select>
                 </LockedField>
                 <p className={hintClass}>
-                    Only if they log in. Someone on a trial does not need one, and joining them up
-                    is what lets them see their own shifts later.
+                    Only if they sign in to the Hub. Someone on trial does not need one. Linking an
+                    account lets them see their own shifts.
                 </p>
             </div>
 
@@ -177,7 +177,7 @@ export default function EmployeeForm({
 
             <ModalSection
                 title="Right to work"
-                description="The stamp and the date it runs out, and nothing else. That is everything the hour rules need and none of what we would then have to protect."
+                description="Only the stamp and the date it expires. Nothing else is needed."
             >
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
@@ -222,14 +222,14 @@ export default function EmployeeForm({
                             <p className="text-xs text-amber-700 mt-1">
                                 {permissionFor(formData.workPermission).term} hours a week in term time,
                                 {' '}{permissionFor(formData.workPermission).holiday} in the holiday periods.
-                                The roster will not let a week go out over it.
+                                By default, going over it stops the week being published.
                             </p>
                         )}
                     </div>
                 </div>
 
                 <div className="mb-1">
-                    <label className={labelClass}>Permission runs out</label>
+                    <label className={labelClass}>Permission expires</label>
                     <LockedField label="Permission expiry" value={formData.workPermissionExpires}
                         display={fullDate(formData.workPermissionExpires)}>
                         <input
@@ -240,8 +240,8 @@ export default function EmployeeForm({
                         />
                     </LockedField>
                     <p className={hintClass}>
-                        The roster starts saying so two months out, and stops a week going out once
-                        it has passed.
+                        The roster warns two months before it expires. Once it has expired, it stops the
+                        week being published, unless they applied to renew before then.
                     </p>
                 </div>
 
@@ -264,7 +264,7 @@ export default function EmployeeForm({
                             />
                         </LockedField>
                         <p className={hintClass}>
-                            Somebody who applied before their permission ran out may keep working
+                            Someone who applied before their permission expired may keep working
                             while it is processed. Leave it empty if they have not applied.
                         </p>
                     </div>
@@ -303,7 +303,6 @@ export default function EmployeeForm({
 
             <ModalSection
                 title="Food safety"
-                description="The expiry is the part that matters. A certificate nobody is watching is one that has quietly run out."
             >
 
                 <div className="mb-3">
@@ -324,7 +323,7 @@ export default function EmployeeForm({
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                        <label className={labelClass}>Sat on</label>
+                        <label className={labelClass}>Training date</label>
                         <LockedField label="Training date" value={formData.foodSafetyIssued}
                             display={fullDate(formData.foodSafetyIssued)}>
                             <input
@@ -347,7 +346,7 @@ export default function EmployeeForm({
                         </LockedField>
                     </div>
                     <div>
-                        <label className={labelClass}>Runs out</label>
+                        <label className={labelClass}>Expires</label>
                         <LockedField label="Training expiry" value={formData.foodSafetyExpires}
                             display={fullDate(formData.foodSafetyExpires)}>
                             <input
@@ -360,8 +359,8 @@ export default function EmployeeForm({
                     </div>
                 </div>
                 <p className={hintClass}>
-                    Two years from the date it was sat, filled in whenever that date changes and free
-                    to change afterwards. The roster says so two months before it runs out.
+                    Set to two years after the training date whenever that date changes. You can
+                    change it. The roster warns before it expires.
                 </p>
 
             </ModalSection>

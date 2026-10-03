@@ -34,12 +34,12 @@ beforeEach(() => {
 describe('with nothing chosen', () => {
     it('says the blank option is the one nothing gets you', () => {
         render(<PreferencesPage />)
-        expect(screen.getByRole('option', { name: 'Cost Dashboard (nothing chosen)' })).toBeInTheDocument()
+        expect(screen.getByRole('option', { name: 'Cost dashboard (default)' })).toBeInTheDocument()
     })
 
     it('says where signing in takes you', () => {
         render(<PreferencesPage />)
-        expect(screen.getByText(/Signing in takes you to/)).toHaveTextContent('Cost Dashboard')
+        expect(screen.getByText(/Signing in takes you to/)).toHaveTextContent('Cost dashboard')
     })
 })
 
@@ -51,7 +51,7 @@ describe('with something chosen', () => {
         render(<PreferencesPage />)
 
         expect(screen.getByText(/Signing in takes you to/)).toHaveTextContent('Calendar')
-        expect(screen.getByRole('option', { name: 'Cost Dashboard (nothing chosen)' })).toBeInTheDocument()
+        expect(screen.getByRole('option', { name: 'Cost dashboard (default)' })).toBeInTheDocument()
     })
 
     it('opens with that choice already in the box', () => {

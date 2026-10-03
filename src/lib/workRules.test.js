@@ -349,7 +349,7 @@ describe('checkWeek', () => {
             const found = run(shifts, [applied({ permission_renewal_applied: '2026-08-01' })])
             expect(found[0].kind).toBe('permissionRenewedSameDay')
             expect(found[0].level).toBe('warn')
-            expect(found[0].text).toMatch(/worth confirming/)
+            expect(found[0].text).toMatch(/check this one/)
         })
 
         it('blocks a renewal applied for after it ran out', () => {

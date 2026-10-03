@@ -139,7 +139,7 @@ describe('saying what a page is called', () => {
 
 describe('the address a link goes to', () => {
     // Without the search, the day form sends a wide screen to the weekly grid
-    // and Daily Sales looks like a link that does nothing.
+    // and Daily sales looks like a link that does nothing.
     it('carries the search where an item has one', () => {
         expect(navTarget(navItems.find(n => n.path === '/sales'))).toBe('/sales?view=day')
     })

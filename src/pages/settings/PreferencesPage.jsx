@@ -73,7 +73,7 @@ export default function PreferencesPage() {
                             a fact about the account, not about this option, so
                             it is said once beside the button and read from the
                             row that was saved. */}
-                        <option value="">{pageLabel(homeFor(user))} (nothing chosen)</option>
+                        <option value="">{pageLabel(homeFor(user))} (default)</option>
                         {sections.map(section => (
                             <optgroup key={section} label={section}>
                                 {choices.filter(c => c.section === section).map(c => (
@@ -83,9 +83,7 @@ export default function PreferencesPage() {
                         ))}
                     </select>
                     <p className={hintClass}>
-                        Only pages your account can open are on the list, and it is checked
-                        again every time you sign in, so this can never leave you landing on
-                        a page that refuses you.
+                        Only pages you can open are listed.
                     </p>
                 </div>
 

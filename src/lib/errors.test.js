@@ -41,7 +41,7 @@ describe('friendlyError', () => {
     })
 
     it('copes with an error that has no message at all', () => {
-        expect(friendlyError({})).toBe('Something went wrong.')
+        expect(friendlyError({})).toBe('Something went wrong. Please try again.')
     })
 })
 

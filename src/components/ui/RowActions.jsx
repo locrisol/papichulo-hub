@@ -121,7 +121,7 @@ export default function RowActions({ primary, items, label = 'row' }) {
                         onClick={() => setOpen(v => !v)}
                         aria-haspopup="menu"
                         aria-expanded={open}
-                        aria-label={`More for ${label}`}
+                        aria-label={`More actions for ${label}`}
                         className={rowButton()}
                     >
                         More

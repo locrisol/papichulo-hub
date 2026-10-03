@@ -63,7 +63,7 @@ export default function PositionsModal({ positions, restaurantId, onClose, onCha
             const ok = await confirm({
                 title: `Retire ${position.name}?`,
                 message: 'It stays on every roster that already used it and cannot be given to anybody new.',
-                confirmLabel: 'Retire it',
+                confirmLabel: 'Retire',
             })
             if (!ok) return
         }
