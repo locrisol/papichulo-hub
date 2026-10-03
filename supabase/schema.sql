@@ -1444,6 +1444,21 @@ COMMENT ON TABLE "public"."weekly_reports" IS 'One weekly report per restaurant 
 COMMENT ON COLUMN "public"."weekly_reports"."charts" IS 'The chart pictures drawn when it was published, as {key: url}. Frozen for the same reason the figures are: the mail points at these, and a mail opened in six months has to show the week it was about rather than the week as it looks now.';
 COMMENT ON COLUMN "public"."weekly_reports"."figures" IS 'The sales, cost and profit figures as they stood when the report was published. Null while it is a draft, because a draft reads them live. Frozen on publish so an invoice entered afterwards cannot change what people were already sent.';
 COMMENT ON COLUMN "public"."weekly_reports"."previous_figures" IS 'What the last mail said, kept so the next one can say what changed. A correction that only says "this replaces Monday''s" makes everybody read the whole thing again looking for the difference; this is what lets it say "food was 31.2%, it is 29.8%" instead. Null until a report has been sent twice.';
+
+-- Which published report each person has opened in the Hub, for the owners'
+-- Reports badge. Written by the report page for every role. In audit_skips(),
+-- so opening a report is not a change.
+CREATE TABLE IF NOT EXISTS "public"."report_reads" (
+    "report_id" "uuid" NOT NULL,
+    "user_id" "uuid" DEFAULT "auth"."uid"() NOT NULL,
+    "send_count" integer DEFAULT 1 NOT NULL,
+    "read_at" timestamp with time zone DEFAULT "now"() NOT NULL
+);
+
+COMMENT ON TABLE "public"."report_reads" IS 'Which published report each person has opened in the Hub, and which send of it. A correction raises the report''s send_count, so it counts as unread again. Written by the report page; read by my_badges().';
+
+ALTER TABLE ONLY "public"."report_reads"
+    ADD CONSTRAINT "report_reads_pkey" PRIMARY KEY ("report_id", "user_id");
 COMMENT ON COLUMN "public"."weekly_reports"."send_count" IS 'How many times this report has been mailed. Two or more means somebody re-opened it and corrected something, and the mail says so.';
 COMMENT ON COLUMN "public"."weekly_reports"."sent_to" IS 'The addresses this report was actually mailed to, frozen at publish. Not the same as restaurants.report_recipients, which is the list going forward and changes.';
 ALTER TABLE ONLY "public"."weekly_reports"
@@ -2085,6 +2100,10 @@ ALTER TABLE ONLY "public"."weekly_reports"
     ADD CONSTRAINT "weekly_reports_published_by_fkey" FOREIGN KEY ("published_by") REFERENCES "public"."users"("id");
 ALTER TABLE ONLY "public"."weekly_reports"
     ADD CONSTRAINT "weekly_reports_restaurant_id_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."report_reads"
+    ADD CONSTRAINT "report_reads_report_id_fkey" FOREIGN KEY ("report_id") REFERENCES "public"."weekly_reports"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."report_reads"
+    ADD CONSTRAINT "report_reads_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE CASCADE;
 ALTER TABLE ONLY "public"."report_sections"
     ADD CONSTRAINT "report_sections_report_id_fkey" FOREIGN KEY ("report_id") REFERENCES "public"."weekly_reports"("id") ON DELETE CASCADE;
 ALTER TABLE ONLY "public"."report_items"
@@ -2965,7 +2984,7 @@ $$;
 CREATE OR REPLACE FUNCTION "public"."audit_skips"() RETURNS "text"[]
     LANGUAGE "sql" IMMUTABLE
     SET "search_path" TO 'public', 'pg_temp'
-    AS $$ select array['change_log', 'login_events', 'predictions'] $$;
+    AS $$ select array['change_log', 'login_events', 'predictions', 'report_reads'] $$;
 
 CREATE OR REPLACE FUNCTION "public"."audit_ignored_columns"() RETURNS "text"[]
     LANGUAGE "sql" IMMUTABLE
@@ -3347,6 +3366,157 @@ begin
     return stamped;
 end $$;
 
+-- Everything the sidebar badges count, in one call. Security definer for two
+-- counts a person cannot read (an edited shift's real date, the allergen
+-- change date), so it repeats the policies' checks itself.
+create or replace function public.my_badges(restaurant uuid) returns jsonb
+    language plpgsql stable security definer set search_path to 'public', 'pg_temp' as $$
+declare
+    my_role text := public.get_my_role();
+    my_restaurant uuid := public.get_my_restaurant_id();
+    me uuid := public.get_my_employee_id();
+    today date := (now() at time zone 'Europe/Dublin')::date;
+    -- The Hub's weeks start on Sunday (weekStartOf).
+    this_week date := today - (extract(dow from today))::int;
+    out jsonb := '{}'::jsonb;
+    first_read timestamptz;
+begin
+    -- get_my_role is null for a switched off account.
+    if my_role is null then
+        return out;
+    end if;
+
+    -- A colleague asking them to take or swap a shift still to come. By the
+    -- shifts' real dates, which staff cannot read once edited. Either shift:
+    -- "can I take your Saturday" has only the one being taken. The earlier
+    -- of the two, the same as requestDate in lib/shiftRequests.
+    if me is not null then
+        out := out || jsonb_build_object('asks', (
+            select count(*) from public.shift_requests sr
+              left join public.roster_shifts g on g.id = sr.give_shift_id
+              left join public.roster_shifts t on t.id = sr.take_shift_id
+             where sr.to_employee_id = me and sr.status = 'asked'
+               and least(g.shift_date, t.shift_date) >= today));
+    end if;
+
+    -- Everything else is about one restaurant, and only managers act on it.
+    if my_role not in ('store_manager', 'owner', 'super_admin') then
+        return out;
+    end if;
+    if my_role <> 'super_admin' and restaurant is distinct from my_restaurant then
+        return out;
+    end if;
+
+    out := out || jsonb_build_object(
+        'me', me,
+        'role', my_role,
+        'today', today,
+
+        -- Roster: swaps both people agreed, still to come, and time off not
+        -- answered. Who may answer which is worked out by the app (lib/badges).
+        'swaps', (
+            select count(*) from public.shift_requests sr
+              left join public.roster_shifts g on g.id = sr.give_shift_id
+              left join public.roster_shifts t on t.id = sr.take_shift_id
+             where sr.restaurant_id = restaurant and sr.status = 'accepted'
+               and least(g.shift_date, t.shift_date) >= today),
+        'absences', coalesce((
+            select jsonb_agg(jsonb_build_object(
+                'employee_id', a.employee_id, 'kind', a.kind,
+                'can_work_from', a.can_work_from, 'can_work_to', a.can_work_to,
+                'asker_role', u.role))
+              from public.absences a
+              join public.employees e on e.id = a.employee_id
+              left join public.users u on u.id = e.user_id
+             where a.restaurant_id = restaurant and a.status = 'requested'), '[]'::jsonb),
+        'has_store_manager', exists (
+            select 1 from public.users u
+             where u.restaurant_id = restaurant and u.role = 'store_manager' and u.is_active and not u.is_test),
+        -- The shifts from today to the end of next week (Saturday), for what
+        -- needs publishing.
+        'shifts', coalesce((
+            select jsonb_agg(jsonb_build_object('shift_date', s.shift_date, 'published_at', s.published_at))
+              from public.roster_shifts s
+             where s.restaurant_id = restaurant and s.shift_date between today and this_week + 13), '[]'::jsonb),
+
+        -- Public allergens: whether a new printed sheet is due.
+        'sheet', (
+            select jsonb_build_object(
+                'printed_at', r.allergen_sheet_printed_at,
+                'every_months', r.allergen_sheet_every_months,
+                'changed_at', public.allergens_changed_at())
+              from public.restaurants r where r.id = restaurant),
+
+        -- Dishes on sale on the allergen sheet with nothing in them.
+        'empty_dishes', (
+            select count(*) from public.menu_items m
+              join public.menu_categories c on c.id = m.category_id
+             where m.is_active and c.is_active and c.on_allergen_sheet
+               and not exists (select 1 from public.menu_item_components mc where mc.menu_item_id = m.id)),
+
+        -- A stock take left open with nothing counted for a day.
+        'stock_open', (
+            select count(*) from public.stock_takes t
+             where t.restaurant_id = restaurant and t.status = 'in_progress'
+               and greatest(t.started_at, t.reopened_at,
+                            (select max(l.counted_at) from public.stock_take_lines l where l.stock_take_id = t.id))
+                   < now() - interval '24 hours'),
+
+        -- Delivery problems a week old with nothing, or only part, back. No
+        -- older than the sixty days Delivery problems lists, or the badge
+        -- would count one the page does not show.
+        'claims_late', (
+            select count(*) from public.invoice_line_claims cl
+             where cl.restaurant_id = restaurant and cl.status = 'open'
+               and cl.raised_on <= today - 7 and cl.raised_on >= today - 60
+               and (cl.amount is null or coalesce(cl.credited_amount, 0) < cl.amount))
+    );
+
+    -- Reports owed and re-opened, for whoever writes them.
+    if my_role in ('store_manager', 'super_admin') then
+        out := out || jsonb_build_object(
+            'reports', coalesce((
+                select jsonb_agg(jsonb_build_object('week_start', w.week_start, 'status', w.status,
+                                                    'send_count', w.send_count, 'sent_to', w.sent_to))
+                  from public.weekly_reports w
+                 where w.restaurant_id = restaurant and w.week_start >= this_week - 7 * 10), '[]'::jsonb),
+            -- Logins at this restaurant joined to nobody on the team. Not an
+            -- owner, who is often on no roster at all and would keep it on.
+            'unlinked', (
+                select count(*) from public.users u
+                 where u.restaurant_id = restaurant and u.is_active and not u.is_test
+                   and u.role in ('employee', 'store_manager')
+                   and not exists (select 1 from public.employees e where e.user_id = u.id)));
+    end if;
+
+    -- Published reports an owner has not opened. Only once they have opened
+    -- one in the Hub at all, and only those published after that: an owner
+    -- who reads the mail and never the Hub is never shown a pile.
+    if my_role = 'owner' then
+        select min(rr.read_at) into first_read from public.report_reads rr where rr.user_id = auth.uid();
+        out := out || jsonb_build_object('unread', case when first_read is null then 0 else (
+            select count(*) from public.weekly_reports w
+             where w.restaurant_id = restaurant and w.status = 'published'
+               and w.published_at > greatest(first_read, now() - interval '28 days')
+               and not exists (select 1 from public.report_reads rr
+                                where rr.report_id = w.id and rr.user_id = auth.uid() and rr.send_count >= w.send_count))
+        end);
+    end if;
+
+    -- A listings page that has not been read for eight days, for the super admin.
+    if my_role = 'super_admin' then
+        out := out || jsonb_build_object('dead_pages', (
+            select count(*) from public.places p
+              join public.restaurant_places rp on rp.place_id = p.id
+             where rp.restaurant_id = restaurant and rp.is_active and p.page_url is not null
+               and (p.last_read_at is null or p.last_read_at < now() - interval '8 days')));
+    end if;
+
+    return out;
+end $$;
+
+comment on function public.my_badges(uuid) is 'Everything the sidebar badges count for the person asking, at one restaurant, in one call. Security definer, so it repeats the policies'' checks: nothing for a switched off account, and only their own shift asks for anybody but a super admin looking at another restaurant.';
+
 COMMENT ON FUNCTION "public"."allergen_sheet_printed"("restaurant" "uuid") IS 'Stamps now() as when the allergen sheet was last printed for a restaurant. Managers and owners for their own restaurant, the super admin for any. Returns the stamp.';
 COMMENT ON FUNCTION "public"."allergens_changed_at"() IS 'When anything on the allergen sheet last changed, from the change log: allergens, dishes, what is in them, their categories, recipes, and a product renamed, switched on or off, made a MIX or moved section. Not prices, VAT, quantities or notes. Null when the log holds no such change.';
 COMMENT ON FUNCTION "public"."answer_time_off"("request_id" "uuid", "answer" "text", "clear_shift_ids" "uuid"[]) IS 'Approves or declines a request for time off that is still waiting, and on approval takes off the roster those of the given shifts that are theirs and inside the dates, recording them in cleared_shifts. All in one transaction. Managers only, under their own row rules. Returns the answered row.';
@@ -3389,6 +3559,8 @@ revoke all on function "public"."diary_calendar_ids_guard"() from public, anon, 
 grant execute on function "public"."diary_calendar_ids_guard"() to service_role;
 revoke all on function "public"."finish_checklist_round"("round" "uuid") from public, anon;
 grant execute on function "public"."finish_checklist_round"("round" "uuid") to authenticated, service_role;
+revoke all on function "public"."my_badges"("restaurant" "uuid") from public, anon;
+grant execute on function "public"."my_badges"("restaurant" "uuid") to authenticated, service_role;
 revoke all on function "public"."handle_delete_user"() from public, anon, authenticated, service_role;
 grant execute on function "public"."handle_delete_user"() to service_role;
 revoke all on function "public"."handle_new_user"() from public, anon, authenticated, service_role;
@@ -3851,6 +4023,19 @@ ALTER TABLE "public"."weekly_reports" ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "weekly_reports_select" ON "public"."weekly_reports" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
 CREATE POLICY "weekly_reports_write" ON "public"."weekly_reports" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = 'store_manager'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = 'store_manager'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+
+-- Your own rows, and only for a published report you can already read: the
+-- report is looked up through weekly_reports' own policy. No delete.
+ALTER TABLE "public"."report_reads" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "report_reads_select" ON "public"."report_reads" FOR SELECT TO "authenticated" USING (("user_id" = ( SELECT "auth"."uid"() )));
+
+CREATE POLICY "report_reads_write" ON "public"."report_reads" FOR INSERT TO "authenticated" WITH CHECK ((("user_id" = ( SELECT "auth"."uid"() )) AND (EXISTS ( SELECT 1 FROM "public"."weekly_reports" "w" WHERE (("w"."id" = "report_reads"."report_id") AND ("w"."status" = 'published'::"text"))))));
+
+CREATE POLICY "report_reads_update" ON "public"."report_reads" FOR UPDATE TO "authenticated" USING (("user_id" = ( SELECT "auth"."uid"() ))) WITH CHECK ((("user_id" = ( SELECT "auth"."uid"() )) AND (EXISTS ( SELECT 1 FROM "public"."weekly_reports" "w" WHERE (("w"."id" = "report_reads"."report_id") AND ("w"."status" = 'published'::"text"))))));
+
+revoke all on table "public"."report_reads" from anon, authenticated, public;
+grant select, insert, update on table "public"."report_reads" to authenticated;
 
 ALTER TABLE "public"."report_sections" ENABLE ROW LEVEL SECURITY;
 
