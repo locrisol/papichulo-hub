@@ -12,6 +12,8 @@ import SignInHistory from '@/components/settings/SignInHistory'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import ArrangeList from '@/components/ui/ArrangeList'
 import PageHeader from '@/components/ui/PageHeader'
+import Notice from '@/components/ui/Notice'
+import AddUserModal from '@/components/settings/AddUserModal'
 
 // Everyone with an account, and turning them on or off.
 //
@@ -80,6 +82,18 @@ function groupByRestaurant(users, restaurants) {
 //
 // They are still shown. Hiding them would make this screen disagree with the
 // database, and the whole point of the page is that it does not.
+// Somebody who has never chosen their own password: an invite not yet
+// opened, or an account made with a password somebody else picked. The Hub
+// asks them for one the next time they sign in.
+function NoPasswordChip({ person }) {
+  if (person.is_test || person.password_set_at !== null) return null
+  return (
+    <span className={`${badge} bg-amber-100 text-amber-800 ml-2`}>
+      No password chosen yet
+    </span>
+  )
+}
+
 function TestChip({ person }) {
   if (!person.is_test) return null
   return (
@@ -101,6 +115,8 @@ export default function UsersPage() {
   // everybody else, so this stays empty for them whatever the page does.
   const [logins, setLogins] = useState([])
   const [arranging, setArranging] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const [added, setAdded] = useState('')
   const [showFor, setShowFor] = useState(null)
   const [showEvents, setShowEvents] = useState([])
 
@@ -171,11 +187,10 @@ export default function UsersPage() {
   async function toggleUserActive(person, currentStatus) {
     if (currentStatus) {
       const ok = await confirm({
-        title: `Deactivate ${person.full_name || person.email}?`,
+        title: `Deactivate ${person.full_name}?`,
         message: 'They will not be able to sign in. Nothing they have entered is touched, and you can '
           + 'reactivate them here at any time.',
         details: [
-          { label: 'Email', value: person.email || '' },
           { label: 'Role', value: roleLabel(person.role) },
           { label: 'Restaurant', value: getRestaurantName(person.restaurant_id) },
         ],
@@ -242,9 +257,9 @@ export default function UsersPage() {
 
   return (
     <div>
-      {/* Adding a user is not built yet. Creating an account needs the service
-          role key, which cannot go in the browser, so the plan is to let people
-          sign themselves up and have a manager approve them. That is #81. */}
+      {/* Adding an account sends an invite through the invite-user function,
+          which holds the service key the browser cannot. Signing up stays off:
+          nobody gets an account they were not given. */}
       <PageHeader title="Users" subtitle="Manage user accounts and access levels">
         {/* Only a super admin reaches this page, and only a super admin can
             write a restaurant row, so the button does not need a guard the
@@ -254,12 +269,8 @@ export default function UsersPage() {
             Arrange restaurants
           </button>
         )}
-        <button
-          disabled
-          title="Adding a user is not built yet. See issue #81."
-          className={primaryButton('md')}
-        >
-          + Add user
+        <button onClick={() => { setAdded(''); setAdding(true) }} className={primaryButton('md')}>
+          + Add account
         </button>
       </PageHeader>
 
@@ -267,6 +278,15 @@ export default function UsersPage() {
         <ErrorBanner className="mb-4">
           {error}
         </ErrorBanner>
+      )}
+      {added && <Notice tone="good" className="mb-4">{added}</Notice>}
+
+      {adding && (
+        <AddUserModal
+          restaurants={restaurants}
+          onClose={() => setAdding(false)}
+          onAdded={said => { setAdding(false); setAdded(said); fetchData() }}
+        />
       )}
 
       {loading ? (
@@ -318,6 +338,7 @@ export default function UsersPage() {
                   {u.full_name}
                   {u.id === user?.id && <span className="text-xs text-muted ml-2">you</span>}
                   <TestChip person={u} />
+                  <NoPasswordChip person={u} />
                 </p>
                 <span className={`${u.is_active ? activeBadge : inactiveBadge} flex-shrink-0`}>
                   {u.is_active ? 'Active' : 'Inactive'}
@@ -370,6 +391,7 @@ export default function UsersPage() {
                     {u.full_name}
                     {u.id === user?.id && <span className="text-xs text-muted ml-2">you</span>}
                     <TestChip person={u} />
+                  <NoPasswordChip person={u} />
                   </td>
                   <td className="px-4 py-3">
                     <span className={`${badge} bg-green-50 text-green-700`}>

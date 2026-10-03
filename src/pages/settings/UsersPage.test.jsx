@@ -17,15 +17,16 @@ const USERS = [
     { id: 'u1', full_name: 'Ana', role: 'employee', restaurant_id: 'dl', is_active: true },
     { id: 'u4', full_name: 'Aaron', role: 'store_manager', restaurant_id: 'dl', is_active: true },
     { id: 'u5', full_name: 'Zoe', role: 'owner', restaurant_id: 'dl', is_active: true },
-    { id: 'me', full_name: 'Leandro', role: 'super_admin', restaurant_id: 'pc', is_active: true },
+    { id: 'me', full_name: 'Leandro', role: 'super_admin', restaurant_id: 'pc', is_active: true, password_set_at: null },
     { id: 'u3', full_name: 'Nobody Home', role: 'employee', restaurant_id: null, is_active: true },
-    { id: 'u6', full_name: 'Test Owner', role: 'owner', restaurant_id: 'pc', is_active: true, is_test: true },
+    { id: 'u6', full_name: 'Test Owner', role: 'owner', restaurant_id: 'pc', is_active: true, is_test: true, password_set_at: null },
 ]
 
 const db = mockSupabase({
     users: { data: USERS, error: null },
     restaurants: { data: RESTAURANTS, error: null },
     login_events: { data: [], error: null },
+    employees: { data: [{ id: 'e1', full_name: 'Maria Silva', user_id: null, ended_on: null }], error: null },
 })
 
 vi.mock('@/lib/supabase', () => ({ supabase: new Proxy({}, { get: (_, k) => db[k] }) }))
@@ -58,7 +59,7 @@ describe('UsersPage, grouped by restaurant', () => {
     it('sorts people by role, highest first, then by name', async () => {
         await show()
         const rows = document.querySelectorAll('table tbody tr td:first-child')
-        const names = [...rows].map(td => td.textContent.replace(/you|test/g, '').trim())
+        const names = [...rows].map(td => td.textContent.replace(/you|test|No password chosen yet/g, '').trim())
         expect(names.slice(0, 5)).toEqual(['Leandro', 'Test Owner', 'Zoe', 'Aaron', 'Ana'])
     })
 
@@ -137,5 +138,49 @@ describe('developer accounts', () => {
         await show()
         const leandro = screen.getAllByText('Leandro')[0].closest('tr, div')
         expect(leandro.textContent).not.toContain('test')
+    })
+})
+
+// Every account so far was made with a password somebody else picked.
+describe('who has not chosen a password yet', () => {
+    it('says so on each of them, and never on a developer account', async () => {
+        await show()
+        const row = name => screen.getAllByText(name).map(el => el.closest('tr')).find(Boolean)
+        expect(row('Leandro').textContent).toContain('No password chosen yet')
+        expect(row('Test Owner').textContent).not.toContain('No password chosen yet')
+    })
+})
+
+// The button was there, disabled, since the start.
+describe('adding an account', () => {
+    it('sends an invite through the function and says so', async () => {
+        db.functions.invoke = vi.fn(() => Promise.resolve({ data: { id: 'new' }, error: null }))
+        await show()
+        await userEvent.click(screen.getByRole('button', { name: '+ Add account' }))
+        await userEvent.selectOptions(screen.getByLabelText('Restaurant'), 'pc')
+        await userEvent.selectOptions(await screen.findByLabelText('Person on the team'), 'e1')
+        expect(screen.getByLabelText('Name')).toHaveValue('Maria Silva')
+        await userEvent.type(screen.getByLabelText('Email address'), 'maria@papichulo.ie')
+        await userEvent.click(screen.getByRole('button', { name: 'Send the invite' }))
+
+        await waitFor(() => expect(db.functions.invoke).toHaveBeenCalledWith('invite-user', {
+            body: {
+                fullName: 'Maria Silva', email: 'maria@papichulo.ie', role: 'employee',
+                restaurantId: 'pc', employeeId: 'e1', origin: window.location.origin,
+            },
+        }))
+        expect(await screen.findByText(/Invite sent to maria@papichulo.ie/)).toBeInTheDocument()
+    })
+
+    it('keeps the dialog open and says why when it did not go', async () => {
+        db.functions.invoke = vi.fn(() => Promise.resolve({ data: { error: 'That email already has an account.' }, error: null }))
+        await show()
+        await userEvent.click(screen.getByRole('button', { name: '+ Add account' }))
+        await userEvent.selectOptions(screen.getByLabelText('Restaurant'), 'pc')
+        await userEvent.type(screen.getByLabelText('Name'), 'Maria Silva')
+        await userEvent.type(screen.getByLabelText('Email address'), 'maria@papichulo.ie')
+        await userEvent.click(screen.getByRole('button', { name: 'Send the invite' }))
+        expect(await screen.findByText('That email already has an account.')).toBeInTheDocument()
+        expect(screen.getByRole('dialog', { name: 'Add an account' })).toBeInTheDocument()
     })
 })
