@@ -12,7 +12,7 @@
 // database.
 
 import {
-    addDays, addMonths, dayLabel, daysBetween, monthStart, shortDate, stampDay, toISODate, WEEKDAY_NAMES, weekStartOf,
+    addDays, addMonths, dayLabel, daysBetween, monthName, monthStart, shortDate, stampDay, toISODate, WEEKDAY_NAMES, weekStartOf,
 } from '@/lib/dates'
 
 // Timestamps come back from the database as text with an offset, and a
@@ -374,10 +374,6 @@ export function weekCleaning({ lists, categories, tasks, rounds, ticks, weekStar
     }
     const byDay = ticksByWeekday(known.filter(t => ms(t.done_at) >= start))
     return { lists: out, byDay, busiest: busiestWords(byDay) }
-}
-
-function monthName(date) {
-    return new Date(date + 'T00:00:00').toLocaleDateString('en-IE', { month: 'long' })
 }
 
 // Where each ticked thing sits, for saying it in a sentence: Kitchen, Small

@@ -11,7 +11,7 @@
 // this second pressed the button expects to see, and a timestamp reads as
 // something to parse.
 
-const TIME = { hour: '2-digit', minute: '2-digit' }
+import { clockTime, shortDate, stampDay } from '@/lib/dates'
 
 export function countedAt(iso, now = new Date()) {
     if (!iso) return ''
@@ -21,7 +21,7 @@ export function countedAt(iso, now = new Date()) {
     const seconds = (now - at) / 1000
     if (seconds >= 0 && seconds < 60) return 'just now'
 
-    const time = at.toLocaleTimeString('en-IE', TIME)
+    const time = clockTime(at)
 
     if (sameDay(at, now)) return time
 
@@ -31,7 +31,7 @@ export function countedAt(iso, now = new Date()) {
 
     // Anything older says the date outright. A count that has been open for a
     // week is exactly when the day matters most.
-    return `${at.toLocaleDateString('en-IE', { day: 'numeric', month: 'short' })} ${time}`
+    return `${shortDate(stampDay(at))} ${time}`
 }
 
 // The whole line under a count, which is the time and who wrote it.

@@ -132,6 +132,14 @@ export function monthLabel(dateStr) {
     const d = new Date(dateStr + 'T00:00:00')
     return d.toLocaleDateString('en-IE', { month: 'long', year: 'numeric' })
 }
+
+// Just the month, for example August. A monthly checklist names its stretch
+// this way, and the checklist record and its report each had a copy.
+export function monthName(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00')
+    return d.toLocaleDateString('en-IE', { month: 'long' })
+}
+
 // Which week of the year a week is, counting the way the reports always have.
 //
 // Not the ISO week number. ISO weeks run Monday to Sunday and this system runs

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { toISODate, todayISO, weekStartOf, weekDates, shortDate, dayLabel, dayList, addDays, monthStart, addMonths, monthLabel, fullDate, weekMonthLabel, weekNumber, weekRange , stampDate, stampDateTime, monthYearOf, clockTime, stampDay, WEEKDAY_NAMES, daysBetween } from '@/lib/dates'
+import { toISODate, todayISO, weekStartOf, weekDates, shortDate, dayLabel, dayList, addDays, monthStart, addMonths, monthLabel, monthName, fullDate, weekMonthLabel, weekNumber, weekRange , stampDate, stampDateTime, monthYearOf, clockTime, stampDay, WEEKDAY_NAMES, daysBetween } from '@/lib/dates'
 
 describe('toISODate', () => {
     it('formats a date as YYYY-MM-DD', () => {
@@ -197,6 +197,13 @@ describe('addMonths', () => {
 describe('monthLabel', () => {
     it('gives the month and year', () => {
         expect(monthLabel('2026-08-01')).toBe('August 2026')
+    })
+})
+
+describe('monthName', () => {
+    it('gives the month alone, whatever day of it', () => {
+        expect(monthName('2026-08-01')).toBe('August')
+        expect(monthName('2026-09-30')).toBe('September')
     })
 })
 

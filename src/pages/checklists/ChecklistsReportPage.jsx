@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase, everyRow } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
-import { addDays, shortDate, stampDay, todayISO, weekStartOf } from '@/lib/dates'
+import { addDays, monthName, shortDate, stampDay, todayISO, weekStartOf } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
 import { card, cardHeader, rowButton, secondaryButton, segmentButton, segmentTrack } from '@/lib/controlStyles'
 import { fmtPct } from '@/lib/format'
@@ -264,7 +264,7 @@ export default function ChecklistsReportPage() {
 // How a stretch is named on the record: its first day for a week or a few, its
 // month for a month.
 function stretchLabel(list, stretch) {
-    if (list.repeats === 'monthly') return new Date(stretch.from + 'T00:00:00').toLocaleDateString('en-IE', { month: 'long' })
+    if (list.repeats === 'monthly') return monthName(stretch.from)
     return list.every_weeks === 1 ? `Week of ${shortDate(stretch.from)}` : `${shortDate(stretch.from)} to ${shortDate(stretch.to)}`
 }
 
