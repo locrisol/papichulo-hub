@@ -347,6 +347,29 @@ describe('a label reaches Google', () => {
     })
 })
 
+// The Hub takes a cancelled entry off the roster; Google showed it as if it
+// was still on, and kept the time blocked.
+describe('a cancelled entry in Google', () => {
+    const lunch = {
+        id: 'c1', kind: 'catering', title: 'Lunch for twelve', status: 'cancelled',
+        starts_on: '2026-10-16', starts_at: '12:00:00', ends_at: '14:00:00', labels: ['Office'],
+    }
+
+    it('says so first in the title, before anything that could be cut off', () => {
+        expect(eventBody(lunch).summary).toBe('[Cancelled] Lunch for twelve [Office]')
+    })
+
+    it('leaves the time free', () => {
+        expect(eventBody(lunch).transparency).toBe('transparent')
+    })
+
+    it('goes back to its normal title and busy time when it is on again', () => {
+        const on = eventBody({ ...lunch, status: 'confirmed' })
+        expect(on.summary).toBe('Lunch for twelve [Office]')
+        expect(on.transparency).toBe('opaque')
+    })
+})
+
 // ---- who may change which calendar, and how the ids are used ----
 //
 // Found by the audit of 28 September. The function writes as hub@, which
