@@ -16,7 +16,7 @@ import {
 } from '@/lib/roster'
 import { wholeDaysOn, holidayHoursInWeek } from '@/lib/absences'
 import { extraLabel, whatIsOn } from '@/lib/dayExtras'
-import { rowsOn, markedWords, ownRows, sharedRows, placeName } from '@/lib/nearby'
+import { rowsOn, chipWords, ownRows, sharedRows, placeName } from '@/lib/nearby'
 import { onDate, showsOnRoster, kindLabel, bandsForWeek, labelsOf } from '@/lib/diary'
 import { bankHolidayFor, BANK_HOLIDAY_LABEL } from '@/lib/bankHolidays'
 
@@ -179,12 +179,13 @@ export function weekTable({
     //
     // The cards carry no place name. The band is named after the place, and
     // saying it again on every card under it is the place said twice. A night
-    // the feed stopped listing says so on its card, the same as on screen.
+    // the feed stopped listing is not here at all, the same as on screen. See
+    // nearbyRows.
     const headlines = ownRows(nearby, nearbyPlaces).map(group => ({
         name: placeName(group.place, { short: true }),
         kind: group.kind,
         perDay: (dates || []).map(d => rowsOn(group.rows, d).map(row => ({
-            name: markedWords(row, { withPlace: false }),
+            name: chipWords(row, { withPlace: false }),
             time: row.time,
             kind: row.kind,
             checked: row.checked !== false,
@@ -225,7 +226,7 @@ export function weekTable({
                 // his answer to that is the right one: we know it is in Point
                 // Square, we are there. A sheet and a screen of the same week
                 // disagreeing about a name is two versions of Thursday.
-                name: markedWords(near, { short: true }),
+                name: chipWords(near, { short: true }),
                 time: near.time,
                 kind: near.kind,
                 checked: near.checked !== false,

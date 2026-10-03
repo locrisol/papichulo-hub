@@ -93,26 +93,12 @@ describe('a night that is not going ahead', () => {
         expect(screen.getByText(/Cancelled, so this is an ordinary night/)).toBeInTheDocument()
     })
 
-    // The question somebody looking at it will have: is this news or old news.
-    it('says when the feed last listed one it has stopped listing', () => {
-        render(<EventModal
-            row={row({
-                id: 'e2', name: 'Westlife', event_date: '2026-10-16', status: 'withdrawn',
-                last_seen_at: '2026-09-28T05:15:00',
-            })}
-            onClose={() => {}}
-        />)
-        expect(screen.getByText(/No longer listed on Ticketmaster/)).toBeInTheDocument()
-        expect(screen.getByText('Last listed')).toBeInTheDocument()
-        expect(screen.getByText('28/09/2026')).toBeInTheDocument()
-    })
-
     it('says nothing of the kind about a night still on sale', () => {
         render(<EventModal
-            row={row({ id: 'e3', name: 'Westlife', event_date: '2026-10-16', status: 'onsale', last_seen_at: '2026-09-28T05:15:00' })}
+            row={row({ id: 'e3', name: 'Westlife', event_date: '2026-10-16', status: 'onsale' })}
             onClose={() => {}}
         />)
-        expect(screen.queryByText('Last listed')).toBeNull()
+        expect(screen.queryByText(/Cancelled/)).toBeNull()
     })
 })
 

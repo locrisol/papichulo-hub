@@ -23,9 +23,8 @@ function Row({ item, restaurants, onOpen, canEdit }) {
     const entry = item.source === 'diary' ? item.entry : null
     const edge = kindChip(item.kind).split(' ').find(c => c.startsWith('border-l-')) || 'border-l-gray-400'
     const tint = kindTag(item.kind)
-    // A listing that is not going ahead says so the way a diary entry's own
-    // status does, beside the kind. Only a cancelled one is struck through: one
-    // the feed stopped listing may still be on. See DiaryChip.
+    // A listing called off says so the way a diary entry's own status does,
+    // beside the kind, and is struck through. See DiaryChip.
     const off = offWords(item.off)
 
     const inside = (

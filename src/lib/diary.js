@@ -623,8 +623,7 @@ export function calendarItems({ entries, nearby, dayNotes, from, to }) {
                 checked: row.checked !== false,
                 // A cancelled night stays here, struck through, and the
                 // roster drops it; this is where somebody finds out why. One
-                // the feed stopped listing is said in words here and on the
-                // roster both.
+                // the feed stopped listing is on neither. See nearbyRows.
                 off: row.off || '',
                 place: row.place,
                 entry: event,

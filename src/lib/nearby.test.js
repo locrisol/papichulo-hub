@@ -41,13 +41,13 @@ import {
     couldBeSamePlace,
     offFor,
     offWords,
-    markedWords,
     forRoster,
     feedWords,
     feedTrouble,
     placeToFill,
     rosterNearby,
 } from '@/lib/nearby'
+import { calendarItems } from '@/lib/diary'
 
 const arena = { id: 'p1', name: '3Arena', short_name: '3Arena', ticketmaster_venue_id: 'KovZ9177WYV' }
 const odeon = { id: 'p2', name: 'Odeon Point Square', short_name: 'Odeon', page_url: 'https://www.pointsquare.ie/movie' }
@@ -856,21 +856,7 @@ describe('a night that is not going ahead', () => {
 
     it('has words for the calendar', () => {
         expect(offWords('cancelled')).toBe('Cancelled')
-        expect(offWords('withdrawn')).toBe('No longer listed')
         expect(offWords('')).toBe('')
-    })
-
-    // Ours, written by the sync when a whole answer no longer lists a night
-    // still to come. It is something we worked out rather than something we
-    // were told, so it stays on the roster and says so. Taken off, a show
-    // still on would leave that night looking quiet with nothing to say why.
-    it('keeps a night the feed no longer lists on the roster, marked', () => {
-        const gone = { ...gig, id: 'e6', status: 'withdrawn' }
-        expect(offFor(gone)).toBe('withdrawn')
-        const rows = forRoster(nearbyRows([gig, gone], pairs, {}))
-        expect(rows.map(r => r.event.id)).toEqual(['e1', 'e6'])
-        expect(markedWords(rows[1], { withPlace: false })).toBe('Kings of Leon (No longer listed)')
-        expect(markedWords(rows[0], { withPlace: false })).toBe('Kings of Leon')
     })
 
     // The calendar shares nearbyRows, and it is the one screen that keeps the
@@ -902,6 +888,56 @@ describe('a night that is not going ahead', () => {
         expect(ownRows(rows, headlinePlaces(pairs, {}))).toEqual([
             { place: arena, kind: 'arena', rows: [] },
         ])
+    })
+})
+
+// Ours, written by the sync when a whole answer no longer lists a night still
+// to come. It used to stay on every screen marked "No longer listed". He
+// checked them all against Ticketmaster, 3 Oct 2026: "everything that shows as
+// No longer listed means is not happening anymore, so there is no need to show
+// it on the roster or the Calendar".
+describe('a night the feed no longer lists', () => {
+    const gone = { ...gig, id: 'e6', status: 'withdrawn' }
+    const ok = data => ({ data, error: null })
+
+    it('is still told apart from a cancelled one', () => {
+        expect(offFor(gone)).toBe('withdrawn')
+        expect(offFor({ status: 'Withdrawn' })).toBe('withdrawn')
+    })
+
+    it('is not on the roster or My shifts', () => {
+        expect(rosterNearby(ok([gig, gone]), ok(pairs), {}).rows.map(r => r.event.id))
+            .toEqual(['e1'])
+    })
+
+    it('is not on the calendar, in any view', () => {
+        const rows = nearbyRows([gig, gone], pairs, {})
+        expect(rows.map(r => r.event.id)).toEqual(['e1'])
+        expect(calendarItems({ nearby: rows }).map(i => i.entry.id)).toEqual(['e1'])
+    })
+
+    // Paul Smith had the 7th and the 8th, dropped the 7th and moved everybody
+    // to the 8th. Only the night that went comes off.
+    it('takes off only the night that went', () => {
+        const seventh = { ...gig, id: 'ps7', name: 'Paul Smith', event_date: '2026-10-07', status: 'withdrawn' }
+        const eighth = { ...gig, id: 'ps8', name: 'Paul Smith', event_date: '2026-10-08', status: 'onsale' }
+        expect(nearbyRows([seventh, eighth], pairs, {}).map(r => r.event.id)).toEqual(['ps8'])
+    })
+
+    // The row is drawn from the pairings, so a week whose only night was taken
+    // down reads as the quiet week it now is, rather than losing the row.
+    it('leaves the headline row in place, empty', () => {
+        const out = rosterNearby(ok([gone]), ok(pairs), {})
+        expect(ownRows(out.rows, out.places)).toEqual([{ place: arena, kind: 'arena', rows: [] }])
+    })
+
+    // The sync writes the real status back when Ticketmaster lists the night
+    // again, and that is all it takes for it to show.
+    it('shows again once the feed lists it again', () => {
+        const back = { ...gone, status: 'onsale' }
+        expect(rosterNearby(ok([gig, back]), ok(pairs), {}).rows.map(r => r.event.id))
+            .toEqual(['e1', 'e6'])
+        expect(nearbyRows([gig, back], pairs, {}).map(r => r.off)).toEqual(['', ''])
     })
 })
 
