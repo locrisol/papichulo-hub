@@ -4,6 +4,7 @@ import {
     clock, hours, dayWords, weekWords, periodWords, addDays, hoursPdfPath,
     AWAY_LOOK, KIND_LOOK, BANK_LOOK, COUNTED_DAYS, awayWords,
 } from '../../supabase/functions/weekly-report-email/timesheet'
+import { heldNotice } from '../../supabase/functions/weekly-report-email/email'
 import { readFileSync } from 'node:fs'
 import { bankHolidays as appBankHolidays } from '@/lib/bankHolidays'
 import { ABSENCE_KINDS } from '@/lib/absences'
@@ -197,8 +198,8 @@ describe('going home sick part way through a day', () => {
             periodStart: PERIOD,
             people: personPeriod({ people: [aoife], entries, absences: homeSick(), dates: DATES }),
         })
-        expect(mail.html).toContain('1 part day sick')
-        expect(mail.html).not.toContain('1 day sick')
+        expect(mail.html).toContain('1&nbsp;part&nbsp;day</span>&#32;sick')
+        expect(mail.html).not.toContain('1&nbsp;day</span>&#32;sick')
         expect(mail.html).toMatch(/>Off sick<\/span>&#32;<span[^>]*>part of the day<\/span>/)
         expect(mail.text).toContain('off sick, part of the day')
     })
@@ -470,10 +471,10 @@ describe('the mail itself', () => {
         expect(built().text).toContain('Pay period, two weeks')
     })
 
-    it('gives the summary a column for each week', () => {
+    it('puts week one over week two on a bank holiday fortnight', () => {
         const html = built().html
-        expect(html).toContain('Week 1')
-        expect(html).toContain('Week 2')
+        expect(html).toContain('Week&nbsp;1<br />Week&nbsp;2')
+        expect(html).toMatch(/>13\.38<br \/>6\.00</)
         expect(html).toContain('Everybody')
     })
 
@@ -506,14 +507,66 @@ describe('the mail itself', () => {
         expect(html).not.toMatch(/width="\d{3}"/)
     })
 
-    it('says who it is held for while the redirect is set', () => {
-        expect(built({ held: 'It was for payroll@example.ie' }).html)
-            .toContain('It was for payroll@example.ie')
+    // The send puts the held band in with heldNotice, which looks for the
+    // body tag. The hours mail had none, so a held one looked like a real one.
+    it('takes the held band while the redirect is set', () => {
+        const held = heldNotice(built(), ['payroll@example.ie'])
+        expect(held.html).toContain('Held. This did not go to anyone else.')
+        expect(held.html).toContain('It was for payroll@example.ie')
+    })
+
+    it('is a whole page with the head a phone needs', () => {
+        const html = built().html
+        expect(html.startsWith('<!doctype html><html lang="en"><head><meta charset="utf-8" />')).toBe(true)
+        expect(html).toContain('<meta name="viewport" content="width=device-width,initial-scale=1" />')
+        expect(html).toContain('<title>Hours, 25 October to 7 November 2026, Point Campus</title>')
+        expect(html).toMatch(/<body[^>]*><div style="display:none;[^"]*">25 October to 7 November 2026(&#847;&zwnj;&nbsp;)+<\/div>/)
+        expect(html.endsWith('</body></html>')).toBe(true)
+    })
+
+    // Set on the card alone, a table inside it can fall back to the client's
+    // own font.
+    it('names the font on every table inside the card', () => {
+        const tables = built().html.match(/<table[^>]*>/g).slice(1)
+        expect(tables.length).toBeGreaterThan(3)
+        for (const table of tables) expect(table).toContain('font-family:')
+    })
+
+    // Classic Outlook drops a see-through colour, so every colour is solid.
+    it('has no see-through colour anywhere', () => {
+        const styles = [...built({ test: true }).html.matchAll(/style="([^"]*)"/g)].map(m => m[1])
+        expect(styles.length).toBeGreaterThan(20)
+        expect(styles.filter(st => /#[0-9a-f]{8}\b|rgba?\(|hsla?\(/i.test(st))).toEqual([])
     })
 
     it('carries a note he typed with the send', () => {
         expect(built({ comment: 'Two corrections in week two' }).html)
             .toContain('Two corrections in week two')
+    })
+
+    // HTML reads a line break as a space, so a note typed over two lines
+    // arrived as one.
+    it('keeps the line breaks he typed', () => {
+        const mail = built({ comment: 'Two corrections \r\nin week two' })
+        expect(mail.html).toContain('Two corrections<br />in week two')
+        expect(mail.text).toContain('Two corrections\nin week two')
+    })
+
+    it('keeps the line breaks in a comment on a day', () => {
+        const said = [{ employee_id: 'e1', work_date: '2026-10-28', note: 'Swapped late \nwith Cathal' }]
+        const mail = built({ people: period({ entries: [...entries, ...said] }) })
+        expect(mail.html).toContain('Swapped late<br />with Cathal')
+        expect(mail.text).toContain('      Swapped late\n      with Cathal')
+    })
+
+    // A pasted link is one word that cannot break, and it would hold the mail
+    // wider than a phone the same way a figure that cannot wrap does.
+    it('lets a long typed word break', () => {
+        const url = 'https://example.test/' + 'a'.repeat(99)
+        const cell = built({ comment: url }).html.match(new RegExp(`<div style="([^"]*)"> ?${url} ?</div>`))
+        expect(cell).not.toBeNull()
+        expect(cell[1]).toContain('word-break:break-word;')
+        expect(cell[1]).toContain('overflow-wrap:anywhere;')
     })
 
     it('adds the period up across everybody', () => {
@@ -534,8 +587,123 @@ describe('the mail itself', () => {
             }),
         })
         expect(mail.html).toContain('Off sick')
-        expect(mail.html).toContain('1 day sick')
+        expect(mail.html).toContain('1&nbsp;day</span>&#32;sick')
         expect(mail.text).toContain('off sick')
+    })
+})
+
+// His phone gives the mail 307px, and a mail any wider is one the Gmail app
+// scrambles from top to bottom. A name and five columns of figures came to
+// 362px with a team's three figure totals. The bank holiday column only comes
+// when somebody has bank holiday hours, and only then do the two weeks share a
+// column.
+describe('the summary fits a phone', () => {
+    const summaryOf = html => {
+        const at = html.indexOf('>Who</th>')
+        return html.slice(html.lastIndexOf('<table', at), html.indexOf('</table>', at))
+    }
+    const headCells = html => summaryOf(html).match(/<th[^>]*>/g) || []
+
+    // The longest piece of a cell that cannot break: a cell that cannot wrap
+    // is one piece a line, and in any other only a space or a line breaks it.
+    const longestPiece = (style, inner) => {
+        const lines = inner
+            .replace(/<span style="white-space:nowrap;">([^<]*)<\/span>/g, (_, words) => words.replace(/ /g, '&nbsp;'))
+            .replace(/<br \/>|<div[^>]*>|<\/div>/g, '\n')
+            .replace(/&#32;/g, ' ')
+            .replace(/<[^>]*>/g, '')
+            .replace(/&nbsp;/g, '_')
+            .replace(/&[a-z0-9#]+;/gi, 'x')
+            .split('\n')
+        const pieces = style.includes('white-space:nowrap')
+            ? lines.map(line => line.trim())
+            : lines.flatMap(line => line.split(/\s+/))
+        return Math.max(0, ...pieces.map(piece => piece.length))
+    }
+
+    // A column is as wide as the widest thing anywhere in it, so the table
+    // is the sum of each column's widest piece.
+    const across = html => {
+        const widest = []
+        for (const tr of summaryOf(html).split('<tr>').slice(1)) {
+            const cells = [...tr.matchAll(/<t([hd])[^>]*style="([^"]*)"[^>]*>([\s\S]*?)<\/t\1>/g)]
+            cells.forEach(([, , style, inner], i) => {
+                widest[i] = Math.max(widest[i] || 0, longestPiece(style, inner))
+            })
+        }
+        return widest
+    }
+
+    const trained = [
+        ...entries,
+        shift({ employee_id: 'e1', work_date: '2026-10-29', kind: 'training', starts_at: '09:00:00', ends_at: '21:30:00', hours: 12.5 }),
+    ]
+    // Three figure totals for the team, the way a real fortnight adds up.
+    const busy = Array.from({ length: 12 }, (_, i) => shift({
+        employee_id: i % 2 ? 'e2' : 'e1', work_date: DATES[i], starts_at: '09:00:00', ends_at: '23:59:59', hours: 14.99,
+    }))
+    const mail = (rows, periodStart = PERIOD) => timesheetEmail({
+        restaurantName: 'Point Campus',
+        periodStart,
+        people: personPeriod({
+            people: [aoife, cathal], entries: rows, absences: [],
+            dates: Array.from({ length: 14 }, (_, i) => addDays(periodStart, i)),
+        }),
+    }).html
+
+    // Off the bank holiday, so nobody has bank holiday hours.
+    const offTheDay = rows => rows.map(e => ({ ...e, work_date: e.work_date === '2026-10-26' ? '2026-10-27' : e.work_date }))
+
+    it('leaves the bank holiday column out when nobody has bank holiday hours', () => {
+        const plain = mail(offTheDay(entries))
+        expect(plain).not.toContain('Bank hol.')
+    })
+
+    it('keeps the two weeks side by side when there is no bank holiday column', () => {
+        const plain = mail(offTheDay(entries))
+        expect(headCells(plain)).toHaveLength(5)
+        expect(plain).toContain('Week&nbsp;1</th>')
+        expect(plain).toContain('Week&nbsp;2</th>')
+        expect(plain).not.toContain('Week&nbsp;1<br />Week&nbsp;2')
+    })
+
+    it('has the bank holiday column on a fortnight with bank holiday hours', () => {
+        const html = mail(entries)
+        expect(headCells(html)).toHaveLength(5)
+        expect(html).toContain('Bank hol.')
+    })
+
+    // Measured in headless Chrome, 34 characters across came to 300px with
+    // Training marks, a bank holiday and three figure totals, against the
+    // 307px his phone gives. The report's own rule is the model: sixteen
+    // characters for one figure that cannot wrap.
+    it('is never more than 34 characters across', () => {
+        const html = mail([...trained, ...busy])
+        expect(html).toContain('Bank hol.')
+        expect(html).toContain('Training&#32;<span style="white-space:nowrap;">12.50&nbsp;h</span>')
+        const widest = across(html)
+        // Found something before saying anything about what was found.
+        expect(widest).toHaveLength(5)
+        expect(Math.min(...widest)).toBeGreaterThan(0)
+        expect(widest.reduce((t, n) => t + n, 0)).toBeLessThanOrEqual(34)
+    })
+
+    // The other shape: no bank holiday, so the two weeks get a column each.
+    it('is never more than 34 characters across without a bank holiday', () => {
+        const html = mail(offTheDay([...trained, ...busy]))
+        expect(html).not.toContain('Bank hol.')
+        expect(html).toContain('Training&#32;<span style="white-space:nowrap;">12.50&nbsp;h</span>')
+        const widest = across(html)
+        expect(widest).toHaveLength(5)
+        expect(Math.min(...widest)).toBeGreaterThan(0)
+        expect(widest.reduce((t, n) => t + n, 0)).toBeLessThanOrEqual(34)
+    })
+
+    it('lets a mark break between its words and its figure', () => {
+        const html = mail(trained)
+        const marks = [...summaryOf(html).matchAll(/<span style="display:inline-block;([^"]*)">/g)].map(m => m[1])
+        expect(marks.length).toBeGreaterThan(0)
+        for (const style of marks) expect(style).not.toContain('white-space:nowrap')
     })
 })
 

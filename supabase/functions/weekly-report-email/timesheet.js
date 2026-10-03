@@ -26,7 +26,7 @@
 // beyond the real time, why this is shorter". Nothing is added to them and
 // nothing is inferred from them.
 
-import { tidy, escapeHtml, WIDTH, SIDE } from './email.js'
+import { tidy, escapeHtml, escapeLines, page, WIDTH, SIDE } from './email.js'
 
 const DARK = '#182F24'
 const INK = '#282828'
@@ -203,7 +203,7 @@ export function awayWords(day) {
 //
 // `dates` is the whole period in order, and `half` is where the second week
 // starts. The two weeks are kept apart all the way through because the summary
-// has a column for each: one amount gets paid, but when something is queried
+// shows each: one amount gets paid, but when something is queried
 // she still needs to know which week the hours fell in.
 export function personPeriod({ people = [], entries = [], absences = [], dates = [], half = 7 }) {
     return people.map(person => {
@@ -394,7 +394,7 @@ function daysBetween(from, to) {
 // ---------------------------------------------------------------------------
 
 export function timesheetEmail({
-    restaurantName, periodStart, people = [], test = false, held = '', comment = '',
+    restaurantName, periodStart, people = [], test = false, comment = '',
 }) {
     const period = periodWords(periodStart)
     const weeks = [weekWords(periodStart), weekWords(addDays(periodStart, 7))]
@@ -411,14 +411,16 @@ export function timesheetEmail({
 
     const subject = `${test ? '[Test] ' : ''}Hours, ${period}${restaurantName ? `, ${restaurantName}` : ''}`
 
-    const html = tidy(`
+    // Edge to edge, the same as the report: no gutter and no border round the
+    // card, because on a phone those pixels are what the summary is short of.
+    // The page around it is the report's own, so a held mail gets its band.
+    const html = tidy(page(`
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
     style="background:${CREAM};margin:0;padding:0;">
-<tr><td align="center" style="padding:24px 8px;">
+<tr><td align="center" style="padding:24px 0;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-    style="max-width:${WIDTH}px;background:#ffffff;border:1px solid ${BORDER};border-radius:12px;overflow:hidden;font-family:${FONT};color:${INK};">
+    style="max-width:${WIDTH}px;background:#ffffff;overflow:hidden;font-family:${FONT};color:${INK};">
 
-    ${held ? notice('#8A4B12', '#FDF3E7', 'Held', held) : ''}
     ${test ? notice('#9A4A26', '#F6ECE6', 'Test', 'A test of the hours mail. The period below is real; nothing has been filed by sending it.') : ''}
 
     <tr><td style="background:${DARK};padding:20px ${SIDE}px;">
@@ -442,8 +444,8 @@ export function timesheetEmail({
         is money.
     </div>`)}
 
-    ${comment ? row(`<div style="font-size:14px;line-height:1.5;color:${INK};padding:12px 14px;margin-top:14px;background:${CREAM};border-left:3px solid ${DARK};">
-        ${escapeHtml(comment)}
+    ${comment ? row(`<div style="font-size:14px;line-height:1.5;color:${INK};padding:12px 14px;margin-top:14px;background:${CREAM};border-left:3px solid ${DARK};word-break:break-word;overflow-wrap:anywhere;">
+        ${escapeLines(comment)}
     </div>`) : ''}
 
     ${row(summary(people, T), 'padding-top:18px;')}
@@ -460,7 +462,7 @@ export function timesheetEmail({
 
 </table>
 </td></tr>
-</table>`)
+</table>`, { subject, preheader: period }))
 
     return { subject, html, text: asText({ restaurantName, period, weeks, people, T, test, comment }) }
 }
@@ -484,7 +486,23 @@ function mark(look, words) {
         + `${escapeHtml(words || look.label)}</span>`
 }
 
+// The same mark with a figure in it, allowed to break between the words and
+// the figure. "Training 12.50 h" in one piece set the width of the name column
+// in the summary, and with it the narrowest the whole mail could go.
+function figureMark(look, before, figure, after = '') {
+    return '<span style="display:inline-block;font-size:10px;font-weight:700;letter-spacing:.04em;'
+        + 'text-transform:uppercase;padding:1px 5px;border-radius:3px;'
+        + `background:${look.wash};color:${look.ink};">`
+        + (before ? `${escapeHtml(before)}&#32;` : '')
+        + `<span style="white-space:nowrap;">${figure}</span>`
+        + (after ? `&#32;${escapeHtml(after)}` : '')
+        + '</span>'
+}
+
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`
+
+// A count and what it counts, kept together: "1 part day" never splits.
+const together = (n, word) => plural(n, word).replace(/ /g, '&nbsp;')
 
 // What goes under a person's name: everything that is not hours.
 //
@@ -493,12 +511,12 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`
 // it does not have. These are rare, so they sit where the person is named.
 function marksFor(person) {
     const out = []
-    if (person.trial > 0) out.push(mark(KIND_LOOK.trial, `Trial ${hours(person.trial)} h`))
-    if (person.training > 0) out.push(mark(KIND_LOOK.training, `Training ${hours(person.training)} h`))
-    if (person.sickDays > 0) out.push(mark(AWAY_LOOK.sick, `${plural(person.sickDays, 'day')} sick`))
-    if (person.sickParts > 0) out.push(mark(AWAY_LOOK.sick, `${plural(person.sickParts, 'part day')} sick`))
-    if (person.unpaidDays > 0) out.push(mark(AWAY_LOOK.unpaid, `${plural(person.unpaidDays, 'day')} unpaid`))
-    if (person.unpaidParts > 0) out.push(mark(AWAY_LOOK.unpaid, `${plural(person.unpaidParts, 'part day')} unpaid`))
+    if (person.trial > 0) out.push(figureMark(KIND_LOOK.trial, 'Trial', `${hours(person.trial)}&nbsp;h`))
+    if (person.training > 0) out.push(figureMark(KIND_LOOK.training, 'Training', `${hours(person.training)}&nbsp;h`))
+    if (person.sickDays > 0) out.push(figureMark(AWAY_LOOK.sick, '', together(person.sickDays, 'day'), 'sick'))
+    if (person.sickParts > 0) out.push(figureMark(AWAY_LOOK.sick, '', together(person.sickParts, 'part day'), 'sick'))
+    if (person.unpaidDays > 0) out.push(figureMark(AWAY_LOOK.unpaid, '', together(person.unpaidDays, 'day'), 'unpaid'))
+    if (person.unpaidParts > 0) out.push(figureMark(AWAY_LOOK.unpaid, '', together(person.unpaidParts, 'part day'), 'unpaid'))
     return out.length
         ? `<div style="padding-top:3px;line-height:1.9;">${out.join('&#32;')}</div>`
         : ''
@@ -508,44 +526,60 @@ function marksFor(person) {
 //
 // **The payroll can be done from this alone.** Everything below it is for the
 // question that comes back, not for the run itself.
+//
+// **Narrow enough for his phone, which gives the mail 307px.** A name and five
+// columns of figures came to 362px with a team's three figure totals, and a
+// mail wider than the phone is one the Gmail app scrambles from top to bottom.
+// So the Bank hol. column is only there on a fortnight somebody has bank
+// holiday hours, and only then, with one figure column more, do the two weeks
+// share a column, one above the other. Without it the two weeks side by side
+// still come to 34 characters, the same as the measured bank holiday shape.
 function summary(people, T) {
+    const bank = people.some(person => person.bankHoliday > 0)
+
     const head = label => '<th style="font-size:10px;letter-spacing:.05em;text-transform:uppercase;'
-        + `color:#ffffff;background:${DARK};padding:7px 6px;text-align:right;font-weight:700;">${label}</th>`
+        + `color:#ffffff;background:${DARK};padding:7px 3px;text-align:right;font-weight:700;">${label}</th>`
+
+    const weekHeads = bank
+        ? head('Week&nbsp;1<br />Week&nbsp;2')
+        : head('Week&nbsp;1') + head('Week&nbsp;2')
+    const weekCells = (cell, [one, two], weight) => (bank
+        ? cell(`${hours(one)}<br />${hours(two)}`, weight)
+        : cell(hours(one), weight) + cell(hours(two), weight))
 
     // width="1%" and nowrap are one thing: as narrow as the figure, and the
     // figure never breaks. width="100%" on the name is what stops it wrapping,
     // because a table shares its surplus rather than handing it to whichever
     // column asked to be small.
-    const fig = (value, weight = '400') => '<td width="1%" style="padding:7px 6px;'
+    const fig = (value, weight = '400') => '<td width="1%" style="padding:7px 3px;'
         + `border-bottom:1px solid ${BORDER};text-align:right;white-space:nowrap;`
         + `font-size:13px;font-weight:${weight};">${value}</td>`
 
     const rows = people.map(person => `<tr>
-        <td width="100%" style="padding:7px 6px;border-bottom:1px solid ${BORDER};font-size:13px;font-weight:600;">
+        <td width="100%" style="padding:7px 3px 7px 6px;border-bottom:1px solid ${BORDER};font-size:13px;font-weight:600;">
             ${escapeHtml(person.name)}${marksFor(person)}
         </td>
-        ${fig(hours(person.week[0]))}
-        ${fig(hours(person.week[1]))}
+        ${weekCells(fig, person.week)}
         ${fig(hours(person.worked), '700')}
-        ${fig(person.bankHoliday > 0 ? hours(person.bankHoliday) : '&ndash;')}
+        ${bank ? fig(person.bankHoliday > 0 ? hours(person.bankHoliday) : '&ndash;') : ''}
         ${fig(person.holiday > 0 ? hours(person.holiday) : '&ndash;')}
     </tr>`).join('')
 
-    const last = (value, weight = '700') => '<td width="1%" style="padding:8px 6px;'
+    const last = (value, weight = '700') => '<td width="1%" style="padding:8px 3px;'
         + `border-top:2px solid ${DARK};text-align:right;white-space:nowrap;`
         + `font-size:13px;font-weight:${weight};">${value}</td>`
 
     return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-        style="border-collapse:collapse;">
+        style="border-collapse:collapse;font-family:${FONT};">
         <tr>
-            <th width="100%" style="font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#ffffff;background:${DARK};padding:7px 6px;text-align:left;font-weight:700;">Who</th>
-            ${head('Week 1')}${head('Week 2')}${head('Worked')}${head('Bank hol.')}${head('Holiday')}
+            <th width="100%" style="font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#ffffff;background:${DARK};padding:7px 3px 7px 6px;text-align:left;font-weight:700;">Who</th>
+            ${weekHeads}${head('Worked')}${bank ? head('Bank hol.') : ''}${head('Holiday')}
         </tr>
         ${rows}
         <tr>
-            <td width="100%" style="padding:8px 6px;border-top:2px solid ${DARK};font-size:13px;font-weight:700;">Everybody</td>
-            ${last(hours(T.week[0]))}${last(hours(T.week[1]))}${last(hours(T.worked))}
-            ${last(hours(T.bankHoliday))}${last(hours(T.holiday))}
+            <td width="100%" style="padding:8px 3px 8px 6px;border-top:2px solid ${DARK};font-size:13px;font-weight:700;">Everybody</td>
+            ${weekCells(last, T.week, '400')}${last(hours(T.worked))}
+            ${bank ? last(hours(T.bankHoliday)) : ''}${last(hours(T.holiday))}
         </tr>
     </table>`
 }
@@ -568,7 +602,7 @@ function personBlock(person, weeks) {
     ].filter(Boolean).join(' &middot; ')
 
     const band = `<tr><td style="background:${DARK};padding:10px ${SIDE}px;">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="font-family:${FONT};">
             <tr>
                 <td width="100%" style="font-size:15px;font-weight:700;color:#ffffff;">
                     ${escapeHtml(person.name)}
@@ -595,7 +629,7 @@ function personBlock(person, weeks) {
             Week ${w + 1}&#32;&middot;&#32;${escapeHtml(weeks[w])}
         </div>
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-            style="border-collapse:collapse;">
+            style="border-collapse:collapse;font-family:${FONT};">
             ${lines}
             <tr>
                 <td width="100%" style="padding:7px 0 2px;border-top:1px solid ${DARK};font-size:13px;font-weight:700;">
@@ -641,8 +675,8 @@ function dayLine(day) {
 
     // His own words, under the times they belong to and marked as his.
     const said = day.notes.map(words => (
-        `<div style="font-size:13px;line-height:1.45;color:${INK};padding:4px 0 0 10px;border-left:3px solid ${BORDER};margin-top:4px;">
-            ${escapeHtml(words)}
+        `<div style="font-size:13px;line-height:1.45;color:${INK};padding:4px 0 0 10px;border-left:3px solid ${BORDER};margin-top:4px;word-break:break-word;overflow-wrap:anywhere;">
+            ${escapeLines(words)}
         </div>`
     )).join('')
 
@@ -681,6 +715,9 @@ function legend() {
     </div>`
 }
 
+// Typed text a line at a time, with nothing left at the end of a line.
+const typed = text => String(text ?? '').split(/\r?\n/).map(line => line.trimEnd())
+
 // The plain text half, for a reader that will not draw the other one. It says
 // the same things in the same order: anybody reading this instead of the HTML
 // should not be told less.
@@ -688,7 +725,7 @@ function asText({ restaurantName, period, weeks, people, T, test, comment }) {
     const lines = []
     if (test) lines.push('[Test] Nothing has been filed by sending this.', '')
     lines.push(`${restaurantName || 'Papi Chulo'}, hours, ${period}`, 'Pay period, two weeks', '')
-    if (comment) lines.push(comment, '')
+    if (comment) lines.push(...typed(comment), '')
 
     lines.push(
         `Week 1 (${weeks[0]}) ${hours(T.week[0])}`,
@@ -735,7 +772,9 @@ function asText({ restaurantName, period, weeks, people, T, test, comment }) {
                 if (timed && COUNTED_DAYS.includes(day.away)) {
                     lines.push(`      ${awayWords(day).toLowerCase()}`)
                 }
-                for (const words of day.notes) lines.push(`      ${words}`)
+                for (const words of day.notes) {
+                    for (const line of typed(words)) lines.push(line ? `      ${line}` : '')
+                }
             }
             lines.push(`    Week ${w + 1} ${hours(person.week[w])} h`)
         }
