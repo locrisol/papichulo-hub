@@ -792,7 +792,7 @@ describe('who may ask for a read', () => {
     it('says a switched-off login is switched off, whatever its role', () => {
         for (const role of ['super_admin', 'owner', 'store_manager']) {
             expect(refusalFor({ role, restaurant_id: 'pc', is_active: false }, 'pc'))
-                .toEqual({ status: 403, error: 'Your login is switched off' })
+                .toEqual({ status: 403, error: 'Your account is deactivated' })
         }
     })
 

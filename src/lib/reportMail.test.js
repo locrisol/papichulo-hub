@@ -49,7 +49,7 @@ describe('sendWords, after a test', () => {
 
     it('says so when the list is empty', () => {
         expect(sendWords({ sent: 0 }, { test: true }))
-            .toBe('The test went nowhere: there is nobody on the list.')
+            .toBe('Test not sent. Nobody is on the list.')
     })
 })
 

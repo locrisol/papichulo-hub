@@ -236,14 +236,14 @@ describe('reportEmail', () => {
         expect(mail.html).toContain('Ana Rocha')
     })
 
-    it('leads each kind of paperwork with how many are fine', () => {
-        expect(mail.html).toContain('8 of 8 fine')
-        expect(mail.html).toContain('6 of 8 fine')
+    it('leads each kind of paperwork with how many are in date', () => {
+        expect(mail.html).toContain('8 of 8 in date')
+        expect(mail.html).toContain('6 of 8 in date')
     })
 
     it('puts the names under a heading rather than in a sentence', () => {
         expect(mail.html).toContain('Nothing on file:')
-        expect(mail.html).toContain('Runs out soon:')
+        expect(mail.html).toContain('Expires soon:')
     })
 
     it('never uses an em dash', () => {
@@ -279,8 +279,8 @@ describe('reportEmail, as a test send', () => {
         expect(mail.subject).toContain('[Test]')
     })
 
-    it('says nobody else got it', () => {
-        expect(mail.html).toContain('Nobody else has been sent it')
+    it('says who it went to', () => {
+        expect(mail.html).toContain('It went to everyone on the report list except the owners')
         expect(mail.text).toContain('THIS IS A TEST')
     })
 
@@ -312,7 +312,7 @@ describe('reportEmail, as a correction', () => {
 
     it('still says it is a correction when nothing measurable moved', () => {
         const quiet = reportEmail({ ...base, report: sent, changes: [] })
-        expect(quiet.html).toContain('the same as the ones you already have')
+        expect(quiet.html).toContain('have not changed from the report you already have')
     })
 
     // Before 1 October the count went up on every publish, mail or no mail. A
@@ -699,7 +699,7 @@ describe('people and operations', () => {
 
     it('puts the count in the header beside the name', () => {
         expect(mail.html).toContain('>Food safety certificates<')
-        expect(mail.html).toContain('>8 of 8 fine<')
+        expect(mail.html).toContain('>8 of 8 in date<')
     })
 
     it('edges the card by how bad it is', () => {
@@ -731,7 +731,7 @@ describe('people and operations', () => {
                 },
             },
         })
-        expect(clean.html).toContain('>8 of 8 fine<')
+        expect(clean.html).toContain('>8 of 8 in date<')
         expect(clean.html).not.toContain('Nothing on file:')
     })
 })
@@ -1263,7 +1263,7 @@ describe('where the charts sit', () => {
 describe('whether a renewal was applied for', () => {
     it('says so, with the date', () => {
         expect(renewalWords({ name: 'Majo', on: '2026-09-13', applied: '2026-08-12' }))
-            .toContain('Renewal applied for 12 Aug 2026')
+            .toContain('Applied to renew on 12 Aug 2026')
     })
 
     it('says plainly when nobody has', () => {
@@ -1275,12 +1275,12 @@ describe('whether a renewal was applied for', () => {
     // Left as two dates in a list it is a subtraction nobody does at speed.
     it('says when it was applied for too late', () => {
         expect(renewalWords({ name: 'Majo', on: '2026-09-13', applied: '2026-09-20' }))
-            .toContain('after it ran out')
+            .toContain('after it expired')
     })
 
     it('does not say it was late when it was not', () => {
         expect(renewalWords({ name: 'Majo', on: '2026-09-13', applied: '2026-09-13' }))
-            .not.toContain('after it ran out')
+            .not.toContain('after it expired')
     })
 
     // A food safety certificate is not renewed, it is sat again. undefined is
@@ -1312,9 +1312,9 @@ describe('the people section, with renewals', () => {
     })
 
     it('puts the answer under each name that needs one', () => {
-        expect(mail.html).toContain('Renewal applied for 1 Aug 2026')
+        expect(mail.html).toContain('Applied to renew on 1 Aug 2026')
         expect(mail.html).toContain('No renewal applied for')
-        expect(mail.html).toContain('Renewal applied for 30 Sept 2026')
+        expect(mail.html).toContain('Applied to renew on 30 Sept 2026')
     })
 
     // The food safety card sits in the same section and must stay quiet about
@@ -1446,7 +1446,7 @@ describe('prices and suppliers', () => {
 
     it('says why things came back and what is still owed', () => {
         expect(mail.html).toContain('Bad quality')
-        expect(mail.html).toContain('Still waiting on a credit')
+        expect(mail.html).toContain('Still waiting for a credit')
         expect(mail.html).toContain('Bowls charged 49.73')
     })
 

@@ -361,7 +361,7 @@ Deno.serve(async (request) => {
     // Whatever the role. A switched off login still signs in, and this reads
     // users with the service key, so the database's own refusal never
     // happens here. See switchedOff in email.js.
-    if (switchedOff(me)) return json({ error: 'Your login is switched off' }, 403)
+    if (switchedOff(me)) return json({ error: 'Your account is deactivated' }, 403)
 
     // ---------- what happened ----------
     let payload: {

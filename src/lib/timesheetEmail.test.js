@@ -436,7 +436,7 @@ describe('the mail itself', () => {
     it('marks a test in the subject and on the page', () => {
         const mail = built({ test: true })
         expect(mail.subject.startsWith('[Test] ')).toBe(true)
-        expect(mail.html).toContain('nothing has been filed by sending it')
+        expect(mail.html).toContain('sending this test does not mark the pay period as sent')
     })
 
     // The rule the whole mail is built around.
@@ -599,7 +599,7 @@ describe('the mail itself', () => {
 // column.
 describe('the summary fits a phone', () => {
     const summaryOf = html => {
-        const at = html.indexOf('>Who</th>')
+        const at = html.indexOf('>Name</th>')
         return html.slice(html.lastIndexOf('<table', at), html.indexOf('</table>', at))
     }
     const headCells = html => summaryOf(html).match(/<th[^>]*>/g) || []

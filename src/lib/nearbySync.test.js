@@ -539,8 +539,8 @@ describe('how a feed went', () => {
     it('never keeps the error itself', () => {
         const leak = new TypeError('error sending request for url (https://app.ticketmaster.com/x?apikey=SECRET)')
         expect(feedProblem(leak)).not.toContain('SECRET')
-        expect(feedProblem(leak)).toBe('Something went wrong bringing the events in.')
-        expect(feedProblem(null)).toBe('Something went wrong bringing the events in.')
+        expect(feedProblem(leak)).toBe('Something went wrong getting the events from Ticketmaster.')
+        expect(feedProblem(null)).toBe('Something went wrong getting the events from Ticketmaster.')
     })
 })
 

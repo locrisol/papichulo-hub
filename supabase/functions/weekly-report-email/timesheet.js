@@ -421,7 +421,7 @@ export function timesheetEmail({
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
     style="max-width:${WIDTH}px;background:#ffffff;overflow:hidden;font-family:${FONT};color:${INK};">
 
-    ${test ? notice('#9A4A26', '#F6ECE6', 'Test', 'A test of the hours mail. The period below is real; nothing has been filed by sending it.') : ''}
+    ${test ? notice('#9A4A26', '#F6ECE6', 'Test', 'The hours below are real, but sending this test does not mark the pay period as sent.') : ''}
 
     <tr><td style="background:${DARK};padding:20px ${SIDE}px;">
         <div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#A9C0B2;">
@@ -436,12 +436,12 @@ export function timesheetEmail({
     </td></tr>
 
     ${row(`<div style="font-size:14px;line-height:1.5;color:${MUTED};padding:16px 0 0;">
-        Clock in and clock out as the till recorded them, to the second.&#32;Worked is week one
-        plus week two.&#32;Bank holiday hours are inside it and said again so you can see them.
-        Holiday is apart and is not inside anything.&#32;Days off sick and on unpaid leave are
-        counted in days, because no hours are recorded against them.&#32;Part of a day is counted
-        as a part day, and any hours worked that day are inside Worked.&#32;Hours only: nothing here
-        is money.
+        Clock in and clock out times are as the till recorded them, to the second.&#32;Worked is
+        week 1 plus week 2.&#32;Bank holiday hours are included in Worked and also shown on their
+        own.&#32;Holiday hours are separate and not included in Worked.&#32;Sick days and unpaid
+        leave are counted in days, as no hours are recorded for them.&#32;Part of a day is counted
+        as a part day, and any hours worked that day are included in Worked.&#32;Hours only, not
+        pay.
     </div>`)}
 
     ${comment ? row(`<div style="font-size:14px;line-height:1.5;color:${INK};padding:12px 14px;margin-top:14px;background:${CREAM};border-left:3px solid ${DARK};word-break:break-word;overflow-wrap:anywhere;">
@@ -455,9 +455,8 @@ export function timesheetEmail({
     ${row(legend(), 'padding-top:20px;')}
 
     ${row(`<div style="border-top:1px solid ${BORDER};margin-top:16px;padding:14px 0 20px;font-size:12px;line-height:1.5;color:${MUTED};">
-        Sent from the Papi Chulo Hub.&#32;Holiday hours are what was booked, split evenly across
-        the days of the holiday.&#32;The extra entitlement for a public holiday is not worked out
-        here.&#32;Every time on it is what the clock recorded, and nothing on it is money.
+        Sent from the Papi Chulo Hub.&#32;Holiday hours are the hours booked, split evenly across
+        the days of the holiday.&#32;Public holiday entitlement is not calculated here.
     </div>`)}
 
 </table>
@@ -561,8 +560,8 @@ function summary(people, T) {
         </td>
         ${weekCells(fig, person.week)}
         ${fig(hours(person.worked), '700')}
-        ${bank ? fig(person.bankHoliday > 0 ? hours(person.bankHoliday) : '&ndash;') : ''}
-        ${fig(person.holiday > 0 ? hours(person.holiday) : '&ndash;')}
+        ${bank ? fig(person.bankHoliday > 0 ? hours(person.bankHoliday) : '&mdash;') : ''}
+        ${fig(person.holiday > 0 ? hours(person.holiday) : '&mdash;')}
     </tr>`).join('')
 
     const last = (value, weight = '700') => '<td width="1%" style="padding:8px 3px;'
@@ -572,7 +571,7 @@ function summary(people, T) {
     return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
         style="border-collapse:collapse;font-family:${FONT};">
         <tr>
-            <th width="100%" style="font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#ffffff;background:${DARK};padding:7px 3px 7px 6px;text-align:left;font-weight:700;">Who</th>
+            <th width="100%" style="font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#ffffff;background:${DARK};padding:7px 3px 7px 6px;text-align:left;font-weight:700;">Name</th>
             ${weekHeads}${head('Worked')}${bank ? head('Bank hol.') : ''}${head('Holiday')}
         </tr>
         ${rows}
@@ -723,7 +722,7 @@ const typed = text => String(text ?? '').split(/\r?\n/).map(line => line.trimEnd
 // should not be told less.
 function asText({ restaurantName, period, weeks, people, T, test, comment }) {
     const lines = []
-    if (test) lines.push('[Test] Nothing has been filed by sending this.', '')
+    if (test) lines.push('[Test] Sending this test does not mark the pay period as sent.', '')
     lines.push(`${restaurantName || 'Papi Chulo'}, hours, ${period}`, 'Pay period, two weeks', '')
     if (comment) lines.push(...typed(comment), '')
 
@@ -781,6 +780,6 @@ function asText({ restaurantName, period, weeks, people, T, test, comment }) {
         lines.push('')
     }
 
-    lines.push('Hours only. Every time here is what the clock recorded, and nothing here is money.')
+    lines.push('Hours only, not pay. Times are as the till recorded them.')
     return lines.join('\n')
 }

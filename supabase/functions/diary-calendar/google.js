@@ -100,10 +100,10 @@ export function description(entry) {
     if (contact) lines.push(contact)
 
     if (entry.status && entry.status !== 'confirmed') {
-        lines.push(`This is ${entry.status === 'enquiry' ? 'an enquiry, not confirmed' : entry.status}.`)
+        lines.push(`Status: ${entry.status === 'enquiry' ? 'an enquiry, not confirmed yet' : entry.status}.`)
     }
 
-    lines.push('Put in from the Papi Chulo Hub. Changes made here are written over the next time it is saved there.')
+    lines.push('Added from the Papi Chulo Hub. Changes made in Google calendar are overwritten the next time this is saved in the Hub.')
     return lines.join('\n\n')
 }
 
@@ -251,7 +251,7 @@ export function idsFrom(stored) {
 // audit of 28 September.
 export function callerRefusal(me) {
     if (!me) return 'Not allowed'
-    if (me.is_active !== true) return 'Your login is switched off'
+    if (me.is_active !== true) return 'Your account is deactivated'
     if (!['super_admin', 'owner', 'store_manager'].includes(me.role)) return 'Not allowed'
     return ''
 }

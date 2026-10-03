@@ -289,7 +289,7 @@ export function refusedWords(status) {
 export function feedProblem(err) {
     const said = err?.feedProblem
     if (typeof said === 'string' && said) return said
-    return 'Something went wrong bringing the events in.'
+    return 'Something went wrong getting the events from Ticketmaster.'
 }
 
 // ---------------------------------------------------------- who is calling
@@ -351,7 +351,7 @@ const MANAGERS = ['owner', 'store_manager']
 // and the tests check the two agree.
 export function refusalFor(me, restaurantId) {
     if (!me) return { status: 401, error: 'Not signed in' }
-    if (me.is_active !== true) return { status: 403, error: 'Your login is switched off' }
+    if (me.is_active !== true) return { status: 403, error: 'Your account is deactivated' }
     if (me.role === 'super_admin') return null
     if (me.restaurant_id !== restaurantId || !MANAGERS.includes(me.role)) {
         return { status: 403, error: 'Not yours' }

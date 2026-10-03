@@ -27,7 +27,7 @@ export async function writeToGoogle(entryId, { clear = false } = {}) {
 
         if (error) return { ok: false, ...(await refusalOf(error)) }
         if (data?.failed?.length) return { ok: false, reason: data.failed.join('; ') }
-        if (data && data.ok === false) return { ok: false, reason: data.reason || 'Google refused it.' }
+        if (data && data.ok === false) return { ok: false, reason: data.reason || 'Google calendar did not accept it.' }
 
         return { ok: true, reason: '', written: data?.written ?? 0 }
     } catch (e) {
@@ -44,7 +44,7 @@ export async function writeToGoogle(entryId, { clear = false } = {}) {
 // `refused` lets the screen say it plainly rather than as a Google failure.
 async function refusalOf(error) {
     const status = error?.context?.status
-    if (status === 403) return { refused: true, reason: 'You do not have permission to change this one.' }
+    if (status === 403) return { refused: true, reason: 'You do not have permission to change this entry.' }
     if (status === 401) return { reason: 'You have been signed out. Sign in again and try once more.' }
     // The function's own 404 is about the entry. One it never answered is
     // the function itself not being there.
@@ -59,7 +59,7 @@ async function refusalOf(error) {
 function friendly(error) {
     const said = String(error?.message || error || '').trim()
     if (/not found|404|non-2xx/i.test(said)) {
-        return 'The calendar function is not deployed yet, or it has no Google key set.'
+        return 'Google calendar is not set up yet.'
     }
-    return said || 'Something went wrong reaching Google.'
+    return said || 'Could not reach Google calendar. Try again later.'
 }

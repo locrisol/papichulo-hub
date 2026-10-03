@@ -74,7 +74,7 @@ describe('what to tell somebody afterwards', () => {
 
     it('says a test is a test, and that nothing has been filed', () => {
         expect(sentWords({ sent: 2 }, { test: true }))
-            .toBe('Test sent to 2 addresses. Nothing has been filed.')
+            .toBe('Test sent to 2 addresses. The pay period is not marked as sent.')
     })
 
     it('says plainly when there is nobody to send to', () => {
@@ -128,7 +128,7 @@ describe('the PDF that travels with it', () => {
         upload.mockResolvedValue({ error: { message: 'no' } })
 
         await expect(sendTimesheet({ periodStart: '2026-10-25', restaurantId: 'r1', pdf: aPdf }))
-            .rejects.toThrow(/went nowhere/)
+            .rejects.toThrow(/were not sent, because the PDF could not be saved/)
         expect(invoke).not.toHaveBeenCalled()
     })
 

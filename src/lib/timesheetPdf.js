@@ -283,8 +283,8 @@ export async function timesheetPdf({
         pdf.setFontSize(8.5)
         const figures = [
             fmtHours(person.week[0]), fmtHours(person.week[1]), null,
-            person.bankHoliday > 0 ? fmtHours(person.bankHoliday) : '-',
-            person.holiday > 0 ? fmtHours(person.holiday) : '-',
+            person.bankHoliday > 0 ? fmtHours(person.bankHoliday) : '—',
+            person.holiday > 0 ? fmtHours(person.holiday) : '—',
         ]
         figures.forEach((value, i) => {
             if (value === null) return
@@ -326,12 +326,12 @@ export async function timesheetPdf({
     pdf.setFontSize(7)
     pdf.setTextColor(...MUTED)
     const note = `Week 1 is ${weekRange(weeks[0])}, week 2 is ${weekRange(weeks[1])}. `
-        + 'Hours worked is the two weeks added together. Bank holiday hours are inside it and '
-        + 'listed again on their own. Holiday is apart and is not inside anything. Days off sick '
-        + 'and on unpaid leave are counted in days, because no hours are recorded against them. '
-        + 'Part of a day is counted as a part day, and any hours worked that day are inside hours worked. '
-        + 'The extra entitlement for a public holiday is not worked out here. '
-        + 'Every time below is what the clock recorded, to the second.'
+        + 'Hours worked is the two weeks added together. Bank holiday hours are included in it and '
+        + 'also shown on their own. Holiday hours are separate and not included in it. Sick days '
+        + 'and unpaid leave are counted in days, as no hours are recorded for them. '
+        + 'Part of a day is counted as a part day, and any hours worked that day are included in Hours worked. '
+        + 'Public holiday entitlement is not calculated here. '
+        + 'Every time below is as the till recorded it, to the second.'
     for (const line of pdf.splitTextToSize(note, right - marginX)) {
         pdf.text(line, marginX, y)
         y += 3.4
@@ -489,7 +489,7 @@ export async function timesheetPdf({
     // Every page says what it is and where it sits, because one of them will be
     // printed on its own and queried three months later.
     footers(pdf, {
-        left: `${restaurant?.name || 'Papi Chulo'}, hours, ${period}. Nothing on this page is money.`,
+        left: `${restaurant?.name || 'Papi Chulo'}, hours, ${period}. Hours only, not pay.`,
         margin: marginX,
     })
 
