@@ -7,7 +7,7 @@ import { makeQuery, renderWithRouter, tableOf } from '@/test/helpers'
 import { emptyAllergens } from '@/lib/allergens'
 import { onAllergensChanged } from '@/lib/allergensChanged'
 
-// One product's fourteen. The boxes open at Not Present so only the ones that
+// One product's fourteen. The boxes open at Not present so only the ones that
 // apply need changing, but until something is saved that is a starting point
 // and not an answer, and the page has to say which of the two it is showing.
 
@@ -49,7 +49,7 @@ describe('a product nobody has entered allergens for', () => {
 
 // A MIX with a recipe takes its allergens from what goes into it, so it
 // almost never has a row of its own, and nothing is missing for that. Told it
-// was, a manager saved fourteen Not Present on it and the dish still said ask
+// was, a manager saved fourteen Not present on it and the dish still said ask
 // staff, because the gap was in an ingredient.
 describe('a MIX with a recipe', () => {
     const SALSA = { id: 'salsa', name: 'House Salsa', section: 'Cold Room', unit: 'KG', is_mix: true }
@@ -76,7 +76,7 @@ describe('saving', () => {
         const stop = onAllergensChanged(heard)
         try {
             show(RICE, [])
-            await me.click(await screen.findByRole('button', { name: 'Save Allergens' }))
+            await me.click(await screen.findByRole('button', { name: 'Save allergens' }))
             await waitFor(() => expect(heard).toHaveBeenCalledTimes(1))
         } finally {
             stop()
@@ -97,7 +97,7 @@ describe('saving', () => {
                 }
                 return q
             })
-            await me.click(await screen.findByRole('button', { name: 'Save Allergens' }))
+            await me.click(await screen.findByRole('button', { name: 'Save allergens' }))
             await screen.findByRole('alert')
             expect(heard).not.toHaveBeenCalled()
         } finally {

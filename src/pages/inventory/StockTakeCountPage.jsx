@@ -1,4 +1,4 @@
-import { monthYearOf } from '@/lib/dates'
+import { stampDate } from '@/lib/dates'
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
@@ -118,7 +118,7 @@ export default function StockTakeCountPage() {
             .single()
 
         if (sessionErr || !sessionData) {
-            setError('Stock take session not found.')
+            setError('This stock take could not be found.')
             setLoading(false)
             return
         }
@@ -311,12 +311,11 @@ export default function StockTakeCountPage() {
         // If the user gave a custom note, use it as-is.
         if (session.notes && session.notes.trim()) return session.notes.trim()
 
-        // Otherwise build "Monthly Stock Take (June 2026)" from type + start date.
+        // Otherwise build "Monthly stock take, 12/06/2026" from type + start date.
         const typeWord = session.type
-            ? session.type.charAt(0).toUpperCase() + session.type.slice(1)
-            : 'Stock'
-        const monthYear = monthYearOf(session.started_at)
-        return `${typeWord} Stock Take (${monthYear})`
+            ? `${session.type.charAt(0).toUpperCase()}${session.type.slice(1)} stock take`
+            : 'Stock take'
+        return `${typeWord}, ${stampDate(session.started_at)}`
     }
 
     function getProductLines(productId, section) {
@@ -331,7 +330,7 @@ export default function StockTakeCountPage() {
     // landed on the wrong row. It only asks when there is a real quantity in
     // there, so it is never in the way of somebody just looking around.
     //
-    // Add it is the main button because it is what you meant nine times out of
+    // Add is the main button because it is what you meant nine times out of
     // ten. Both answers carry on to wherever you were going: the question is
     // what to do with the number, not whether to move.
     async function keepOrDropDraft() {
@@ -346,8 +345,8 @@ export default function StockTakeCountPage() {
         const ok = await confirm({
             title: `Add the ${fmtQty(total)} ${product.unit} first?`,
             message: `You typed a quantity for ${countName(product)} and have not added it. Leaving now loses it.`,
-            confirmLabel: 'Add it',
-            cancelLabel: 'Discard it',
+            confirmLabel: 'Add',
+            cancelLabel: 'Discard',
         })
         if (ok) await handleAddLine(product, section)
     }
@@ -466,10 +465,10 @@ export default function StockTakeCountPage() {
     async function handleDeleteLine(line, product, section) {
         const rest = getProductTotal(product.id, section) - Number(line.quantity_counted || 0)
         const ok = await confirm({
-            title: `Delete this count of ${fmtQty(line.quantity_counted)} ${product.unit}?`,
+            title: `Delete the ${fmtQty(line.quantity_counted)} ${product.unit} entry?`,
             message: `${product.name} drops to ${fmtQty(rest)} ${product.unit} in ${section}.`,
-            confirmLabel: 'Delete it',
-            cancelLabel: 'Keep it',
+            confirmLabel: 'Delete entry',
+            cancelLabel: 'Keep entry',
             tone: 'danger',
         })
         if (!ok) return
@@ -720,7 +719,7 @@ export default function StockTakeCountPage() {
                 )}
                 {isClosed && (
                     <Notice tone="warn" className="mt-4">
-                        This stock take is closed. Counts are read-only.
+                        This stock take is closed, so the entries cannot be changed.
                     </Notice>
                 )}
 

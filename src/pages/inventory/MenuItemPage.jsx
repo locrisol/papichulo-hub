@@ -174,7 +174,7 @@ export default function MenuItemPage() {
     // All of it or none of it. supabase-js hands a failed read back rather
     // than throwing it, and this kept whatever did arrive: a failed read of
     // the allergens left every component with none, and the panel at the
-    // bottom said Not Present for all fourteen. So one failed read shows the
+    // bottom said Not present for all fourteen. So one failed read shows the
     // failure and nothing else, the same as the customer page.
     const reads = [categoriesRes, productsRes, componentsRes, recipesRes, allergensRes, allItemsRes, allComponentsRes]
     if (itemRes.error || !itemRes.data || !everyReadArrived(reads)) {
@@ -245,12 +245,12 @@ export default function MenuItemPage() {
 
   function validateHeader() {
     const e = {}
-    if (!headerForm.name.trim()) e.name = 'Name is required'
-    if (!headerForm.category_id) e.category_id = 'Category is required'
+    if (!headerForm.name.trim()) e.name = 'Enter a name'
+    if (!headerForm.category_id) e.category_id = 'Pick a category'
     const price = parseFloat(headerForm.selling_price)
-    if (isNaN(price) || price < 0) e.selling_price = 'Selling price must be 0 or more'
+    if (isNaN(price) || price < 0) e.selling_price = 'Enter a selling price of 0 or more'
     const vat = parseFloat(headerForm.vat_rate)
-    if (isNaN(vat) || vat < 0 || vat > 100) e.vat_rate = 'VAT rate must be 0–100'
+    if (isNaN(vat) || vat < 0 || vat > 100) e.vat_rate = 'Enter a VAT rate from 0 to 100'
     return e
   }
 
@@ -291,13 +291,13 @@ export default function MenuItemPage() {
 
   function validateComponent() {
     const e = {}
-    if (!componentForm.product_id) e.product_id = 'Product is required'
+    if (!componentForm.product_id) e.product_id = 'Pick a product'
     // Nothing to check when nobody can say. That is the whole point of the
     // tick, and it is a different answer from zero, which would mean somebody
     // measured and found none.
     if (!componentForm.no_quantity) {
       const qty = parseFloat(componentForm.quantity)
-      if (isNaN(qty) || qty <= 0) e.quantity = 'Quantity must be greater than 0'
+      if (isNaN(qty) || qty <= 0) e.quantity = 'Enter a quantity above 0'
     }
     return e
   }
@@ -361,8 +361,8 @@ export default function MenuItemPage() {
   function handleSupabaseError(err) {
     if (err.code === '23505') {
       setFormProblem(componentForm.choice_group
-        ? `${getProduct(componentForm.product_id)?.name || 'That product'} is already an option in ${componentForm.choice_group}. Edit the existing row instead.`
-        : 'This product is already an ingredient of this menu item. Edit the existing row instead.')
+        ? `${getProduct(componentForm.product_id)?.name || 'That product'} is already an option in ${componentForm.choice_group}. Edit it in the list instead.`
+        : 'This product is already on this menu item. Edit it in the list instead.')
     } else {
       setFormProblem(friendlyError(err))
     }
@@ -474,7 +474,7 @@ export default function MenuItemPage() {
   const derivedAllergens = deriveMenuItemAllergens(components, products, recipeLines, allergens)
   // What nobody ever entered allergens for, which the derivation can only
   // read as none. Named here, and none is then not known rather than Not
-  // Present, the same way the customer sheet asks people to see staff.
+  // present, the same way the customer sheet asks people to see staff.
   const notEntered = neverEnteredInDish(components, products, recipeLines, allergens)
 
   function getProduct(productId) {
@@ -614,7 +614,7 @@ export default function MenuItemPage() {
       <BackButton to="/catalogue/menu-items" className="mb-4">Back to menu items</BackButton>
 
       <PageHeader
-        title={`Menu Item: ${item?.name ?? ''}`}
+        title={`Menu item: ${item?.name ?? ''}`}
         subtitle={`Costs and margins for ${activeRestaurant?.name ?? ''}`}
       />
 
@@ -693,14 +693,14 @@ export default function MenuItemPage() {
               onChange={e => handleHeaderChange('category_id', e.target.value)}
               className={fieldClass}
             >
-              <option value="">Select a category...</option>
+              <option value="">Pick a category</option>
               {/* The one it is in stays on the list even after that category is
                   turned off. Leaving it out emptied the box, and an empty box
                   saves as no category at all, so editing the price of an item
                   in a retired category quietly took it off the menu. It is
                   named for what it is and the line underneath says to move it. */}
               {retiredCategory && (
-                <option value={retiredCategory.id}>{retiredCategory.name} (turned off)</option>
+                <option value={retiredCategory.id}>{retiredCategory.name} (inactive)</option>
               )}
               {categories.filter(c => c.is_active).map(c => (
                 <option key={c.id} value={c.id}>{c.name}</option>
@@ -709,13 +709,13 @@ export default function MenuItemPage() {
             {headerErrors.category_id && <p className={fieldError}>{headerErrors.category_id}</p>}
             {!headerErrors.category_id && retiredCategory && (
               <p className="text-xs text-amber-700 mt-1">
-                {retiredCategory.name} is turned off. Pick another one, or this item stays in a
-                category nothing else uses.
+                {retiredCategory.name} is inactive. Pick another category, or this item will not
+                show on Menu items or the allergen sheet.
               </p>
             )}
           </div>
           <div>
-            <label className={labelClass}>Selling Price (€, gross)</label>
+            <label className={labelClass}>Selling price (€, gross)</label>
             <input
               {...numberField({
                 value: headerForm.selling_price,
@@ -726,7 +726,7 @@ export default function MenuItemPage() {
             {headerErrors.selling_price && <p className={fieldError}>{headerErrors.selling_price}</p>}
           </div>
           <div>
-            <label className={labelClass}>VAT Rate (%)</label>
+            <label className={labelClass}>VAT rate (%)</label>
             <input
               {...numberField({
                 value: headerForm.vat_rate,
@@ -758,7 +758,7 @@ export default function MenuItemPage() {
             disabled={headerSaving}
             className={primaryButton()}
           >
-            {headerSaving ? 'Saving...' : 'Save Details'}
+            {headerSaving ? 'Saving...' : 'Save details'}
           </button>
           {headerSavedMessage && <span className="text-xs text-green-700">{headerSavedMessage}</span>}
         </div>
@@ -786,14 +786,14 @@ export default function MenuItemPage() {
             disabled={availableProducts.length === 0}
             className={primaryButton()}
           >
-            + Add Component
+            + Add component
           </button>
         </div>
       </div>
 
       {showComponentForm && !editingComponent && (
         <div className={`${card} overflow-hidden mb-6`}>
-          <h4 className={cardHeader}>New Component</h4>
+          <h4 className={cardHeader}>New component</h4>
           <div className="p-6">
             <ComponentForm
               problem={formProblem}
@@ -801,7 +801,7 @@ export default function MenuItemPage() {
               onChange={handleComponentChange}
               onSubmit={handleComponentSave}
               onCancel={resetComponentForm}
-              submitLabel="Add Component"
+              submitLabel="Add component"
               errors={componentErrors}
               availableProducts={availableProducts}
               productSelectRef={productSelectRef}
@@ -814,7 +814,7 @@ export default function MenuItemPage() {
 
       {components.length === 0 ? (
         <div className={`${card} p-8 text-center mb-6`}>
-          <p className="text-sm text-muted">No components yet. Click "+ Add Component" to start building this menu item.</p>
+          <p className="text-sm text-muted">No components yet. Press Add component to start.</p>
         </div>
       ) : (
         <>
@@ -871,7 +871,7 @@ export default function MenuItemPage() {
                   the sheet asks customers to see staff about the whole dish. */}
               {toTick.length > 0 && (
                 <Notice tone="warn" className="m-3">
-                  {namesList(toTick.map(p => p.name))} {one ? 'has' : 'have'} no row of {one ? 'its' : 'their'} own
+                  {namesList(toTick.map(p => p.name))} {one ? 'is' : 'are'} not listed separately
                   on the allergen sheet, so the sheet asks customers to speak to a member of staff about this
                   dish. Edit {one ? 'it' : 'each one'} and tick List it separately on the allergen sheet.
                 </Notice>
@@ -969,16 +969,16 @@ export default function MenuItemPage() {
                 + `Replace ${deactivated.length === 1 ? 'it' : 'them'} on this dish, or in the recipe that uses `
                 + `${deactivated.length === 1 ? 'it' : 'them'}${stillUnset ? '. ' : ', to see the cost and margin.'}`}
             {(deactivated.length === 0 || stillUnset)
-              && `Some components have no preferred price (raw products) or no complete recipe (MIX products) for ${activeRestaurant?.name}. The cost and margin cannot be calculated until all are configured.`}
+              && `Some components have no preferred price at ${activeRestaurant?.name}, or are a MIX whose recipe cannot be costed yet. The cost and margin will show once they all have a cost.`}
           </p>
         )}
       </div>
 
       {/* Derived allergens */}
       <div className={`${card} p-6`}>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">Derived Allergens</h3>
+        <h3 className="text-sm font-semibold text-gray-900 mb-3">Allergens</h3>
         <p className="text-xs text-muted mb-4">
-          Calculated automatically from the allergens set on each component (and recursively from the ingredients of any MIX component). To change, edit the allergens on the underlying products.
+          Worked out from the allergens on each component, including everything in a MIX recipe. Customer choices are not included. To change them, edit the allergens on those products.
         </p>
         {notEntered.length > 0 && (
           <Notice tone="warn" className="mb-4">
@@ -997,12 +997,12 @@ export default function MenuItemPage() {
                 : 'bg-gray-100 text-muted border-gray-300'
             // What is known is still said. What is not is not called absent.
             const label = state === 'contains' ? 'Contains'
-              : state === 'may_contain' ? 'May Contain'
-                : notEntered.length > 0 ? 'Not known' : 'Not Present'
+              : state === 'may_contain' ? 'May contain'
+                : notEntered.length > 0 ? 'Not known' : 'Not present'
             return (
               // The name over the state on a phone, side by side from small up.
               // Two of these fit across a phone, and at that width Crustaceans
-              // and Not Present were pushed into each other with nothing
+              // and Not present were pushed into each other with nothing
               // between them, so the reader had to guess which word belonged to
               // which allergen. The customer facing list was fixed for this
               // months ago; this is the same chip and it was missed.
@@ -1171,7 +1171,9 @@ function ComponentForm({
             List it separately on the allergen sheet
             <span className="block text-xs text-muted">
               Use this for things that are not menu items, like a dessert sauce. Leave it off
-              if it already appears in its own category.
+              if it already appears in its own category. If it is a customer choice with allergens
+              and is not listed, the allergen sheet asks customers to speak to a member of staff
+              about this dish.
             </span>
           </span>
         </label>
@@ -1203,7 +1205,7 @@ function ComponentForm({
           onClick={onCancel}
           className={secondaryButton}
         >
-          Done
+          {editing ? 'Cancel' : 'Done'}
         </button>
         <button
           type="submit"
@@ -1329,8 +1331,8 @@ export function ComponentTable({
               <tr className={tableHeadRow}>
                 <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Component</th>
                 <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Quantity</th>
-                <th className={`text-right px-4 py-3 ${tableHeadCell}`}>Unit Cost</th>
-                <th className={`text-right px-4 py-3 ${tableHeadCell}`}>Line Cost</th>
+                <th className={`text-right px-4 py-3 ${tableHeadCell}`}>Unit cost</th>
+                <th className={`text-right px-4 py-3 ${tableHeadCell}`}>Line cost</th>
                 <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Notes</th>
                 <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Actions</th>
               </tr>

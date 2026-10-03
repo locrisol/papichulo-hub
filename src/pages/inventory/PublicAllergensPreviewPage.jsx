@@ -152,7 +152,7 @@ export default function PublicAllergensPreviewPage() {
             const menuData = await readSheet()
             if (!menuData) {
                 setPrintProblem('The allergen list could not be read just now, so nothing was printed. '
-                    + 'Check the connection and try again.')
+                    + 'Check your connection and try again.')
                 return
             }
             await allergenListPdf({
@@ -192,7 +192,7 @@ export default function PublicAllergensPreviewPage() {
             // button appearing to do nothing at all.
             notify({
                 title: 'Could not copy it',
-                message: 'Your browser would not let the page use the clipboard. The link is below, copy it by hand.',
+                message: 'Your browser blocked copying. Copy the link below by hand.',
                 details: [{ label: 'Link', value: publicUrl }],
                 notice: true,
             })
@@ -202,7 +202,7 @@ export default function PublicAllergensPreviewPage() {
     if (!activeRestaurant) {
         return (
             <div>
-                <p className="text-sm text-muted">Select a restaurant to preview its public page.</p>
+                <p className="text-sm text-muted">Pick a restaurant to preview its allergen page.</p>
             </div>
         )
     }
@@ -210,8 +210,8 @@ export default function PublicAllergensPreviewPage() {
     return (
         <>
             <PageHeader
-                title="Public Allergens"
-                subtitle="This is exactly what customers see when they scan the QR code or open the public URL. Print the QR code below and place it on tables, menus, or counters."
+                title="Public allergens"
+                subtitle="This is what customers see when they scan the QR code or open the link. Print the QR code below and put it on tables, menus or the counter."
             />
 
             {/* The reminder to print a new sheet, at the top because the
@@ -239,7 +239,7 @@ export default function PublicAllergensPreviewPage() {
 
                     {/* URL + actions */}
                     <div className="flex-1 min-w-0 w-full">
-                        <h2 className={`${captionClass} mb-1`}>Public URL</h2>
+                        <h2 className={`${captionClass} mb-1`}>Public link</h2>
                         <p className="text-sm font-mono text-gray-900 break-all mb-4 bg-gray-50 px-3 py-2 rounded">
                             {publicUrl}
                         </p>
@@ -288,7 +288,7 @@ export default function PublicAllergensPreviewPage() {
                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
                                 </svg>
-                                Copy URL
+                                Copy link
                             </button>
                             <button
                                 type="button"
@@ -305,8 +305,8 @@ export default function PublicAllergensPreviewPage() {
 
             {/* Preview heading */}
             <div className="mb-3">
-                <h2 className={captionClass}>Customer Preview</h2>
-                <p className={hintClass}>A live render of {activeRestaurant.name}'s public allergen page.</p>
+                <h2 className={captionClass}>Customer preview</h2>
+                <p className={hintClass}>What customers see on {activeRestaurant.name}'s allergen page.</p>
             </div>
 
             {/* Embedded customer view */}

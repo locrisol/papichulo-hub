@@ -5,7 +5,7 @@ import { useAuth } from '@/context/auth'
 import { exportStockTakePdf } from '@/lib/stockTakePdf'
 import { useRestaurant } from '@/context/restaurant'
 import { fmtMoney, fmtQty } from '@/lib/format'
-import { monthYearOf, stampDateTime } from '@/lib/dates'
+import { stampDate, stampDateTime } from '@/lib/dates'
 import { sectionColour } from '@/lib/sections'
 import { countName } from '@/lib/products'
 import { breakdownParts, bySection, justLoose, summarise, onThisCount, noPrice } from '@/lib/stockTakeSummary'
@@ -44,13 +44,14 @@ function fmtDateTime(iso) {
 
 // What a stock take is called, for any of them rather than only the one on
 // screen. A session can be given a name when it is started, and where it was
-// not it is named after the month it was counted in.
+// not it is named after the day it was started.
 function titleOf(session) {
   if (!session) return 'the open stock take'
   if (session.notes && session.notes.trim()) return session.notes.trim()
-  const typeWord = session.type ? session.type.charAt(0).toUpperCase() + session.type.slice(1) : 'Stock'
-  const monthYear = monthYearOf(session.started_at)
-  return `${typeWord} Stock Take (${monthYear})`
+  const typeWord = session.type
+    ? `${session.type.charAt(0).toUpperCase()}${session.type.slice(1)} stock take`
+    : 'Stock take'
+  return `${typeWord}, ${stampDate(session.started_at)}`
 }
 
 export default function StockTakeSummaryPage() {
@@ -86,7 +87,7 @@ export default function StockTakeSummaryPage() {
     const { data: sessionData, error: sessionErr } = await supabase
       .from('stock_takes').select('*').eq('id', id).single()
     if (sessionErr || !sessionData) {
-      setError('Stock take session not found.')
+      setError('This stock take could not be found.')
       setLoading(false)
       return
     }
@@ -289,7 +290,7 @@ export default function StockTakeSummaryPage() {
           </p>
         </div>
         <div className="flex items-baseline justify-between gap-3 px-4 py-3 sm:block">
-          <p className={captionClass}>Lines</p>
+          <p className={captionClass}>Entries</p>
           <p className="text-2xl font-bold text-gray-900 sm:mt-1">{lines.length}</p>
         </div>
         <div className="flex items-baseline justify-between gap-3 px-4 py-3 sm:block">
@@ -418,12 +419,12 @@ export default function StockTakeSummaryPage() {
           and the same words as the report, off the same figures. */}
       <NameList
         title="Counted as none in stock"
-        note="Somebody looked and there was none. Worth an order."
+        note="These may need ordering."
         products={summary.noneInStock}
       />
       <NameList
         title="Not counted"
-        note="No count was recorded this session, so nothing here is known either way."
+        note="These were not counted in this stock take, so their stock is unknown."
         products={summary.notCounted}
       />
 
@@ -445,7 +446,7 @@ export default function StockTakeSummaryPage() {
         <Modal title="Reopen this stock take?" onClose={closeReopen} width="max-w-md">
           <div className="px-6 py-4 space-y-3">
             <p className="text-sm text-gray-700">
-              This returns the stock take to in-progress so counts can be edited. The reopen is recorded with your name and the reason.
+              Reopening lets the entries be changed again. Your name and the reason are saved with it.
             </p>
             <div>
               <label htmlFor="reopen-reason" className={labelClass}>Reason</label>

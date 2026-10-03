@@ -211,7 +211,7 @@ describe('a count closed while somebody is counting', () => {
         tables.stock_take_lines = []
         fireEvent(window, new Event('focus'))
 
-        expect(await screen.findByText('This stock take is closed. Counts are read-only.')).toBeInTheDocument()
+        expect(await screen.findByText('This stock take is closed, so the entries cannot be changed.')).toBeInTheDocument()
         expect(screen.getByText('1/1 products counted')).toBeInTheDocument()
     })
 })
