@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { labelClass, fieldClass, lockedField, primaryButton, hintClass } from '@/lib/controlStyles'
+import { labelClass, fieldClass, lockedField, primaryButton, secondaryButton, hintClass } from '@/lib/controlStyles'
 import { INVOICE_CATEGORIES } from '@/lib/invoiceCategories'
 import { numberField } from '@/lib/numberInput'
 import { shortDate } from '@/lib/dates'
@@ -90,7 +90,7 @@ export default function InvoiceForm({
                         the sales week. It sits first because it is the thing the
                         invoice is being filed into, and the invoice date is what
                         decides it. */}
-                    <div className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-500">
+                    <div className={`${lockedField} w-full px-3 py-2.5 text-base`}>
                         {shortDate(weekStart)}
                     </div>
                 </div>
@@ -167,7 +167,7 @@ export default function InvoiceForm({
                     <button
                         type="button"
                         onClick={onCancel}
-                        className="px-4 py-2 border border-border text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 bg-white transition-colors"
+                        className={secondaryButton}
                     >
                         Cancel
                     </button>

@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { mockSupabase, makeQuery, renderWithRouter } from '@/test/helpers'
-import { todayISO } from '@/lib/dates'
+import { todayISO, fullDate } from '@/lib/dates'
 
 // The day form and the delivery platforms.
 //
@@ -178,5 +178,41 @@ describe('the delivery platforms on the day form', () => {
         await user.type(boxUnder('Just Eat'), '25')
         await user.click(screen.getByRole('button', { name: 'Update day' }))
         await waitFor(() => expect(saved().platform_sales).toEqual({ Deliveroo: 100, 'Just Eat': 25 }))
+    })
+})
+
+describe('the day form', () => {
+    // fieldClass carried bg-white and the green was added beside it, so which
+    // one showed came down to the stylesheet's order, and it was the white.
+    it('shows a filled box green and an empty one white', async () => {
+        tables.sales_records = today({})
+        await openDay()
+        expect(boxUnder('Gross sales')).toHaveClass('bg-green-50')
+        expect(boxUnder('Gross sales')).not.toHaveClass('bg-white')
+        expect(boxUnder('Deliveroo')).toHaveClass('bg-white')
+        expect(boxUnder('Deliveroo')).not.toHaveClass('bg-green-50')
+    })
+
+    it('names the day in words once it is saved', async () => {
+        tables.sales_records = today({})
+        const user = await openDay()
+        await user.click(screen.getByRole('button', { name: 'Update day' }))
+        expect(await screen.findByRole('status')).toHaveTextContent(`Sales for ${fullDate(todayISO())} saved.`)
+    })
+
+    // A private window, or a browser told to block site data, refuses the
+    // store. Remembering the view is not worth a page that will not open.
+    it('opens when the browser refuses its storage', async () => {
+        const refuse = () => { throw new Error('refused') }
+        const reads = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(refuse)
+        const writes = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(refuse)
+        try {
+            tables.sales_records = today({})
+            await openDay()
+            expect(screen.getByText('Till receipt')).toBeInTheDocument()
+        } finally {
+            reads.mockRestore()
+            writes.mockRestore()
+        }
     })
 })

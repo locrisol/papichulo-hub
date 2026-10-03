@@ -354,3 +354,21 @@ describe('the delivery platforms', () => {
         expect(written('update')[0][0].platform_sales).toEqual({ Deliveroo: 100, 'Just Eat': 25 })
     })
 })
+
+// The unsaved draft is kept in the browser, which can refuse it. The grid has
+// to go on taking figures either way: the draft is only a convenience.
+describe('a browser that refuses its storage', () => {
+    it('still opens the week and takes figures', async () => {
+        const refuse = () => { throw new Error('refused') }
+        const spies = ['getItem', 'setItem', 'removeItem']
+            .map(name => vi.spyOn(Storage.prototype, name).mockImplementation(refuse))
+        try {
+            const { user } = await openGrid()
+            await retype(user, grossBox(0), '300')
+            expect(grossBox(0)).toHaveValue('300')
+            expect(screen.getByText('Unsaved changes')).toBeInTheDocument()
+        } finally {
+            spies.forEach(spy => spy.mockRestore())
+        }
+    })
+})

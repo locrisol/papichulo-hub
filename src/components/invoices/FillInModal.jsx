@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import Modal from '@/components/ui/Modal'
+import Notice from '@/components/ui/Notice'
 import { fmtMoney } from '@/lib/format'
 import { fullDate } from '@/lib/dates'
 import { fillInPlan, documentTotal } from '@/lib/invoiceImport'
@@ -45,13 +46,13 @@ export default function FillInModal({ doc, invoice, lines, onClose, onFillIn }) 
                 </p>
 
                 {plan.same && (
-                    <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-sm text-green-800">
+                    <Notice tone="good">
                         The two agree to the cent. The lines go on and nothing about the week moves.
-                    </div>
+                    </Notice>
                 )}
 
                 {plan.deducted > 0 && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-sm text-blue-900">
+                    <Notice tone="info">
                         <p className="font-bold">
                             {fmtMoney(plan.deducted)} was taken off before it was typed in.
                         </p>
@@ -65,11 +66,11 @@ export default function FillInModal({ doc, invoice, lines, onClose, onFillIn }) 
                             The claim starts open, because nobody knows whether the credit ever
                             came. It goes on the list until somebody says.
                         </p>
-                    </div>
+                    </Notice>
                 )}
 
                 {plan.over > 0 && (
-                    <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-sm text-amber-900">
+                    <Notice tone="warn">
                         <p className="font-bold">
                             {fmtMoney(plan.over)} more was typed in than the document says.
                         </p>
@@ -79,7 +80,7 @@ export default function FillInModal({ doc, invoice, lines, onClose, onFillIn }) 
                             It is worth knowing why before you press this: either the typing was
                             wrong, or this is not the same delivery.
                         </p>
-                    </div>
+                    </Notice>
                 )}
 
                 <p className={hintClass}>

@@ -86,7 +86,8 @@ describe('checking a pasted list against what is held', () => {
         ].join('\n')
         fireEvent.change(screen.getByLabelText(/paste it here/), { target: { value: paste } })
 
-        expect(await screen.findAllByText('Have it')).toHaveLength(3)
+        // Twice each: the phone cards and the table are both in the page.
+        expect(await screen.findAllByText('Have it')).toHaveLength(6)
         expect(screen.queryByText('Not in the Hub', { selector: 'span' })).toBeNull()
     })
 })

@@ -846,3 +846,26 @@ describe('an employee looking at their own', () => {
         expect((await screen.findByText('Finished')).parentElement).toHaveTextContent('Lettuce warm')
     })
 })
+
+// How each supplier does. Six columns scrolled sideways on a phone, so the
+// figures are a card each there too, and both say the same.
+describe('each supplier', () => {
+    const SETTLED = {
+        ...CLAIM, id: 'c2', status: 'settled', amount: 20, credited_amount: 10,
+        invoice_id: 'i1', invoice_line_id: 'line1', settled_on: '2026-09-28',
+    }
+
+    it('gives the share that came back as a percent, on the cards and in the table', async () => {
+        tables.invoice_line_claims = [SETTLED]
+        renderWithRouter(<ClaimsPage />)
+        expect(await screen.findAllByText('50.0%')).toHaveLength(2)
+        expect(screen.getAllByText('1 day')).toHaveLength(2)
+        expect(screen.getAllByText('Usual wait')).toHaveLength(2)
+    })
+
+    it('writes the day a problem was raised the way the rest of the page does', async () => {
+        renderWithRouter(<ClaimsPage />)
+        expect(await screen.findByText(new RegExp(`Sysco Ireland, ${shortDate(CLAIM.raised_on)}, docket`)))
+            .toBeInTheDocument()
+    })
+})

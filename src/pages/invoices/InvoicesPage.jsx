@@ -6,7 +6,7 @@ import { useRestaurant } from '@/context/restaurant'
 import { fmtMoney, num, namesList } from '@/lib/format'
 import { todayISO, weekStartOf, shortDate, addDays, fullDate } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
-import { secondaryButton, card, cardEdge, cardHeader, rowButton, pageTitle } from '@/lib/controlStyles'
+import { secondaryButton, card, cardEdge, cardHeader, rowButton } from '@/lib/controlStyles'
 import JumpButton from '@/components/ui/JumpButton'
 import DateStepper from '@/components/ui/DateStepper'
 import InvoiceForm from '@/components/invoices/InvoiceForm'
@@ -19,6 +19,8 @@ import CategoryBadges from '@/components/invoices/CategoryBadges'
 import { orderByUse, USE_WINDOW_DAYS } from '@/lib/supplierOrder'
 import { creditTakenBack, claimTakesOff } from '@/lib/invoiceClaims'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import Notice from '@/components/ui/Notice'
+import PageHeader from '@/components/ui/PageHeader'
 
 
 // Nothing chosen to start with. The category used to default to food, which is
@@ -439,34 +441,28 @@ export default function InvoicesPage() {
 
     return (
         <>
-            <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
-                <div>
-                    <h2 className={pageTitle}>Invoices</h2>
-                    <p className="text-sm text-gray-500 mt-1">{activeRestaurant?.name}</p>
-                </div>
-                {/* This screen only shows the week you are working on. The history
-                    is where you go when you are looking for something older. */}
-                <div className="flex flex-wrap gap-2">
-                    {/* Reading the documents instead of typing a total off
-                        them. This screen is still where an invoice from
-                        somebody who sends a photograph of a docket goes in. */}
-                    <button
-                        onClick={() => navigate('/invoices/import')}
-                        className={secondaryButton}
-                    >
-                        Import from PDF
-                    </button>
-                    <button
-                        onClick={() => navigate('/invoices/history')}
-                        className={secondaryButton}
-                    >
-                        History
-                    </button>
-                </div>
-            </div>
+            {/* This screen only shows the week you are working on. The history
+                is where you go when you are looking for something older. */}
+            <PageHeader title="Invoices" subtitle={activeRestaurant?.name}>
+                {/* Reading the documents instead of typing a total off
+                    them. This screen is still where an invoice from
+                    somebody who sends a photograph of a docket goes in. */}
+                <button
+                    onClick={() => navigate('/invoices/import')}
+                    className={secondaryButton}
+                >
+                    Import from PDF
+                </button>
+                <button
+                    onClick={() => navigate('/invoices/history')}
+                    className={secondaryButton}
+                >
+                    History
+                </button>
+            </PageHeader>
 
-            {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
-            {success && <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{success}</div>}
+            <ErrorBanner className="mb-4">{error}</ErrorBanner>
+            <Notice tone="good" className="mb-4">{success}</Notice>
 
             {/* The week, the same control the other eight screens use. */}
             <div className={`${card} p-4 mb-4`}>
@@ -475,17 +471,14 @@ export default function InvoicesPage() {
                     onNext={() => goToWeek(addDays(weekStart, 7))}
                     backLabel="Previous week"
                     nextLabel="Next week"
+                    weekStart={weekStart}
                     jump={(
                         <JumpButton
                             isCurrent={weekStart === weekStartOf(todayISO())}
                             onClick={() => goToWeek(weekStartOf(todayISO()))}
                         />
                     )}
-                >
-                    <span className="text-sm font-medium text-gray-900 text-center whitespace-nowrap">
-                        {shortDate(weekStart)} - {shortDate(addDays(weekStart, 6))}
-                    </span>
-                </DateStepper>
+                />
             </div>
 
             {/* Entry form */}

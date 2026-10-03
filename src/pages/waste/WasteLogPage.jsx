@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
@@ -7,16 +7,18 @@ import { fmtMoney, fmtQty } from '@/lib/format'
 import { todayISO, shortDate, addDays } from '@/lib/dates'
 import { calculateWasteValue } from '@/lib/wasteValue'
 import { REASONS, reasonLabel } from '@/lib/wasteReasons'
-import { card, dateField, removeButton, secondaryButton, labelClass, fieldClass, hintClass, pageTitle, primaryButton } from '@/lib/controlStyles'
+import { card, dateField, removeButton, secondaryButton, labelClass, fieldClass, hintClass, primaryButton } from '@/lib/controlStyles'
 import JumpButton from '@/components/ui/JumpButton'
 import DateStepper from '@/components/ui/DateStepper'
 import { friendlyError } from '@/lib/errors'
-import { matches } from '@/lib/search'
 import { heldFor } from '@/lib/products'
 import { useConfirm } from '@/context/confirm'
 import { numberField } from '@/lib/numberInput'
 import { can, MANAGERS } from '@/lib/access'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import Notice from '@/components/ui/Notice'
+import PageHeader from '@/components/ui/PageHeader'
+import ProductSelect from '@/components/ui/ProductSelect'
 
 // Waste log. One day at a time, built for a phone, because waste gets logged on
 // the floor as it happens by whoever dropped the thing. That is the opposite of
@@ -86,7 +88,6 @@ export default function WasteLogPage() {
     const [refresh, setRefresh] = useState(0)
 
     // The form for one item
-    const [search, setSearch] = useState('')
     const [productId, setProductId] = useState('')
     const [quantity, setQuantity] = useState('')
     const [reason, setReason] = useState('spoilage')
@@ -188,14 +189,10 @@ export default function WasteLogPage() {
     // Worked out live as you type, so the money is on screen before you add it.
     const costing = calculateWasteValue(selectedProduct, quantity, products, recipeLines, prices)
 
-    const filtered = search.trim()
-        ? products.filter(p => !heldFor(p) && matches(p.name, search)).slice(0, 8)
-        : []
-
-    function pickProduct(p) {
-        setProductId(p.id)
-        setSearch(p.name)
-    }
+    // What can be picked: every product in use that is not held back. Every
+    // match shows, grouped by section, where the old list stopped at eight
+    // without saying there were more.
+    const pickable = useMemo(() => products.filter(p => !heldFor(p)), [products])
 
     function addToBasket(e) {
         e.preventDefault()
@@ -219,7 +216,6 @@ export default function WasteLogPage() {
         // Clear the product but keep the reason: a spill is usually several
         // things thrown out for the same reason.
         setProductId('')
-        setSearch('')
         setQuantity('')
     }
 
@@ -289,11 +285,7 @@ export default function WasteLogPage() {
 
     return (
         <>
-            <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
-                <div>
-                    <h2 className={pageTitle}>Waste</h2>
-                    <p className="text-sm text-gray-500 mt-1">{activeRestaurant?.name}</p>
-                </div>
+            <PageHeader title="Waste" subtitle={activeRestaurant?.name}>
                 {isManager && (
                     <button
                         onClick={() => navigate('/waste/summary')}
@@ -302,10 +294,10 @@ export default function WasteLogPage() {
                         Weekly summary
                     </button>
                 )}
-            </div>
+            </PageHeader>
 
-            {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
-            {success && <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{success}</div>}
+            <ErrorBanner className="mb-4">{error}</ErrorBanner>
+            <Notice tone="good" className="mb-4">{success}</Notice>
 
             {/* Two columns once there is room for them. What you are adding
                 goes on the left and what is already logged stays on the right,
@@ -341,7 +333,7 @@ export default function WasteLogPage() {
                             </DateStepper>
                         </div>
                     ) : (
-                        <p className="text-sm text-gray-500 mb-3">{shortDate(logDate)}</p>
+                        <p className="text-sm text-muted mb-3">{shortDate(logDate)}</p>
                     )}
 
                     {/* Adding items. Bigger touch targets than the rest of the
@@ -350,31 +342,16 @@ export default function WasteLogPage() {
                         <form onSubmit={addToBasket} className={`${card} p-5 mb-3`}>
                             <h3 className="text-sm font-semibold text-gray-700 mb-3">Add an item</h3>
 
-                            <div className="mb-3 relative">
+                            <div className="mb-3">
                                 <label className={labelClass}>Product</label>
-                                <input
-                                    type="text"
-                                    value={search}
-                                    onChange={e => { setSearch(e.target.value); setProductId('') }}
-                                    className={fieldClass}
+                                <ProductSelect
+                                    large
+                                    value={productId}
+                                    onChange={setProductId}
+                                    products={pickable}
                                     placeholder="Product name"
                                 />
                                 <p className={hintClass}>Start typing and pick from the list.</p>
-                                {filtered.length > 0 && !productId && (
-                                    <div className="absolute z-10 left-0 right-0 mt-1 bg-white border border-border rounded-lg shadow-sm overflow-hidden">
-                                        {filtered.map(p => (
-                                            <button
-                                                key={p.id}
-                                                type="button"
-                                                onClick={() => pickProduct(p)}
-                                                className="w-full text-left px-3 py-2.5 text-sm hover:bg-gray-50 border-b border-border last:border-0"
-                                            >
-                                                {p.name}
-                                                <span className="text-xs text-muted ml-2">{p.unit}</span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
@@ -441,25 +418,25 @@ export default function WasteLogPage() {
                                 <h3 className="text-sm font-semibold text-gray-900">
                                     {reviewing ? 'Check before saving' : 'Not saved yet'}
                                 </h3>
-                                <span className="text-xs text-gray-500">
+                                <span className="text-xs text-muted">
                                     {basket.length} {basket.length === 1 ? 'item' : 'items'}
                                 </span>
                             </div>
                             {reviewing && (
-                                <p className="text-xs text-gray-500 mb-3">Once this is saved you cannot change it yourself.</p>
+                                <p className="text-xs text-muted mb-3">Once this is saved you cannot change it yourself.</p>
                             )}
 
                             <div className="border border-border rounded-lg divide-y divide-border mb-3 mt-3">
                                 {basket.map(i => (
                                     <div key={i.key} className="flex items-center gap-3 px-3 py-2.5">
                                         <div className="flex-1 min-w-0">
-                                            <div className="text-sm text-gray-900 truncate">{i.product.name}</div>
+                                            <div className="text-sm text-gray-900 break-words">{i.product.name}</div>
                                             <div className="text-xs text-muted">
                                                 {fmtQty(i.quantity)} {i.product.unit} · {reasonLabel(i.reason)}
                                                 {i.hasCost && ` · at ${fmtMoney(i.unitCost)}`}
                                             </div>
                                         </div>
-                                        <span className={`text-sm whitespace-nowrap ${i.hasCost ? 'text-gray-900 font-medium' : 'text-amber-600'}`}>
+                                        <span className={`text-sm whitespace-nowrap ${i.hasCost ? 'text-gray-900 font-medium' : 'text-amber-700'}`}>
                                             {i.hasCost ? fmtMoney(i.value) : (i.product.is_mix ? 'No value' : 'No price')}
                                         </span>
                                         {!reviewing && (
@@ -493,11 +470,11 @@ export default function WasteLogPage() {
                                 {reviewing ? (
                                     <>
                                         <button onClick={() => setReviewing(false)} disabled={saving}
-                                            className="px-5 py-3 border border-border text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50">
+                                            className={secondaryButton}>
                                             Go back
                                         </button>
                                         <button onClick={confirmSave} disabled={saving}
-                                            className="px-6 py-3 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-50">
+                                            className={primaryButton('xl')}>
                                             {saving ? 'Saving...' : 'Save it'}
                                         </button>
                                     </>
@@ -519,7 +496,7 @@ export default function WasteLogPage() {
                         <h3 className="text-sm font-semibold text-gray-700">
                             {logDate === todayISO() ? 'Logged today' : `Logged on ${shortDate(logDate)}`}
                         </h3>
-                        <span className="text-sm text-gray-500">
+                        <span className="text-sm text-muted">
                             total: <span className="font-semibold text-gray-900">{fmtMoney(dayTotal)}</span>
                         </span>
                     </div>
@@ -531,13 +508,13 @@ export default function WasteLogPage() {
                             {entries.map(e => (
                                 <div key={e.id} className="flex items-center gap-3 py-2.5">
                                     <div className="flex-1 min-w-0">
-                                        <div className="text-sm text-gray-900 truncate">{productOf(e.product_id)?.name || 'Unknown product'}</div>
+                                        <div className="text-sm text-gray-900 break-words">{productOf(e.product_id)?.name || 'Unknown product'}</div>
                                         <div className="text-xs text-muted">
                                             {fmtQty(e.quantity_wasted)} {productOf(e.product_id)?.unit} · {reasonLabel(e.reason)}
                                         </div>
                                     </div>
                                     <span className="text-sm text-gray-900 whitespace-nowrap">
-                                        {e.waste_value == null ? '-' : fmtMoney(e.waste_value)}
+                                        {e.waste_value == null ? '—' : fmtMoney(e.waste_value)}
                                     </span>
                                     {isManager && (
                                         <button onClick={() => handleDelete(e)}

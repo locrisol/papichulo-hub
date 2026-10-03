@@ -20,9 +20,11 @@ import { codeRow, seenAgain } from '@/lib/priceEvents'
 import { creditsFor } from '@/lib/supplierDocuments'
 import { readToDecide } from '@/lib/invoiceReview'
 import {
-    card, cardHeader, pageTitle, primaryButton, secondaryButton, hintClass,
+    card, cardHeader, primaryButton, secondaryButton, hintClass,
 } from '@/lib/controlStyles'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import Notice from '@/components/ui/Notice'
+import PageHeader from '@/components/ui/PageHeader'
 import WarningUntilSeen from '@/components/ui/WarningUntilSeen'
 import DocumentCard from '@/components/invoices/DocumentCard'
 import LinkAccountModal from '@/components/invoices/LinkAccountModal'
@@ -645,7 +647,7 @@ export default function InvoiceImportPage() {
         await pairEarlierCredits(doc, invoice.id, where)
         const notes = notesSaid([{ number: doc.number, count: await doorNotesOn(doc, where) }])
         const filled = claimed
-            ? `Filled in. ${claim.amount.toFixed(2)} is on the claims list as a shortage.${notes}`
+            ? `Filled in. ${fmtMoney(claim.amount)} is on the claims list as a shortage.${notes}`
             : `Filled in.${notes}`
         if (after.length) {
             setSaid(filled)
@@ -669,24 +671,18 @@ export default function InvoiceImportPage() {
 
     return (
         <>
-            <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
-                <div>
-                    <h2 className={pageTitle}>Import invoices</h2>
-                    <p className="text-sm text-gray-500 mt-1">{activeRestaurant?.name}</p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                    <Link to="/invoices/documents" className={secondaryButton}>
-                        What the supplier says it sent
-                    </Link>
-                    <Link to="/invoices/review" className={secondaryButton}>Review</Link>
-                    <Link to="/invoices" className={secondaryButton}>Invoices</Link>
-                </div>
-            </div>
+            <PageHeader title="Import invoices" subtitle={activeRestaurant?.name}>
+                <Link to="/invoices/documents" className={secondaryButton}>
+                    What the supplier says it sent
+                </Link>
+                <Link to="/invoices/review" className={secondaryButton}>Review</Link>
+                <Link to="/invoices" className={secondaryButton}>Invoices</Link>
+            </PageHeader>
 
-            {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
+            <ErrorBanner className="mb-4">{error}</ErrorBanner>
             {warned && <WarningUntilSeen className="mb-4" onSeen={() => setWarned('')}>{warned}</WarningUntilSeen>}
             {said && (
-                <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">
+                <Notice tone="good" className="mb-4">
                     {said}
                     {onReview > 0 && (
                         <>
@@ -694,7 +690,7 @@ export default function InvoiceImportPage() {
                             <Link to="/invoices/review" className="font-bold underline">Open Review</Link>
                         </>
                     )}
-                </div>
+                </Notice>
             )}
 
             <div className={`${card} mb-6 overflow-hidden`}>

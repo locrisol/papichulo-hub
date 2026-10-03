@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { dayIsClosed, planNoteWrites, applyNoteWrites } from '@/lib/closedDays'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
-import { fmtMoney, num } from '@/lib/format'
+import { fmtMoney, fmtPct, num } from '@/lib/format'
 import {
     tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord, sameLabel, trackedCopy,
     keyedPlatforms, platformsToShow, mergePlatformSales, sameStoredDay,
@@ -13,11 +13,14 @@ import { numberField } from '@/lib/numberInput'
 import { todayISO, addDays, fullDate } from '@/lib/dates'
 import { bankHolidayOn, BANK_HOLIDAY_INK, BANK_HOLIDAY_WASH } from '@/lib/bankHolidays'
 import { friendlyError } from '@/lib/errors'
-import { secondaryButton, card, dateField, checkbox, labelClass, fieldClass, pageTitle, primaryButton } from '@/lib/controlStyles'
+import { secondaryButton, card, dateField, checkbox, labelClass, fieldClass, filledField, primaryButton } from '@/lib/controlStyles'
+import { readStored, writeStored } from '@/lib/browserStore'
 import JumpButton from '@/components/ui/JumpButton'
 import DateStepper from '@/components/ui/DateStepper'
 import { useConfirm } from '@/context/confirm'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import Notice from '@/components/ui/Notice'
+import PageHeader from '@/components/ui/PageHeader'
 
 // TWO RECORDS, DELIBERATELY SEPARATE
 // The till receipt block (gross, net, and a row for every way the till takes
@@ -52,10 +55,10 @@ export default function SalesPage() {
     useEffect(() => {
         const requested = searchParams.get('view')
         if (requested) {
-            localStorage.setItem('salesView', requested)
+            writeStored('local', 'salesView', requested)
             return
         }
-        const remembered = localStorage.getItem('salesView')
+        const remembered = readStored('local', 'salesView')
         const preferWeek = remembered ? remembered === 'week' : window.innerWidth >= 1024
         if (preferWeek) navigate('/sales/weekly', { replace: true })
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -112,10 +115,12 @@ export default function SalesPage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [restaurantId, saleDate])
 
-    async function loadDay() {
+    // `said` is what to show once it is read. Clearing it here on every read
+    // meant the line a save had just set was gone before it was ever drawn.
+    async function loadDay(said = '') {
         setLoading(true)
         setError('')
-        setSuccess('')
+        setSuccess(said)
 
         // Neither is filtered by is_active: a day from March has to be able to
         // show Outside Catering, which it can only do if the retired row is here.
@@ -347,8 +352,7 @@ export default function SalesPage() {
         })
         if (noteErr) { setFormProblem(friendlyError(noteErr)); return }
 
-        setSuccess(isClosed ? `${saleDate} marked as closed.` : `Sales for ${saleDate} saved.`)
-        loadDay()
+        loadDay(isClosed ? `${fullDate(saleDate)} marked as closed.` : `Sales for ${fullDate(saleDate)} saved.`)
     }
 
     // A filled box is faintly green, an empty one is white, the same as the
@@ -357,7 +361,7 @@ export default function SalesPage() {
     // filled it in, a typed 0 means the till took nothing, and the day has to
     // be able to say which.
     function fieldWith(value) {
-        return `${fieldClass} ${value === '' || value == null ? '' : 'bg-green-50'}`
+        return value === '' || value == null ? fieldClass : filledField
     }
 
     // One bucket of tracking platforms, with the gap against the receipt figure.
@@ -392,12 +396,12 @@ export default function SalesPage() {
                     <span className="text-sm font-semibold text-gray-800">{title} tracked</span>
                     <span className="text-sm text-gray-600">
                         <span className="font-semibold text-gray-900">{fmtMoney(sum)}</span>
-                        <span className="ml-2 text-gray-500">({pctOfGross(sum).toFixed(1)}% of sales)</span>
+                        <span className="ml-2 text-muted">({fmtPct(pctOfGross(sum))} of sales)</span>
                     </span>
                 </div>
 
                 {comparable && Math.abs(gap) >= 0.01 && (
-                    <p className="text-xs text-amber-600 px-5 pt-3">
+                    <p className="text-xs text-amber-700 px-5 pt-3">
                         {gap > 0 ? '+' : ''}{fmtMoney(gap)} against the receipt figure. Expected: platforms report
                         commission and VAT differently.
                     </p>
@@ -431,25 +435,24 @@ export default function SalesPage() {
 
     return (
         <>
-            <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
-                <div>
-                    <h2 className={pageTitle}>Daily sales</h2>
-                    <p className="text-sm text-gray-500 mt-1">{activeRestaurant?.name} · one record per day</p>
-                </div>
+            <PageHeader
+                title="Daily sales"
+                subtitle={[activeRestaurant?.name, 'one record per day'].filter(Boolean).join(' · ')}
+            >
                 {/* Switch to the whole-week grid, better suited to a laptop */}
                 <button
                     onClick={() => {
-                        localStorage.setItem('salesView', 'week')
+                        writeStored('local', 'salesView', 'week')
                         navigate('/sales/weekly')
                     }}
                     className={secondaryButton}
                 >
                     Week view
                 </button>
-            </div>
+            </PageHeader>
 
-            {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
-            {success && <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{success}</div>}
+            <ErrorBanner className="mb-4">{error}</ErrorBanner>
+            <Notice tone="good" className="mb-4">{success}</Notice>
 
             {/* Two columns once there is room for them. The left is the day
                 and the money off the till, finishing with the reconciliation,
@@ -490,7 +493,7 @@ export default function SalesPage() {
                             phone it was being pushed onto a line of its own and
                             reading like a stray label. */}
                         {recordId && (
-                            <p className="text-xs text-amber-600 font-medium mt-2">Existing record</p>
+                            <p className="text-xs text-amber-700 font-medium mt-2">Existing record</p>
                         )}
                         {/* Which one it is, not just that it is one. A day
                             taking bank holiday money is a day to compare with
@@ -517,7 +520,7 @@ export default function SalesPage() {
                             />
                             <div>
                                 <span className="text-sm font-medium text-gray-900">Store was closed this day</span>
-                                <p className="text-xs text-gray-500 mt-0.5">
+                                <p className="text-xs text-muted mt-0.5">
                                     Marks the day as not trading. Closed days are excluded from daily averages.
                                 </p>
                             </div>

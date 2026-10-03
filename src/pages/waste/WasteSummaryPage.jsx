@@ -3,13 +3,14 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useRestaurant } from '@/context/restaurant'
 import { fmtMoney, fmtQty, fmtPct } from '@/lib/format'
-import { todayISO, weekStartOf, shortDate, addDays } from '@/lib/dates'
+import { todayISO, weekStartOf, addDays } from '@/lib/dates'
 import { REASONS, reasonLabel } from '@/lib/wasteReasons'
-import { secondaryButton, tableHeadRow, card, captionClass, pageTitle } from '@/lib/controlStyles'
+import { secondaryButton, tableHeadRow, card, captionClass, compactField, dateField } from '@/lib/controlStyles'
 import JumpButton from '@/components/ui/JumpButton'
 import DateStepper from '@/components/ui/DateStepper'
 import { friendlyError } from '@/lib/errors'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import PageHeader from '@/components/ui/PageHeader'
 
 // Waste for a week, grouped by product.
 //
@@ -124,7 +125,7 @@ export default function WasteSummaryPage() {
     function pctColour(pct) {
         if (pct == null) return 'text-muted'
         if (pct < GOOD_BELOW) return 'text-green-700'
-        if (pct <= WARN_BELOW) return 'text-amber-600'
+        if (pct <= WARN_BELOW) return 'text-amber-700'
         return 'text-red-600'
     }
 
@@ -137,24 +138,18 @@ export default function WasteSummaryPage() {
         goToWeek(addDays(weekStart, weeks * 7))
     }
 
-    const dates = [weekStart, addDays(weekStart, 6)]
-
     return (
         <>
-            <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
-                <div>
-                    <h2 className={pageTitle}>Waste summary</h2>
-                    <p className="text-sm text-gray-500 mt-1">{activeRestaurant?.name}</p>
-                </div>
+            <PageHeader title="Waste summary" subtitle={activeRestaurant?.name}>
                 <button
                     onClick={() => navigate('/waste')}
                     className={secondaryButton}
                 >
                     Log waste
                 </button>
-            </div>
+            </PageHeader>
 
-            {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
+            <ErrorBanner className="mb-4">{error}</ErrorBanner>
 
             {/* Week and filter */}
             <div className={`${card} p-4 mb-4`}>
@@ -164,32 +159,33 @@ export default function WasteSummaryPage() {
                         onNext={() => shiftWeek(1)}
                         backLabel="Previous week"
                         nextLabel="Next week"
+                        weekStart={weekStart}
                         jump={(
                             <JumpButton
                                 isCurrent={weekStart === weekStartOf(todayISO())}
                                 onClick={() => goToWeek(weekStartOf(todayISO()))}
                             />
                         )}
-                    >
-                        <span className="text-sm font-medium text-gray-900 text-center whitespace-nowrap">
-                            {shortDate(dates[0])} - {shortDate(dates[1])}
-                        </span>
-                    </DateStepper>
+                    />
 
                     {/* The reason filter is pushed to the far right on a wide
                         screen, which is where you expect a filter to be. On a
                         phone that rule left it stranded on a line of its own
                         with the date box orphaned underneath, so it only
                         applies from the small breakpoint up. Both controls take
-                        the full width on a phone instead. */}
-                    <select
-                        value={reasonFilter}
-                        onChange={e => setReasonFilter(e.target.value)}
-                        className="w-full sm:w-auto sm:ml-auto border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
-                    >
-                        <option value="">All reasons</option>
-                        {REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-                    </select>
+                        the full width on a phone instead. The width is on a
+                        wrapper, since compactField already sets one. */}
+                    <div className="w-full sm:w-auto sm:ml-auto">
+                        <select
+                            value={reasonFilter}
+                            onChange={e => setReasonFilter(e.target.value)}
+                            aria-label="Reason"
+                            className={compactField}
+                        >
+                            <option value="">All reasons</option>
+                            {REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                        </select>
+                    </div>
 
                     <input
                         type="date"
@@ -200,7 +196,7 @@ export default function WasteSummaryPage() {
                             setPickerDate(v)
                             setWeekStart(weekStartOf(v))
                         }}
-                        className="w-full sm:w-auto border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                        className={`${dateField} w-full sm:w-auto`}
                         aria-label="Jump to week"
                     />
                 </div>
@@ -272,7 +268,7 @@ export default function WasteSummaryPage() {
                                     </span>
                                 </div>
                                 {row.anyMissingPrice && (
-                                    <p className="text-xs text-amber-600 mt-0.5">{row.missing}</p>
+                                    <p className="text-xs text-amber-700 mt-0.5">{row.missing}</p>
                                 )}
                             </div>
                         ))}
@@ -310,7 +306,7 @@ export default function WasteSummaryPage() {
                                     <td className="px-3 py-2 text-right text-gray-900 font-medium whitespace-nowrap">
                                         {fmtMoney(row.value)}
                                         {row.anyMissingPrice && (
-                                            <span className="block text-xs text-amber-600">{row.missing}</span>
+                                            <span className="block text-xs text-amber-700">{row.missing}</span>
                                         )}
                                     </td>
                                 </tr>
@@ -319,7 +315,7 @@ export default function WasteSummaryPage() {
                         <tfoot>
                             <tr className="border-t-2 border-border bg-gray-50">
                                 <td className="px-3 py-3 font-semibold text-gray-900">Total</td>
-                                <td className="px-3 py-3 text-right text-muted">-</td>
+                                <td className="px-3 py-3 text-right text-muted">—</td>
                                 <td className="px-3 py-3 text-right font-semibold text-gray-900">{fmtMoney(totalValue)}</td>
                             </tr>
                         </tfoot>
