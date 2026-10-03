@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen, within } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { makeQuery, mockSupabase, renderWithRouter } from '@/test/helpers'
 
 // The page a customer opens from the QR code, when one of its reads fails.
@@ -95,6 +95,32 @@ describe('the allergen page when everything arrives', () => {
         expect(await screen.findByText('Plain Rice')).toBeInTheDocument()
         expect(screen.getByText('No declared allergens')).toBeInTheDocument()
         expect(screen.queryByText(ASK_STAFF)).toBeNull()
+    })
+})
+
+// The tab and a saved bookmark said "Papi Chulo Hub" whatever restaurant it was.
+describe('the title on the tab', () => {
+    it('names the restaurant for a customer, and puts the old title back after', async () => {
+        answer(WHOLE)
+        document.title = 'Papi Chulo Hub'
+        const { unmount } = render(
+            <MemoryRouter initialEntries={['/allergens/point-campus']}>
+                <Routes><Route path="/allergens/:slug" element={<PublicAllergensPage />} /></Routes>
+            </MemoryRouter>,
+        )
+        await screen.findByText('Plain Rice')
+        expect(document.title).toBe('Point Campus allergens')
+        unmount()
+        expect(document.title).toBe('Papi Chulo Hub')
+    })
+
+    // The manager's preview sits inside the Hub.
+    it('leaves the Hub title alone in the preview managers see', async () => {
+        answer(WHOLE)
+        document.title = 'Papi Chulo Hub'
+        renderWithRouter(<PublicAllergensPage slugOverride="point-campus" />)
+        await screen.findByText('Plain Rice')
+        expect(document.title).toBe('Papi Chulo Hub')
     })
 })
 

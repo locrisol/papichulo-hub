@@ -54,6 +54,16 @@ export default function PublicAllergensPage({ slugOverride }) {
   // phone lost signal halfway through is standing in the restaurant.
   const [loadFailed, setLoadFailed] = useState(false)
 
+  // The tab and a saved bookmark said "Papi Chulo Hub" whatever restaurant it
+  // was, which on a customer's phone reads as somebody else's app. Not in the
+  // manager's preview, which sits inside the Hub and keeps the Hub's title.
+  useEffect(() => {
+    if (slugOverride || !restaurant?.name) return undefined
+    const before = document.title
+    document.title = `${restaurant.name} allergens`
+    return () => { document.title = before }
+  }, [slugOverride, restaurant?.name])
+
   const fetchAll = useCallback(async () => {
     setLoading(true)
     setError('')
