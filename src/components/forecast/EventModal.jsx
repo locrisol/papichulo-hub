@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import Modal from '@/components/ui/Modal'
 import ClockField from '@/components/ui/ClockField'
-import { categoryStyle, statusNote, dayName } from '@/lib/events'
+import { categoryStyle, statusNote } from '@/lib/events'
 import {
     placeName, elsewhere, walkWords, hostOf, sinceWords, whenWords, eventName,
 } from '@/lib/nearby'
-import { fullDate, todayISO } from '@/lib/dates'
+import { fullDate, todayISO, dayName } from '@/lib/dates'
 import { fmtMoney } from '@/lib/format'
 import {
     badge, fieldClass, labelClass, secondaryButton, checkbox, checkRow, hintClass,

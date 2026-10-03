@@ -4,8 +4,6 @@
 
 import { weekStartOf, dayMonth, monthLabel, addDays } from '@/lib/dates'
 
-export const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-
 // Colour by the broad type, so a glance tells you what kind of night it is.
 //
 // These are soft on purpose. A calendar cell can hold three of them at once and
@@ -47,11 +45,6 @@ export function categoryDot(category) {
 // does not reshuffle as the months change. Only the ones that turn up at this
 // venue: 3Arena has never once had a Family listing.
 export const LEGEND = ['Music', 'Arts & Theatre', 'Film', 'Sports', 'Miscellaneous']
-
-// The three letter day, for a date like 2026-08-27.
-export function dayName(dateStr) {
-    return DAY_NAMES[new Date(dateStr + 'T00:00:00').getDay()]
-}
 
 // What the sale status is worth saying out loud, or nothing.
 //

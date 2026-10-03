@@ -1,6 +1,5 @@
 import Modal from '@/components/ui/Modal'
-import { fullDate } from '@/lib/dates'
-import { dayName } from '@/lib/events'
+import { fullDate, dayName } from '@/lib/dates'
 import { badge, modalFooter, secondaryButton, primaryButton } from '@/lib/controlStyles'
 import { kindTag, kindLabel, scopeLabel, timeLabel, labelsOf, runsMoreThanADay } from '@/lib/diary'
 

@@ -1,7 +1,6 @@
 import { absenceDays } from '@/lib/absences'
 import { requestLabel, partWords } from '@/lib/timeOff'
-import { stampDate, stampDateTime } from '@/lib/dates'
-import { DAY_NAMES } from '@/lib/events'
+import { stampDate, stampDateTime, DAY_NAMES } from '@/lib/dates'
 import { loadJsPdf, letterhead, footers } from '@/lib/pdfPage'
 import logo from '@/assets/PapiChuloLogoPrint.png?inline'
 

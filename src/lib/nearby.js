@@ -20,8 +20,7 @@
 // shop and an hour from the next.
 
 import { shortTime } from '@/lib/roster'
-import { shortDate, toISODate, addDays } from '@/lib/dates'
-import { dayName } from '@/lib/events'
+import { shortDate, toISODate, addDays, dayName } from '@/lib/dates'
 
 // The city rule, in one place so the settings screen can say it out loud
 // rather than describing a number somebody has to take on trust.

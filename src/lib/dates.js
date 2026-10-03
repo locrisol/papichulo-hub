@@ -24,6 +24,16 @@ export function weekStartOf(dateStr) {
     return toISODate(d)
 }
 
+// The three letter weekday names, Sunday first, the way getDay() counts. The
+// Hub's weeks start on Sunday too (weekStartOf). Here rather than with the
+// Calendar, where they began, because the whole app uses them.
+export const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+// The three letter day, for a date like 2026-08-27.
+export function dayName(dateStr) {
+    return DAY_NAMES[new Date(dateStr + 'T00:00:00').getDay()]
+}
+
 // A short readable date, for example 19 Jul.
 export function shortDate(dateStr) {
     const d = new Date(dateStr + 'T00:00:00')
