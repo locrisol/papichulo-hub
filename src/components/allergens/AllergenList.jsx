@@ -34,6 +34,7 @@ export default function AllergenList({ groups, expandedId, onToggle }) {
                         <button
                           type="button"
                           onClick={() => onToggle(isExpanded ? null : row.key)}
+                          aria-expanded={isExpanded}
                           className="w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors"
                         >
                           <div className="flex items-start justify-between gap-3">
@@ -56,6 +57,11 @@ export default function AllergenList({ groups, expandedId, onToggle }) {
                                         className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${s.bg} ${s.text}`}
                                       >
                                         <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`}></span>
+                                        {/* The ~ is for the eye, and the
+                                            words are for a screen reader,
+                                            which would only say tilde. */}
+                                        {s.mark && <span aria-hidden="true">{s.mark}</span>}
+                                        <span className="sr-only">{s.label}: </span>
                                         {ALLERGEN_LABELS[key]}
                                       </span>
                                     )
@@ -63,7 +69,7 @@ export default function AllergenList({ groups, expandedId, onToggle }) {
                                 )}
                               </div>
                             </div>
-                            <span className="text-muted text-lg leading-none mt-1">
+                            <span aria-hidden="true" className="text-muted text-lg leading-none mt-1">
                               {isExpanded ? '−' : '+'}
                             </span>
                           </div>

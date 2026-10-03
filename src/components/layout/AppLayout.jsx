@@ -4,6 +4,7 @@ import { useAuth } from '@/context/auth'
 import { supabase, everyRow } from '@/lib/supabase'
 import { useRestaurant } from '@/context/restaurant'
 import BackToTop from '@/components/layout/BackToTop'
+import ErrorBoundary from '@/components/ui/ErrorBoundary'
 import { ScrollProvider } from '@/context/ScrollContext'
 import { can, MANAGERS } from '@/lib/access'
 import { navItems, navTarget } from '@/lib/nav'
@@ -434,7 +435,14 @@ export default function AppLayout({ children }) {
                             the weekly sales are the widest things in here and
                             both still fit inside it. */}
                         <div className="max-w-[1600px]">
-                            {children}
+                            {/* A page that breaks shows a message in its own
+                                place, with the menu still there to leave by.
+                                The address is handed over rather than used as
+                                a key, so a move tries again without drawing
+                                the page afresh when nothing went wrong. */}
+                            <ErrorBoundary resetKey={location.pathname} inPage>
+                                {children}
+                            </ErrorBoundary>
                         </div>
                     </ScrollProvider>
                 </main>

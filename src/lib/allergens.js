@@ -145,12 +145,18 @@ export const ALLERGEN_SHORT = {
 // How a state looks wherever it is shown. Here rather than in a component so
 // the customer page and anything printed cannot colour the same word
 // differently.
+//
+// mark is what tells may contain apart without the colour. Red and amber were
+// the only difference on a chip, which a colour blind customer cannot see. It
+// is the same ~ the printed sheet uses, so the two read the same way.
+export const MAY_CONTAIN_MARK = '~'
+
 export function allergenLook(state) {
   if (state === 'contains') {
-    return { label: 'Contains', dot: 'bg-red-500', text: 'text-red-700', bg: 'bg-red-50' }
+    return { label: 'Contains', mark: '', dot: 'bg-red-500', text: 'text-red-700', bg: 'bg-red-50' }
   }
   if (state === 'may_contain') {
-    return { label: 'May contain', dot: 'bg-amber-500', text: 'text-amber-700', bg: 'bg-amber-50' }
+    return { label: 'May contain', mark: MAY_CONTAIN_MARK, dot: 'bg-amber-500', text: 'text-amber-700', bg: 'bg-amber-50' }
   }
   return null
 }

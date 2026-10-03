@@ -3,7 +3,8 @@ import { useParams } from 'react-router-dom'
 import { supabase, everyRow } from '@/lib/supabase'
 import { sheetRows, everyReadArrived, productsWithARow } from '@/lib/allergenSheet'
 import AllergenList from '@/components/allergens/AllergenList'
-import { card, primaryButton } from '@/lib/controlStyles'
+import { card, primaryButton, warningNote } from '@/lib/controlStyles'
+import { allergenLook } from '@/lib/allergens'
 import { stampDate } from '@/lib/dates'
 
 
@@ -248,7 +249,7 @@ export default function PublicAllergensPage({ slugOverride }) {
           )}
         </header>
 
-        <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-xl p-4 mb-6">
+        <div className={`${warningNote} mb-6`}>
           <p className="font-semibold mb-1">Important</p>
           <p>If you have a severe allergy, please speak to a member of staff before ordering. While we take great care, our kitchen handles many allergens and we cannot guarantee zero cross-contamination.</p>
         </div>
@@ -256,13 +257,15 @@ export default function PublicAllergensPage({ slugOverride }) {
         <div className={`${card} p-4 mb-6 text-xs text-gray-600`}>
           <p className="mb-2">Tap a dish to see its full allergen breakdown. The summary shows allergens that the dish either contains or may contain.</p>
           <div className="flex flex-wrap gap-3 text-xs">
+            {/* The colours and the ~ come from the same place as the
+                chips', so the key cannot say something they do not. */}
             <span className="inline-flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-red-500"></span>
+              <span className={`w-2.5 h-2.5 rounded-full ${allergenLook('contains').dot}`}></span>
               Contains
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
-              May contain
+              <span className={`w-2.5 h-2.5 rounded-full ${allergenLook('may_contain').dot}`}></span>
+              {allergenLook('may_contain').mark} May contain
             </span>
             <span className="inline-flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-full bg-gray-300"></span>
