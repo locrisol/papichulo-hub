@@ -8,6 +8,8 @@ import { bankHolidayFor, BANK_HOLIDAY_INK, BANK_HOLIDAY_WASH } from '@/lib/bankH
 import { card, cardEdge, badge, rowButton, segmentTrack, segmentButton } from '@/lib/controlStyles'
 import JumpButton from '@/components/ui/JumpButton'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import Notice from '@/components/ui/Notice'
+import PageHeader from '@/components/ui/PageHeader'
 import {
     hoursForDate, endLabel, shortTime, breakLabel, fmtHours, shiftHours, weekRows, toTime, staffWeekRange,
 } from '@/lib/roster'
@@ -117,6 +119,7 @@ export default function MyShiftsPage() {
     // would put somebody else's Saturday into the grid.
     const [askShifts, setAskShifts] = useState([])
     const [asking, setAsking] = useState(null)
+    const [askError, setAskError] = useState('')
     // My own time off, whole rows this time rather than the away view, because
     // these are mine and I am allowed to know why I asked.
     const [myTimeOff, setMyTimeOff] = useState([])
@@ -460,9 +463,11 @@ export default function MyShiftsPage() {
         reloadTimeOff()
     }
 
+    // A failed ask is said inside the dialog. The page's own line sits behind
+    // it, where nobody holding the dialog open would see it.
     async function send(draft) {
         setSaving(true)
-        setError('')
+        setAskError('')
         // The row comes back because the mail goes out by id and there is no
         // other way for the browser to learn it.
         const { data, error: err } = await supabase.from('shift_requests').insert({
@@ -471,7 +476,7 @@ export default function MyShiftsPage() {
             created_by: user.id,
         }).select('id').single()
         setSaving(false)
-        if (err) { setError(friendlyError(err)); return }
+        if (err) { setAskError(friendlyError(err)); return }
         // Not awaited. Asking is the thing that had to happen and it has; the
         // mail is how the other person finds out, and it does not get to fail
         // the ask.
@@ -508,6 +513,7 @@ export default function MyShiftsPage() {
     // Opening a shift starts an ask. Your own goes out, somebody else's comes
     // in, and the dialog is the same one either way.
     function openShift(shift) {
+        setAskError('')
         setAsking(shift.employee_id === me.id ? { mine: shift } : { theirs: shift })
     }
 
@@ -550,14 +556,9 @@ export default function MyShiftsPage() {
         // and was the only one that was, which read as a page that had not
         // finished loading rather than as a choice.
         <>
-            <div className="mb-4">
-                <h2 className="font-serif text-2xl font-bold text-gray-900">
-                    {view === 'mine' ? 'My shifts' : 'The week'}
-                </h2>
-                <p className="text-sm text-muted mt-1">{me.full_name}</p>
-            </div>
+            <PageHeader title={view === 'mine' ? 'My shifts' : 'The week'} subtitle={me.full_name} />
 
-            {error && <div className="bg-amber-50 text-amber-700 text-sm rounded-lg p-3 mb-4">{error}</div>}
+            <ErrorBanner className="mb-4">{error}</ErrorBanner>
             <ErrorBanner className="mb-4">{nearbyFailed ? NEARBY_FAILED : null}</ErrorBanner>
 
             <div className={`${cardEdge} bg-white p-3 mb-4 flex flex-col sm:flex-row sm:items-center gap-3`}>
@@ -568,17 +569,14 @@ export default function MyShiftsPage() {
                     nextDisabled={weekStart >= lastWeek}
                     backLabel="Previous week"
                     nextLabel="Next week"
+                    weekStart={weekStart}
                     jump={(
                         <JumpButton
                             isCurrent={weekStart === weekStartOf(today)}
                             onClick={() => setWeekStart(weekStartOf(today))}
                         />
                     )}
-                >
-                    <span className="text-sm font-semibold text-gray-800 whitespace-nowrap">
-                        {shortDate(dates[0])} to {shortDate(dates[6])}
-                    </span>
-                </DateStepper>
+                />
 
                 <div className="flex items-center gap-4 sm:ml-auto">
                     <div>
@@ -729,8 +727,8 @@ export default function MyShiftsPage() {
                 anybody reading this is that Saturday evening is free, not whose
                 it used to be. */}
             {freeShifts.length > 0 && (
-                <div className="bg-green-50 border border-green-200 rounded-lg p-3 mt-4">
-                    <p className="text-sm font-semibold text-green-900 mb-1">
+                <Notice tone="good" className="mt-4">
+                    <p className="font-semibold mb-1">
                         {freeShifts.length === 1
                             ? 'One shift is free this week'
                             : `${freeShifts.length} shifts are free this week`}
@@ -743,7 +741,7 @@ export default function MyShiftsPage() {
                         ))}
                     </ul>
                     <p className="text-xs text-green-800 mt-1.5">Ask a manager if you want one of them.</p>
-                </div>
+                </Notice>
             )}
 
             {/* Time off, under the week. It is the other thing somebody opens
@@ -775,6 +773,7 @@ export default function MyShiftsPage() {
                     openingHours={openingHours}
                     breakRules={breakRules}
                     saving={saving}
+                    error={askError}
                     onSend={send}
                     onClose={() => setAsking(null)}
                 />
@@ -964,7 +963,7 @@ function DayCard({
             {closedOn(date) ? (
                 <p className="text-sm text-red-700 mt-1">The store is closed.</p>
             ) : theirs.length === 0 ? (
-                <p className="text-sm text-gray-500 mt-1">
+                <p className="text-sm text-muted mt-1">
                     {awayOn(employeeId, date) ? AWAY.label + ' all day.' : 'Nothing on. Free all day.'}
                 </p>
             ) : (

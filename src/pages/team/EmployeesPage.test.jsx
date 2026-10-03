@@ -34,8 +34,8 @@ describe('linking somebody to an account', () => {
         renderWithRouter(<EmployeesPage />)
         await userEvent.click(await screen.findByRole('button', { name: 'Add someone' }))
 
-        expect(screen.getByRole('option', { name: 'Maria (employee)' })).toBeInTheDocument()
-        expect(screen.queryByRole('option', { name: 'Ana (employee)' })).not.toBeInTheDocument()
-        expect(screen.queryByRole('option', { name: 'Bruno (store manager)' })).not.toBeInTheDocument()
+        expect(screen.getByRole('option', { name: 'Maria (Employee)' })).toBeInTheDocument()
+        expect(screen.queryByRole('option', { name: 'Ana (Employee)' })).not.toBeInTheDocument()
+        expect(screen.queryByRole('option', { name: 'Bruno (Store manager)' })).not.toBeInTheDocument()
     })
 })

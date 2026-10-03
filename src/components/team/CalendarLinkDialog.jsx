@@ -4,7 +4,7 @@ import ModalSection from '@/components/ui/ModalSection'
 import { supabase } from '@/lib/supabase'
 import { friendlyError } from '@/lib/errors'
 import { useConfirm } from '@/context/confirm'
-import { modalFooter, secondaryButton } from '@/lib/controlStyles'
+import { modalFooter, primaryButton, secondaryButton } from '@/lib/controlStyles'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // The link somebody subscribes their phone's calendar to.
@@ -96,7 +96,7 @@ export default function CalendarLinkDialog({ employee, onClose, onChanged }) {
                         type="button"
                         onClick={() => save(makeToken())}
                         disabled={busy}
-                        className="px-5 py-2.5 bg-accent text-white text-sm font-semibold rounded-lg hover:bg-orange-600 disabled:opacity-50"
+                        className={primaryButton('lg')}
                     >
                         {busy ? 'Making it...' : 'Make a link'}
                     </button>
@@ -114,7 +114,7 @@ export default function CalendarLinkDialog({ employee, onClose, onChanged }) {
                             <button
                                 type="button"
                                 onClick={() => copy(webcal, 'subscribe')}
-                                className="px-4 py-2 bg-accent text-white text-sm font-semibold rounded-lg hover:bg-orange-600"
+                                className={primaryButton()}
                             >
                                 {copied === 'subscribe' ? 'Copied' : 'Copy for a phone'}
                             </button>
@@ -160,14 +160,10 @@ export default function CalendarLinkDialog({ employee, onClose, onChanged }) {
                 </>
             )}
 
-            {error && <ErrorBanner className="mx-6 mb-4">{error}</ErrorBanner>}
+            <ErrorBanner className="mx-6 mb-4">{error}</ErrorBanner>
 
             <div className={modalFooter}>
-                <button
-                    type="button"
-                    onClick={onClose}
-                    className="px-4 py-2 border border-border text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 bg-white"
-                >
+                <button type="button" onClick={onClose} className={secondaryButton}>
                     Done
                 </button>
             </div>

@@ -159,3 +159,26 @@ describe('giving part of a shift', () => {
         expect(onSend).not.toHaveBeenCalled()
     })
 })
+
+// A send that failed is said inside the dialog, apart from the live hint
+// about what is still missing, which is not a failure.
+describe('a send that failed', () => {
+    const drawWith = error => render(
+        <ShiftRequestDialog
+            mine={ANA_WED} theirs={null} meId="ana" weekShifts={WEEK} employees={PEOPLE}
+            absences={[]} dayNotes={[]} openingHours={null} breakRules={null}
+            onSend={() => {}} onClose={() => {}} saving={false} error={error}
+        />,
+    )
+
+    it('shows the failure as an alert', () => {
+        drawWith('Could not reach the server.')
+        expect(screen.getByRole('alert')).toHaveTextContent('Could not reach the server.')
+    })
+
+    it('shows nothing when nothing failed, and the hint is not an alert', () => {
+        drawWith('')
+        expect(screen.getByText('Pick who you are asking.')).toBeInTheDocument()
+        expect(screen.queryByRole('alert')).toBeNull()
+    })
+})

@@ -3,11 +3,10 @@ import ClockField from '@/components/ui/ClockField'
 import Modal from '@/components/ui/Modal'
 import { supabase } from '@/lib/supabase'
 import { friendlyError } from '@/lib/errors'
-import { shortDate } from '@/lib/dates'
-import { dayName } from '@/lib/events'
+import { dayLabel } from '@/lib/dates'
 import { hoursForDay, shortTime, BANK_HOLIDAY } from '@/lib/roster'
 import { bankHolidayOn, BANK_HOLIDAY_INK } from '@/lib/bankHolidays'
-import { modalFooter, removeButton, secondaryButton, checkbox, labelClass, fieldClass, hintClass, primaryButton, rowButton } from '@/lib/controlStyles'
+import { modalFooter, removeButton, secondaryButton, checkbox, labelClass, fieldClass, hintClass, primaryButton, rowButton, chip } from '@/lib/controlStyles'
 import { mirrorClosedToSales } from '@/lib/closedDays'
 import ModalSection from '@/components/ui/ModalSection'
 import {
@@ -113,21 +112,13 @@ export default function DayNoteDialog({
         if (err) { setError(friendlyError(err)); return }
         onSaved()
     }
-    const timeCls =
-        'border border-border rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent'
-
-    // A delivery that is on today and one that is not. Filled when it is on,
-    // because the question the day asks is which of these are happening, and a
-    // tick box row answers it more slowly than a row of things lit up.
-    const ON_OFF = on => (
-        'px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ' + (on
-            ? 'bg-accent text-white border-accent'
-            : 'bg-white text-gray-700 border-gray-300 hover:border-gray-400')
-    )
+    // A delivery that is on today and one that is not is a chip, lit when it
+    // is on, because the question the day asks is which of these are
+    // happening, and a tick box row answers it more slowly.
 
     return (
         <Modal
-            title={`${dayName(date)} ${shortDate(date)} · ${only === 'extras' ? 'also on' : 'options'}`}
+            title={`${dayLabel(date)} · ${only === 'extras' ? 'also on' : 'options'}`}
             onClose={onClose}
         >
             <div>
@@ -184,7 +175,7 @@ export default function DayNoteDialog({
                         />
                         <span>
                             <span className="block text-sm font-medium text-gray-900">Closed all day</span>
-                            <span className="block text-xs text-gray-500">
+                            <span className="block text-xs text-muted">
                                 The day is marked in red on the roster and nothing counts as an opening or
                                 closing shift.
                             </span>
@@ -204,7 +195,7 @@ export default function DayNoteDialog({
                             style={{ color: BANK_HOLIDAY_INK }}
                         >
                             {publicHoliday.name}.
-                            <span className="block text-xs font-normal text-gray-500 mt-0.5">
+                            <span className="block text-xs font-normal text-muted mt-0.5">
                                 {bankHours
                                     ? `Marked everywhere without being ticked, and open ${bankHours.open} `
                                         + `to ${bankHours.close} unless different hours are typed above.`
@@ -224,7 +215,7 @@ export default function DayNoteDialog({
                                 <span className="block text-sm font-medium text-gray-900">
                                     Run this day on the bank holiday hours
                                 </span>
-                                <span className="block text-xs text-gray-500">
+                                <span className="block text-xs text-muted">
                                     For a day that is not a public holiday and is being treated like one.
                                     It takes the bank holiday hours set in Restaurant settings unless
                                     different hours are typed above.
@@ -275,7 +266,7 @@ export default function DayNoteDialog({
                                         type="button"
                                         onClick={() => set('extras', toggleExtra(form.extras, one))}
                                         aria-pressed={on}
-                                        className={ON_OFF(on)}
+                                        className={chip(on)}
                                     >
                                         {one.name}
                                         {one.time && (
@@ -317,12 +308,14 @@ export default function DayNoteDialog({
                                     <span className="text-sm text-gray-900 flex-1 min-w-0 truncate">
                                         {extra.name}
                                     </span>
-                                    <ClockField
-                                        value={extra.time}
-                                        onChange={v => set('extras', setExtraTimeAt(form.extras, i, v))}
-                                        aria-label={extra.name + ' time'}
-                                        className={timeCls}
+                                    <div className="w-28 flex-shrink-0">
+                                        <ClockField
+                                            compact
+                                            value={extra.time}
+                                            onChange={v => set('extras', setExtraTimeAt(form.extras, i, v))}
+                                            aria-label={extra.name + ' time'}
                                         />
+                                    </div>
                                     <button
                                         type="button"
                                         onClick={() => set('extras', repeatExtra(form.extras, i))}
@@ -358,12 +351,14 @@ export default function DayNoteDialog({
                                 className={fieldClass}
                             />
                         </div>
-                        <ClockField
-                            value={oneOff.time}
-                            onChange={v => setOneOff(o => ({ ...o, time: v }))}
-                            aria-label="Time for the one off"
-                            className={timeCls}
+                        <div className="w-28 flex-shrink-0">
+                            <ClockField
+                                compact
+                                value={oneOff.time}
+                                onChange={v => setOneOff(o => ({ ...o, time: v }))}
+                                aria-label="Time for the one off"
                             />
+                        </div>
                         <button
                             type="button"
                             onClick={() => {
@@ -403,7 +398,7 @@ export default function DayNoteDialog({
                     <button
                         type="button"
                         onClick={onClose}
-                        className="px-4 py-2 border border-border text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 bg-white"
+                        className={secondaryButton}
                     >
                         Cancel
                     </button>

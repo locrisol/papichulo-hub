@@ -8,8 +8,11 @@ import { useState } from 'react'
 // said "Making PDF..." and passed a failure up, so this is those, once.
 //
 // The look is entirely the caller's, since it is a full size button on one
-// screen and a small row button on another.
-export default function PdfButton({ make, onError, className = '', children, busyLabel = 'Making PDF...' }) {
+// screen and a small row button on another. disabled is for a document that
+// is not ready to go out yet, like a roster week nobody has published.
+export default function PdfButton({
+    make, onError, className = '', children, busyLabel = 'Making PDF...', disabled = false,
+}) {
     const [busy, setBusy] = useState(false)
 
     async function press() {
@@ -24,7 +27,7 @@ export default function PdfButton({ make, onError, className = '', children, bus
     }
 
     return (
-        <button type="button" onClick={press} disabled={busy} className={className}>
+        <button type="button" onClick={press} disabled={busy || disabled} className={className}>
             {busy ? busyLabel : children}
         </button>
     )

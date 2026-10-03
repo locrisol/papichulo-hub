@@ -1,10 +1,11 @@
 import { numberField } from '@/lib/numberInput'
 import LockedField from '@/components/ui/LockedField'
 import { linkableUsers } from '@/lib/team'
+import { roleLabel } from '@/lib/access'
 import { todayISO, fullDate } from '@/lib/dates'
 import { WORK_PERMISSIONS, permissionFor, FOOD_SAFETY_LEVELS, expiryFrom } from '@/lib/workRules'
 import {
-    modalFooter, labelClass, fieldClass, hintClass, primaryButton, checkbox, checkRow,
+    modalFooter, labelClass, fieldClass, hintClass, primaryButton, secondaryButton, checkbox, checkRow,
 } from '@/lib/controlStyles'
 import ModalSection from '@/components/ui/ModalSection'
 import ErrorBanner from '@/components/ui/ErrorBanner'
@@ -77,7 +78,7 @@ export default function EmployeeForm({
                             placeholder="0.00"
                         />
                     </LockedField>
-                    <p className="text-xs text-muted mt-1">
+                    <p className={hintClass}>
                         Only ever used to total up what a week costs. Never shown to staff.
                     </p>
                 </div>
@@ -111,7 +112,7 @@ export default function EmployeeForm({
                             className={fieldClass}
                         />
                     </LockedField>
-                    <p className="text-xs text-muted mt-1">
+                    <p className={hintClass}>
                         Leave empty while they still work here.
                     </p>
                 </div>
@@ -153,12 +154,12 @@ export default function EmployeeForm({
                         <option value="">No account</option>
                         {available.map(u => (
                             <option key={u.id} value={u.id}>
-                                {u.full_name} ({u.role.replace('_', ' ')})
+                                {u.full_name} ({roleLabel(u.role)})
                             </option>
                         ))}
                     </select>
                 </LockedField>
-                <p className="text-xs text-muted mt-1">
+                <p className={hintClass}>
                     Only if they log in. Someone on a trial does not need one, and joining them up
                     is what lets them see their own shifts later.
                 </p>
@@ -198,7 +199,7 @@ export default function EmployeeForm({
                         {note ? (
                             <p className="text-xs text-amber-700 mt-1">{note}</p>
                         ) : (
-                            <p className="text-xs text-muted mt-1">
+                            <p className={hintClass}>
                                 Only used to apply the under 18 limits. Leave empty otherwise.
                             </p>
                         )}
@@ -238,7 +239,7 @@ export default function EmployeeForm({
                             className={fieldClass}
                         />
                     </LockedField>
-                    <p className="text-xs text-muted mt-1">
+                    <p className={hintClass}>
                         The roster starts saying so two months out, and stops a week going out once
                         it has passed.
                     </p>
@@ -262,7 +263,7 @@ export default function EmployeeForm({
                                 className={fieldClass}
                             />
                         </LockedField>
-                        <p className="text-xs text-muted mt-1">
+                        <p className={hintClass}>
                             Somebody who applied before their permission ran out may keep working
                             while it is processed. Leave it empty if they have not applied.
                         </p>
@@ -358,7 +359,7 @@ export default function EmployeeForm({
                         </LockedField>
                     </div>
                 </div>
-                <p className="text-xs text-muted mt-1">
+                <p className={hintClass}>
                     Two years from the date it was sat, filled in whenever that date changes and free
                     to change afterwards. The roster says so two months before it runs out.
                 </p>
@@ -383,7 +384,7 @@ export default function EmployeeForm({
                 <button
                     type="button"
                     onClick={onCancel}
-                    className="px-4 py-2 border border-border text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 bg-white transition-colors"
+                    className={secondaryButton}
                 >
                     Cancel
                 </button>

@@ -50,4 +50,13 @@ describe('PdfButton', () => {
         pdf.finish()
         await screen.findByRole('button', { name: 'Print' })
     })
+
+    it('stays off while the caller says the document is not ready', async () => {
+        const pdf = held()
+        render(<PdfButton make={pdf.make} disabled>PDF</PdfButton>)
+
+        expect(screen.getByRole('button', { name: 'PDF' })).toBeDisabled()
+        await userEvent.click(screen.getByRole('button', { name: 'PDF' }))
+        expect(pdf.make).not.toHaveBeenCalled()
+    })
 })

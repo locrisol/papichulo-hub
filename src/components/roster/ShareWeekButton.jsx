@@ -1,5 +1,7 @@
 import { useState } from 'react'
-import { secondaryButton } from '@/lib/controlStyles'
+import { primaryButton, secondaryButton } from '@/lib/controlStyles'
+import ErrorBanner from '@/components/ui/ErrorBanner'
+import PdfButton from '@/components/ui/PdfButton'
 import { weekTable, shareName } from '@/lib/rosterShare'
 import { weekImageBlob } from '@/lib/rosterImage'
 import { weekPdf } from '@/lib/rosterPdf'
@@ -34,6 +36,12 @@ export default function ShareWeekButton({
     const say = text => setNote({ week: weekStart, text })
     const showing = note?.week === weekStart ? note.text : ''
 
+    // A picture or a PDF that could not be made, kept with its week the same
+    // way, and said in red rather than in the quiet line beside the buttons.
+    const [failed, setFailed] = useState(null)
+    const fail = text => setFailed({ week: weekStart, text })
+    const failure = failed?.week === weekStart ? failed.text : ''
+
     const build = () => weekTable({
         dates, employees, shifts, dayNotes, nearby, nearbyPlaces, diary, openingHours, absences,
         standingNote, restaurantName,
@@ -52,6 +60,7 @@ export default function ShareWeekButton({
     async function shareImage() {
         setBusy('image')
         setNote(null)
+        setFailed(null)
         try {
             const blob = await weekImageBlob(build())
             const filename = shareName(restaurantName, weekStart, 'png')
@@ -68,7 +77,7 @@ export default function ShareWeekButton({
             }
         } catch (e) {
             // Somebody backing out of the share sheet is not a failure.
-            if (e?.name !== 'AbortError') say('Could not make the picture.')
+            if (e?.name !== 'AbortError') fail('Could not make the picture.')
         } finally {
             setBusy('')
         }
@@ -76,19 +85,27 @@ export default function ShareWeekButton({
 
 
     return (
-        <div className="flex flex-wrap items-center gap-2">
-            <button
-                type="button"
-                onClick={shareImage}
-                disabled={disabled || !!busy}
-                className="px-4 py-2 bg-accent text-white text-sm font-semibold rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-40 whitespace-nowrap"
-            >
-                {busy === 'image' ? 'Making it...' : 'Share as a picture'}
-            </button>
-            <button type="button" onClick={() => weekPdf(build(), restaurantName, weekStart)} disabled={disabled} className={secondaryButton}>
-                PDF
-            </button>
-            {showing && <span className="text-xs text-muted">{showing}</span>}
+        <div>
+            <div className="flex flex-wrap items-center gap-2">
+                <button
+                    type="button"
+                    onClick={shareImage}
+                    disabled={disabled || !!busy}
+                    className={`${primaryButton()} whitespace-nowrap`}
+                >
+                    {busy === 'image' ? 'Making it...' : 'Share as a picture'}
+                </button>
+                <PdfButton
+                    make={() => { setFailed(null); return weekPdf(build(), restaurantName, weekStart) }}
+                    onError={() => fail('Could not make the PDF.')}
+                    disabled={disabled}
+                    className={secondaryButton}
+                >
+                    PDF
+                </PdfButton>
+                {showing && <span className="text-xs text-muted">{showing}</span>}
+            </div>
+            <ErrorBanner className="mt-2">{failure}</ErrorBanner>
         </div>
     )
 }

@@ -1,6 +1,5 @@
 import Modal from '@/components/ui/Modal'
-import { shortDate } from '@/lib/dates'
-import { dayName } from '@/lib/events'
+import { dayLabel } from '@/lib/dates'
 import { fmtHours, hoursForDate } from '@/lib/roster'
 import { modalFooter, secondaryButton, rowButton, badge } from '@/lib/controlStyles'
 import {
@@ -114,7 +113,7 @@ export default function RequestDeskModal({
                             {halves.map(part => (
                                 <p key={part.key} className="text-sm text-gray-800">
                                     <span className="font-medium">{part.taker}</span> takes{' '}
-                                    {dayName(part.date)} {shortDate(part.date)}, {part.when}
+                                    {dayLabel(part.date)}, {part.when}
                                     <span className="text-muted"> from {part.owner}</span>
                                     {!part.whole && <span className="text-muted"> (part of it)</span>}
                                 </p>

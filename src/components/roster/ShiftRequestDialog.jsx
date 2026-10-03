@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import TimeField from '@/components/ui/TimeField'
 import Modal from '@/components/ui/Modal'
-import { shortDate } from '@/lib/dates'
-import { dayName } from '@/lib/events'
+import { dayLabel } from '@/lib/dates'
 import { shortTime, endLabel, fmtHours, hoursForDate } from '@/lib/roster'
-import { modalFooter, secondaryButton, rowButton, badge, labelClass, fieldClass } from '@/lib/controlStyles'
+import { modalFooter, primaryButton, secondaryButton, rowButton, badge, labelClass, fieldClass } from '@/lib/controlStyles'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 import { NO_COLOUR } from '@/lib/team'
 import { windowOf, windowProblem, shortlist, hoursChange } from '@/lib/shiftRequests'
 
@@ -20,7 +20,7 @@ import { windowOf, windowProblem, shortlist, hoursChange } from '@/lib/shiftRequ
 // point of the give and take shape is that you can see both halves at once.
 export default function ShiftRequestDialog({
     mine, theirs, meId, weekShifts, employees, absences, dayNotes, openingHours,
-    breakRules, onSend, onClose, saving,
+    breakRules, onSend, onClose, saving, error,
 }) {
     // Which end this was opened from. Giving is your shift going out; asking is
     // theirs coming in.
@@ -149,7 +149,7 @@ export default function ShiftRequestDialog({
     )
 
     const shiftLine = shift =>
-        `${dayName(shift.shift_date)} ${shortDate(shift.shift_date)}, `
+        `${dayLabel(shift.shift_date)}, `
         + `${shortTime(shift.starts_at)} to ${endLabel(shift, hoursOn(shift.shift_date))}`
 
     return (
@@ -340,6 +340,7 @@ export default function ShiftRequestDialog({
                 />
 
                 {problem && <p className="text-sm text-amber-700 mt-3">{problem}</p>}
+                <ErrorBanner className="mt-3">{error}</ErrorBanner>
             </div>
 
             <div className={modalFooter}>
@@ -348,7 +349,7 @@ export default function ShiftRequestDialog({
                     type="button"
                     disabled={!!problem || saving}
                     onClick={() => onSend(draft)}
-                    className="px-4 py-2 bg-accent text-white rounded-lg text-sm font-semibold shadow-sm hover:brightness-95 disabled:opacity-50"
+                    className={primaryButton()}
                 >
                     {saving ? 'Sending...' : 'Send the ask'}
                 </button>
