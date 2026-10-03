@@ -50,6 +50,22 @@ export default defineConfig([
     },
   },
   {
+    // A neighbour too, outside the tests. './DiaryChip' made a search for
+    // @/components/diary/DiaryChip find one user of it out of three. A test
+    // importing the file it tests stays './', which is the one place that
+    // reads better.
+    files: ['src/**/*.{js,jsx}'],
+    ignores: ['src/**/*.test.{js,jsx}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [{
+          regex: '^\\.\\.?/',
+          message: 'Write it from the root instead: @/components/diary/DiaryChip, not ./DiaryChip.',
+        }],
+      }],
+    },
+  },
+  {
     // The ten that have to reach out, and the only ten.
     //
     // Each edge function deploys on its own, folder and all, so its code cannot

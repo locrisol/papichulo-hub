@@ -134,12 +134,6 @@ export function breakFor(hours, rules) {
     return 0
 }
 
-// The break a shift should have, unless somebody has typed one themselves.
-export function breakForShift(shift, rules) {
-    if (shift?.break_is_manual) return shift.break_minutes ?? 0
-    return breakFor(shiftHours(shift), rules)
-}
-
 // How a break reads on the roster.
 export function breakLabel(minutes) {
     return minutes > 0 ? `${minutes} minutes` : 'No break'

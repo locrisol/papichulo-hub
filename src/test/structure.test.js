@@ -60,7 +60,7 @@ describe('the shared helpers are declared in one place', () => {
         dayLabel: 'lib/dates.js',
         dayList: 'lib/dates.js',
         stampDateTime: 'lib/dates.js',
-        DAY_NAMES: 'lib/events.js',
+        DAY_NAMES: 'lib/dates.js',
         toMinutes: 'lib/roster.js',
         shiftMinutes: 'lib/roster.js',
         shiftHours: 'lib/roster.js',

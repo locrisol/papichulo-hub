@@ -48,7 +48,7 @@ maybe('what the people in a swap can do to it', () => {
 
         // A published shift of somebody else's, the only kind an employee
         // can see that is not their own. Through roster_published, the week
-        // as it went out, because since 034 staff cannot read the table. A
+        // as it went out, because since 1 October staff cannot read the table. A
         // shift changed since it went out comes back as it was, while the
         // guard checks the table as it is now. Only a shift moved to another
         // person or other hours since would make the two disagree.

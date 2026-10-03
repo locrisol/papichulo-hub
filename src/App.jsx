@@ -60,7 +60,7 @@ const InvoiceImportPage = lazy(() => import('@/pages/invoices/InvoiceImportPage'
 const InvoiceReviewPage = lazy(() => import('@/pages/invoices/InvoiceReviewPage'))
 const SupplierDocumentsPage = lazy(() => import('@/pages/invoices/SupplierDocumentsPage'))
 const ClaimsPage = lazy(() => import('@/pages/invoices/ClaimsPage'))
-const TimesheetPage = lazy(() => import('@/pages/costs/TimesheetPage'))
+const TimesheetPage = lazy(() => import('@/pages/timesheet/TimesheetPage'))
 const WasteLogPage = lazy(() => import('@/pages/waste/WasteLogPage'))
 const WasteSummaryPage = lazy(() => import('@/pages/waste/WasteSummaryPage'))
 const CostDashboardPage = lazy(() => import('@/pages/costs/CostDashboardPage'))

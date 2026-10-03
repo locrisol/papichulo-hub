@@ -1,4 +1,5 @@
-import { agendaRows, dayName } from '@/lib/events'
+import { dayName } from '@/lib/dates'
+import { agendaRows } from '@/lib/events'
 import {
     kindChip, kindTag, kindLabel, scopeLabel, timeLabel, layerOf, labelsOf,
 } from '@/lib/diary'

@@ -249,7 +249,7 @@ export function promptFor(text, { from, to, today, key = 'date' } = {}) {
 //
 // So: one row per film, never one per showing. The row is kept under the film's
 // own name rather than under a day, so the same film showing all month collides
-// with the row already there and is ignored. See the header of migration 012.
+// with the row already there and is ignored. See places.reading_key in schema.sql.
 function filmPrompt(text, { from, to, today }) {
     return [
         'The text below was taken from a public web page listing what is showing at a cinema.',
@@ -475,7 +475,7 @@ export function cleanName(value) {
 // same film for a month and lists it every day of that month, so keying on the
 // day would make a new row every week for a film nobody needs telling about
 // twice. Without the day, the first sighting is the one that lands and the rest
-// collide with it. See the header of migration 012.
+// collide with it. See places.reading_key in schema.sql.
 export function sourceKeyFor(date, name, key = 'date') {
     const flat = String(name || '')
         .toLowerCase()

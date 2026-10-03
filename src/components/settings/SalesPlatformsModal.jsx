@@ -78,8 +78,8 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
 
     // Its figures are kept under a key that never changes, so a rename keeps
     // them. The database makes a new platform's key the name it is given, so
-    // none is sent here: that also lets this go out before migration 026, when
-    // there is no key column yet. One renamed since still keeps its figures
+    // none is sent here, which also works on a database from before platforms
+    // had a key column. One renamed since still keeps its figures
     // under the name it had, so that name cannot be a new platform's key or
     // the two would share one set of figures.
     const renamed = platforms.find(p => p.key === name && p.name !== name)

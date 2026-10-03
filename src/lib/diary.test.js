@@ -1,11 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
-    KINDS, kindLabel, kindChip, kindDot, kindRing, kindGoogleColour,
-    scopeLabel, scopeFrom,
-    lastDay, coversDate, isAllDay, runsMoreThanADay, timeLabel,
-    sortEntries, onDate, datesBetween, entriesByDate, bandsForWeek,
-    showsOnRoster, entryProblem,
-    LAYERS, layerOf, calendarItems, itemsByDate,
+    KINDS, kindLabel, kindChip, kindDot, kindRing, kindGoogleColour, scopeLabel, scopeFrom, lastDay,
+    coversDate, isAllDay, runsMoreThanADay, timeLabel, sortEntries, onDate, datesBetween,
+    bandsForWeek, showsOnRoster, entryProblem, LAYERS, layerOf, calendarItems, itemsByDate,
     cleanLabels, labelsUsed, labelsOf, atRestaurant, canChangeEntry, canWriteAllSites,
 } from './diary'
 
@@ -208,14 +205,6 @@ describe('spreading one entry over the days it covers', () => {
         expect(datesBetween(null, '2026-10-14')).toEqual([])
     })
 
-    it('puts a promotion under every day it runs', () => {
-        const map = entriesByDate([promotion, catering])
-        expect(Object.keys(map).sort()).toEqual([
-            '2026-10-12', '2026-10-13', '2026-10-14', '2026-10-15', '2026-10-16',
-        ])
-        expect(map['2026-10-16'].map(e => e.id)).toEqual(['p1', 'c1'])
-        expect(map['2026-10-13'].map(e => e.id)).toEqual(['p1'])
-    })
 })
 
 describe('a band across a week', () => {

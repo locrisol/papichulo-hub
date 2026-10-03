@@ -160,7 +160,7 @@ describe('the delivery platforms on the day form', () => {
         await waitFor(() => expect(saved().platform_sales).toEqual({ 'Just Eat': 65 }))
     })
 
-    // Before migration 026 the platforms have no key, and the name is still
+    // On a database from before platforms had a key, the name is still
     // what the figures are kept under.
     it('keeps each platform apart on a database with no keys yet', async () => {
         const withoutKey = p => {

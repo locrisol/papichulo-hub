@@ -8,9 +8,8 @@ import { addDays, todayISO, weekStartOf } from '@/lib/dates'
 // The line in People and operations saying a new allergen sheet is due, and
 // the recipients card read beside it.
 //
-// The two came from one read of the restaurant. Merging deploys straight to
-// the live site, and until migration 023 is run there the two allergen columns
-// do not exist, so that read failed and took the typed recipients with it. A
+// The two came from one read of the restaurant, and on a database without the
+// allergen sheet columns that read failed and took the typed recipients with it. A
 // manager adding one back would then have saved a list of one over the whole
 // stored list.
 
@@ -102,7 +101,7 @@ beforeEach(() => {
     restaurant = { id: 'r1', name: 'Testville' }
 })
 
-describe('the report before migration 023 is run', () => {
+describe('the report on a database without the allergen sheet columns', () => {
     it('still shows the typed recipients', async () => {
         answer({ changedAt: { data: null, error: { message: 'Could not find the function public.allergens_changed_at' } } })
         renderReport()

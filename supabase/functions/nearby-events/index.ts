@@ -282,7 +282,7 @@ function said(err: unknown, problem: string) {
 }
 
 // How the last sync of a place went, written where the roster, the calendar
-// and the settings row can read it. See migration 028.
+// and the settings row can read it. See places.feed_problem in schema.sql.
 //
 // A write that fails is let go. The listings are what matter, and before the
 // migration is run there are no columns to write to.

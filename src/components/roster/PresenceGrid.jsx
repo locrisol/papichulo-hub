@@ -1,5 +1,4 @@
-import { fullDate } from '@/lib/dates'
-import { DAY_NAMES } from '@/lib/events'
+import { fullDate, DAY_NAMES } from '@/lib/dates'
 import { NO_COLOUR } from '@/lib/team'
 import { barFor } from '@/lib/presence'
 

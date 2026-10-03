@@ -35,13 +35,13 @@ maybe('the invoice tables', () => {
         ownRestaurantId = me?.[0]?.restaurant_id
         otherRestaurantId = (places || []).map(p => p.id).find(id => id !== ownRestaurantId)
 
-        // Migration 010 may not have been run yet. A test that fails because a
+        // The invoice tables may not be on this database. A test that fails because a
         // table does not exist tells nobody anything useful, so it says so and
         // stands down instead.
         const { error } = await manager.from('supplier_codes').select('id').limit(1)
         if (error && /does not exist|schema cache/i.test(error.message)) {
             exists = false
-            console.warn('Skipping: migration 010 has not been run on this project yet.')
+            console.warn('Skipping: this database has no invoice tables yet.')
         }
     })
 

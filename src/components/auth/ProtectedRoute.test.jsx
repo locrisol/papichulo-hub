@@ -63,7 +63,7 @@ describe('ProtectedRoute', () => {
             expect(screen.getByText('the app')).toBeInTheDocument()
         })
 
-        // Before 035 runs there is no column at all, and nothing could fill it.
+        // A database without the column at all, where nothing could fill it.
         it('does not ask while the database cannot record the answer', () => {
             Object.assign(auth, { loading: false, session: { user: { id: 'u1' } }, user: { id: 'u1' } })
             show()

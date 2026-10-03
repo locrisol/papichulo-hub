@@ -117,7 +117,7 @@ export default function ReportPage() {
     // owner's Reports count is the reports they have not opened. Saved for
     // every role, and for this send of it, so a correction counts again.
     // Nothing is said if it fails: it is a note of having looked, nothing
-    // more, and before 036 there is no table for it.
+    // more, and an older database has no table for it.
     const readId = report?.status === 'published' ? report.id : null
     const readSend = report?.send_count || 1
     useEffect(() => {
@@ -199,7 +199,7 @@ export default function ReportPage() {
     // Up here rather than beside the charts, because publishing needs them to
     // draw the pictures and publishing is defined before the page is.
     const onlinePlatforms = platforms.filter(p => p.bucket === 'online_platform')
-    // Called catering in the database since 015, corporate everywhere a person
+    // Called catering in the database since 26 September, corporate everywhere a person
     // reads it.
     const corporatePlatforms = platforms.filter(p => p.bucket === 'catering')
 
@@ -341,7 +341,7 @@ export default function ReportPage() {
             // that Sunday is the last day of the delivery platforms' statements
             // and what each one kept is worked out over their week.
             // Every column rather than a list naming key, so the report still
-            // draws its platforms on a database 026 has not reached, where
+            // draws its platforms on a database from before platforms had keys, where
             // naming a column that is not there fails the whole read.
             const [plats, days2] = await Promise.all([
                 supabase.from('sales_platforms')

@@ -347,7 +347,7 @@ CREATE INDEX "idx_mix_recipes_mix" ON "public"."mix_recipes" USING "btree" ("mix
 CREATE INDEX "idx_mix_recipes_ingredient" ON "public"."mix_recipes" USING "btree" ("ingredient_product_id");
 
 -- One row per product, and each of the fourteen always says something. Not
--- null since 032: an empty one read as Not Present, which nobody had said. No
+-- null since 1 October: an empty one read as Not Present, which nobody had said. No
 -- row at all is a different thing, the answer never entered, and the app asks
 -- the customer to see staff about it.
 CREATE TABLE IF NOT EXISTS "public"."product_allergens" (
@@ -2634,9 +2634,7 @@ $$;
 -- Active for somebody who cannot get in. The date is read in Ireland, so a
 -- last day is a working day to its end. Never an owner or a super admin: they
 -- are the ones who can undo a last day typed by mistake. Never switches
--- anybody back on. Scheduled on live by 016, like this:
---
---   select cron.schedule('switch-off-leavers', '5 0 * * *', $$select public.switch_off_leavers()$$);
+-- anybody back on. Scheduled every night at 00:05 UTC in seed.sql.
 CREATE OR REPLACE FUNCTION "public"."switch_off_leavers"() RETURNS integer
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public', 'pg_temp'
@@ -3288,7 +3286,7 @@ $$;
 -- The newest change that alters what the allergen sheet says: allergens,
 -- dishes, what is in them and their categories, recipes, and a product
 -- renamed, switched on or off, made a MIX, or moved section. The section
--- counts since 032, because a food product with no allergens entered sends
+-- counts since 1 October, because a food product with no allergens entered sends
 -- the customer to staff and packaging does not. A price, the VAT, a quantity
 -- or a note does not count. The customer page is not signed in and cannot read
 -- the change log, so this reads it for them and hands back one date.
@@ -4326,7 +4324,7 @@ CREATE OR REPLACE VIEW "public"."staff_products" AS
    FROM "public"."products" "p"
   WHERE (( SELECT "public"."get_my_role"() ) IS NOT NULL);
 
--- The same entries the table gave staff before 034: the group's, their
+-- The same entries the table gave staff before 1 October: the group's, their
 -- restaurant's and their own private ones, and nothing for an account
 -- switched off.
 CREATE OR REPLACE VIEW "public"."staff_diary" AS
@@ -4540,7 +4538,7 @@ CREATE OR REPLACE VIEW "public"."public_product_allergens" AS
 
 -- The section is here so the page can tell food from packaging. A food product
 -- nobody entered allergens for is not known, and the page asks the customer to
--- see staff; a dip pot has nothing to declare and is not a gap. Since 032.
+-- see staff; a dip pot has nothing to declare and is not a gap. Since 1 October.
 CREATE OR REPLACE VIEW "public"."public_products" AS
  SELECT "id",
     "name",
@@ -4584,7 +4582,7 @@ COMMENT ON VIEW "public"."checklist_last_done" IS 'When each task was last ticke
 -- gives anon and authenticated ALL on anything new in public, and a view that
 -- reads one table and nothing else is one the database will write through, as
 -- its owner, past row level security. Granting SELECT on top of that took
--- nothing away: until 021 anybody with the website's key could rewrite the
+-- nothing away: until 30 September anybody with the website's key could rewrite the
 -- allergens through public_product_allergens. Any new view gets the same two
 -- lines here.
 revoke all on public.roster_colleagues        from anon, authenticated, public;

@@ -64,25 +64,6 @@ export function removeExtra(list, value) {
     return (list || []).filter(v => normalise(v) !== gone)
 }
 
-// The list that actually goes out: the owners first, then the extras, with
-// nothing said twice.
-//
-// Owners first because that is the order the mail is read in and because an
-// address that is both an owner and an extra should appear where it carries the
-// most weight. Deduping is on the normalised form but the address kept is the
-// one first seen, so a typed Ana.Murphy@ is sent as typed rather than flattened.
-export function mergeForSend(ownerAddresses = [], extras = []) {
-    const out = []
-    const seen = new Set()
-    for (const address of [...(ownerAddresses || []), ...(extras || [])]) {
-        const key = normalise(address)
-        if (!key || seen.has(key)) continue
-        seen.add(key)
-        out.push(String(address).trim())
-    }
-    return out
-}
-
 // What to say above the list.
 //
 // An empty list does not stop a report being published. The report is the point

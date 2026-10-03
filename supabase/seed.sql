@@ -181,3 +181,10 @@ select cron.unschedule('record-logins')
 where exists (select 1 from cron.job where jobname = 'record-logins');
 
 select cron.schedule('record-logins', '*/10 * * * *', $$select public.record_logins()$$);
+
+-- A leaver's login switched off the night after their last day, at 00:05 UTC.
+-- See switch_off_leavers in schema.sql.
+select cron.unschedule('switch-off-leavers')
+where exists (select 1 from cron.job where jobname = 'switch-off-leavers');
+
+select cron.schedule('switch-off-leavers', '5 0 * * *', $$select public.switch_off_leavers()$$);

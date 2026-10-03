@@ -104,9 +104,9 @@ export function mergeTenderSales(stored, values, shownTenders) {
 
 // The platforms as they come out of the database, each with its key.
 //
-// Until migration 026 is run there is no key column, and then the name is the
-// key, which is what it always was. Without this, the app going out before the
-// migration had every box on a day share one figure, kept under "undefined".
+// On a database from before platforms had a key column, the name is the key,
+// which is what it always was. Without this, every box on a day would share one
+// figure there, kept under "undefined".
 export function keyedPlatforms(platforms) {
     return (platforms || []).map(p => (p.key == null ? { ...p, key: p.name } : p))
 }

@@ -21,8 +21,8 @@ import { stampDate } from '@/lib/dates'
 // inside the manager's preview screen, which passes slugOverride instead of
 // reading the slug from the address.
 //
-// And it reads views rather than tables. Migration 065 closed the six tables
-// this used to read to anybody not signed in, because a policy can say yes to
+// And it reads views rather than tables. The six tables this used to read are
+// closed to anybody not signed in, because a policy can say yes to
 // a stranger asking for the menu but it cannot say which columns, and the same
 // yes covered every recipe quantity, every selling price and the restaurant's
 // pay rate. The public_ views carry the handful of columns this page actually

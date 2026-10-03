@@ -4,8 +4,7 @@ import ClockField from '@/components/ui/ClockField'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
-import { shortDate, weekDates, weekStartOf, addDays, weekMonthLabel, todayISO } from '@/lib/dates'
-import { DAY_NAMES } from '@/lib/events'
+import { shortDate, weekDates, weekStartOf, addDays, weekMonthLabel, todayISO, DAY_NAMES } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
 import {
     weekGrid, sortExtras, addExtra, setNthTime, removeNth, extrasFor,

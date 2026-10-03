@@ -20,8 +20,7 @@
 // shop and an hour from the next.
 
 import { shortTime } from '@/lib/roster'
-import { shortDate, toISODate, addDays } from '@/lib/dates'
-import { dayName } from '@/lib/events'
+import { shortDate, toISODate, addDays, dayName } from '@/lib/dates'
 
 // The city rule, in one place so the settings screen can say it out loud
 // rather than describing a number somebody has to take on trust.
@@ -46,10 +45,6 @@ export const WALKABLE_MINUTES = 20
 //   dismissed somebody said no. It stays in the table precisely so the next
 //             read of the same page does not offer it again.
 export const LIVE = ['trusted', 'kept']
-
-export function onRoster(event) {
-    return LIVE.includes(String(event?.review || ''))
-}
 
 export function notChecked(event) {
     return event?.review === 'found'
@@ -182,10 +177,6 @@ export function watching(pairings, restaurant) {
         && p.is_active !== false
         && (p.relation !== 'city' || (cityOn && countsAsCity(p)))
     ))
-}
-
-export function placeIds(pairings) {
-    return (pairings || []).map(p => p?.place?.id).filter(Boolean)
 }
 
 export function byPlace(pairings) {
@@ -538,7 +529,7 @@ export function couldBeSamePlace(a, b) {
 // The two are kept apart rather than one overwriting the other. name is what
 // arrived and display_name is ours, which matters because a page read a second
 // time lands on the row it made the first time, and because a Ticketmaster
-// name is rewritten by every sync. See migration 015.
+// name is rewritten by every sync. See events.display_name in schema.sql.
 export function eventName(event) {
     const ours = String(event?.display_name || '').trim()
     return ours || String(event?.name || '').trim()

@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import Modal from '@/components/ui/Modal'
 import ClockField from '@/components/ui/ClockField'
-import { categoryStyle, statusNote, dayName } from '@/lib/events'
+import { categoryStyle, statusNote } from '@/lib/events'
 import {
     placeName, elsewhere, walkWords, hostOf, sinceWords, whenWords, eventName,
 } from '@/lib/nearby'
-import { fullDate, todayISO } from '@/lib/dates'
+import { fullDate, todayISO, dayName } from '@/lib/dates'
 import { fmtMoney } from '@/lib/format'
 import {
     badge, fieldClass, labelClass, secondaryButton, checkbox, checkRow, hintClass,
@@ -150,7 +150,7 @@ export default function EventModal({ row, canEdit = false, sameName = 0, onRenam
                     It writes beside the name rather than over it, so what
                     arrived is still what a second reading is matched on, and a
                     Ticketmaster name that the sync rewrites twice a day keeps
-                    the one we chose. See migration 015. */}
+                    the one we chose. See events.display_name in schema.sql. */}
                 {canEdit && onRename && (
                     <div className="mt-4 pt-4 border-t border-border">
                         <label className={labelClass} htmlFor="event-name">

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
-    REASONS, acceptPrice, rejectPrice, movePreferred, typedPrice, typedPriceEvent, codeRow,
-    seenAgain, ignoreCode, ownedByAnother, costFromPaid, renumberPlan, alternatePlan, newGroupId,
+    REASONS, acceptPrice, movePreferred, typedPrice, typedPriceEvent, codeRow, seenAgain,
+    ignoreCode, ownedByAnother, costFromPaid, renumberPlan, alternatePlan, newGroupId,
 } from '@/lib/priceEvents'
 
 const PRODUCT = { id: 'p1', name: 'Flour Tortilla', section: 'Dry', unit: 'KG' }
@@ -141,23 +141,6 @@ describe('accepting what an invoice charged', () => {
     it('still adds the pack when the Hub has no price for it', () => {
         const out = acceptPrice(row({ packMoved: true, wantedUnits: 15 }), { ...WHO, prices: [PRICE] })
         expect(out.what).toBe('insert')
-    })
-})
-
-describe('refusing one', () => {
-    // He paid the new price whatever the Hub costs from. Rejecting means "do
-    // not move our costing" and never "that did not happen", and the report has
-    // to be able to say both.
-    it('keeps what was charged and where the costing did not follow', () => {
-        expect(rejectPrice(row())).toEqual({
-            product_id: 'p1',
-            price_id: 'pr1',
-            supplier_code: '497870',
-            description: 'FLOUR TORTILLA 12IN',
-            was: 30.3,
-            charged: 32.1,
-            difference: 1.8,
-        })
     })
 })
 

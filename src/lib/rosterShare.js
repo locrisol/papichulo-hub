@@ -8,9 +8,8 @@
 // The image is the one that matters. The roster goes to a WhatsApp group, and
 // everything else here is for the wall and for the accountant.
 
-import { DAY_NAMES } from '@/lib/events'
 import { dayState, availabilityOn, availabilityStart } from '@/lib/availability'
-import { fullDate, shortDate } from '@/lib/dates'
+import { fullDate, shortDate, DAY_NAMES } from '@/lib/dates'
 import {
     weekRows, dayTotals, endLabel, shortTime, dayBreakLabels, fmtHours, hoursForDate, shiftEdges,
 } from '@/lib/roster'

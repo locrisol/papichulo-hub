@@ -1,10 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import {
-    toMinutes, toTime, shiftMinutes, shiftHours, breakFor, breakForShift, breakLabel,
-    hoursForDay, shiftEdges, endLabel, shiftsOverlap, findOverlaps, totals, publishState,
-    fmtHours, hoursForDate, timelineRange, staffAt, staffPerSlot, weekRows, dayTotals, tint, DEFAULT_BREAK_RULES,
-    hourLabelStep,
-    dayBreakLabels, endMinutes, closeMinutes, STAFF_WEEKS, staffWeekRange,
+    toMinutes, toTime, shiftMinutes, shiftHours, breakFor, breakLabel, hoursForDay, shiftEdges,
+    endLabel, shiftsOverlap, findOverlaps, totals, publishState, fmtHours, hoursForDate,
+    timelineRange, staffAt, staffPerSlot, weekRows, dayTotals, tint, DEFAULT_BREAK_RULES,
+    hourLabelStep, dayBreakLabels, endMinutes, closeMinutes, STAFF_WEEKS, staffWeekRange,
 } from '@/lib/roster'
 
 const shift = (starts_at, ends_at, extra = {}) => ({
@@ -149,22 +148,6 @@ describe('breakFor', () => {
         expect(breakFor(5, own)).toBe(20)
         expect(breakFor(4.9, own)).toBe(0)
         expect(breakFor(12, own)).toBe(20)
-    })
-})
-
-describe('breakForShift', () => {
-    it('works it out from the ladder', () => {
-        expect(breakForShift(shift('09:00', '21:00'), DEFAULT_BREAK_RULES)).toBe(60)
-    })
-
-    it('leaves a typed break alone', () => {
-        const s = shift('09:00', '21:00', { break_minutes: 45, break_is_manual: true })
-        expect(breakForShift(s, DEFAULT_BREAK_RULES)).toBe(45)
-    })
-
-    it('respects a deliberate no break', () => {
-        const s = shift('09:00', '21:00', { break_minutes: 0, break_is_manual: true })
-        expect(breakForShift(s, DEFAULT_BREAK_RULES)).toBe(0)
     })
 })
 

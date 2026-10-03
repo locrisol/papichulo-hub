@@ -115,15 +115,6 @@ export function partDayOn(absences, employeeId, date) {
     return absencesOn(absences, employeeId, date).find(isPartDay) || null
 }
 
-// Everything touching a stretch of dates, which is how a week asks.
-export function absencesInRange(absences, from, to) {
-    return (absences || []).filter(a =>
-        a.status !== 'declined'
-        && (a.ends_on || a.starts_on) >= from
-        && a.starts_on <= to,
-    )
-}
-
 // How many days a stretch runs, counting both ends.
 export function absenceDays(absence) {
     if (!absence?.starts_on) return 0

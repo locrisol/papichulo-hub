@@ -1,12 +1,11 @@
-import { addDays, fullDate, dayMonth } from '@/lib/dates'
-import { DAY_NAMES, dayName } from '@/lib/events'
+import { addDays, fullDate, dayMonth, DAY_NAMES, dayName } from '@/lib/dates'
 import {
     bankHolidayOn, BANK_HOLIDAY_INK, BANK_HOLIDAY_WASH, BANK_HOLIDAY_LABEL,
 } from '@/lib/bankHolidays'
 import { card, closeButton } from '@/lib/controlStyles'
 import { bandsForWeek, kindDot, kindRing, scopeLabel, timeLabel } from '@/lib/diary'
-import DiaryChip from './DiaryChip'
-import DiaryBand from './DiaryBand'
+import DiaryChip from '@/components/diary/DiaryChip'
+import DiaryBand from '@/components/diary/DiaryBand'
 
 // The month, as six weeks that do not change height as you step through them.
 //

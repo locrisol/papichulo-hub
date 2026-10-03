@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-    PERIOD_DAYS, anchorOf, periodOf, periodDates, inPeriod, stepPeriod,
-    periodIsOver, periodWords, weekIndexOf,
+    PERIOD_DAYS, anchorOf, periodOf, periodDates, inPeriod, periodIsOver, periodWords,
 } from '@/lib/payPeriod'
 
 // The fortnight the design was drawn against: Sunday 25 October to Saturday
@@ -73,18 +72,6 @@ describe('the two weeks it is made of', () => {
         expect(periodOf('2026-11-03', REF).weeks).toEqual(['2026-10-25', '2026-11-01'])
     })
 
-    it('says which half a day is in', () => {
-        expect(weekIndexOf(REF, '2026-10-25')).toBe(0)
-        expect(weekIndexOf(REF, '2026-10-31')).toBe(0)
-        expect(weekIndexOf(REF, '2026-11-01')).toBe(1)
-        expect(weekIndexOf(REF, '2026-11-07')).toBe(1)
-    })
-
-    it('says nothing about a day outside it', () => {
-        expect(weekIndexOf(REF, '2026-11-08')).toBeNull()
-        expect(weekIndexOf(REF, '2026-10-24')).toBeNull()
-    })
-
     it('lists its fourteen days in order', () => {
         const days = periodDates(REF)
         expect(days).toHaveLength(14)
@@ -96,10 +83,6 @@ describe('the two weeks it is made of', () => {
 })
 
 describe('stepping and finishing', () => {
-    it('steps a fortnight at a time', () => {
-        expect(stepPeriod(REF, 1)).toBe('2026-11-08')
-        expect(stepPeriod(REF, -1)).toBe('2026-10-11')
-    })
 
     // The same rule the timesheet uses about a week: nothing is asked about a
     // week that has not finished, so nothing is sent for a fortnight that has

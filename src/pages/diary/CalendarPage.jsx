@@ -486,8 +486,8 @@ export default function CalendarPage() {
     // A corrected name rides along with a keep, into display_name rather than
     // over the name that arrived. It is only written when it has actually
     // changed and is not blank, so keeping forty rows does not rewrite forty
-    // names with what they already said. See migration 015 for why the two are
-    // kept apart.
+    // names with what they already said. See events.display_name in schema.sql
+    // for why the two are kept apart.
     //
     // Written straight into the list as well as to the database, rather than
     // waiting for a reload. Pressing Keep on four things in a row and watching

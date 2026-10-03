@@ -1,4 +1,4 @@
-import { DAY_NAMES } from '@/lib/events'
+import { DAY_NAMES } from '@/lib/dates'
 import { fmtMoney } from '@/lib/format'
 import { weekTotals, cellColour } from '@/lib/timesheet'
 import { kindLabel as absenceLabel } from '@/lib/absences'

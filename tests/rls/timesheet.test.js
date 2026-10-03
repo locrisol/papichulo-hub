@@ -5,8 +5,7 @@ import { signInAs, credentialsPresent } from './helpers'
 // the clocks change. They were worked out on the clock face, so eight to two
 // was six hours whatever night it was: seven really worked the night the
 // clocks go back, five the night they go forward. Found by the audit of 28
-// September, closed by migration 030. Until 030 is run on this project these
-// fail, which is them saying so.
+// September and closed on 1 October.
 //
 // This one writes to live, and it may never touch real data. His words, 1
 // October 2026: "Ok if it's never going to touch real data. It can be done

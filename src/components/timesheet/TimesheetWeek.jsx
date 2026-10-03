@@ -1,5 +1,4 @@
-import { DAY_NAMES } from '@/lib/events'
-import { shortDate } from '@/lib/dates'
+import { shortDate, DAY_NAMES } from '@/lib/dates'
 import { fmtMoney, fmtPct } from '@/lib/format'
 import { statusFor } from '@/lib/costTargets'
 import { weekTotals, ROW_BANDS } from '@/lib/timesheet'

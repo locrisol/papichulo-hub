@@ -1,27 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { daySpan, weekSpan, barFor, dayShape, freeEnds } from '@/lib/presence'
+import { weekSpan, barFor, dayShape, freeEnds } from '@/lib/presence'
 
 const shift = (starts_at, ends_at) => ({ starts_at, ends_at })
 const hours = (open, close) => ({ open, close })
-
-describe('daySpan', () => {
-    it('uses the store hours when nothing runs outside them', () => {
-        expect(daySpan(hours('09:00', '21:00'), [shift('10:00', '18:00')]))
-            .toEqual({ from: 540, to: 1260 })
-    })
-
-    it('widens for an opening shift', () => {
-        expect(daySpan(hours('09:00', '21:00'), [shift('07:30', '15:00')]).from).toBe(450)
-    })
-
-    it('widens for a closing shift', () => {
-        expect(daySpan(hours('09:00', '21:00'), [shift('15:00', '22:30')]).to).toBe(1350)
-    })
-
-    it('falls back when the day has no hours recorded', () => {
-        expect(daySpan(null, [])).toEqual({ from: 480, to: 1440 })
-    })
-})
 
 describe('weekSpan', () => {
     it('runs from the earliest opening to the latest close', () => {

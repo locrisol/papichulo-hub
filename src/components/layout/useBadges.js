@@ -62,7 +62,7 @@ export function useBadges(user, restaurant, pathname) {
                 manager ? foundNearby(restaurant) : Promise.resolve(0),
                 manager ? readToDecide(restaurantId) : Promise.resolve({ lines: [] }),
             ])
-            // Before 036 runs there is no such function: no badges, nothing broken.
+            // A database without the function: no badges, nothing broken.
             if (answer.error || current.current !== key) return
             setHeld({
                 for: key,

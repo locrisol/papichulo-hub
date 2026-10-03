@@ -6,7 +6,7 @@ import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
 import { useConfirm } from '@/context/confirm'
 import { fmtMoney, fmtPct, num } from '@/lib/format'
-import { todayISO, weekStartOf, weekDates, addDays, fullDate, weekMonthLabel, dayList } from '@/lib/dates'
+import { todayISO, weekStartOf, weekDates, addDays, fullDate, weekMonthLabel, dayList, DAY_NAMES } from '@/lib/dates'
 import { friendlyError, isPermissionError } from '@/lib/errors'
 import {
     tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord, sameLabel, trackedCopy,
@@ -19,7 +19,6 @@ import {
 import { readStored, writeStored, forgetStored } from '@/lib/browserStore'
 import JumpButton from '@/components/ui/JumpButton'
 import DateStepper from '@/components/ui/DateStepper'
-import { DAY_NAMES } from '@/lib/events'
 import {
     bankHolidayOn, BANK_HOLIDAY_ON_DARK, BANK_HOLIDAY_WASH_CLASS, BANK_HOLIDAY_LABEL,
 } from '@/lib/bankHolidays'

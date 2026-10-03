@@ -172,10 +172,6 @@ export function compareForCount(a, b) {
     return String(a?.name || '').localeCompare(String(b?.name || ''))
 }
 
-export function inCountOrder(products) {
-    return (products || []).slice().sort(compareForCount)
-}
-
 // Starting a product somewhere else and finishing it on the catalogue screen.
 //
 // The invoice review meets a supplier code nobody has ever bought under, and

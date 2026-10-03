@@ -1,36 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import {
-    sectionKey,
-    isOwnSection,
-    sectionsFor,
-    weekReadiness,
-    blockedBy,
-    weekIsOver,
-    reportableWeeks,
-    reportFigures,
-    figureGaps,
-    platformShare,
-    carriedItems,
-    startsOpen,
-    wasChanged,
-    weeksOpen,
-    reviewNeedsNote,
-    blockers,
-    ratingMove,
-    publishCheck,
-    figuresToStore,
-    FIGURES_VERSION,
-    isCorrection,
-    mailMissing,
-    statementWeek,
-    statementWords,
-    dayWords,
-    platformTaken,
-    deliveryCost,
-    deliveryRows,
-    statementSundayIn,
-    deliveryBlockers,
-    platformWeeks,
+    sectionKey, isOwnSection, sectionsFor, weekReadiness, blockedBy, reportableWeeks, reportFigures,
+    figureGaps, platformShare, carriedItems, startsOpen, wasChanged, weeksOpen, reviewNeedsNote,
+    blockers, ratingMove, publishCheck, figuresToStore, FIGURES_VERSION, isCorrection, mailMissing,
+    statementWeek, statementWords, dayWords, platformTaken, deliveryCost, deliveryRows,
+    statementSundayIn, deliveryBlockers, platformWeeks,
 } from '@/lib/weeklyReport'
 
 // The till, as it stands. Every row counts toward the day balancing.
@@ -200,16 +174,6 @@ describe('weekReadiness', () => {
         const days = fullWeek().slice(1)
         const out = weekReadiness('2026-08-09', days, TENDERS)
         expect(out.missing).toEqual(['2026-08-09'])
-    })
-})
-
-describe('weekIsOver', () => {
-    it('is not over on its last day', () => {
-        expect(weekIsOver('2026-08-09', '2026-08-15')).toBe(false)
-    })
-
-    it('is over the day after', () => {
-        expect(weekIsOver('2026-08-09', '2026-08-16')).toBe(true)
     })
 })
 

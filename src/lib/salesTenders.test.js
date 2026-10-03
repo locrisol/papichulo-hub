@@ -178,7 +178,7 @@ describe('the delivery platforms', () => {
         p('Manna', 'Manna', 2, { is_active: false }),
     ]
 
-    // Before migration 026 there is no key column.
+    // A database from before platforms had a key column.
     describe('keyedPlatforms', () => {
         it('gives a platform with no key its name as the key', () => {
             const [old] = keyedPlatforms([{ id: 'p1', name: 'Deliveroo' }])

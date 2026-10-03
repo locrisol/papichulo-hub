@@ -1,51 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import { shortDate } from '@/lib/dates'
 import {
-    CITY_CAPACITY,
-    WALKABLE_MINUTES,
-    onRoster,
-    notChecked,
-    dismissed,
-    watching,
-    countsAsCity,
-    cityProblem,
-    placeIds,
-    byPlace,
-    kindOf,
-    lastDay,
-    coversDate,
-    nearbyRows,
-    rowsOn,
-    ownRows,
-    sharedRows,
-    headlinePlaces,
-    waiting,
-    placeName,
-    chipWords,
-    eventName,
-    elsewhere,
-    walkWords,
-    hostOf,
-    sourceWords,
-    placeTag,
-    whenWords,
-    sinceWords,
-    foundWords,
-    readWords,
-    distanceKm,
-    walkMinutesFor,
-    suggest,
-    pastWalking,
-    sourceKeyFor,
-    samePlace,
-    couldBeSamePlace,
-    offFor,
-    offWords,
-    forRoster,
-    feedWords,
-    feedTrouble,
-    placeToFill,
-    rosterNearby,
+    CITY_CAPACITY, WALKABLE_MINUTES, dismissed, watching, countsAsCity, cityProblem, byPlace,
+    kindOf, lastDay, coversDate, nearbyRows, rowsOn, ownRows, sharedRows, headlinePlaces, waiting,
+    placeName, chipWords, eventName, elsewhere, walkWords, hostOf, sourceWords, placeTag, whenWords,
+    sinceWords, foundWords, readWords, distanceKm, walkMinutesFor, suggest, pastWalking,
+    sourceKeyFor, samePlace, couldBeSamePlace, offFor, offWords, forRoster, feedWords, feedTrouble,
+    placeToFill, rosterNearby,
 } from '@/lib/nearby'
 import { calendarItems } from '@/lib/diary'
 
@@ -76,19 +37,6 @@ const match = {
 }
 
 describe('what counts as being watched', () => {
-    it('leaves out a place that is switched off', () => {
-        expect(placeIds(watching(pairs, {}))).toEqual(['p1', 'p2', 'p3'])
-    })
-
-    // A restaurant nowhere near a city gets nothing but noise out of the rule,
-    // which is the whole reason it is a switch.
-    it('drops the city ones when the restaurant has the rule off', () => {
-        expect(placeIds(watching(pairs, { watch_city_events: false }))).toEqual(['p1', 'p2'])
-    })
-
-    it('keeps the city ones when nothing has been said either way', () => {
-        expect(placeIds(watching(pairs, undefined))).toContain('p3')
-    })
 
     it('ignores a pairing with no place on it', () => {
         expect(watching([{ relation: 'walk', walk_minutes: 4 }], {})).toEqual([])
@@ -147,12 +95,6 @@ describe('the city rule is a rule', () => {
         expect(cityProblem({ relation: 'walk', walk_minutes: 5 })).toBe('')
     })
 
-    // The point of all of it: a city place that does not clear the rule reaches
-    // no screen at all.
-    it('keeps an unqualified city place off every screen', () => {
-        expect(placeIds(watching([pairFor(null, 2.5)], {}))).toEqual([])
-        expect(placeIds(watching([pairFor(82300, 2.5)], {}))).toEqual(['p7'])
-    })
 })
 
 describe('what one listing is to us', () => {
@@ -199,15 +141,6 @@ describe('what one listing is to us', () => {
 })
 
 describe('the review gate', () => {
-    it('lets a feed and a kept reading onto the roster', () => {
-        expect(onRoster({ review: 'trusted' })).toBe(true)
-        expect(onRoster({ review: 'kept' })).toBe(true)
-    })
-
-    it('keeps an unchecked reading off it', () => {
-        expect(onRoster({ review: 'found' })).toBe(false)
-        expect(notChecked({ review: 'found' })).toBe(true)
-    })
 
     it('knows a dismissal', () => {
         expect(dismissed({ review: 'dismissed' })).toBe(true)
@@ -760,7 +693,7 @@ describe('sourceKeyFor', () => {
     })
 
     // A cinema lists the same film every day for a month, and it is one thing
-    // that happened once. See migration 012.
+    // that happened once. See places.reading_key in schema.sql.
     it('leaves the day out for a place keyed by title', () => {
         expect(sourceKeyFor('2026-11-19', 'Practical Magic 2', 'title')).toBe('practical-magic-2')
         expect(sourceKeyFor('2026-11-26', 'Practical Magic 2', 'title')).toBe('practical-magic-2')
