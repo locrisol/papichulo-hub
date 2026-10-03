@@ -2,6 +2,7 @@ import { Navigate } from 'react-router-dom'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
 import CannotContinue from '@/components/auth/CannotContinue'
+import ChooseYourOwnPassword from '@/components/auth/ChooseYourOwnPassword'
 
 // Are you signed in at all.
 //
@@ -22,8 +23,12 @@ import CannotContinue from '@/components/auth/CannotContinue'
 // Only on a real failure, never on the gap before the answer arrives. Both
 // contexts set their error after the read finishes, so this cannot flash up
 // while a good sign-in is still loading.
+//
+// Then somebody who has never chosen their own password chooses one before
+// anything else (users.password_set_at). Not a developer account, whose
+// password the database tests sign in with.
 export default function ProtectedRoute({ children }) {
-  const { session, loading, error } = useAuth()
+  const { session, user, loading, error } = useAuth()
 
   // Read through rather than destructured, because the context defaults to null
   // and this component is rendered on its own in tests.
@@ -32,5 +37,8 @@ export default function ProtectedRoute({ children }) {
   if (loading) return null
   if (!session) return <Navigate to="/login" replace />
   if (error || restaurantError) return <CannotContinue reason={error || restaurantError} />
+  // Null, not just missing: before 035 runs there is no such column, and
+  // asking then would ask for ever, because nothing could fill it.
+  if (user && user.password_set_at === null && !user.is_test) return <ChooseYourOwnPassword />
   return children
 }
