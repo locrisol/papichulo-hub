@@ -283,6 +283,14 @@ describe('starting a product from somewhere else', () => {
         expect(back.form.unit).toBe('KG')
     })
 
+    // Made from a line on Review, saving goes back there to decide the rest.
+    it('says where to go back to, and only somewhere it knows', () => {
+        const fromReview = prefillLink('/catalogue/products', { name: 'Beans', back: '/invoices/review' })
+        expect(prefillFrom(new URLSearchParams(fromReview.split('?')[1])).back).toBe('/invoices/review')
+        expect(prefillFrom(new URLSearchParams(made.split('?')[1])).back).toBeNull()
+        expect(prefillFrom(new URLSearchParams('new=1&name=Thing&back=https://example.test')).back).toBeNull()
+    })
+
     // An ordinary visit to the catalogue must be untouched by any of this.
     it('is nothing at all without a link asking for it', () => {
         expect(prefillFrom(new URLSearchParams(''))).toBeNull()

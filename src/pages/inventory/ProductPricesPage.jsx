@@ -10,6 +10,7 @@ import PriceForm from '@/components/inventory/PriceForm'
 import Modal from '@/components/ui/Modal'
 import PriceCountUnitsEditor from '@/components/inventory/PriceCountUnitsEditor'
 import { friendlyError } from '@/lib/errors'
+import { claimCode } from '@/lib/invoiceReview'
 import { tableHeadRow, tableCard, badge, card, rowButton, pageTitle, primaryButton } from '@/lib/controlStyles'
 import { useConfirm } from '@/context/confirm'
 import BackButton from '@/components/ui/BackButton'
@@ -179,6 +180,7 @@ export default function ProductPricesPage() {
                 await recordPrice(typedPriceEvent({ id }, saved, {
                     ...who(), before: editingPrice,
                 }))
+                await findsItsCode(saved)
                 fetchPrices(); resetForm()
             }
         } else {
@@ -196,6 +198,7 @@ export default function ProductPricesPage() {
             if (error) handleSupabaseError(error)
             else {
                 await recordPrice(typedPriceEvent({ id }, saved, who()))
+                await findsItsCode(saved)
                 fetchPrices(); resetForm()
             }
         }
@@ -219,6 +222,13 @@ export default function ProductPricesPage() {
         const { error } = await supabase.from('product_price_events').insert(event)
         if (error) setError(`The price was saved, but the price history was not updated: ${friendlyError(error)}`)
         setHistoryVersion(n => n + 1)
+    }
+
+    // A code the invoices already met means this price from now on. See
+    // claimCode. Said after anything the price history said.
+    async function findsItsCode(saved) {
+        const said = await claimCode(saved, activeRestaurant.id)
+        if (said) setError(before => (before ? `${before} ${said}` : said))
     }
 
     function handleSupabaseError(err) {

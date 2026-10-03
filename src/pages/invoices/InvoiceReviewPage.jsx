@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Link } from 'react-router-dom'
-import { supabase } from '@/lib/supabase'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { supabase, everyRow } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
 import { useConfirm } from '@/context/confirm'
 import { fmtMoney, num } from '@/lib/format'
-import { todayISO, addDays, shortDate } from '@/lib/dates'
+import { shortDate } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
 import {
     matchLines, pilesOf, storedLine, lineCategory, samePrice, unitsForPack, packReadings, unitsPatch,
@@ -13,12 +13,13 @@ import {
 import { storedTotals, mainCategory } from '@/lib/invoiceCategories'
 import { acceptPrice, movePreferred, codeRow, ignoreCode, ownedByAnother, newGroupId } from '@/lib/priceEvents'
 import { prefillLink } from '@/lib/products'
-import { voidedBy, sentBack } from '@/lib/invoiceClaims'
+import { readToDecide } from '@/lib/invoiceReview'
 import {
     card, cardHeader, pageTitle, secondaryButton, primaryButton, rowButton, badge,
-    hintClass, dateField,
+    hintClass,
 } from '@/lib/controlStyles'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import WarningUntilSeen from '@/components/ui/WarningUntilSeen'
 import MatchLineModal from '@/components/invoices/MatchLineModal'
 
 // What the week's invoices want somebody to decide.
@@ -35,8 +36,11 @@ import MatchLineModal from '@/components/invoices/MatchLineModal'
 // It is set based on purpose: the same screen over a bigger batch rather than
 // one document at a time, because the question "has anything moved" is about
 // the week and not about one piece of paper.
-
-const LOOK_BACK_DAYS = 30
+//
+// **It asks until every line is decided** (his answer, 30 September). It used
+// to look back thirty days, and a line nobody got to dropped off without ever
+// being answered: the week's cost had it, but the product's price never moved
+// and its category stayed a guess.
 
 const PILE_CARDS = [
     {
@@ -65,15 +69,24 @@ export default function InvoiceReviewPage() {
     const { user } = useAuth()
     const { activeRestaurant } = useRestaurant()
     const confirm = useConfirm()
+    const location = useLocation()
+    const navigate = useNavigate()
     const restaurantId = activeRestaurant?.id
 
-    const [from, setFrom] = useState(() => addDays(todayISO(), -LOOK_BACK_DAYS))
     const [data, setData] = useState(null)
     const [error, setError] = useState('')
-    const [said, setSaid] = useState('')
+    // Opened by an import, which says what went in, and what has to be put
+    // right. That stays until it is seen: a decision clears only what was said.
+    const [said, setSaid] = useState(() => location.state?.said || '')
+    const [warned, setWarned] = useState(() => location.state?.warned || '')
     const [busy, setBusy] = useState('')
     const [matching, setMatching] = useState(null)
     const [refresh, setRefresh] = useState(0)
+
+    // Said once. Left in the history, a reload would say it again.
+    useEffect(() => {
+        if (location.state?.said || location.state?.warned) navigate(location.pathname, { replace: true, state: null })
+    }, [location, navigate])
 
     useEffect(() => {
         if (!restaurantId) return
@@ -81,57 +94,35 @@ export default function InvoiceReviewPage() {
 
         async function load() {
             setError('')
-            const [lines, prices, codes, suppliers, products, credits] = await Promise.all([
-                supabase.from('invoice_lines')
-                    .select('*, invoices!inner(id, invoice_number, invoice_date, supplier_id, document_type, restaurant_id, total_amount)')
-                    .is('decision', null)
-                    .eq('invoices.restaurant_id', restaurantId)
-                    .gte('invoices.invoice_date', from)
-                    .order('line_no'),
-                supabase.from('product_supplier_prices')
+            // Every price and code the restaurant has, a page at a time. Read
+            // in one go, whatever sat past the thousandth row was unknown here,
+            // and a code bought every week went back to Never bought before.
+            const [waiting, prices, codes, suppliers, products] = await Promise.all([
+                readToDecide(restaurantId),
+                everyRow(() => supabase.from('product_supplier_prices')
                     .select('*, products(id, name, section, unit, piece_weight)')
-                    .eq('restaurant_id', restaurantId),
-                supabase.from('supplier_codes').select('*').eq('restaurant_id', restaurantId),
+                    .eq('restaurant_id', restaurantId)
+                    .order('id')),
+                everyRow(() => supabase.from('supplier_codes').select('*').eq('restaurant_id', restaurantId).order('id')),
                 supabase.from('suppliers').select('id, name, category'),
                 // Anything we buy. A MIX is made here out of other products
                 // and has no supplier, so offering one as the thing a code
                 // means would be offering to price something that is priced by
                 // its recipe.
-                supabase.from('products')
+                everyRow(() => supabase.from('products')
                     .select('id, name, section, unit, is_mix, category, is_active, piece_weight')
                     .eq('is_active', true)
                     .eq('is_mix', false)
-                    .order('name'),
-                // Every credit that points at an invoice, to find the ones that
-                // reverse a whole delivery and the lines sent back one at a time.
-                supabase.from('invoices')
-                    .select('id, credit_of_invoice_id, total_amount, invoice_lines(supplier_code, line_total)')
-                    .eq('restaurant_id', restaurantId)
-                    .eq('document_type', 'credit')
-                    .not('credit_of_invoice_id', 'is', null),
+                    .order('name')
+                    .order('id')),
             ])
 
             if (!alive) return
-            const failed = [lines, prices, codes, suppliers, products, credits].map(r => r.error).find(Boolean)
+            const failed = [waiting, prices, codes, suppliers, products].map(r => r.error).find(Boolean)
             if (failed) { setError(friendlyError(failed)); return }
 
-            // **None of these is evidence of what anything costs**, so none
-            // asks a question about a price. A credit note's lines are money
-            // coming back at the price already charged, a delivery that was sent
-            // back in full the next day was never bought at all, and neither was
-            // a single line credited in full against its own invoice. Three of
-            // the first kind turned up in the one month this was designed
-            // against, and the julienne fries on the first real week were the
-            // second.
-            const gone = sentBack(lines.data || [], credits.data || [])
-            const asks = (lines.data || []).filter(line => (
-                line.invoices.document_type !== 'credit'
-                && !voidedBy(line.invoices, credits.data || [])
-                && !gone.has(line.id)
-            ))
-
             setData({
-                lines: asks,
+                lines: waiting.lines,
                 prices: prices.data || [],
                 codes: codes.data || [],
                 suppliers: suppliers.data || [],
@@ -141,7 +132,7 @@ export default function InvoiceReviewPage() {
 
         load()
         return () => { alive = false }
-    }, [restaurantId, from, refresh])
+    }, [restaurantId, refresh])
 
     // The same matching the import ran, over the rows as they were stored.
     //
@@ -584,31 +575,26 @@ export default function InvoiceReviewPage() {
                 <div>
                     <h2 className={pageTitle}>Review</h2>
                     <p className="text-sm text-gray-500 mt-1">
-                        {activeRestaurant?.name}, {waiting === 0 ? 'nothing waiting' : `${waiting} lines waiting`}
+                        {activeRestaurant?.name},{' '}
+                        {waiting === 0 ? 'nothing waiting' : `${waiting} ${waiting === 1 ? 'line' : 'lines'} waiting`}
                     </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                    <input
-                        type="date"
-                        value={from}
-                        onChange={e => setFrom(e.target.value)}
-                        aria-label="Look back to"
-                        className={dateField}
-                    />
                     <Link to="/invoices/import" className={secondaryButton}>Import invoices</Link>
                     <Link to="/invoices" className={secondaryButton}>Invoices</Link>
                 </div>
             </div>
 
             {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
+            {warned && <WarningUntilSeen className="mb-4" onSeen={() => setWarned('')}>{warned}</WarningUntilSeen>}
             {said && <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{said}</div>}
 
             {waiting === 0 && (
                 <div className={`${card} p-6 text-center`}>
                     <p className="text-sm font-semibold text-gray-900">Nothing is waiting.</p>
                     <p className={hintClass}>
-                        Every line imported since {shortDate(from)} matched something the Hub already
-                        knew, at a price it already had.
+                        Every line imported so far has been decided, or matched something the Hub
+                        already knew at a price it already had.
                     </p>
                 </div>
             )}
@@ -800,6 +786,7 @@ function ReviewRow({
                                 code: line.code,
                                 pricePerCase: line.price_per_case,
                                 unitsPerCase: row.wantedUnits,
+                                back: '/invoices/review',
                             })}
                             className={rowButton()}
                         >

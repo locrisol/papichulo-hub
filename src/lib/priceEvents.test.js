@@ -238,8 +238,6 @@ describe('what a code means', () => {
         })
     })
 
-    // first_seen_on is what says how long the Hub has known about something, so
-    // it is never touched again.
     it('only ever moves last seen forward', () => {
         const out = seenAgain(
             { last_seen_on: '2026-09-14', last_description: 'FLOUR TORTILLA' },
@@ -252,6 +250,25 @@ describe('what a code means', () => {
     it('does not move it backwards for an older document imported late', () => {
         const out = seenAgain({ last_seen_on: '2026-09-20' }, { line, date: '2026-09-14' })
         expect(out.last_seen_on).toBe('2026-09-20')
+    })
+
+    // A typed invoice filled in with its document is older than anything
+    // imported since. It says the code was bought earlier than the Hub
+    // thought, and nothing about what it is called now.
+    it('moves first seen back for an older document, and keeps the newer words', () => {
+        const out = seenAgain(
+            { first_seen_on: '2026-09-14', last_seen_on: '2026-09-20', last_description: 'FLOUR TORTILLA 12IN', pack_size: '4X2.5 KG' },
+            { line: { description: 'FLOUR TORTILLA 12 INCH', pack_size: '4X2.5KG' }, date: '2026-09-02' },
+        )
+        expect(out).toEqual({
+            first_seen_on: '2026-09-02', last_seen_on: '2026-09-20',
+            last_description: 'FLOUR TORTILLA 12IN', pack_size: '4X2.5 KG',
+        })
+    })
+
+    it('never moves first seen later', () => {
+        const out = seenAgain({ first_seen_on: '2026-09-14', last_seen_on: '2026-09-14' }, { line, date: '2026-09-20' })
+        expect(out.first_seen_on).toBe('2026-09-14')
     })
 
     // A delivery charge has a code and would turn up in the new pile every week

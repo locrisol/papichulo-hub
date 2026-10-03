@@ -54,7 +54,7 @@ function draw(over = {}) {
         onCostFrom: vi.fn(), onMakeUsual: vi.fn(), onRenumber: vi.fn(), onGiveReason: vi.fn(), onPutOnList: vi.fn(),
         onBuyBoth: vi.fn(),
     }
-    render(<ReportPrices section={section} canDecide canEdit busy="" jobs={{ add: [], tick: [] }} {...handlers} {...over} />)
+    render(<ReportPrices section={section} canDecide canEdit busy="" jobs={{ add: [], tick: [], reopen: [], relabel: [] }} {...handlers} {...over} />)
     return handlers
 }
 
@@ -128,9 +128,30 @@ describe('prices and suppliers on the report', () => {
             weekStart: '2026-09-13', weekEnd: '2026-09-19',
             claims: [{ id: 'k1', what: 'Bowls charged 49.73', kind: 'price', amount: 24.75, credited_amount: 0, status: 'open', raised_on: '2026-09-14' }],
         })
-        const jobs = { add: [{ kind: 'action', key: 'claim:k1' }], tick: [] }
+        const jobs = { add: [{ kind: 'action', key: 'claim:k1' }], tick: [], reopen: [], relabel: [] }
         const handlers = draw({ section: owing, jobs })
         fireEvent.click(screen.getByRole('button', { name: 'Put these on the support list' }))
+        expect(handlers.onPutOnList).toHaveBeenCalledWith(jobs)
+    })
+
+    // Crossed off when they said no and asked again, or its money moved: the
+    // same button puts it back and brings its words up to date.
+    it('offers to put back a job crossed off and to update one whose money moved', () => {
+        const owing = priceWeek({
+            weekStart: '2026-09-13', weekEnd: '2026-09-19',
+            claims: [{ id: 'k1', what: 'Bowls charged 49.73', kind: 'price', amount: 24.75, credited_amount: 0, status: 'open', raised_on: '2026-09-14' }],
+        })
+        const jobs = {
+            add: [], tick: [],
+            reopen: [{ id: 'a1', patch: { done_on: null } }],
+            relabel: [{ id: 'a2', patch: { label: 'Chase the credit for Bowls charged 49.73 (price query) (24.75)' } }],
+        }
+        const handlers = draw({ section: owing, jobs })
+        expect(screen.getByText('1 to put back')).toBeInTheDocument()
+        expect(screen.getByText('1 to update')).toBeInTheDocument()
+        // Nothing to add, so it does not say it puts anything on.
+        expect(screen.queryByRole('button', { name: 'Put these on the support list' })).toBeNull()
+        fireEvent.click(screen.getByRole('button', { name: 'Update the support list' }))
         expect(handlers.onPutOnList).toHaveBeenCalledWith(jobs)
     })
 

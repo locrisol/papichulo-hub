@@ -16,7 +16,7 @@
 
 import { num } from '@/lib/format'
 import { weekStartOf, addDays } from '@/lib/dates'
-import { recognisesSysco, readSyscoInvoice, readPackSize } from '@/lib/invoiceSysco'
+import { recognisesSysco, readSyscoInvoice, readPackSize, packItems } from '@/lib/invoiceSysco'
 import { documentStatus } from '@/lib/supplierDocuments'
 
 // Every format the Hub can read.
@@ -76,7 +76,13 @@ export function whereItGoes(accountNo, accounts) {
 // **A hand entered total is net, and a document is gross.** He deducts a
 // shortage by hand before typing it, so matching on the total to the cent would
 // miss exactly the invoices that most need filling in. The day is the match and
-// the candidates come back nearest total first.
+// the candidates come back nearest total first, every one of them: two typed
+// in for one day is the usual pattern, so the card offers each, and a way to
+// say this is a different delivery.
+//
+// **A credit note is never one of them.** Every invoice typed by hand is an
+// invoice, and a credit dated the same day was offered only as that invoice, to
+// be overwritten with a negative total.
 export function placeDocument(doc, held) {
     const rows = held || []
 
@@ -85,7 +91,9 @@ export function placeDocument(doc, held) {
         : null
     if (same) return { what: 'already_here', invoice: same }
 
-    const sameDay = rows.filter(h => !h.invoice_number && h.invoice_date === doc?.date)
+    const sameDay = doc?.kind === 'credit'
+        ? []
+        : rows.filter(h => !h.invoice_number && h.invoice_date === doc?.date)
     if (sameDay.length) {
         const wanted = documentTotal(doc)
         const near = [...sameDay].sort((a, b) => (
@@ -396,8 +404,22 @@ export function unitsPatch(row) {
     return {
         units_per_case: units,
         unit_price: to(num(row.line.price_per_case) / units, 4),
-        quantity: to(num(row.line.cases) * units + num(row.line.units), 3),
+        quantity: lineQuantity(row.line, units),
     }
+}
+
+// The whole line in the product's own unit: what is stored as its quantity.
+//
+// Their UNIT column counts items of the pack, a bag of a "4X500 GM" case, and
+// cases are in the product's unit, so the two cannot simply be added. For
+// Chorizo counted in kilos a loose bag went in as a kilo, and the credit for
+// three bags as 3 rather than 1.5. Each item is its share of a case. Where the
+// pack does not say how many items it holds, the sum it always was. Nothing
+// reads this yet; anything that costs from it later starts right.
+function lineQuantity(line, units) {
+    const items = packItems(line.pack_size)
+    const each = items ? units / items : 1
+    return to(num(line.cases) * units + num(line.units) * each, 3)
 }
 
 // Every line, with what the Hub already knows about it.
@@ -575,7 +597,7 @@ export function linePayload(row, invoiceId) {
         units: line.units,
         // The whole line in units, where the pack size can be read. Null rather
         // than a confident guess where it cannot.
-        quantity: units != null ? to(num(line.cases) * units + num(line.units), 3) : null,
+        quantity: units != null ? lineQuantity(line, units) : null,
         price_per_case: line.price_per_case,
         unit_price: perUnit,
         line_total: line.value,
@@ -740,6 +762,20 @@ export function fillInPayload(doc, { createdBy }) {
         total_amount: documentTotal(doc),
         entry_method: 'parsed',
         created_by: createdBy || null,
+    }
+}
+
+// What the invoice row goes back to when a fill in does not finish: exactly
+// as it was typed, so pressing again starts clean rather than putting the
+// lines in twice.
+export function typedAgain(invoice) {
+    return {
+        invoice_number: invoice.invoice_number ?? null,
+        document_type: invoice.document_type || 'invoice',
+        invoice_date: invoice.invoice_date,
+        total_amount: invoice.total_amount,
+        entry_method: invoice.entry_method || 'manual',
+        created_by: invoice.created_by ?? null,
     }
 }
 

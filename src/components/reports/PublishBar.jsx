@@ -1,4 +1,5 @@
-import { primaryButton, secondaryButton } from '@/lib/controlStyles'
+import { Link } from 'react-router-dom'
+import { primaryButton, secondaryButton, rowButton } from '@/lib/controlStyles'
 import { fullDate } from '@/lib/dates'
 import { isCorrection, mailMissing } from '@/lib/weeklyReport'
 
@@ -161,8 +162,21 @@ export default function PublishBar({
                     <p className="text-xs font-bold text-accent-ink uppercase tracking-wider mb-1.5">
                         {blockers.length === 1 ? 'One thing first' : `${blockers.length} things first`}
                     </p>
+                    {/* A sentence, or a sentence with the place to sort it out,
+                        when that place is another screen. A button rather than
+                        a link in the sentence, which on a phone is hard to hit
+                        and reads as prose. */}
                     <ul className="text-sm text-accent-ink space-y-1 list-disc pl-5">
-                        {blockers.map(b => <li key={b}>{b}</li>)}
+                        {blockers.map(b => (
+                            <li key={b.text || b}>
+                                {b.text || b}
+                                {b.to && (
+                                    <div className="mt-1.5">
+                                        <Link to={b.to} className={`${rowButton()} inline-block`}>{b.link}</Link>
+                                    </div>
+                                )}
+                            </li>
+                        ))}
                     </ul>
                 </div>
             )}

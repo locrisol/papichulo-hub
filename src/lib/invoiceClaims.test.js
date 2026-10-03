@@ -4,7 +4,9 @@ import {
     CLAIM_KINDS, NOT_LOGGED, claimKind, emptyDoorClaim, doorClaimProblem, doorClaimPayload,
     claimAmount, claimBalance, claimIsOpen, claimTakesOff, claimCandidates, claimMatch,
     creditSettles, creditTakenBack, voidedBy, sentBack, chasingList, isLate, claimsForWeek, bySupplier,
-    claimWeek, sentWeeks, fromEarlierWeeks,
+    claimWeek, sentWeeks, fromEarlierWeeks, otherDeliveries, byInvoice, claimWorking, notTheDocket,
+    claimDetached, canDetach, claimReopened, claimCountSaid, claimSaid, canEditClaim, claimForm, claimChanged,
+    keepsItsAmount, claimOverLine, priceQueryStart,
 } from '@/lib/invoiceClaims'
 
 const LINE = {
@@ -75,6 +77,43 @@ describe('what can be wrong with a delivery', () => {
     it('falls back rather than leaving a row with no words on it', () => {
         expect(claimKind('something').label).toBe('something')
     })
+
+    // The owner was not sure whether the boxes meant what was missing or what
+    // came. Each reason asks its own question, with a worked line under it.
+    it('asks every reason its own question of how many, with an example, and says it back', () => {
+        for (const kind of CLAIM_KINDS) {
+            expect(kind.ask).toMatch(/^How many .+\?$/)
+            expect(kind.example.trim()).not.toBe('')
+            expect(kind.counted.trim()).not.toBe('')
+        }
+        expect(claimKind('short').ask).toBe('How many are missing?')
+        expect(claimKind('short').example)
+            .toBe('Count what did not come, not what did. 1 case of 4 bags ordered and 1 bag came: 3 single items.')
+    })
+})
+
+// How a claim's count is read back, on the door form and on its row. It said
+// "3 units", which does not say missing or delivered, bag or kilo, and "1 cases".
+describe('reading a claim back', () => {
+    it.each([
+        [1, 0, '1 case'],
+        [2, 0, '2 cases'],
+        [0, 1, '1 single item'],
+        [0, 3, '3 single items'],
+        [1, 3, '1 case and 3 single items'],
+        [0, 0, ''],
+    ])('says %s cases and %s single items as "%s"', (cases, units, said) => {
+        expect(claimCountSaid(cases, units)).toBe(said)
+    })
+
+    it('says what happened to them, in the words of the reason', () => {
+        expect(claimSaid({ kind: 'short', cases: 0, units: 3 })).toBe('3 single items missing')
+        expect(claimSaid({ kind: 'damaged', cases: 1, units: 0 })).toBe('1 case damaged')
+        expect(claimSaid({ kind: 'price', cases: 2, units: 0 })).toBe('2 cases charged the wrong price')
+        expect(claimSaid({ kind: 'warm', cases: 0, units: 3 })).toBe('3 single items arrived warm')
+        expect(claimSaid({ kind: 'wrong_item', cases: 1, units: 0 })).toBe('1 case sent in error')
+        expect(claimSaid({ kind: 'other', cases: 0, units: 0 })).toBe('')
+    })
 })
 
 describe('taking the note at the door', () => {
@@ -99,6 +138,36 @@ describe('taking the note at the door', () => {
     it('wants the note when the reason is something else', () => {
         expect(doorClaimProblem({ ...filled, kind: 'something_else' })).toContain('under Anything else')
         expect(doorClaimProblem({ ...filled, kind: 'something_else', note: 'Box soaked through' })).toBeNull()
+    })
+
+    it('wants to know what should have come when it was the wrong item', () => {
+        expect(doorClaimProblem({ ...filled, kind: 'wrong_item' })).toBe('Say what we should have got, under Anything else.')
+        expect(doorClaimProblem({ ...filled, kind: 'wrong_item', note: 'Should be the 12 inch' })).toBeNull()
+    })
+
+    it('asks how many in the words of the reason', () => {
+        expect(doorClaimProblem({ ...filled, cases: '', units: '' })).toBe('Say how many are missing.')
+        expect(doorClaimProblem({ ...filled, kind: 'price', cases: '', units: '' }))
+            .toBe('Say how many were charged the wrong price.')
+        expect(doorClaimProblem({ ...filled, kind: 'something_else', note: 'x', cases: '', units: '' }))
+            .toBe('Say how many were affected.')
+        // The error is made from the question, so every question has to
+        // still read as a sentence once it is turned round.
+        for (const kind of CLAIM_KINDS) {
+            const said = doorClaimProblem({ ...filled, kind: kind.value, note: 'x', cases: '', units: '' })
+            expect(said).toMatch(/^Say how many .+\.$/)
+            expect(said).not.toMatch(/^Say how many (does|do|did) /)
+        }
+    })
+
+    // A dot typed into a box of whole things used to vanish, so 1.5 became
+    // 15 with nothing said. Now it stays and is refused.
+    it('refuses part of a case or of an item', () => {
+        expect(doorClaimProblem({ ...filled, cases: '', units: '1.5' })).toBe(
+            'Count whole ones only. Half a case goes under Single items, as the bags or tins that make it up.',
+        )
+        expect(doorClaimProblem({ ...filled, cases: '0.5', units: '' })).toMatch(/^Count whole ones only\./)
+        expect(doorClaimProblem({ ...filled, cases: '', units: '3' })).toBeNull()
     })
 
     it('does not insist on the docket number', () => {
@@ -160,6 +229,313 @@ describe('what a claim is worth', () => {
     })
 })
 
+// The Chorizo of 2 October: a case of four 500 g bags ordered, one bag came,
+// three logged as single items. The product is counted in kilos, so
+// units_per_case is 2 and a single item was priced as a kilo, 41.99 for what
+// Sysco credits at 7.00 a bag.
+describe('what a single item out of a case is worth', () => {
+    const chorizo = {
+        pack_size: '4X500 GM', units_per_case: 2, price_per_case: 27.99, unit_price: 13.995,
+        line_total: 55.98, vat_amount: 0, deposit_amount: 0,
+    }
+
+    it('is one item of the pack, at the price they split it at', () => {
+        expect(claimAmount({ cases: 0, units: 3 }, chorizo)).toBe(21)
+        expect(claimAmount({ cases: 1, units: 0 }, chorizo)).toBe(27.99)
+    })
+
+    // Four bags at 7.00 would be 28.00, more than the case cost.
+    it('counts a whole case of single items as the case', () => {
+        expect(claimAmount({ cases: 0, units: 4 }, chorizo)).toBe(27.99)
+    })
+
+    it('does not move with the unit the product is counted in', () => {
+        expect(claimAmount({ cases: 0, units: 3 }, { ...chorizo, units_per_case: 4 })).toBe(21)
+    })
+
+    // Sysco prints a loose sale or credit as its own line with a one item pack.
+    it('prices a line of single bags at its own price each', () => {
+        const loose = { pack_size: '1X500 GM', units_per_case: 0.5, price_per_case: 7, line_total: 7 }
+        expect(claimAmount({ cases: 0, units: 3 }, loose)).toBe(21)
+    })
+
+    it('counts eaches when the case is one pack of them', () => {
+        const cabbage = { pack_size: '1X10 EA', units_per_case: 12, price_per_case: 14.33, line_total: 14.33 }
+        expect(claimAmount({ cases: 0, units: 3 }, cabbage)).toBe(4.29)
+        const tortillas = { pack_size: '10X10 EA', units_per_case: 100, price_per_case: 30.3, line_total: 30.3 }
+        expect(claimAmount({ cases: 0, units: 3 }, tortillas)).toBe(9.09)
+    })
+
+    it('takes a single item of a one item case as the case', () => {
+        expect(claimAmount({ cases: 0, units: 1 }, { pack_size: '1X5 KG', units_per_case: 5, price_per_case: 14.5 }))
+            .toBe(14.5)
+    })
+
+    it('still takes the VAT and deposit off in the same share as the line', () => {
+        const coke = {
+            pack_size: '24X330 ML', price_per_case: 18.54, units_per_case: 24,
+            line_total: 37.08, vat_amount: 8.52, deposit_amount: 7.2,
+        }
+        expect(claimAmount({ cases: 0, units: 6 }, coke)).toBe(6.58)
+    })
+
+    // A typed line, or a pack nobody can read, has only units_per_case.
+    it('goes by units_per_case when the pack cannot be read', () => {
+        expect(claimAmount({ cases: 0, units: 3 }, { ...chorizo, pack_size: null })).toBe(41.99)
+        expect(claimAmount({ cases: 0, units: 3 }, { ...LINE, pack_size: '6X4' })).toBe(10.5)
+    })
+
+    it('prices a price query on single items per item too', () => {
+        const over = { ...chorizo, price_per_case: 31.99, line_total: 31.99 }
+        expect(claimAmount({ kind: 'price', cases: 0, units: 3 }, over, { agreedPerCase: 27.99 })).toBe(3)
+    })
+
+    // Ten cents over on a case of 24 is under half a cent a can. Rounded per
+    // can first, six cans came to nothing.
+    it('does not round a small price query on single items to nothing', () => {
+        const coke = {
+            pack_size: '24X330 ML', price_per_case: 18.54, units_per_case: 24,
+            line_total: 37.08, vat_amount: 8.52, deposit_amount: 7.2,
+        }
+        expect(claimAmount({ kind: 'price', cases: 0, units: 6 }, coke, { agreedPerCase: 18.44 })).toBe(0.03)
+        expect(claimAmount({ kind: 'price', cases: 0, units: 23 }, { ...coke, vat_amount: 0 }, { agreedPerCase: 18.24 }))
+            .toBe(0.29)
+    })
+})
+
+// What is shown before a claim is put on a line, so a wrong reading of the
+// numbers is seen before any money moves.
+describe('the working shown before a claim goes on a line', () => {
+    const chorizo = {
+        raw_description: 'CHORIZO CUBES', pack_size: '4X500 GM', units_per_case: 2, price_per_case: 27.99,
+        line_total: 27.99, vat_amount: 0, deposit_amount: 0, cases: 1, units: 0,
+    }
+
+    it('says it in the pack\'s own words', () => {
+        expect(claimWorking({ cases: 0, units: 3 }, chorizo)).toEqual({
+            amount: 21, words: '3 of the 4 x 500 g in a case at €27.99 a case: €21.00', problem: null,
+        })
+    })
+
+    it('names whole cases and both together', () => {
+        const two = { ...chorizo, cases: 2, line_total: 55.98 }
+        expect(claimWorking({ cases: 1, units: 0 }, two).words).toBe('1 case at €27.99 a case: €27.99')
+        expect(claimWorking({ cases: 1, units: 1 }, two).words)
+            .toBe('1 case and 1 of the 4 x 500 g in a case at €27.99 a case: €34.99')
+    })
+
+    it('says when the VAT and the deposit come off with it', () => {
+        const coke = {
+            pack_size: '24X330 ML', price_per_case: 18.54, units_per_case: 24,
+            line_total: 37.08, vat_amount: 8.52, deposit_amount: 7.2, cases: 2, units: 0,
+        }
+        expect(claimWorking({ cases: 0, units: 6 }, coke).words)
+            .toBe('6 of the 24 x 330 ml in a case at €18.54 a case, with its VAT and deposit: €6.58')
+    })
+
+    // Where the pack cannot be read, it says what it took a case to be, so a
+    // case of kilos is seen for what it is.
+    it('says what a case was taken as when the pack cannot be read', () => {
+        expect(claimWorking({ cases: 0, units: 3 }, { ...chorizo, pack_size: null, cases: 2 }).words)
+            .toBe('3 single items, taking a case as 2 of them, at €27.99 a case: €41.99')
+    })
+
+    it('says what was charged over on a price query', () => {
+        const over = { ...chorizo, price_per_case: 31.99, line_total: 31.99 }
+        expect(claimWorking({ kind: 'price', cases: 0, units: 3 }, over, { agreedPerCase: 27.99 }).words)
+            .toBe('3 of the 4 x 500 g in a case, €4.00 a case over the agreed price: €3.00')
+    })
+
+    // Against the right docket, the old kilo reading would have claimed more
+    // than the whole line, and nothing said so.
+    it('refuses a claim for more than the line billed, and says what the line had', () => {
+        const out = claimWorking({ cases: 2, units: 0 }, chorizo)
+        expect(out.problem).toBe('That line only billed 1 case, less than this claim. '
+            + 'Pick another line, or check the numbers on the note.')
+        expect(claimWorking({ cases: 0, units: 5 }, chorizo).problem).toMatch(/^That line only billed 1 case,/)
+        expect(claimWorking({ cases: 0, units: 4 }, chorizo).problem).toBeNull()
+    })
+
+    // A claim already on this line being changed has no list of lines to
+    // pick another from, only Not this line.
+    it('says to use Not this line when a claim on it is changed to more than it billed', () => {
+        expect(claimWorking({ cases: 2, units: 0 }, chorizo, {}, { changing: true }).problem)
+            .toBe('That line only billed 1 case, less than this claim. '
+                + 'Check the numbers, or use Not this line if it is on the wrong line.')
+    })
+
+    // A price query has no money until its price is typed, and the count can
+    // be wrong before then.
+    it('checks the count against the line with no price to go on', () => {
+        expect(claimOverLine({ kind: 'price', cases: 2, units: 0 }, chorizo)).toMatch(/^That line only billed 1 case,/)
+        expect(claimOverLine({ kind: 'price', cases: 1, units: 0 }, chorizo)).toBeNull()
+        expect(claimOverLine({ cases: 9, units: 0 }, { ...chorizo, cases: null, units: null })).toBeNull()
+    })
+
+    // Sysco prints a loose sale as a one item pack with the count under UNIT,
+    // so the working says single items too, the way the paper does.
+    it('keeps to single items on a line of one item packs', () => {
+        const loose = {
+            pack_size: '1X500 GM', units_per_case: 0.5, price_per_case: 7, line_total: 7,
+            vat_amount: 0, deposit_amount: 0, cases: 0, units: 3,
+        }
+        expect(claimWorking({ cases: 0, units: 3 }, loose)).toEqual({
+            amount: 21, words: '3 single items at €7.00 each: €21.00', problem: null,
+        })
+        expect(claimWorking({ cases: 0, units: 4 }, loose).problem).toMatch(/^That line only billed 3 single items,/)
+    })
+
+    it('says why when there is nothing to work it out from', () => {
+        expect(claimWorking({ cases: 1 }, { ...chorizo, price_per_case: 0, units_per_case: 0 }).problem)
+            .toBe('That line has no price on it to work the claim out from.')
+        expect(claimWorking({ kind: 'price', cases: 1 }, chorizo).problem)
+            .toBe('Say what they should have charged a case, and it has to be less than what they did.')
+    })
+
+    // Lower than they charged, and still nothing once split over the cans.
+    it('says when a price query comes to less than a cent', () => {
+        const coke = { pack_size: '24X330 ML', price_per_case: 18.54, units_per_case: 24, line_total: 18.54, cases: 1, units: 0 }
+        expect(claimWorking({ kind: 'price', cases: 0, units: 1 }, coke, { agreedPerCase: 18.53 }).problem)
+            .toBe('That difference comes to less than a cent.')
+    })
+})
+
+// Put on the wrong line, it comes off it and waits for the right invoice
+// again, the same as it was logged at the door.
+describe('taking a claim off its line', () => {
+    it('clears the line and the money and puts it back in the week it was written down', () => {
+        const on = claim({ invoice_id: 'i1', invoice_line_id: 'l1', amount: 41.99, raised_on: '2026-10-02', counted_week: '2026-09-20' })
+        expect(claimDetached(on)).toEqual({
+            invoice_id: null, invoice_line_id: null, amount: null, counted_week: '2026-09-27',
+        })
+        expect(claimTakesOff({ ...on, ...claimDetached(on) })).toBe(0)
+    })
+
+    // Once a credit has touched it, the money belongs to that credit.
+    it('is only offered while it is open with nothing credited', () => {
+        const on = claim({ invoice_id: 'i1', invoice_line_id: 'l1' })
+        expect(canDetach(on)).toBe(true)
+        expect(canDetach({ ...on, invoice_line_id: null })).toBe(false)
+        expect(canDetach({ ...on, credited_amount: 5 })).toBe(false)
+        expect(canDetach({ ...on, credit_invoice_id: 'cr1' })).toBe(false)
+        expect(canDetach({ ...on, status: 'refused' })).toBe(false)
+    })
+})
+
+// Three full cases typed for three single items could only be taken back and
+// logged again.
+describe('changing a claim after it was logged', () => {
+    const note = claim({
+        amount: null, cases: 0, units: 3, what: 'Chorizo', docket_number: '45747318', note: null, invoice_id: null, invoice_line_id: null,
+    })
+    const onLine = { ...note, invoice_id: 'i1', invoice_line_id: 'l1', amount: 41.99 }
+
+    // Once a credit has touched it, the money belongs to that credit.
+    it('is only offered while it is open with nothing credited', () => {
+        expect(canEditClaim(note)).toBe(true)
+        expect(canEditClaim(onLine)).toBe(true)
+        expect(canEditClaim({ ...onLine, credited_amount: 5 })).toBe(false)
+        expect(canEditClaim({ ...onLine, credit_invoice_id: 'cr1' })).toBe(false)
+        expect(canEditClaim({ ...note, status: 'refused' })).toBe(false)
+    })
+
+    // A shortage made when a typed invoice was filled in has money and no
+    // count: there is nothing to change the money from.
+    it('is not offered on money that never came from a count', () => {
+        expect(canEditClaim({ ...note, amount: 12.5, invoice_id: 'i1', cases: 0, units: 0 })).toBe(false)
+    })
+
+    it('opens the form with what was logged', () => {
+        expect(claimForm(note)).toEqual({
+            supplierId: 's1', kind: 'short', what: 'Chorizo', cases: '', units: '3', docket: '45747318', note: '',
+        })
+    })
+
+    it('changes everything that was logged while it is on no line', () => {
+        const form = { ...claimForm(note), supplierId: 's2', kind: 'damaged', what: ' Chorizo bags ', cases: '1', units: '', docket: ' 45747319 ', note: ' Split ' }
+        expect(claimChanged(note, form)).toEqual({
+            supplier_id: 's2', kind: 'damaged', what: 'Chorizo bags', cases: 1, units: 0, docket_number: '45747319', note: 'Split',
+        })
+        expect(claimChanged(note, { ...form, docket: '', note: '' })).toMatchObject({ docket_number: null, note: null })
+    })
+
+    // The supplier and the docket are the delivery, and Not this line is how
+    // that changes. The money is worked out again from the new count.
+    it('keeps the delivery on a line, and takes the money it is given', () => {
+        const form = { ...claimForm(onLine), supplierId: 's2', docket: '1', cases: '', units: '2' }
+        expect(claimChanged(onLine, form, { amount: 14 })).toEqual({
+            kind: 'short', what: 'Chorizo', cases: 0, units: 2, note: null, amount: 14,
+        })
+    })
+
+    // The price agreed is not kept on the claim, so asking it again for a
+    // note fixed could only guess, and pressing on would change the money.
+    it('keeps the amount of a price query on a line when only its words change', () => {
+        const query = { ...onLine, kind: 'price', cases: 1, units: 0 }
+        const form = claimForm(query)
+        expect(keepsItsAmount(query, { ...form, what: 'Bowls', note: 'Rang them' })).toBe(true)
+        expect(keepsItsAmount(query, { ...form, units: '2' })).toBe(false)
+        expect(keepsItsAmount(query, { ...form, kind: 'short' })).toBe(false)
+        expect(keepsItsAmount({ ...query, kind: 'short' }, { ...form, kind: 'price' })).toBe(false)
+        expect(keepsItsAmount({ ...query, invoice_line_id: null }, form)).toBe(false)
+    })
+})
+
+// "They said no" pressed by mistake on 2 October could not be undone.
+describe('asking again after a refusal or a take back', () => {
+    const refused = claim({ status: 'refused', settled_on: '2026-10-02', amount: 21, counted_week: '2026-09-27' })
+
+    it('is open again, waiting, in the same week while that week is not sent', () => {
+        const out = claimReopened(refused, { deliveredOn: '2026-10-01', sent: ['2026-09-20'] })
+        expect(out.patch).toEqual({ status: 'open', settled_on: null })
+        expect(out.week).toBe('2026-09-27')
+        expect(claimTakesOff({ ...refused, ...out.patch })).toBe(21)
+    })
+
+    // Refused before its week's report went out, it was in no report, and
+    // money put back into a week already sent would be in none either.
+    it('moves to the first week still open when it was closed before its week was sent', () => {
+        const out = claimReopened(refused, {
+            deliveredOn: '2026-10-01', sent: ['2026-09-27'], publishedOn: { '2026-09-27': '2026-10-05' },
+        })
+        expect(out.patch).toEqual({ status: 'open', settled_on: null, counted_week: '2026-10-04' })
+        expect(out).toMatchObject({ week: '2026-10-04', delivered: '2026-09-27', moved: true })
+    })
+
+    // Still open when the report went out, that report already took the whole
+    // amount off. Moving it would take it off a second report as well.
+    it('stays in its week when it was still open as that week was sent', () => {
+        const late = { ...refused, settled_on: '2026-10-06' }
+        const out = claimReopened(late, {
+            deliveredOn: '2026-10-01', sent: ['2026-09-27'], publishedOn: { '2026-09-27': '2026-10-05' },
+        })
+        expect(out.patch).toEqual({ status: 'open', settled_on: null })
+        expect(out.week).toBe('2026-09-27')
+    })
+
+    // Which came first cannot be told on the same day, so it stays put and
+    // never counts twice.
+    it('stays in its week when it was closed the day the report went out, or the day is not known', () => {
+        const sameDay = { '2026-09-27': '2026-10-02' }
+        expect(claimReopened(refused, { sent: ['2026-09-27'], publishedOn: sameDay }).patch)
+            .toEqual({ status: 'open', settled_on: null })
+        expect(claimReopened(refused, { sent: ['2026-09-27'] }).patch).toEqual({ status: 'open', settled_on: null })
+    })
+
+    it('leaves the week of a note with no money on it alone', () => {
+        const note = { ...refused, amount: null }
+        expect(claimReopened(note, { sent: ['2026-09-27'] }).patch).toEqual({ status: 'open', settled_on: null })
+    })
+})
+
+describe('a docket that is not the invoice', () => {
+    it('is only when a docket was written and the numbers differ', () => {
+        expect(notTheDocket({ docket_number: '45747318' }, { invoice_number: '45607444' })).toBe(true)
+        expect(notTheDocket({ docket_number: '45747318' }, { invoice_number: '45747318' })).toBe(false)
+        expect(notTheDocket({ docket_number: null }, { invoice_number: '45607444' })).toBe(false)
+    })
+})
+
 describe('what a price query is worth', () => {
     // The real case that prompted it: a bowl moved to a new code, came in at
     // 49.00 a case instead of 29.00, and the supplier is crediting the
@@ -193,6 +569,57 @@ describe('what a price query is worth', () => {
 
         const drinks = { price_per_case: 20, units_per_case: 24, line_total: 20, vat_amount: 4.6, deposit_amount: 3.6 }
         expect(claimAmount({ kind: 'price', cases: 1, units: 0 }, drinks, { agreedPerCase: 18 })).toBe(2.46)
+    })
+})
+
+// The box asking what they should have charged a case starts at what the Hub
+// costs the product at. Cabbage is costed at 1.43 for one, and the line was a
+// case of ten at 14.33: it started at 1.43, and pressing it as it was claimed
+// 12.90 a case on cabbages priced right.
+describe('where a price query starts', () => {
+    const cabbage = { price_per_case: 14.33, units_per_case: 10 }
+    const each = { price_per_case: 1.43, units_per_case: 1, price_per_unit: 1.43, products: { unit: 'Units' } }
+
+    it('starts at the case price when the Hub costs the same pack', () => {
+        const coke = { price_per_case: 18.54, units_per_case: 24 }
+        const row = { price_per_case: 18.16, units_per_case: 24, price_per_unit: 0.7567 }
+        expect(priceQueryStart({ ...coke, product_supplier_prices: row })).toEqual({ agreed: '18.16', from: null })
+    })
+
+    // Where it started is kept apart from the box, so the words under it
+    // still say 14.30 once something else is typed.
+    it('works out the case from the price of one when the packs differ, and says so', () => {
+        expect(priceQueryStart({ ...cabbage, product_supplier_prices: each })).toEqual({
+            agreed: '14.30', from: { start: '14.30', perUnit: 1.43, unit: 'Units' },
+        })
+    })
+
+    // The price typed for it is not kept, and the Hub's can be another, so a
+    // count fixed would otherwise claim at a price nobody agreed.
+    it('starts a price query being changed at the price it was worked out on', () => {
+        const coke = {
+            pack_size: '24X330 ML', price_per_case: 18.16, units_per_case: 24, line_total: 18.16, vat_amount: 4.18,
+            product_supplier_prices: { price_per_case: 18.16, units_per_case: 24 },
+        }
+        expect(priceQueryStart(coke, { kind: 'price', cases: 1, units: 0, amount: 2.46 })).toEqual({
+            agreed: '16.16', from: { start: '16.16', claimed: true },
+        })
+        const chorizo = { pack_size: '4X500 GM', price_per_case: 31.99, units_per_case: 2, line_total: 31.99, vat_amount: 0 }
+        expect(priceQueryStart(chorizo, { kind: 'price', cases: 0, units: 3, amount: 3 }).agreed).toBe('27.99')
+    })
+
+    it('starts where the Hub costs it for anything that was not a price query', () => {
+        expect(priceQueryStart({ ...cabbage, product_supplier_prices: each }, { kind: 'short', cases: 1, units: 0, amount: 14.33 }))
+            .toMatchObject({ agreed: '14.30' })
+        expect(priceQueryStart(cabbage, { kind: 'price', cases: 0, units: 0, amount: 2 })).toEqual({ agreed: '', from: null })
+    })
+
+    it('starts empty when there is nothing to work it out from', () => {
+        expect(priceQueryStart(cabbage)).toEqual({ agreed: '', from: null })
+        expect(priceQueryStart({ ...cabbage, product_supplier_prices: { ...each, price_per_unit: null } }))
+            .toEqual({ agreed: '', from: null })
+        expect(priceQueryStart({ ...cabbage, units_per_case: null, product_supplier_prices: each }))
+            .toEqual({ agreed: '', from: null })
     })
 })
 
@@ -257,6 +684,7 @@ describe('matching a note to a line', () => {
             id: 'i1',
             supplier_id: 's1',
             invoice_number: '45612214',
+            invoice_date: '2026-09-13',
             document_type: 'invoice',
             invoice_lines: [
                 { id: 'l1', raw_description: 'CHICKEN BREAST DICED' },
@@ -267,6 +695,7 @@ describe('matching a note to a line', () => {
             id: 'i2',
             supplier_id: 's1',
             invoice_number: '45612570',
+            invoice_date: '2026-09-15',
             document_type: 'invoice',
             invoice_lines: [{ id: 'l3', raw_description: 'RICE LONG GRAIN' }],
         },
@@ -279,10 +708,49 @@ describe('matching a note to a line', () => {
         expect(found.line.id).toBe('l1')
     })
 
-    it('offers a short list when the docket number is missing', () => {
-        const ranked = claimCandidates(claim({ docket_number: null, what: 'chicken breast' }), invoices)
-        expect(ranked[0].line.id).toBe('l1')
-        expect(claimMatch(claim({ docket_number: null, what: 'chicken breast' }), invoices)).toBeNull()
+    it('offers only the lines of the docket written down', () => {
+        const { waiting, lines } = claimCandidates(claim({ docket_number: '45612214', what: 'rice' }), invoices)
+        expect(waiting).toBe(false)
+        expect(lines.map(c => c.line.id).sort()).toEqual(['l1', 'l2'])
+    })
+
+    // The Chorizo of 2 October: docket 45747318 was not imported yet, and
+    // every Sysco invoice of the last sixty days was offered instead, so it
+    // went on the Chorizo of 13 September.
+    it('waits for a docket that is not in the Hub yet rather than offering other deliveries', () => {
+        const note = claim({ docket_number: '45747318', what: 'chicken breast' })
+        expect(claimCandidates(note, invoices)).toMatchObject({ waiting: true, lines: [] })
+        expect(claimMatch(note, invoices)).toBeNull()
+    })
+
+    it('offers the deliveries around the day when the docket number is missing, nearest first', () => {
+        const note = claim({ docket_number: null, what: 'chicken breast', raised_on: '2026-09-15' })
+        const { waiting, lines } = claimCandidates(note, invoices)
+        expect(waiting).toBe(false)
+        expect(lines.map(c => c.line.id)).toEqual(['l3', 'l1', 'l2'])
+        expect(claimMatch(note, invoices)).toBeNull()
+    })
+
+    // A delivery six weeks before the note is not the one it is about.
+    it('leaves out deliveries more than a week before the note, or more than two days after', () => {
+        const note = claim({ docket_number: null, what: 'chicken breast', raised_on: '2026-10-27' })
+        expect(claimCandidates(note, invoices).lines).toEqual([])
+        const before = claim({ docket_number: null, what: 'rice', raised_on: '2026-09-12' })
+        expect(claimCandidates(before, invoices).lines.map(c => c.line.id)).toEqual(['l1', 'l2'])
+        const tooEarly = claim({ docket_number: null, what: 'rice', raised_on: '2026-09-10' })
+        expect(claimCandidates(tooEarly, invoices).lines).toEqual([])
+    })
+
+    // A docket number written down wrong would otherwise wait for ever.
+    it('offers the deliveries around the day when somebody says it was a different one', () => {
+        const note = claim({ docket_number: '45747318', what: 'rice', raised_on: '2026-09-16' })
+        expect(otherDeliveries(note, invoices).map(c => c.line.id)).toEqual(['l3', 'l1', 'l2'])
+    })
+
+    it('groups lines under the invoice they are on, in the order given', () => {
+        const note = claim({ docket_number: null, what: 'chicken breast', raised_on: '2026-09-15' })
+        const groups = byInvoice(claimCandidates(note, invoices).lines)
+        expect(groups.map(g => [g.invoice.id, g.lines.map(c => c.line.id)])).toEqual([['i2', ['l3']], ['i1', ['l1', 'l2']]])
     })
 
     // Attaching a claim to the wrong line moves money off the wrong product and
@@ -311,7 +779,7 @@ describe('matching a note to a line', () => {
             id: 'i3', supplier_id: 's1', document_type: 'credit',
             invoice_lines: [{ id: 'l9', raw_description: 'CHICKEN BREAST DICED' }],
         }]
-        expect(claimCandidates(claim({ what: 'chicken breast' }), withCredit)
+        expect(claimCandidates(claim({ what: 'chicken breast' }), withCredit).lines
             .some(c => c.invoice.id === 'i3')).toBe(false)
     })
 })
@@ -351,7 +819,55 @@ describe('when the credit note turns up', () => {
 
     it('counts on its own when there is no claim behind it', () => {
         const out = creditSettles({ credit, against: invoice, claims: [], supplierId: 's1' })
-        expect(out).toEqual({ settle: [], extra: null, countsInCost: true })
+        expect(out).toEqual({ settle: [], extra: null, countsInCost: true, mismatched: [] })
+    })
+
+    // The Chorizo, had it stayed open on the delivery of 13 September: the
+    // credit for its docket found it and paid 21.00 into a 41.99 claim, which
+    // then showed 20.99 owed for ever, on the wrong invoice.
+    //
+    // Its whole ask is still coming off, so the credit counting as well
+    // would take the same money off twice.
+    it('leaves a claim with its docket on another invoice unsettled, hands it back, and does not count', () => {
+        const wrong = claim({ invoice_id: 'i9', invoice_line_id: 'l9', docket_number: '45612214', amount: 41.99 })
+        const out = creditSettles({ credit, against: invoice, claims: [wrong], supplierId: 's1' })
+        expect(out).toMatchObject({ settle: [], extra: null, countsInCost: false })
+        expect(out.mismatched).toEqual([wrong])
+    })
+
+    // What is left over is most likely that claim's, and its ask is already
+    // coming off, so it is not made into a claim of its own and counted again.
+    it('makes nothing of money left over while a claim with its docket is on another invoice', () => {
+        const mine = claim({ id: 'c1', invoice_id: 'i1', amount: 20 })
+        const wrong = claim({ id: 'c2', invoice_id: 'i9', invoice_line_id: 'l9', docket_number: '45612214', amount: 41.99 })
+        const out = creditSettles({ credit, against: invoice, claims: [mine, wrong], supplierId: 's1', restaurantId: 'r1' })
+        expect(out.settle).toEqual([{ id: 'c1', patch: expect.objectContaining({ credited_amount: 20, status: 'settled' }) }])
+        expect(out.extra).toBeNull()
+        expect(out.countsInCost).toBe(false)
+        expect(out.mismatched).toEqual([wrong])
+    })
+
+    it('hands it back when the invoice it credits is not in the Hub either', () => {
+        const wrong = claim({ invoice_id: 'i9', invoice_line_id: 'l9', docket_number: '45612214', amount: 41.99 })
+        const out = creditSettles({ credit, against: null, claims: [wrong], supplierId: 's1' })
+        expect(out.settle).toEqual([])
+        expect(out.mismatched).toEqual([wrong])
+    })
+
+    // Put on another delivery on purpose, the invoice it is on is the answer.
+    it('still settles a claim on the invoice it credits whatever docket was written', () => {
+        const moved = claim({ invoice_id: 'i1', docket_number: '45000000' })
+        const out = creditSettles({ credit, against: invoice, claims: [moved], supplierId: 's1' })
+        expect(out.settle).toHaveLength(1)
+        expect(out.mismatched).toEqual([])
+    })
+
+    // Before its invoice is in the Hub, the docket is all there is.
+    it('settles a note from the door by its docket when the invoice it credits is not in yet', () => {
+        const door = claim({ invoice_id: null, docket_number: '45612214', amount: null, raised_on: '2026-09-14' })
+        const out = creditSettles({ credit, against: null, claims: [door], supplierId: 's1' })
+        expect(out.settle[0].patch).toMatchObject({ credited_amount: 69.98, status: 'settled', counted_week: '2026-09-13' })
+        expect(out.mismatched).toEqual([])
     })
 
     // Written down at the door before the invoice was even in the Hub.
@@ -445,6 +961,44 @@ describe('when the credit note turns up', () => {
             credit, against: invoice, claims: [claim({ invoice_id: 'i1' })], supplierId: 's1', sent: ['2026-09-13'],
         })
         expect(out.settle[0].patch).not.toHaveProperty('counted_week')
+    })
+
+    // Sysco credits the three Chorizo bags at 7.00 each, 21.00, the same as
+    // the claim is priced at.
+    it('settles three single bags with the credit for them and makes nothing else', () => {
+        const bags = claim({ invoice_id: 'i1', amount: 21, code: '485073', cases: 0, units: 3 })
+        const out = creditSettles({
+            credit, against: invoice, claims: [bags], lines: [{ code: '485073', value: -21 }], supplierId: 's1',
+        })
+        expect(out.settle[0].patch).toMatchObject({ credited_amount: 21, status: 'settled' })
+        expect(out.extra).toBeNull()
+    })
+
+    // A cent of rounding is not money somebody asked for and forgot to log.
+    it('gives a few cents over to the claim for the same product rather than a claim of their own', () => {
+        const bags = claim({ invoice_id: 'i1', amount: 20.99, code: '485073', cases: 0, units: 3 })
+        const out = creditSettles({
+            credit, against: invoice, claims: [bags], lines: [{ code: '485073', value: -21 }], supplierId: 's1',
+        })
+        expect(out.settle[0].patch).toMatchObject({ amount: 21, credited_amount: 21, status: 'settled' })
+        expect(out.extra).toBeNull()
+    })
+
+    it('still makes a claim of its own for more than a few cents', () => {
+        const bags = claim({ invoice_id: 'i1', amount: 20.9, code: '485073', cases: 0, units: 3 })
+        const out = creditSettles({
+            credit, against: invoice, claims: [bags], lines: [{ code: '485073', value: -21 }], supplierId: 's1',
+        })
+        expect(out.extra).toMatchObject({ amount: 0.1 })
+    })
+
+    // Priced as kilos it asked for twice what came back, and stays open.
+    it('leaves a claim priced wrong open with the rest still owed', () => {
+        const kilos = claim({ invoice_id: 'i1', amount: 41.99, code: '485073', cases: 0, units: 3 })
+        const out = creditSettles({
+            credit, against: invoice, claims: [kilos], lines: [{ code: '485073', value: -21 }], supplierId: 's1',
+        })
+        expect(out.settle[0].patch).toMatchObject({ credited_amount: 21, status: 'open' })
     })
 })
 
@@ -721,6 +1275,12 @@ describe('how a supplier does on claims', () => {
         expect(summary.map(r => r.supplierId)).toEqual(['s1', 's2'])
     })
 
+    // One taken back was logged by mistake, so it was never asked of them.
+    it('leaves out what was taken back', () => {
+        const withVoid = bySupplier([...rows, claim({ id: 'v', status: 'void', amount: 41.99 })], suppliers, '2026-09-20')
+        expect(withVoid.find(r => r.supplierId === 's1')).toMatchObject({ raised: 3, asked: 134.98, backPct: 59.3 })
+    })
+
     it('says nothing rather than nought where nothing has been asked', () => {
         const none = bySupplier([claim({ amount: null })], suppliers, '2026-09-20')
         expect(none[0].backPct).toBeNull()
@@ -769,8 +1329,16 @@ describe('sentWeeks', () => {
     }
 
     it('reads the published weeks of one restaurant', async () => {
-        const db = client({ data: [{ week_start: '2026-09-20' }, { week_start: '2026-09-27' }], error: null })
-        expect(await sentWeeks(db, 'r1')).toEqual({ weeks: ['2026-09-20', '2026-09-27'], error: null })
+        const db = client({
+            data: [
+                { week_start: '2026-09-20', published_at: '2026-09-28T09:15:00+00:00' },
+                { week_start: '2026-09-27', published_at: null },
+            ],
+            error: null,
+        })
+        expect(await sentWeeks(db, 'r1')).toEqual({
+            weeks: ['2026-09-20', '2026-09-27'], publishedOn: { '2026-09-20': '2026-09-28' }, error: null,
+        })
         expect(db.asked).toEqual(expect.arrayContaining([
             ['from', 'weekly_reports'], ['eq', 'restaurant_id', 'r1'], ['eq', 'status', 'published'],
         ]))
@@ -778,7 +1346,8 @@ describe('sentWeeks', () => {
 
     it('hands the error back rather than a week with nothing sent', async () => {
         const failed = { message: 'Failed to fetch' }
-        expect(await sentWeeks(client({ data: null, error: failed }), 'r1')).toEqual({ weeks: null, error: failed })
+        expect(await sentWeeks(client({ data: null, error: failed }), 'r1'))
+            .toEqual({ weeks: null, publishedOn: null, error: failed })
     })
 })
 

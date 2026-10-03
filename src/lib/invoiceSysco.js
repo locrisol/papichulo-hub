@@ -348,6 +348,21 @@ export function readPackSize(text) {
     }
 }
 
+// How many single items are in a case: what one in the UNIT column on their
+// paper is. Four for "4X500 GM", a bag each, whatever the product is counted
+// in, because the docket counts bags. Ten for "1X10 EA", where the case is one
+// pack of ten eaches. One for "1X5 KG", where the case is the item.
+//
+// Nothing for "6X4": with no unit it could be six of four or four of six, and
+// a wrong guess is the wrong money on a claim.
+export function packItems(text) {
+    const pack = readPackSize(text)
+    if (!pack) return null
+    if (!pack.unit) return /X/.test(shout(text)) ? null : pack.count
+    if (pack.count > 1) return pack.count
+    return pack.unit === 'Units' ? pack.total : 1
+}
+
 // Does this look like a pack size at all?
 //
 // A description long enough to run past its own column would otherwise be taken

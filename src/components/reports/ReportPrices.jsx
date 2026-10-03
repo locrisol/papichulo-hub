@@ -703,13 +703,19 @@ function Back({ back, reasons, owed, earlier = [], total, canEdit, jobs, busy, o
                             </p>
                         </Row>
                     ))}
-                    {canEdit && jobs && (jobs.add.length > 0 || jobs.tick.length > 0) && (
+                    {canEdit && jobs && (jobs.add.length + jobs.tick.length + jobs.reopen.length + jobs.relabel.length > 0) && (
                         <div className="px-3 py-2.5 flex flex-wrap items-center gap-2 border-t border-border">
+                            {/* Says what it does: with nothing to add it only
+                                crosses off, puts back and brings words up to date. */}
                             <button type="button" disabled={!!busy} onClick={() => onPutOnList(jobs)} className={rowButton('good')}>
-                                {busy === 'list' ? 'Adding...' : 'Put these on the support list'}
+                                {jobs.add.length
+                                    ? (busy === 'list' ? 'Adding...' : 'Put these on the support list')
+                                    : (busy === 'list' ? 'Saving...' : 'Update the support list')}
                             </button>
                             {jobs.add.length > 0 && <Pill tone="warn">{jobs.add.length} to add</Pill>}
+                            {jobs.reopen.length > 0 && <Pill tone="warn">{jobs.reopen.length} to put back</Pill>}
                             {jobs.tick.length > 0 && <Pill tone="down">{jobs.tick.length} to cross off</Pill>}
+                            {jobs.relabel.length > 0 && <Pill tone="grey">{jobs.relabel.length} to update</Pill>}
                         </div>
                     )}
                 </>

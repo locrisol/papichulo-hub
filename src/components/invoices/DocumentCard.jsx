@@ -30,7 +30,9 @@ const STATE = {
     working: { words: 'Reading...', tint: 'bg-gray-100 text-gray-700 border-gray-300' },
 }
 
-export default function DocumentCard({ file, onForget, onLinkAccount, onFillIn, onAllow }) {
+// `busy` holds every button that writes or decides while a file is being read
+// or the page is importing, so nothing is decided against lists about to change.
+export default function DocumentCard({ file, busy, onForget, onLinkAccount, onFillIn, onAllow, onAsNew }) {
     const { name, state, doc, totals, piles, blocks, place, where, restaurantName } = file
     const look = STATE[state] || STATE.working
 
@@ -61,7 +63,7 @@ export default function DocumentCard({ file, onForget, onLinkAccount, onFillIn, 
                     Nothing in the Hub says whose it is. Suppliers are shared between the two
                     restaurants, so this is the only thing on the page that says where the money
                     goes.
-                    <button type="button" onClick={onLinkAccount} className={`${rowButton('good')} mt-2 block`}>
+                    <button type="button" disabled={busy} onClick={onLinkAccount} className={`${rowButton('good')} mt-2 block`}>
                         It is ours
                     </button>
                 </div>
@@ -81,20 +83,60 @@ export default function DocumentCard({ file, onForget, onLinkAccount, onFillIn, 
                 </p>
             )}
 
-            {place?.what === 'by_hand' && (
+            {/* Every invoice typed in for that day, nearest total first, and
+                a way to say this is another delivery. Two typed in for one day
+                is the usual pattern, and only the nearest used to be offered. */}
+            {state === 'by_hand' && (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 mb-3 text-xs text-blue-900">
-                    <strong className="font-bold">There is one typed in for that day.</strong>{' '}
-                    {fmtMoney(place.candidates[0].total_amount)} with no document behind it. A hand
-                    entered total is net, because a shortage was taken off before it was typed, so
-                    filling it in restores the real total and turns the difference into a claim.
-                    <button
-                        type="button"
-                        onClick={() => onFillIn(place.candidates[0])}
-                        className={`${rowButton('edit')} mt-2 block`}
-                    >
-                        Fill that one in
+                    <strong className="font-bold">
+                        {place.candidates.length === 1
+                            ? 'There is one typed in for that day.'
+                            : `There are ${place.candidates.length} typed in for that day.`}
+                    </strong>{' '}
+                    {place.candidates.length === 1
+                        ? `${fmtMoney(place.candidates[0].total_amount)} with no document behind it. `
+                        : 'None has a document behind it. '}
+                    A hand entered total is net, because a shortage was taken off before it was
+                    typed, so filling it in restores the real total and turns the difference into a
+                    claim. If this is another delivery that day, it goes in as new.
+                    {place.candidates.length === 1 ? (
+                        <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => onFillIn(place.candidates[0])}
+                            className={`${rowButton('edit')} mt-2 block`}
+                        >
+                            Fill that one in
+                        </button>
+                    ) : (
+                        <ul className="mt-2 space-y-1.5">
+                            {place.candidates.map(typed => (
+                                <li key={typed.id} className="flex flex-wrap items-center gap-2">
+                                    <span className="tabular-nums font-bold">{fmtMoney(typed.total_amount)}</span>
+                                    {typed.notes && <span>{typed.notes}</span>}
+                                    <button
+                                        type="button"
+                                        disabled={busy}
+                                        onClick={() => onFillIn(typed)}
+                                        aria-label={`Fill in the one for ${fmtMoney(typed.total_amount)}`}
+                                        className={rowButton('edit')}
+                                    >
+                                        Fill this one in
+                                    </button>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                    <button type="button" disabled={busy} onClick={onAsNew} className={`${rowButton()} mt-2 block`}>
+                        It is a different delivery, import it as new
                     </button>
                 </div>
+            )}
+
+            {state === 'ready' && place?.what === 'by_hand' && (
+                <p className="text-xs text-muted mb-3">
+                    Going in as a new delivery, beside what was typed in for that day.
+                </p>
             )}
 
             {/* A credit for an invoice that was typed in by hand, where the
@@ -118,7 +160,7 @@ export default function DocumentCard({ file, onForget, onLinkAccount, onFillIn, 
                             <button type="button" onClick={onForget} className={rowButton('good')}>
                                 Leave it out
                             </button>
-                            <button type="button" onClick={onAllow} className={rowButton()}>
+                            <button type="button" disabled={busy} onClick={onAllow} className={rowButton()}>
                                 It was not taken off, import it
                             </button>
                         </div>
