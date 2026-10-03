@@ -37,7 +37,7 @@ describe('a database built from schema.sql', () => {
 
 // A store manager's own holiday or day off is an owner's to answer, and the
 // database refuses their own answer. Their own part of a day is not: the mail
-// tells nobody about it, so nobody else would ever answer it. Since 029.
+// tells nobody about it, so nobody else would ever answer it. Since 1 October.
 describe('who answers a store manager\'s own time off', () => {
     const start = schema.indexOf('CREATE OR REPLACE FUNCTION "public"."absence_answer_guard"()')
     const guard = schema.slice(start, schema.indexOf('end $$;', start))
@@ -57,7 +57,7 @@ describe('who answers a store manager\'s own time off', () => {
 // NOT NULL, and the app reads an empty one as none or as false: an allergen
 // left empty by a script or a spreadsheet pasted into the table editor read as
 // not present, a MIX whose is_mix was empty was never opened up, and a dish or
-// category with is_active empty dropped off the sheet. Since 032.
+// category with is_active empty dropped off the sheet. Since 1 October.
 describe('what the allergen answer depends on', () => {
     // One column's line inside one table, from schema.sql.
     function columnLine(table, column) {
@@ -460,17 +460,6 @@ describe('a switched off account', () => {
     })
 })
 
-// 033 says it is safe to run twice, and the second time can come after 034.
-// So it may only add. A rule written in 033 would quietly undo whatever 034
-// narrowed on the same table, and staff would read it all again.
-describe('033, which goes in before the merge', () => {
-    it('writes no rule, so running it again after 034 gives nothing back', () => {
-        const migration = readFileSync('supabase/migrations/033_staff_get_only_what_they_use.sql', 'utf8')
-        const code = migration.split('\n').filter(line => !line.trim().startsWith('--')).join('\n')
-        expect(code.match(/\b(create|drop|alter)\s+policy\s+[^;]*/gi) || []).toEqual([])
-    })
-})
-
 describe('the nightly photo job', () => {
     // It keeps a photo while its round is open, and finds the round from the
     // third folder of the path. Pinned against where the app puts the photo,
@@ -492,8 +481,6 @@ describe('places say how their last read went', () => {
     // shows it. Without the column a page failing every Monday only kept an
     // old date with nothing saying why.
     it('has a column for what went wrong reading a page', () => {
-        const migration = readFileSync('supabase/migrations/028_the_feed_says_how_it_went.sql', 'utf8')
-        expect(migration).toContain('alter table public.places add column if not exists read_problem text;')
         const table = schema.slice(schema.indexOf('CREATE TABLE IF NOT EXISTS "public"."places"'))
         expect(table.slice(0, table.indexOf(');'))).toContain('"read_problem" "text"')
     })
@@ -510,8 +497,7 @@ describe('the change log', () => {
     }
 
     it('does not log a sync that only says when it ran and how many it found', () => {
-        const migration = readFileSync('supabase/migrations/028_the_feed_says_how_it_went.sql', 'utf8')
-        for (const text of [schema, migration]) {
+        for (const text of [schema]) {
             const ignored = ignoredIn(text)
             for (const column of ['updated_at', 'last_seen_at', 'feed_synced_at', 'feed_count', 'last_read_at', 'last_read_count']) {
                 expect(ignored).toContain(column)

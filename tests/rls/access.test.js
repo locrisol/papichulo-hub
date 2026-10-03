@@ -33,7 +33,7 @@ async function wasteRefusal(client, restaurantId) {
 
 // The same trick for an account: one for a login that cannot exist, so the
 // missing login is what stops it once the rules have let it through. Before
-// 031 an owner got that far with a store manager or an employee at their own
+// 1 October an owner got that far with a store manager or an employee at their own
 // restaurant, and a store manager with an employee.
 async function accountRefusal(client, restaurantId, role) {
     const { error } = await client.from('users').insert({
@@ -47,7 +47,7 @@ async function accountRefusal(client, restaurantId, role) {
 
 // The first and last day of the weeks My shifts opens: nine weeks either side
 // of today in Ireland. roster_colleagues, roster_away and roster_published
-// keep to them since 034.
+// keep to them since 1 October.
 function myShiftsWeeks() {
     const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Dublin' })
     const shift = days => {
@@ -105,7 +105,7 @@ maybe('what each role can see and do', () => {
             expect(count).toBe(1)
         })
 
-        // Since 033 through staff_restaurants, and since 034 never the table.
+        // Since 1 October through staff_restaurants, and since 1 October never the table.
         // The row carries the cost targets, the default hourly rate and the
         // addresses the report and the hours are mailed to, and a policy
         // cannot hide a column, so the table gives them nothing at all.
@@ -147,7 +147,7 @@ maybe('what each role can see and do', () => {
             expect(data?.name).toBeTruthy()
         })
 
-        // Since 034. The row carries what they cost per hour and whatever a
+        // Since 1 October. The row carries what they cost per hour and whatever a
         // manager wrote about them in Notes, so not even their own comes back.
         // Asked for by id, so a pass means their row is there and was refused,
         // not that the test account has no row on the team at all. Shown as
@@ -172,13 +172,13 @@ maybe('what each role can see and do', () => {
             expect(me.restaurant_id).toBe(ownRestaurantId)
         })
 
-        // Since 033 through staff_products, and since 034 never the table.
+        // Since 1 October through staff_products, and since 1 October never the table.
         // The notes, the weight loss, what one piece weighs and how often it
         // is counted are for the Products page. Every product, switched off
         // ones included, so today's waste still has a name on it.
         it('can read the product catalogue, through the staff view', async () => {
             const { data, error } = await employee.from('staff_products').select('*')
-            expect(error?.message || '', 'staff_products is missing, so 033 has not been run').toBe('')
+            expect(error?.message || '', 'staff_products is missing on this database').toBe('')
             expect(data.length).toBeGreaterThan(0)
             expect(Object.keys(data[0]).sort()).toEqual([
                 'also_in', 'batch_yield', 'category', 'held_for', 'id', 'is_active', 'is_mix', 'name', 'section', 'unit',
@@ -197,7 +197,7 @@ maybe('what each role can see and do', () => {
             expect(count).toBeGreaterThan(0)
         })
 
-        // Since 034. The Suppliers page and Delivery problems only ever
+        // Since 1 October. The Suppliers page and Delivery problems only ever
         // offered staff the ones still in use. Passes trivially on a database
         // with nothing switched off, so the manager test below says whether
         // there was anything to hide.
@@ -212,7 +212,7 @@ maybe('what each role can see and do', () => {
             expect(error).toBeNull()
         })
 
-        // Since 034. A closed count carries what the stock was worth, and no
+        // Since 1 October. A closed count carries what the stock was worth, and no
         // staff screen opens one: the history is managers only. The lines of
         // an old count go with it. Passes on a day nothing is closed, so the
         // manager test below says whether there was anything to hide.
@@ -335,9 +335,9 @@ maybe('what each role can see and do', () => {
             expect(refused).toBe(true)
         })
 
-        // Since 022. A MIX is valued from its recipe, and without it every
-        // MIX an employee counted or wasted was saved at nothing. Since 033
-        // through staff_mix_recipes, and since 034 never the table: what goes
+        // Since 30 September. A MIX is valued from its recipe, and without it every
+        // MIX an employee counted or wasted was saved at nothing. Since 1 October
+        // through staff_mix_recipes, and since 1 October never the table: what goes
         // in and how much, not the notes beside each line.
         it('can read MIX recipes, which value what they count and waste', async () => {
             const { data, error } = await employee.from('staff_mix_recipes').select('*')
@@ -354,7 +354,7 @@ maybe('what each role can see and do', () => {
         })
 
         // Today's, so two people do not log the same thing twice, and since
-        // 031 today is the date in Ireland, which is the date the app writes.
+        // 1 October today is the date in Ireland, which is the date the app writes.
         // On a day nobody has logged waste there is nothing to look at and it
         // passes, so it only stops the rule getting wider. Which date counts
         // as today is pinned in src/test/schema.test.js.
@@ -365,7 +365,7 @@ maybe('what each role can see and do', () => {
             expect((data || []).filter(w => w.log_date !== today || w.restaurant_id !== ownRestaurantId)).toEqual([])
         })
 
-        // Since 034. The table carries every colleague's shift note and every
+        // Since 1 October. The table carries every colleague's shift note and every
         // draft. My shifts reads roster_published, which gives each person the
         // note on their own shifts and the week as it went out.
         it('cannot read the roster table, only the week as it went out', async () => {
@@ -375,7 +375,7 @@ maybe('what each role can see and do', () => {
 
         // What My shifts shows under their own shift. Shown as skipped when
         // nothing of theirs in the weeks My shifts opens has a note. Only
-        // those weeks: since 034 the view gives no shift outside them, so an
+        // those weeks: since 1 October the view gives no shift outside them, so an
         // older note would fail with nothing wrong.
         it('still reads the note on their own shifts', async ({ skip }) => {
             const { data: me } = await employee.rpc('get_my_employee_id')
@@ -389,7 +389,7 @@ maybe('what each role can see and do', () => {
             expect(data?.note).toBe(noted[0].note)
         })
 
-        // Since 034. What is on comes from staff_diary, without where each
+        // Since 1 October. What is on comes from staff_diary, without where each
         // entry is on Google, which the calendar function acts on, or who
         // wrote it. Their own private entries, if they ever kept one as a
         // manager, are all the table still gives them.
@@ -413,7 +413,7 @@ maybe('what each role can see and do', () => {
                 .toEqual((all || []).map(e => e.id).sort())
         })
 
-        // Since 034. What is on near us: a place's name and size through
+        // Since 1 October. What is on near us: a place's name and size through
         // staff_places, not its page address, Ticketmaster id or reading
         // settings; their own restaurant's pairings; and only the listings
         // at places it watches that nobody dismissed.
@@ -443,7 +443,7 @@ maybe('what each role can see and do', () => {
             expect((events || []).length).toBe(theirs)
         })
 
-        // Since 034. A swap between two other people is theirs: who asked
+        // Since 1 October. A swap between two other people is theirs: who asked
         // whom, the hours and the message. My shifts reads their own whole,
         // and of everybody else's only which shifts were asked about, from
         // roster_asks.
@@ -472,7 +472,7 @@ maybe('what each role can see and do', () => {
             expect((data || []).map(key).sort()).toEqual((live || []).map(key).sort())
         })
 
-        // Since 034. Once a manager matches a note from the door to a line it
+        // Since 1 October. Once a manager matches a note from the door to a line it
         // carries what it was worth and what came back, and no staff screen
         // shows a euro of it. Delivery problems reads my_claims instead, and
         // the cost view, which reads the table as the person asking, goes
@@ -503,7 +503,7 @@ maybe('what each role can see and do', () => {
             skip(!raised?.length, 'the test employee has never logged a delivery problem')
         })
 
-        // Since 034. Every dish's selling price, its VAT and how much of each
+        // Since 1 October. Every dish's selling price, its VAT and how much of each
         // thing goes into it. No staff screen reads them, and the allergen
         // page reads the public_ views, which leave all of that out.
         it('cannot read the menu, what goes into each dish or the allergen tables', async () => {
@@ -530,7 +530,7 @@ maybe('what each role can see and do', () => {
             expect(refused).toBe(true)
         })
 
-        // Since 023. Printing the allergen sheet is a manager's job, and the
+        // Since 30 September. Printing the allergen sheet is a manager's job, and the
         // stamp is what stops the reminder, so nobody below one can clear it.
         it('cannot say the allergen sheet was printed', async () => {
             const { error } = await employee.rpc('allergen_sheet_printed', { restaurant: ownRestaurantId })
@@ -628,10 +628,10 @@ maybe('what each role can see and do', () => {
             expect(data.allergen_sheet_every_months).toBeLessThanOrEqual(24)
         })
 
-        // Since 032. What the allergen answer is worked out from cannot be
+        // Since 1 October. What the allergen answer is worked out from cannot be
         // left empty: an empty allergen read as not present, and an empty
         // is_mix kept a MIX's ingredients out of the dish. Every write here is
-        // refused either way, so nothing is ever created on live: before 032
+        // refused either way, so nothing is ever created on live: before 1 October
         // by something else (a product or category that does not exist, a
         // section that is not one, a name already taken), after it by the
         // empty column, which is the code checked for.
@@ -754,7 +754,7 @@ maybe('what each role can see and do', () => {
             expect(error, 'a manager stamped the other restaurant allergen sheet').not.toBeNull()
         })
 
-        // Since 031. Accounts are a super admin job; a store manager links a
+        // Since 1 October. Accounts are a super admin job; a store manager links a
         // login to a person on Team, which writes the person.
         it('cannot add or change an employee account', async () => {
             expect(await accountRefusal(manager, ownRestaurantId, 'employee')).toBe(REFUSED_BY_THE_RULES)
@@ -767,7 +767,7 @@ maybe('what each role can see and do', () => {
         })
 
         // The sales grid reads and writes a platform's figures under its key
-        // since 026, so a manager who could not read it could not draw a
+        // since 30 September, so a manager who could not read it could not draw a
         // single platform row. Every platform has one.
         it('can read the key each delivery platform keeps its figures under', async () => {
             const { data, error } = await manager.from('sales_platforms').select('id, key, name')
@@ -820,7 +820,7 @@ maybe('what each role can see and do', () => {
             expect(refused).toBe(true)
         })
 
-        // Since 031. Making an employee a store manager through the API
+        // Since 1 October. Making an employee a store manager through the API
         // opened the takings and everybody's pay rate to them.
         it('cannot add or change a store manager or an employee account', async () => {
             expect(await accountRefusal(owner, ownRestaurantId, 'store_manager')).toBe(REFUSED_BY_THE_RULES)
@@ -863,7 +863,7 @@ maybe('what each role can see and do', () => {
             expect(restaurants.size).toBeGreaterThan(0)
         })
 
-        // Since 031. A super admin works at whichever restaurant they have
+        // Since 1 October. A super admin works at whichever restaurant they have
         // switched to, and waste was the one table that held them to their
         // own.
         it('logs waste at a restaurant that is not their own', async () => {
@@ -882,7 +882,7 @@ maybe('what each role can see and do', () => {
             expect(await accountRefusal(superadmin, ownRestaurantId, 'employee')).toBe(PAST_THE_RULES)
         })
 
-        // Since 035. A super admin can write any users row, so without the
+        // Since 3 October. A super admin can write any users row, so without the
         // guard a click could say somebody chose a password they never chose,
         // and the Hub would stop asking them. Their own row, which the guard
         // refuses before anything is written.
@@ -934,7 +934,7 @@ maybe('what each role can see and do', () => {
             }
         })
 
-        // Since 034. Staff see the team and its time off for the weeks My
+        // Since 1 October. Staff see the team and its time off for the weeks My
         // shifts opens, nine weeks either side of today and no further:
         // nobody who left long before, no time off from long ago, and no
         // leaving date or start date that matters to no week they can see.
@@ -1016,7 +1016,7 @@ maybe('what each role can see and do', () => {
             expect(told, 'roster_published hands an employee the notes on other shifts').toHaveLength(0)
         })
 
-        // Since 034. The shifts as they went out, for the same weeks as the
+        // Since 1 October. The shifts as they went out, for the same weeks as the
         // team and its time off: nothing from rosters long gone, nothing
         // months ahead. By the day as it went out, which is the shift_date
         // the view hands over.
@@ -1072,7 +1072,7 @@ maybe('what each role can see and do', () => {
         })
 
         // roster_away reads one table, so the database would write through
-        // it as its owner. Until 021 any employee could delete or move a
+        // it as its owner. Until 30 September any employee could delete or move a
         // colleague's approved holiday this way.
         //
         // roster_published reads one table too. Through it an employee could
@@ -1147,7 +1147,7 @@ maybe('what each role can see and do', () => {
                 expect(Object.keys(places[0]).sort()).toEqual(['id', 'name', 'slug'])
             }
 
-            // Since 032, the section, so the page can tell a food product
+            // Since 1 October, the section, so the page can tell a food product
             // nobody entered allergens for from a dip pot. Nothing about
             // buying or counting it.
             const { data: products } = await anon.from('public_products').select('*').limit(1)
@@ -1158,7 +1158,7 @@ maybe('what each role can see and do', () => {
 
         // Reading them is the whole point; changing anything through them is
         // not. Each view reads one table, so the database would write through
-        // it as its owner, past row level security. Until 021 this was open:
+        // it as its owner, past row level security. Until 30 September this was open:
         // the website's own key could set every allergen to none.
         it('cannot change anything through the allergen views', async () => {
             const views = [
@@ -1175,7 +1175,7 @@ maybe('what each role can see and do', () => {
             }
         })
 
-        // Since 023: the customer page's Last updated. One date from the
+        // Since 30 September: the customer page's Last updated. One date from the
         // change log, and nothing else of it.
         it('can ask when the allergen information last changed', async () => {
             const { data, error } = await anon.rpc('allergens_changed_at')
@@ -1251,7 +1251,7 @@ maybe('what each role can see and do', () => {
         })
     })
 
-    // Since 036. Security definer, so it repeats the policies' checks itself.
+    // Since 3 October. Security definer, so it repeats the policies' checks itself.
     describe('the sidebar badges', () => {
         it('gives an employee only their own shift asks', async () => {
             const { data, error } = await employee.rpc('my_badges', { restaurant: ownRestaurantId })

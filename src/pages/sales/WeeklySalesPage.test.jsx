@@ -332,9 +332,9 @@ describe('the delivery platforms', () => {
         expect(written('update')[0][0].platform_sales).toEqual({ 'Just Eat': 65 })
     })
 
-    // The app going out before migration 026 is run. The platforms have no key
+    // A database from before platforms had a key. The platforms have no key
     // then, and every box on a day used to share one figure kept under
-    // "undefined". The name is the key until 026 gives them one.
+    // "undefined". The name is the key until the key column gives them one.
     const withoutKey = p => {
         const old = { ...p }
         delete old.key

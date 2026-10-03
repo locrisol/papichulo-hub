@@ -95,7 +95,7 @@ describe('editing a platform', () => {
 
 describe('adding a platform', () => {
     // The database gives it its name as its key. Sending a key as well would
-    // fail on a database migration 026 has not reached, where there is no key
+    // fail on a database from before platforms had a key, where there is no key
     // column to send it to.
     it('leaves the key to the database', async () => {
         await add('Uber Eats')

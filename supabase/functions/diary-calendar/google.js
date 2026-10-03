@@ -209,7 +209,7 @@ export function plan(wanted, existing) {
 // owner's event from the group calendar. An id with .. in it could overwrite an
 // event on another calendar altogether.
 //
-// Migration 025 stops a person writing the ids at all. What is here is the
+// The database stops a person writing the ids at all (a guard on diary_entries). What is here is the
 // function checking for itself as well, because the two are deployed
 // separately and either one can be first.
 
@@ -237,7 +237,7 @@ export function eventUrl(calendarId, eventId) {
 //
 // An id that is not an id is treated as never written, so the entry goes on
 // the calendar fresh rather than an address being built out of it. This is
-// for a row saved before 025 was run.
+// for a row saved before that guard existed.
 export function idsFrom(stored) {
     const out = {}
     if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return out

@@ -37,8 +37,8 @@ export default function ProtectedRoute({ children }) {
   if (loading) return null
   if (!session) return <Navigate to="/login" replace />
   if (error || restaurantError) return <CannotContinue reason={error || restaurantError} />
-  // Null, not just missing: before 035 runs there is no such column, and
-  // asking then would ask for ever, because nothing could fill it.
+  // Null, not just missing: on a database without the column, asking would
+  // ask for ever, because nothing could fill it.
   if (user && user.password_set_at === null && !user.is_test) return <ChooseYourOwnPassword />
   return children
 }

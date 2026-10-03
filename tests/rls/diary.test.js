@@ -5,9 +5,8 @@ import { signInAs, credentialsPresent } from './helpers'
 //
 // diary-calendar acts on google_event_ids as hub@, which reaches every calendar
 // in the group, so a person able to write that column could point the function
-// at an event that is not theirs. Found by the audit of 28 September, closed
-// by migration 025. Until 025 is run on this project these fail, which is them
-// saying so.
+// at an event that is not theirs. Found by the audit of 28 September and
+// closed by a guard on diary_entries (see schema.sql).
 //
 // The entries here are private, so nobody else sees them, and each one is
 // deleted again at the end, so nothing survives: the rule the rest of this

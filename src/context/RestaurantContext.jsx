@@ -57,7 +57,7 @@ export function RestaurantProvider({ children }) {
         //
         // Staff read staff_restaurants, which is the row without the cost
         // targets, the default hourly rate or the addresses the report and
-        // the hours are mailed to. Their screens use none of it, and since 034
+        // the hours are mailed to. Their screens use none of it, and since 1 October
         // the database will not give them the table at all, because a row
         // policy cannot hide a column. The view only holds open restaurants,
         // so it is not asked which are switched off.

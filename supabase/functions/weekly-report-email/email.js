@@ -1311,9 +1311,8 @@ export function reportEmail({
         profit_loss: s => profitAndLoss(s, f, charts),
         prices_suppliers: s => pricesSection(s, f),
         online_sales: s => platformSection(s, f, charts, 'online_platform', 'online'),
-        // The bucket is called catering in the database, nailed down in
-        // migration 015. The report calls it corporate, which is what people
-        // say out loud.
+        // The bucket is called catering in the database. The report calls it
+        // corporate, which is what people say out loud.
         corporate_sales: s => platformSection(s, f, charts, 'catering', 'corporate'),
         people_ops: s => peopleAndOps(s, f),
         marketing: s => ownSection(s),

@@ -150,7 +150,7 @@ export default function EventModal({ row, canEdit = false, sameName = 0, onRenam
                     It writes beside the name rather than over it, so what
                     arrived is still what a second reading is matched on, and a
                     Ticketmaster name that the sync rewrites twice a day keeps
-                    the one we chose. See migration 015. */}
+                    the one we chose. See events.display_name in schema.sql. */}
                 {canEdit && onRename && (
                     <div className="mt-4 pt-4 border-t border-border">
                         <label className={labelClass} htmlFor="event-name">

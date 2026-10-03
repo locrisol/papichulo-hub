@@ -760,7 +760,7 @@ describe('sourceKeyFor', () => {
     })
 
     // A cinema lists the same film every day for a month, and it is one thing
-    // that happened once. See migration 012.
+    // that happened once. See places.reading_key in schema.sql.
     it('leaves the day out for a place keyed by title', () => {
         expect(sourceKeyFor('2026-11-19', 'Practical Magic 2', 'title')).toBe('practical-magic-2')
         expect(sourceKeyFor('2026-11-26', 'Practical Magic 2', 'title')).toBe('practical-magic-2')

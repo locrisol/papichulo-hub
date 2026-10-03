@@ -55,7 +55,7 @@ export default function YourAccountPage() {
         // A function rather than an update, and it is the only way this can be
         // written. The table's update policy is one sided on purpose: you may
         // write the rows below you and never your own, because your own row is
-        // where your role is kept. See migration 010.
+        // where your role is kept. See set_my_landing_page in schema.sql.
         const { error: err } = await supabase.rpc('set_my_landing_page', { page: landing || null })
 
         setSaving(false)

@@ -21,7 +21,7 @@ describe('the nav itself', () => {
         expect(navItems.filter(n => !n.path.startsWith('/'))).toEqual([])
     })
 
-    // Migration 010 puts a CHECK on the column, and a path that does not match
+    // users_landing_page_is_a_path is a CHECK on the column, and a path that does not match
     // it would save nowhere while the screen said it had.
     it('writes every path in a shape the database will accept', () => {
         const shape = /^\/[a-z0-9/-]{0,60}$/

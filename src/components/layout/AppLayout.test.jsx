@@ -195,7 +195,7 @@ describe('the counts from my_badges', () => {
         expect(within(navButton('Public allergens')).queryByText(/^\d+$/)).toBeNull()
     })
 
-    // Before 036 is run there is no function. No badges, nothing broken.
+    // A database without the badge function: no badges, nothing broken.
     it('shows no counts when the function is not there yet', async () => {
         db.rpc = vi.fn(() => Promise.resolve({ data: null, error: { message: 'function my_badges does not exist' } }))
         show()

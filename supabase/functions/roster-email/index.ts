@@ -421,8 +421,8 @@ Deno.serve(async (request) => {
 
     // The restaurant a mail is about: what it is called, and what it sends as.
     //
-    // mail_from arrived in migration 051, and a function can be deployed before
-    // a migration is run. Asking for a column that is not there does not throw,
+    // mail_from came later than the table, and a function can be deployed
+    // before the database has it. Asking for a column that is not there does not throw,
     // it returns an error and a null row, and an unchecked null here would have
     // quietly sent a report headed "The restaurant" to every owner. So the
     // error IS checked, and it falls back to the columns that have always
@@ -432,7 +432,7 @@ Deno.serve(async (request) => {
             .from('restaurants').select('name, mail_from').eq('id', restaurantId).maybeSingle()
 
         if (error) {
-            console.warn('restaurants.mail_from is missing, run migration 051', error)
+            console.warn('restaurants.mail_from is missing on this database', error)
             const again = await admin
                 .from('restaurants').select('name').eq('id', restaurantId).maybeSingle()
             data = again.data

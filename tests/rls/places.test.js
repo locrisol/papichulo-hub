@@ -4,9 +4,8 @@ import { signInAs, credentialsPresent } from './helpers'
 // A place is shared between restaurants, and a manager at one of them could
 // delete a place the other one watches. Events and pairings cascade from a
 // place, so that took the other restaurant's pairing and every listing read
-// from it, kept and dismissed alike. Found by the audit of 28 September,
-// closed by migration 025. Until 025 is run on this project these fail, which
-// is them saying so.
+// from it, kept and dismissed alike. Found by the audit of 28 September and
+// closed by the rules on places and events (see schema.sql).
 //
 // Changing a shared place stays open to any manager on purpose. The place is
 // the venue itself, and correcting its page for both restaurants is what the
@@ -103,7 +102,7 @@ maybe('places shared between restaurants', () => {
         expect(data).toHaveLength(1)
     })
 
-    // Migration 028. Every Ticketmaster sync writes how it went on the place,
+    // Since 1 October. Every Ticketmaster sync writes how it went on the place,
     // and the settings row, the roster and the calendar read it from there.
     // A page read that fails says why in read_problem. Until 028 is run on
     // this project the columns are not there to read.

@@ -159,7 +159,7 @@ export default function MyShiftsPage() {
     // two people do not ask the same person for the same shift. It needs only
     // which shifts, so it comes from roster_asks, which has nothing else of the
     // request: a swap between two other people, who asked whom, the hours and
-    // the message, is theirs, and since 034 staff cannot read it at all.
+    // the message, is theirs, and since 1 October staff cannot read it at all.
     //
     // Then the shifts those requests name, by id, because a card cannot say
     // what it is about without them and half of them are in another week.
@@ -214,7 +214,7 @@ export default function MyShiftsPage() {
             //
             // Through the colleagues view, not the employees table. That row
             // carries what they cost per hour and whatever a manager wrote in
-            // Notes, and since 034 staff cannot read it at all.
+            // Notes, and since 1 October staff cannot read it at all.
             const { data: myId, error: idErr } = await supabase.rpc('get_my_employee_id')
             const { data: mine, error: meErr } = myId
                 ? await supabase

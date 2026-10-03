@@ -336,8 +336,8 @@ Deno.serve(async (req) => {
             return json({ error: 'That report belongs to another restaurant.' }, 403)
         }
 
-        // mail_from arrived in migration 051, and a function can be deployed
-        // before a migration is run. Asking for a column that is not there
+        // mail_from came later than the table, and a function can be deployed
+        // before the database has it. Asking for a column that is not there
         // does not throw, it returns an error and a null row, and an
         // unchecked null here would have quietly sent a report headed "The
         // restaurant" to every owner. So the error IS checked, and it falls
@@ -347,7 +347,7 @@ Deno.serve(async (req) => {
             .eq('id', report.restaurant_id).maybeSingle()
 
         if (restaurantError) {
-            console.warn('restaurants.mail_from is missing, run migration 051', restaurantError)
+            console.warn('restaurants.mail_from is missing on this database', restaurantError)
             const again = await admin
                 .from('restaurants').select('id, name, report_recipients')
                 .eq('id', report.restaurant_id).maybeSingle()
@@ -607,8 +607,8 @@ async function sendTimesheet({
     // a week at a time, and these are what it is handed.
     const weeks = [period, addDays(period, 7)]
 
-    // timesheet_recipients arrived in migration 007 and a function can be
-    // deployed before a migration is run. Asking for a column that is not
+    // timesheet_recipients came later than the table, and a function can be
+    // deployed before the database has it. Asking for a column that is not
     // there does not throw, it comes back as an error and a null row, and an
     // unchecked null would have sent a week headed "The restaurant" to nobody.
     let { data: restaurant, error: missing } = await admin
@@ -616,7 +616,7 @@ async function sendTimesheet({
         .eq('id', forRestaurant).maybeSingle()
 
     if (missing) {
-        console.warn('restaurants.timesheet_recipients is missing, run migration 007', missing)
+        console.warn('restaurants.timesheet_recipients is missing on this database', missing)
         const again = await admin
             .from('restaurants').select('id, name, mail_from')
             .eq('id', forRestaurant).maybeSingle()

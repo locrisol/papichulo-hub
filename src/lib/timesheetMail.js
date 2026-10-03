@@ -15,7 +15,8 @@
 import { supabase } from '@/lib/supabase'
 import { functionError, friendlyError } from '@/lib/errors'
 
-// Private. See migration 009 for why this one is not public and report-charts is.
+// Private. See the timesheet-hours bucket in seed.sql for why this one is not
+// public and report-charts is.
 export const HOURS_BUCKET = 'timesheet-hours'
 
 export async function sendTimesheet({

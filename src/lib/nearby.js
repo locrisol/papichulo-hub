@@ -538,7 +538,7 @@ export function couldBeSamePlace(a, b) {
 // The two are kept apart rather than one overwriting the other. name is what
 // arrived and display_name is ours, which matters because a page read a second
 // time lands on the row it made the first time, and because a Ticketmaster
-// name is rewritten by every sync. See migration 015.
+// name is rewritten by every sync. See events.display_name in schema.sql.
 export function eventName(event) {
     const ours = String(event?.display_name || '').trim()
     return ours || String(event?.name || '').trim()
