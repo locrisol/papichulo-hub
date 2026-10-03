@@ -38,7 +38,7 @@ import { landingFor } from '@/lib/nav'
 const UsersPage = lazy(() => import('@/pages/settings/UsersPage'))
 const ChangesPage = lazy(() => import('@/pages/settings/ChangesPage'))
 const RestaurantPage = lazy(() => import('@/pages/settings/RestaurantPage'))
-const PreferencesPage = lazy(() => import('@/pages/settings/PreferencesPage'))
+const YourAccountPage = lazy(() => import('@/pages/settings/YourAccountPage'))
 const SuppliersPage = lazy(() => import('@/pages/inventory/SuppliersPage'))
 const ProductsPage = lazy(() => import('@/pages/inventory/ProductsPage'))
 const ProductPricesPage = lazy(() => import('@/pages/inventory/ProductPricesPage'))
@@ -189,7 +189,7 @@ export default function App() {
                 <Route path="/settings/users" element={<RequireRole allowed={ADMIN_ONLY}><UsersPage /></RequireRole>} />
                 <Route path="/settings/changes" element={<RequireRole allowed={ADMIN_ONLY}><ChangesPage /></RequireRole>} />
                 <Route path="/settings/restaurant" element={<RequireRole allowed={RESTAURANT_CONFIG}><RestaurantPage /></RequireRole>} />
-                <Route path="/settings/preferences" element={<RequireRole allowed={MANAGERS}><PreferencesPage /></RequireRole>} />
+                <Route path="/settings/preferences" element={<RequireRole allowed={ALL_ROLES}><YourAccountPage /></RequireRole>} />
 
                 <Route path="/" element={<HomeRedirect />} />
                 {/* Anything else signed in: an old bookmark or a typo. */}
