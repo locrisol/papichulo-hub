@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { callerProblem, emailProblem, inviteProblem, linkSite, cleanEmail } from '../../supabase/functions/invite-user/invite'
+import { callerProblem, emailProblem, inviteProblem, updateProblem, linkSite, cleanEmail } from '../../supabase/functions/invite-user/invite'
 
 // The function runs with the service key, which skips every row level rule,
 // so these are the only checks there are.
@@ -45,6 +45,34 @@ describe('what a request needs', () => {
         expect(inviteProblem(withPerson, null)).toBe('That person is not on the team list.')
         expect(inviteProblem(withPerson, { id: 'e1', restaurant_id: 'pc', user_id: 'u9' })).toBe('That person already has an account.')
         expect(inviteProblem(withPerson, { id: 'e1', restaurant_id: 'dl', user_id: null })).toBe('That person works at another restaurant.')
+    })
+})
+
+describe('changing an account', () => {
+    const current = { id: 'u1', role: 'employee', restaurant_id: 'pc' }
+    const change = { id: 'u1', fullName: 'Maria Silva', email: 'maria@papichulo.ie', role: 'store_manager', restaurantId: 'pc' }
+
+    it('takes the same fields an account is given, on one that exists', () => {
+        expect(updateProblem(change, current, null, 'me')).toBe('')
+        expect(updateProblem(change, null, null, 'me')).toBe('That account does not exist.')
+        expect(updateProblem({ ...change, email: 'maria' }, current)).toBe('Enter a full email address.')
+        expect(updateProblem({ ...change, restaurantId: null }, current)).toBe('Pick a restaurant.')
+        expect(updateProblem({ ...change, role: 'super_admin', restaurantId: null }, current)).toBe('')
+    })
+
+    // A super admin who steps down has nobody left to step them back up.
+    it('does not let anybody change their own role', () => {
+        const me = { id: 'me', role: 'super_admin', restaurant_id: null }
+        expect(updateProblem({ ...change, id: 'me', role: 'owner' }, me, null, 'me')).toBe('Your own role cannot be changed from here.')
+        expect(updateProblem({ ...change, id: 'me', role: 'super_admin', restaurantId: 'pc' }, me, null, 'me')).toBe('')
+    })
+
+    it('keeps the link to somebody on the team, or moves it only where that is safe', () => {
+        const withPerson = { ...change, employeeId: 'e1' }
+        expect(updateProblem(withPerson, current, { id: 'e1', restaurant_id: 'pc', user_id: 'u1' })).toBe('')
+        expect(updateProblem(withPerson, current, { id: 'e1', restaurant_id: 'pc', user_id: null })).toBe('')
+        expect(updateProblem(withPerson, current, { id: 'e1', restaurant_id: 'pc', user_id: 'u9' })).toBe('That person already has an account.')
+        expect(updateProblem(withPerson, current, { id: 'e1', restaurant_id: 'dl', user_id: null })).toBe('That person works at another restaurant.')
     })
 })
 

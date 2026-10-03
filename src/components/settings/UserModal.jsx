@@ -9,40 +9,52 @@ import { todayISO } from '@/lib/dates'
 
 const ROLES = ['employee', 'store_manager', 'owner', 'super_admin']
 
-// Giving somebody an account, from Users. Super admin only, which the
-// invite-user function checks again because it runs with the service key.
+// Giving somebody an account, or changing one, from Users. Super admin only,
+// which the invite-user function checks again because it runs with the
+// service key.
 //
-// It sends an invite: an email with a link to choose their own password. No
-// password is typed here, so none passes through anybody else. The person on
-// the team list it belongs to can be linked at the same time, which is what
-// gives them My shifts.
-export default function AddUserModal({ restaurants, onClose, onAdded }) {
-    const [fullName, setFullName] = useState('')
-    const [email, setEmail] = useState('')
-    const [role, setRole] = useState('employee')
-    const [restaurantId, setRestaurantId] = useState(restaurants.length === 1 ? restaurants[0].id : '')
+// A new account gets an invite: an email with a link to choose their own
+// password. No password is typed here, so none passes through anybody else.
+// The person on the team list it belongs to can be linked at the same time,
+// which is what gives them My shifts.
+//
+// Editing (`person` given) changes the same fields on an account that
+// exists, the email included, which only the function can write. Moving
+// somebody to another restaurant unlinks whoever they were linked to there,
+// because a person on the team belongs to one restaurant.
+export default function UserModal({ person = null, email: current = '', restaurants, onClose, onSaved }) {
+    const editing = Boolean(person)
+    const [fullName, setFullName] = useState(person?.full_name || '')
+    const [email, setEmail] = useState(current)
+    const [role, setRole] = useState(person?.role || 'employee')
+    const [restaurantId, setRestaurantId] = useState(
+        person ? (person.restaurant_id || '') : (restaurants.length === 1 ? restaurants[0].id : ''),
+    )
     const [employeeId, setEmployeeId] = useState('')
     const [people, setPeople] = useState([])
     const [error, setError] = useState('')
     const [sending, setSending] = useState(false)
 
-    // People at that restaurant with no account yet, still working there. The
+    // People at that restaurant with no account yet, still working there,
+    // and whoever this account is already linked to. On a new account the
     // first choice also fills the name, because it is nearly always theirs.
     useEffect(() => {
         let alive = true
         if (!restaurantId) return () => { alive = false }
-        supabase.from('employees')
+        let query = supabase.from('employees')
             .select('id, full_name, user_id, ended_on')
             .eq('restaurant_id', restaurantId)
-            .is('user_id', null)
-            .order('full_name')
-            .then(({ data }) => {
-                if (!alive) return
-                const today = todayISO()
-                setPeople((data || []).filter(p => !p.ended_on || p.ended_on >= today))
-            })
+        query = person ? query.or(`user_id.is.null,user_id.eq.${person.id}`) : query.is('user_id', null)
+        query.order('full_name').then(({ data }) => {
+            if (!alive) return
+            const today = todayISO()
+            const rows = (data || []).filter(p => !p.ended_on || p.ended_on >= today || p.user_id === person?.id)
+            setPeople(rows)
+            const linked = person ? rows.find(p => p.user_id === person.id) : null
+            if (linked) setEmployeeId(linked.id)
+        })
         return () => { alive = false }
-    }, [restaurantId])
+    }, [restaurantId, person])
 
     function pickPerson(id) {
         setEmployeeId(id)
@@ -54,25 +66,25 @@ export default function AddUserModal({ restaurants, onClose, onAdded }) {
         e.preventDefault()
         setError('')
         setSending(true)
+        const fields = { fullName, email, role, restaurantId: restaurantId || null, employeeId: employeeId || null }
         const { data, error: failed } = await supabase.functions.invoke('invite-user', {
-            body: {
-                fullName,
-                email,
-                role,
-                restaurantId: restaurantId || null,
-                employeeId: employeeId || null,
-                origin: window.location.origin,
-            },
+            body: editing
+                ? { action: 'update', id: person.id, ...fields }
+                : { ...fields, origin: window.location.origin },
         })
         setSending(false)
         if (failed) { setError(await functionError(failed)); return }
         if (data?.error) { setError(data.error); return }
-        onAdded(`Invite sent to ${email.trim()}. They choose their own password from the email. The link `
+        if (editing) {
+            onSaved(`${fullName.trim()} saved.${data?.emailChanged ? ` They sign in with ${email.trim()} from now on.` : ''}`)
+            return
+        }
+        onSaved(`Invite sent to ${email.trim()}. They choose their own password from the email. The link `
             + 'expires after an hour; after that they can use Forgot your password on the sign in screen.')
     }
 
     return (
-        <Modal title="Add an account" onClose={onClose}>
+        <Modal title={editing ? 'Edit account' : 'Add an account'} onClose={onClose}>
             <form onSubmit={send}>
                 <div className="px-6 py-4 space-y-4">
                     {error && <ErrorBanner>{error}</ErrorBanner>}
@@ -88,6 +100,9 @@ export default function AddUserModal({ restaurants, onClose, onAdded }) {
                             <option value="">{role === 'super_admin' ? 'None, they see every restaurant' : 'Pick a restaurant'}</option>
                             {restaurants.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
                         </select>
+                        {editing && restaurantId !== (person.restaurant_id || '') && (
+                            <p className={hintClass}>Moving them unlinks the person they were on the team of before.</p>
+                        )}
                     </div>
 
                     {restaurantId && (
@@ -123,7 +138,9 @@ export default function AddUserModal({ restaurants, onClose, onAdded }) {
                             className={fieldClass}
                         />
                         <p className={hintClass}>
-                            Their own address. Anybody who reads the inbox can reset the password.
+                            {editing
+                                ? 'Their own address. A new one is theirs to sign in with straight away, with the same password.'
+                                : 'Their own address. Anybody who reads the inbox can reset the password.'}
                         </p>
                     </div>
 
@@ -138,7 +155,7 @@ export default function AddUserModal({ restaurants, onClose, onAdded }) {
                 <div className={modalFooter}>
                     <button type="button" onClick={onClose} className={secondaryButton}>Cancel</button>
                     <button type="submit" disabled={sending} className={primaryButton()}>
-                        {sending ? 'Sending...' : 'Send the invite'}
+                        {editing ? (sending ? 'Saving...' : 'Save') : (sending ? 'Sending...' : 'Send the invite')}
                     </button>
                 </div>
             </form>
