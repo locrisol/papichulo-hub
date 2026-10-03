@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import Modal from '@/components/ui/Modal'
 import ModalSection from '@/components/ui/ModalSection'
-import { modalFooter, secondaryButton, checkbox, labelClass, primaryButton } from '@/lib/controlStyles'
+import {
+    modalFooter, secondaryButton, checkbox, labelClass, fieldClass, rowButton, primaryButton,
+} from '@/lib/controlStyles'
 import QuantityInUnit from '@/components/ui/QuantityInUnit'
 import { offerable } from '@/lib/menuChoices'
 import { canBeMenuComponent } from '@/lib/products'
@@ -160,7 +162,7 @@ export default function AddOptions({
             <ModalSection title="Choice settings">
                 <div className="flex flex-wrap gap-4">
                     <div className="flex-1 min-w-[12rem]">
-                        <label htmlFor="several-group" className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                        <label htmlFor="several-group" className={labelClass}>
                             What the choice is called
                         </label>
                         <input
@@ -170,7 +172,7 @@ export default function AddOptions({
                             value={group}
                             onChange={e => setGroup(e.target.value)}
                             placeholder="e.g. Free drink"
-                            className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+                            className={fieldClass}
                         />
                         <datalist id="several-groups">
                             {(existingGroups || []).map(g => <option key={g} value={g} />)}
@@ -179,7 +181,7 @@ export default function AddOptions({
 
                 </div>
 
-                <p className="text-xs text-gray-500 mt-2">
+                <p className="text-xs text-muted mt-2">
                     The customer gets one of these, so only the most expensive is counted in
                     the cost. Everything added here becomes an option, so the choice needs a
                     name.
@@ -207,7 +209,7 @@ export default function AddOptions({
                         value={categoryId}
                         onChange={e => setCategoryId(e.target.value)}
                         aria-label="Fill the list from"
-                        className="flex-1 min-w-[10rem] border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+                        className={`${fieldClass} flex-1 min-w-[10rem]`}
                     >
                         <option value="">Choose a category...</option>
                         <optgroup label="Menu categories">
@@ -226,7 +228,7 @@ export default function AddOptions({
                         onChange={e => setSearch(e.target.value)}
                         placeholder="Search"
                         aria-label="Search"
-                        className="flex-1 min-w-[9rem] border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+                        className={`${fieldClass} flex-1 min-w-[9rem]`}
                     />
                 </div>
 
@@ -260,7 +262,7 @@ export default function AddOptions({
                                 />
                             </div>
                         ) : (
-                            <p className="text-xs text-gray-500 max-w-xs">
+                            <p className="text-xs text-muted max-w-xs">
                                 These are measured in different units, so set the quantity on
                                 each one.
                             </p>
@@ -296,7 +298,7 @@ export default function AddOptions({
                                         type="button"
                                         onClick={() => toggle(product.id)}
                                         aria-label={`Remove ${product.name}`}
-                                        className="px-2 py-1 rounded-lg border border-border bg-white text-xs text-gray-600 hover:border-gray-400 transition-colors"
+                                        className={rowButton('plain')}
                                     >
                                         Remove
                                     </button>
@@ -370,13 +372,13 @@ export default function AddOptions({
                     list. Offering eight of eleven quietly is how a group ends
                     up missing three options with no reason to go looking. */}
                 {fromProducts && shown.length > 0 && (
-                    <p className="text-xs text-gray-500 mt-3">
+                    <p className="text-xs text-muted mt-3">
                         Every product, so search is the quick way through it. A recipe made
                         in house is here the same as anything bought in.
                     </p>
                 )}
                 {packagingLeftOut > 0 && (
-                    <p className="text-xs text-gray-500 mt-3">
+                    <p className="text-xs text-muted mt-3">
                         Packaging is not included. A salsa sold on its own comes in a dip pot,
                         but going into a dish it does not, so only the salsa is added.
                     </p>

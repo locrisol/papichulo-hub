@@ -3,7 +3,7 @@ import { useConfirm } from '@/context/confirm'
 import { supabase } from '@/lib/supabase'
 import { friendlyError } from '@/lib/errors'
 import { orderFormats } from '@/lib/countUnits'
-import { rowButton, checkbox } from '@/lib/controlStyles'
+import { rowButton, checkbox, labelClass, fieldClass, primaryButton } from '@/lib/controlStyles'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // The pack formats on one supplier price, plus whether loose counting is on.
@@ -167,7 +167,7 @@ export default function PriceCountUnitsEditor({ price, unit, onClose }) {
                         <div key={f.id} className="flex items-center justify-between bg-white border border-border rounded-lg px-3 py-2">
                             <span className="text-sm text-gray-900">
                                 <span className="font-semibold">{f.label}</span>
-                                <span className="text-gray-500"> = {parseFloat(f.factor)} {unit}</span>
+                                <span className="text-muted"> = {parseFloat(f.factor)} {unit}</span>
                             </span>
                             <button
                                 onClick={() => handleDelete(f.id)}
@@ -183,17 +183,17 @@ export default function PriceCountUnitsEditor({ price, unit, onClose }) {
             {/* Add format */}
             <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
                 <div className="flex-1">
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Format name</label>
+                    <label className={labelClass}>Format name</label>
                     <input
                         type="text"
                         value={label}
                         onChange={e => setLabel(e.target.value)}
                         placeholder="e.g. Box"
-                        className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
+                        className={fieldClass}
                     />
                 </div>
                 <div className="flex-1">
-                    <label className="block text-xs font-medium text-gray-500 mb-1">
+                    <label className={labelClass}>
                         {unit} per {label.trim() || 'unit'}
                     </label>
                     <input
@@ -203,13 +203,13 @@ export default function PriceCountUnitsEditor({ price, unit, onClose }) {
                         value={factor}
                         onChange={e => setFactor(e.target.value.replace(/[^0-9.]/g, ''))}
                         placeholder="e.g. 6"
-                        className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
+                        className={fieldClass}
                     />
                 </div>
                 <button
                     onClick={handleAdd}
                     disabled={saving}
-                    className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 disabled:opacity-40 transition-colors"
+                    className={primaryButton()}
                 >
                     Add
                 </button>

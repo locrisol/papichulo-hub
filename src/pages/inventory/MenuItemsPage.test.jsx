@@ -181,3 +181,37 @@ describe('the Allergens column', () => {
         expect(screen.getAllByText('None')).toHaveLength(2)
     })
 })
+
+describe('the margin', () => {
+    const priced = () => tablesFor({
+        product_supplier_prices: [
+            { id: 'pr1', product_id: 'rice', restaurant_id: 'r1', is_preferred: true, price_per_unit: '1.00' },
+            { id: 'pr2', product_id: 'beans', restaurant_id: 'r1', is_preferred: true, price_per_unit: '2.00' },
+        ],
+    })
+
+    // €10 with no VAT, costing €0.40: €9.60 left, which is 96.0% of the net.
+    it('is said as a percent of the net price, to one place, in both layouts', async () => {
+        useTables(priced())
+        renderWithRouter(<MenuItemsPage />)
+        const shown = await screen.findAllByText('(96.0%)')
+        expect(shown).toHaveLength(2)
+        for (const pct of shown) expect(pct.closest('.text-green-700')).not.toBeNull()
+    })
+})
+
+describe('adding a menu item', () => {
+    // Cancel first and the button that does it last, the same as every other
+    // form in the app.
+    it('puts Cancel before the button that creates it', async () => {
+        useTables(tablesFor())
+        const me = userEvent.setup()
+        renderWithRouter(<MenuItemsPage />)
+        await screen.findAllByText('Rice Bowl')
+        await me.click(screen.getByRole('button', { name: '+ Add Menu Item' }))
+
+        const cancel = screen.getByRole('button', { name: 'Cancel' })
+        const create = screen.getByRole('button', { name: 'Create & Edit Components' })
+        expect(cancel.compareDocumentPosition(create) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    })
+})

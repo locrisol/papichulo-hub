@@ -2,7 +2,10 @@ import { useState } from 'react'
 import { useConfirm } from '@/context/confirm'
 import { supabase } from '@/lib/supabase'
 import { friendlyError } from '@/lib/errors'
-import { modalFooter, rowButton, tableHeadRow, secondaryButton, fieldClass, primaryButton } from '@/lib/controlStyles'
+import {
+  modalFooter, rowButton, tableHeadRow, tableHeadCell, secondaryButton, fieldClass, denseField, primaryButton,
+  inactiveBadge,
+} from '@/lib/controlStyles'
 import ArrangeList from '@/components/ui/ArrangeList'
 import Modal from '@/components/ui/Modal'
 import { ModalSectionBar } from '@/components/ui/ModalSection'
@@ -210,9 +213,9 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
                       <span className={`text-sm font-semibold ${c.is_active ? 'text-gray-900' : 'text-muted'}`}>
                         {c.name}
                       </span>
-                      <span className={`text-xs whitespace-nowrap ${c.is_active ? 'text-green-700' : 'text-muted'}`}>
-                        {c.is_active ? 'Active' : 'Inactive'}
-                      </span>
+                      {c.is_active
+                        ? <span className="text-xs whitespace-nowrap text-green-700">Active</span>
+                        : <span className={inactiveBadge}>Inactive</span>}
                     </div>
                     <p className="text-xs text-muted mt-0.5">
                       {c.on_allergen_sheet === false
@@ -243,10 +246,10 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
           <table className="hidden sm:table w-full text-sm mb-6">
             <thead>
               <tr className={tableHeadRow}>
-                <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider">Name</th>
-                <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider w-24">Status</th>
-                <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider w-32">Allergen sheet</th>
-                <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider w-32">Actions</th>
+                <th className={`text-left px-3 py-2 ${tableHeadCell}`}>Name</th>
+                <th className={`text-left px-3 py-2 w-24 ${tableHeadCell}`}>Status</th>
+                <th className={`text-left px-3 py-2 w-32 ${tableHeadCell}`}>Allergen sheet</th>
+                <th className={`text-left px-3 py-2 w-32 ${tableHeadCell}`}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -259,11 +262,14 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
                           type="text"
                           value={editName}
                           onChange={e => setEditName(e.target.value)}
-                          className="w-full border border-border rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+                          className={denseField}
+                          aria-label="Category name"
                         />
                       </td>
-                      <td className={`px-3 py-2 ${c.is_active ? 'text-gray-700' : 'text-muted'}`}>
-                        {c.is_active ? 'Active' : 'Inactive'}
+                      <td className="px-3 py-2">
+                        {c.is_active
+                          ? <span className="text-gray-700">Active</span>
+                          : <span className={inactiveBadge}>Inactive</span>}
                       </td>
                       <td className="px-3 py-2 text-xs text-muted">
                         {c.on_allergen_sheet === false ? 'Hidden' : 'Shown'}
@@ -280,8 +286,10 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
                       <td className={`px-3 py-2 font-medium ${c.is_active ? 'text-gray-900' : 'text-muted'}`}>
                         {c.name}
                       </td>
-                      <td className={`px-3 py-2 text-xs ${c.is_active ? 'text-green-700' : 'text-muted'}`}>
-                        {c.is_active ? 'Active' : 'Inactive'}
+                      <td className="px-3 py-2 text-xs">
+                        {c.is_active
+                          ? <span className="text-green-700">Active</span>
+                          : <span className={inactiveBadge}>Inactive</span>}
                       </td>
                       <td className="px-3 py-2">
                         <button
@@ -318,7 +326,7 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
                   value={newName}
                   onChange={e => setNewName(e.target.value)}
                   placeholder="Category name"
-                  className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+                  className={fieldClass}
                 />
               </div>
 

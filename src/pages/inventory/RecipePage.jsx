@@ -8,13 +8,18 @@ import { useSaveOnce } from '@/components/ui/useSaveOnce'
 import Modal from '@/components/ui/Modal'
 import { friendlyError } from '@/lib/errors'
 import { fmtMoney, fmtUnitCost, namesList } from '@/lib/format'
-import { tableHeadRow, tableCard, card, rowButton, captionClass, fieldClass, pageTitle, primaryButton, badge } from '@/lib/controlStyles'
+import {
+  tableHeadRow, tableHeadCell, tableCard, card, cardHeader, rowButton, captionClass, fieldClass, primaryButton,
+  inactiveBadge,
+} from '@/lib/controlStyles'
 import { useConfirm } from '@/context/confirm'
 import { canBeIngredient } from '@/lib/products'
 import { allergensChanged } from '@/lib/allergensChanged'
 import { numberField } from '@/lib/numberInput'
 import BackButton from '@/components/ui/BackButton'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import Notice from '@/components/ui/Notice'
+import PageHeader from '@/components/ui/PageHeader'
 
 // The recipe behind a MIX, meaning something we make ourselves rather than buy.
 //
@@ -44,7 +49,7 @@ function IngredientName({ ingredient }) {
     <>
       {ingredient.name}
       {ingredient.is_active === false && (
-        <span className={`${badge} ml-2 bg-red-200 text-red-800`}>Inactive</span>
+        <> <span className={inactiveBadge}>Inactive</span></>
       )}
     </>
   )
@@ -371,15 +376,10 @@ export default function RecipePage() {
     <div>
       <BackButton to="/catalogue/products" className="mb-4">Back to products</BackButton>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        <div>
-          <h2 className={pageTitle}>
-            Recipe: {product?.name || '...'}
-          </h2>
-          <p className="text-sm text-gray-500 mt-1">
-            {product ? `${product.section} • ${product.unit} • ` : ''}costs for {activeRestaurant?.name}
-          </p>
-        </div>
+      <PageHeader
+        title={`Recipe: ${product?.name || '...'}`}
+        subtitle={`${product ? `${product.section} · ${product.unit} · ` : ''}costs for ${activeRestaurant?.name ?? ''}`}
+      >
         <button
           onClick={() => { resetForm(); setShowForm(true) }}
           disabled={availableProducts.length === 0}
@@ -387,21 +387,21 @@ export default function RecipePage() {
         >
           + Add Ingredient
         </button>
-      </div>
+      </PageHeader>
 
       {error && (
         <ErrorBanner className="mb-4">{error}</ErrorBanner>
       )}
 
       {product && !product.is_mix && (
-        <div className="bg-amber-50 text-amber-700 text-sm rounded-lg p-3 mb-4">
+        <Notice tone="warn" className="mb-4">
           This product is not marked as a MIX. Recipes only make sense for house-made MIX products. Edit the product and tick the MIX checkbox to make this recipe meaningful.
-        </div>
+        </Notice>
       )}
 
       <div className={`${card} p-6 mb-6`}>
         <h3 className="text-sm font-semibold text-gray-900 mb-3">Batch Yield</h3>
-        <p className="text-xs text-gray-500 mb-3">
+        <p className="text-xs text-muted mb-3">
           How much finished {product?.name || 'product'} one batch of this recipe produces,
           measured in {product?.unit || 'the product unit'}.
         </p>
@@ -424,7 +424,7 @@ export default function RecipePage() {
           <button
             onClick={saveBatchYield}
             disabled={batchYieldSaving}
-            className="w-full sm:w-auto px-4 py-2 bg-accent text-white text-sm font-semibold rounded-lg hover:bg-orange-600 disabled:opacity-50 transition-colors"
+            className={`w-full sm:w-auto ${primaryButton()}`}
           >
             {batchYieldSaving ? 'Saving...' : 'Save batch yield'}
           </button>
@@ -437,27 +437,29 @@ export default function RecipePage() {
       </div>
 
       {showForm && !editingLine && (
-        <div className={`${card} p-6 mb-6`}>
-          <h3 className="text-sm font-semibold text-gray-900 mb-4">New Ingredient</h3>
-          <RecipeIngredientForm
-            problem={formProblem}
-            formData={formData}
-            onChange={handleFieldChange}
-            onSubmit={handleSave}
-            onCancel={resetForm}
-            submitLabel="Add Ingredient"
-            saving={saving}
-            errors={errors}
-            availableProducts={availableProducts}
-          />
+        <div className={`${card} overflow-hidden mb-6`}>
+          <h3 className={cardHeader}>New Ingredient</h3>
+          <div className="p-6">
+            <RecipeIngredientForm
+              problem={formProblem}
+              formData={formData}
+              onChange={handleFieldChange}
+              onSubmit={handleSave}
+              onCancel={resetForm}
+              submitLabel="Add Ingredient"
+              saving={saving}
+              errors={errors}
+              availableProducts={availableProducts}
+            />
+          </div>
         </div>
       )}
 
       {loading ? (
-        <div className="text-sm text-gray-500">Loading recipe...</div>
+        <div className="text-sm text-muted">Loading recipe...</div>
       ) : recipeLines.filter(line => line.mix_product_id === id).length === 0 ? (
         <div className={`${card} p-8 text-center`}>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-muted">
             No ingredients yet. Click "+ Add Ingredient" to start building the recipe.
           </p>
         </div>
@@ -486,7 +488,7 @@ export default function RecipePage() {
                     {parseFloat(line.quantity)} {ingredient?.unit || ''}
                     {unitCost !== null
                       ? ` at ${fmtUnitCost(unitCost)} / ${ingredient?.unit}`
-                      : <span className="text-amber-600"> · no cost available</span>}
+                      : <span className="text-amber-700"> · no cost available</span>}
                   </p>
                   {line.notes && <p className="text-xs text-muted mt-0.5">{line.notes}</p>}
                   <div className="flex flex-wrap gap-3 mt-2 pt-2 border-t border-border">
@@ -509,12 +511,12 @@ export default function RecipePage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className={tableHeadRow}>
-                  <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Ingredient</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Quantity</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Unit Cost</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Line Cost</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Notes</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Actions</th>
+                  <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Ingredient</th>
+                  <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Quantity</th>
+                  <th className={`text-right px-4 py-3 ${tableHeadCell}`}>Unit Cost</th>
+                  <th className={`text-right px-4 py-3 ${tableHeadCell}`}>Line Cost</th>
+                  <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Notes</th>
+                  <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -531,13 +533,13 @@ export default function RecipePage() {
                         <td className="px-4 py-3 text-gray-700">
                           {parseFloat(line.quantity)} {ingredient?.unit || ''}
                         </td>
-                        <td className="px-4 py-3 text-gray-500">
-                          {unitCost !== null ? `${fmtUnitCost(unitCost)} / ${ingredient?.unit}` : <span className="text-amber-600">No cost available</span>}
+                        <td className="px-4 py-3 text-muted text-right tabular-nums">
+                          {unitCost !== null ? `${fmtUnitCost(unitCost)} / ${ingredient?.unit}` : <span className="text-amber-700">No cost available</span>}
                         </td>
-                        <td className="px-4 py-3 font-medium text-gray-900">
+                        <td className="px-4 py-3 font-medium text-gray-900 text-right tabular-nums">
                           {lineCost !== null ? `${fmtMoney(lineCost)}` : '—'}
                         </td>
-                        <td className="px-4 py-3 text-gray-500">{line.notes || '—'}</td>
+                        <td className="px-4 py-3 text-muted">{line.notes || '—'}</td>
                         <td className="px-4 py-3">
                           <div className="flex gap-3">
                             <button
@@ -590,7 +592,7 @@ export default function RecipePage() {
                   <span className="font-semibold text-gray-900 tabular-nums whitespace-nowrap">
                     {summary.batchYield
                       ? `${summary.batchYield} ${product?.unit}`
-                      : <span className="text-amber-600">Not set</span>}
+                      : <span className="text-amber-700">Not set</span>}
                   </span>
                 </div>
               </div>

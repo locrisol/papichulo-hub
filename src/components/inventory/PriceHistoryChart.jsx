@@ -119,7 +119,7 @@ export default function PriceHistoryChart({ series, unit = 'unit', height = 220 
                                 type="button"
                                 onClick={() => { setRange(r.key); setAt(null) }}
                                 aria-pressed={chosen.key === r.key}
-                                className={`${segmentButton(chosen.key === r.key)} normal-case`}
+                                className={segmentButton(chosen.key === r.key, true)}
                             >
                                 <span className="sm:hidden">{r.short}</span>
                                 <span className="hidden sm:inline">{r.label}</span>

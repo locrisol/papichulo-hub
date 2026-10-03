@@ -404,3 +404,38 @@ describe('the cost of a dish with a deactivated product in it', () => {
         expect(screen.queryByText(/is deactivated/)).toBeNull()
     })
 })
+
+// The marks after a component's name. They were loose spans with a margin
+// each, so a two word one could break in half across a line on a phone.
+describe('the marks beside a component', () => {
+    it('keeps each one whole, and all of them together after the name', () => {
+        show()
+        const mixes = screen.getAllByText('MIX')
+        expect(mixes).toHaveLength(4) // two sauces, each in the card and the table
+        for (const mark of mixes) {
+            expect(mark).toHaveClass('whitespace-nowrap')
+            expect(mark.className).not.toMatch(/\bm[lrx]-/)
+            expect(within(mark.parentElement).getByText('Sauces')).toBeInTheDocument()
+        }
+    })
+
+    it('draws nothing at all for a plain line', () => {
+        show({ choiceGroup: false, rows: [{ id: 'c2', product_id: 'p2', quantity: '0.02' }] })
+        expect(screen.getAllByText('Habanero Cheese Mayo')[0].querySelector('span')).toBeNull()
+    })
+})
+
+describe('the component form', () => {
+    // Done first and the button that does it last, the same as every other
+    // form in the app.
+    it('puts Done before Add Component', async () => {
+        useTables(tablesFor())
+        const me = userEvent.setup()
+        showPage()
+        await me.click(await screen.findByRole('button', { name: '+ Add Component' }))
+
+        const done = screen.getByRole('button', { name: 'Done' })
+        const add = screen.getByRole('button', { name: 'Add Component' })
+        expect(done.compareDocumentPosition(add) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    })
+})
