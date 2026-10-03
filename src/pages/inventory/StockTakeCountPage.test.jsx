@@ -76,10 +76,11 @@ function open() {
     return userEvent.setup()
 }
 
-// Open the product, type into one of its boxes and press Add.
+// Open the product, type into one of its boxes and press Add. A box is named
+// by its label, which goes on to say the unit: "Loose (KG)".
 async function count(clicker, name, box, quantity) {
     await clicker.click(await screen.findByText(name))
-    await clicker.type(screen.getByText(box).parentElement.querySelector('input'), quantity)
+    await clicker.type(screen.getByLabelText(new RegExp(`^${box} `)), quantity)
     await clicker.click(screen.getByRole('button', { name: 'Add' }))
     await waitFor(() => expect(saved).toHaveLength(1))
     return saved[0]
@@ -100,8 +101,8 @@ describe('a super admin counting one restaurant', () => {
         setUp({ prices: [AT_POINT_CAMPUS, AT_DUN_LAOGHAIRE] })
         const clicker = open()
         await clicker.click(await screen.findByText('Cheddar'))
-        expect(screen.getByText('Case of 12')).toBeInTheDocument()
-        expect(screen.queryByText('Case of 6')).not.toBeInTheDocument()
+        expect(screen.getByLabelText(/^Case of 12 /)).toBeInTheDocument()
+        expect(screen.queryByLabelText(/^Case of 6 /)).not.toBeInTheDocument()
     })
 })
 
@@ -224,7 +225,7 @@ describe('a refresh that lands while a line is being saved', () => {
         setUp({ prices: [AT_POINT_CAMPUS], hold: true })
         const clicker = open()
         await clicker.click(await screen.findByText('Cheddar'))
-        await clicker.type(screen.getByText('Loose').parentElement.querySelector('input'), '2')
+        await clicker.type(screen.getByLabelText(/^Loose /), '2')
         await clicker.click(screen.getByRole('button', { name: 'Add' }))
         await waitFor(() => expect(releases).toHaveLength(1))
 
@@ -260,4 +261,29 @@ describe('a read that fails', () => {
             expect(screen.queryByText('Cheddar')).not.toBeInTheDocument()
         },
     )
+})
+
+describe('the bar over the count', () => {
+    beforeEach(() => {
+        user = { id: 'u2', role: 'employee', full_name: 'Maria' }
+    })
+
+    // AppLayout already gives the page its h1.
+    it('names the count in an h2 and has a way back to the list', async () => {
+        setUp({ prices: [AT_POINT_CAMPUS] })
+        open()
+        expect(await screen.findByRole('heading', { level: 2, name: 'End of September' })).toBeInTheDocument()
+        expect(screen.queryByRole('heading', { level: 1 })).toBeNull()
+        expect(screen.getByRole('button', { name: 'Back to stock takes' })).toBeInTheDocument()
+    })
+
+    // The colour alone says nothing to a screen reader.
+    it('says whether the uncounted filter is on', async () => {
+        setUp({ prices: [AT_POINT_CAMPUS] })
+        const clicker = open()
+        const filter = await screen.findByRole('button', { name: 'Show uncounted only' })
+        expect(filter).toHaveAttribute('aria-pressed', 'false')
+        await clicker.click(filter)
+        expect(screen.getByRole('button', { name: 'Showing uncounted' })).toHaveAttribute('aria-pressed', 'true')
+    })
 })
