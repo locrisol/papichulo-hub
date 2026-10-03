@@ -516,9 +516,25 @@ export function canDetach(claim) {
 // were meant. It used to mean Take it back and logging it again. Only while
 // nothing has come back on it, the same as canDetach, and only where its money
 // comes from its count: a shortage made by a fill in has money and no count.
+// Once its week's report has gone out, only its words (amountFixed).
 export function canEditClaim(claim) {
     return claim?.status === 'open' && num(claim.credited_amount) === 0 && !claim.credit_invoice_id
         && (!!claim.invoice_line_id || claim.amount == null)
+}
+
+// **Once its week's report has gone out, a claim on a line keeps its money.**
+// His answer of 3 October. That report took off what the claim was then, and
+// a change after it would land in no report at all. Its words and its note can
+// still change; what was wrong and how many are what the money comes from, so
+// they stay. `sent` is sentWeeks' list.
+export function amountFixed(claim, sent) {
+    return !!claim?.invoice_line_id && claim.amount != null && (sent || []).includes(claim.counted_week)
+}
+
+// The form as it saves for one whose money is fixed: the words and the note
+// changed, the reason and the count as they were.
+export function wordsOnly(claim, form) {
+    return { ...form, kind: claim.kind, cases: claim.cases, units: claim.units }
 }
 
 // The door form, filled in with what the claim says now.
