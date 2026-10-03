@@ -76,7 +76,7 @@ export default function SalesTendersModal({ onClose, onChange }) {
     e.preventDefault()
     const label = newLabel.trim()
     if (!label) {
-      setError('Give the row a name')
+      setError('Enter a name')
       return
     }
 
@@ -99,7 +99,7 @@ export default function SalesTendersModal({ onClose, onChange }) {
       // which is worth saying, because reactivating it keeps its history and
       // adding a new one under a different name would not.
       setError(e1.code === '23505'
-        ? 'There is already a row with that name. If it is retired, reactivate it instead of adding it again, so its old figures stay with it.'
+        ? 'There is already a line with that name. If it is retired, bring it back instead of adding it again, so its old figures stay with it.'
         : friendlyError(e1))
       return
     }
@@ -143,7 +143,7 @@ export default function SalesTendersModal({ onClose, onChange }) {
   async function saveEdit(t) {
     const label = editLabel.trim()
     if (!label) {
-      setError('Give the row a name')
+      setError('Enter a name')
       return
     }
 
@@ -171,7 +171,7 @@ export default function SalesTendersModal({ onClose, onChange }) {
         title: `Retire ${t.label}?`,
         message: 'It stops appearing on new weeks and stops counting towards the reconciliation. Weeks '
           + 'already entered still show it with whatever was typed.',
-        confirmLabel: 'Retire it',
+        confirmLabel: 'Retire',
         tone: 'danger',
       })
       if (!ok) return
@@ -262,9 +262,9 @@ export default function SalesTendersModal({ onClose, onChange }) {
   }
 
   return (
-    <Modal title="Till receipt rows" onClose={onClose} width="max-w-3xl">
+    <Modal title="Till receipt lines" onClose={onClose} width="max-w-3xl">
         <p className="px-6 pt-4 text-xs text-muted">
-          The rows on the sales screens for {activeRestaurant?.name}, in the order the till prints them. Gross and
+          The lines on the sales screens for {activeRestaurant?.name}, in the order the till prints them. Gross and
           net sales are always at the top and are not in this list.
         </p>
 
@@ -277,14 +277,14 @@ export default function SalesTendersModal({ onClose, onChange }) {
               that is deleted takes its history with it; a retired one keeps
               showing on the weeks it was actually used. */}
           <p className="text-xs text-muted mb-4">
-            Retiring a row takes it off new days but leaves it on every week that already has figures for it, so an old
-            week still shows the till as it was. Renaming a row keeps everything entered under it.
+            Retiring a line takes it off new days but leaves it on every week that already has figures for it, so an old
+            week still shows the till as it was. Renaming a line keeps everything entered under it.
           </p>
 
           {loading ? (
             <p className="text-sm text-muted">Loading...</p>
           ) : ordered.length === 0 ? (
-            <p className="text-sm text-muted italic">No rows yet. Add the first one below.</p>
+            <p className="text-sm text-muted italic">No lines yet. Add the first one below.</p>
           ) : (
             <>
             {/* Arranging is a button rather than arrows on every row. This is
@@ -312,7 +312,7 @@ export default function SalesTendersModal({ onClose, onChange }) {
                         value={editLabel}
                         onChange={e => setEditLabel(e.target.value)}
                         className={fieldClass}
-                        aria-label="Row name"
+                        aria-label="Line name"
                       />
                       <p className={hintClass}>
                         Stored as {t.key}, which does not change. Every figure already entered stays with it.
@@ -358,7 +358,7 @@ export default function SalesTendersModal({ onClose, onChange }) {
               <table className="w-full text-sm">
                 <thead>
                   <tr className={tableHeadRow}>
-                    <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider">Row</th>
+                    <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider">Line</th>
                     <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider">Status</th>
                     <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider">Actions</th>
                   </tr>
@@ -371,7 +371,7 @@ export default function SalesTendersModal({ onClose, onChange }) {
 
           <form onSubmit={handleAdd} className="mt-4 flex flex-wrap items-end gap-2">
             <div className="flex-1 min-w-[200px]">
-              <ModalSectionBar title="Add a row" />
+              <ModalSectionBar title="Add a line" />
               <input
                 type="text"
                 value={newLabel}
@@ -400,7 +400,7 @@ export default function SalesTendersModal({ onClose, onChange }) {
 
         {arranging && (
           <ArrangeList
-            title="Arrange the till rows"
+            title="Arrange the till receipt lines"
             note="This is the order they appear in on the weekly sales grid."
             items={ordered}
             nameOf={t => t.label}

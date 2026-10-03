@@ -141,13 +141,13 @@ export function cityProblem(pairing) {
     if (pairing?.relation !== 'city') return ''
 
     const capacity = figure(pairing?.place?.capacity)
-    if (capacity === null) return 'waiting on how many it holds'
+    if (capacity === null) return 'needs how many people it holds'
     if (capacity < CITY_CAPACITY) {
-        return `holds ${capacity.toLocaleString('en-IE')}, under the rule`
+        return `holds ${capacity.toLocaleString('en-IE')}, too small to count`
     }
 
     const km = figure(pairing?.distance_km)
-    if (km !== null && km > CITY_RADIUS_KM) return `${km} km away, past the rule`
+    if (km !== null && km > CITY_RADIUS_KM) return `${km} km away, too far to count`
     return ''
 }
 
@@ -682,7 +682,7 @@ export function foundWords(row, today) {
 
     const from = hostOf(row?.event?.source_url) || hostOf(row?.place?.page_url)
     const when = sinceWords(row?.event?.found_at, today)
-    if (from) bits.push(when ? `read from ${from} ${when}` : `read from ${from}`)
+    if (from) bits.push(when ? `found on ${from} ${when}` : `found on ${from}`)
 
     return bits.filter(Boolean).join(' · ')
 }
@@ -822,9 +822,9 @@ export function suggest(km, capacity) {
 // Why a place found by searching is not being offered, in a few words.
 export function pastWalking(km, capacity) {
     const minutes = walkMinutesFor(km)
-    if (minutes === null) return 'nowhere near'
+    if (minutes === null) return 'distance not known'
     if (minutes <= WALKABLE_MINUTES) return ''
-    if (Number(capacity) >= CITY_CAPACITY) return `${minutes} minutes, big enough for the city rule`
+    if (Number(capacity) >= CITY_CAPACITY) return `${minutes} minutes, big enough to count`
     return `${minutes} minutes, past walking`
 }
 

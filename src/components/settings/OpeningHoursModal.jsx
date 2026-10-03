@@ -141,7 +141,7 @@ export default function OpeningHoursModal({ onClose }) {
                                 type="button"
                                 onClick={() => { set(i, 'open', ''); set(i, 'close', '') }}
                                 className={removeButton}
-                                aria-label={`Closed on ${day}`}
+                                aria-label={`Mark ${day} as closed`}
                                 title="Not open this day"
                             >
                                 ×
@@ -162,7 +162,7 @@ export default function OpeningHoursModal({ onClose }) {
 
                 <ModalSection
                     title="Bank holidays"
-                    description="One setting for all of them, since they open the same here. Tick a day as a bank holiday on the roster and it uses these instead of its usual hours. Leave empty to treat them like any other day."
+                    description="One setting for all of them. Every bank holiday uses these hours automatically, and so does any other day you tick as a bank holiday on the roster. Leave empty to use the usual hours."
                 >
                     <div className="flex items-center gap-2">
                         <TimeField

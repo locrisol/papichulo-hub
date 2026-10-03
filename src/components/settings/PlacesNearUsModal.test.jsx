@@ -64,7 +64,7 @@ async function takeOff() {
     render(<PlacesNearUsModal onClose={() => {}} />)
     const user = userEvent.setup()
     await user.click(await screen.findByRole('button', { name: /3Arena/ }))
-    await user.click(screen.getByRole('button', { name: 'Take it off the list' }))
+    await user.click(screen.getByRole('button', { name: 'Remove place' }))
 }
 
 describe('taking a place off the list', () => {
@@ -114,13 +114,13 @@ describe('watching a venue from the search', () => {
         render(<PlacesNearUsModal onClose={() => {}} />)
         const user = userEvent.setup()
         await user.type(await screen.findByLabelText(/address, or where it is/), '53.3478, -6.2285')
-        await user.click(screen.getByRole('button', { name: 'Look' }))
+        await user.click(screen.getByRole('button', { name: 'Search' }))
         return user
     }
 
     async function watch(candidate) {
         const user = await look(candidate)
-        await user.click(await screen.findByRole('button', { name: 'Watch it' }))
+        await user.click(await screen.findByRole('button', { name: 'Add' }))
     }
 
     const updates = () => made.filter(m => m.table === 'places').flatMap(m => m.q.update.mock.calls.map(c => c[0]))
@@ -136,7 +136,7 @@ describe('watching a venue from the search', () => {
     it('says so before the button is pressed', async () => {
         await look(AUDITORIUM)
         expect(await screen.findByText(/Looks like Convention Centre Dublin, which you already watch/))
-            .toHaveTextContent('Watching it adds a second place.')
+            .toHaveTextContent('Adding it makes a second place.')
     })
 
     // The case filling in was built for: the same building, on the list with
@@ -144,7 +144,7 @@ describe('watching a venue from the search', () => {
     it('says when watching it fills in the place already there', async () => {
         const pageOnly = { ...CCD, ticketmaster_venue_id: null }
         await look({ ...AUDITORIUM, ticketmaster_venue_id: 'A', name: 'The Convention Centre Dublin' }, pageOnly)
-        expect(await screen.findByText(/Watching it adds Ticketmaster to Convention Centre Dublin/))
+        expect(await screen.findByText(/This adds Ticketmaster to Convention Centre Dublin/))
             .toBeInTheDocument()
     })
 
@@ -155,7 +155,7 @@ describe('watching a venue from the search', () => {
         const theirs = { id: 'p6', name: 'Convention Centre Dublin', ticketmaster_venue_id: null }
         await look({ ...AUDITORIUM, ticketmaster_venue_id: 'A', name: 'The Convention Centre Dublin' }, ARENA, [ARENA, theirs])
         expect(await screen.findByText(
-            'Watching it adds Ticketmaster to Convention Centre Dublin, which is already in the Hub.',
+            'This adds Ticketmaster to Convention Centre Dublin, which is already in the Hub.',
         )).toBeInTheDocument()
     })
 })

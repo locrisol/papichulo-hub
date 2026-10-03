@@ -93,17 +93,17 @@ describe('BreakRulesModal', () => {
 
     it('shows what the ladder gives a real shift', () => {
         render(<BreakRulesModal onClose={() => {}} />)
-        expect(screen.getByText('What that gives')).toBeInTheDocument()
+        expect(screen.getByText('Examples')).toBeInTheDocument()
     })
 
     it('adds and removes a rung', async () => {
         render(<BreakRulesModal onClose={() => {}} />)
         expect(rungs()).toHaveLength(3)
 
-        await userEvent.click(screen.getByRole('button', { name: /add a rung/i }))
+        await userEvent.click(screen.getByRole('button', { name: /add rule/i }))
         expect(rungs()).toHaveLength(4)
 
-        await userEvent.click(screen.getAllByRole('button', { name: 'Remove this rung' })[0])
+        await userEvent.click(screen.getAllByRole('button', { name: 'Remove this rule' })[0])
         expect(rungs()).toHaveLength(3)
     })
 
@@ -115,7 +115,7 @@ describe('BreakRulesModal', () => {
         for (const box of screen.getAllByLabelText('Hours')) await userEvent.clear(box)
 
         expect(screen.getByRole('button', { name: /^save$/i })).toBeDisabled()
-        expect(screen.getByText(/at least one rung/i)).toBeInTheDocument()
+        expect(screen.getByText(/at least one rule/i)).toBeInTheDocument()
     })
 
     it('will not save two rungs that say the same thing', async () => {
@@ -125,7 +125,7 @@ describe('BreakRulesModal', () => {
         await userEvent.clear(hours[1])
         await userEvent.type(hours[1], '8')
 
-        expect(screen.getByText(/never be reached/i)).toBeInTheDocument()
+        expect(screen.getByText(/apply to the same shifts/i)).toBeInTheDocument()
         expect(screen.getByRole('button', { name: /^save$/i })).toBeDisabled()
     })
 
