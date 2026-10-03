@@ -46,6 +46,7 @@ import FeedTrouble from '@/components/nearby/FeedTrouble'
 import { atRestaurant, canChangeEntry } from '@/lib/diary'
 import DiaryDialog from '@/components/diary/DiaryDialog'
 import DiaryEntryModal from '@/components/diary/DiaryEntryModal'
+import { useRecountBadges } from '@/context/badges'
 
 // Building the week.
 //
@@ -56,6 +57,7 @@ import DiaryEntryModal from '@/components/diary/DiaryEntryModal'
 // A week is a draft until it is published, and publishing is a week at a time,
 // never a shift on its own. Half a roster going out is worse than none.
 export default function RosterPage() {
+    const recountBadges = useRecountBadges()
     const { activeRestaurant } = useRestaurant()
     const { user } = useAuth()
     const confirm = useConfirm()
@@ -197,6 +199,9 @@ export default function RosterPage() {
     // genuinely nothing to look at. Everything after it swaps the data
     // underneath what is already on screen.
     async function load({ quiet = false } = {}) {
+        // A quiet load follows something done here, which the sidebar's
+        // Roster count may have to follow too.
+        if (quiet) recountBadges()
         if (!quiet) setLoading(true)
         setError('')
 
@@ -582,6 +587,7 @@ export default function RosterPage() {
         // A no is worth as much as a yes here. Two people agreed something
         // between them and are both waiting to find out whether it counts.
         emailTheShiftDecision(request.id)
+        recountBadges()
         loadRequests(shifts)
     }
 

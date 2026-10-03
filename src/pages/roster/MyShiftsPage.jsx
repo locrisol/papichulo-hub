@@ -33,6 +33,7 @@ import PresenceGrid from '@/components/roster/PresenceGrid'
 import ShiftRequestDialog from '@/components/roster/ShiftRequestDialog'
 import TimeOffRequestDialog from '@/components/roster/TimeOffRequestDialog'
 import TimeOffCard from '@/components/roster/TimeOffCard'
+import { useRecountBadges } from '@/context/badges'
 
 // The staff side of the roster. One page.
 //
@@ -90,6 +91,7 @@ function WhatIsOn({ diary, nearby, dates }) {
 }
 
 export default function MyShiftsPage() {
+    const recountBadges = useRecountBadges()
     const { user } = useAuth()
 
     const [me, setMe] = useState(null)
@@ -438,8 +440,10 @@ export default function MyShiftsPage() {
         return !!when && when >= today
     })
 
+    // After an answer: the sidebar's My shifts count follows it.
     async function reload() {
         await loadAsks(shifts)
+        recountBadges()
     }
 
     async function reloadTimeOff() {

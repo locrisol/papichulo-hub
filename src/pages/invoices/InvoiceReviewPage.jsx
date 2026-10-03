@@ -23,6 +23,7 @@ import Notice from '@/components/ui/Notice'
 import PageHeader from '@/components/ui/PageHeader'
 import WarningUntilSeen from '@/components/ui/WarningUntilSeen'
 import MatchLineModal from '@/components/invoices/MatchLineModal'
+import { useRecountBadges } from '@/context/badges'
 
 // What the week's invoices want somebody to decide.
 //
@@ -68,6 +69,7 @@ const PILE_CARDS = [
 ]
 
 export default function InvoiceReviewPage() {
+    const recountBadges = useRecountBadges()
     const { user } = useAuth()
     const { activeRestaurant } = useRestaurant()
     const confirm = useConfirm()
@@ -84,6 +86,8 @@ export default function InvoiceReviewPage() {
     const [busy, setBusy] = useState('')
     const [matching, setMatching] = useState(null)
     const [refresh, setRefresh] = useState(0)
+    // A refresh follows something done here that the sidebar may count.
+    useEffect(() => { if (refresh) recountBadges() }, [refresh, recountBadges])
 
     // Said once. Left in the history, a reload would say it again.
     useEffect(() => {

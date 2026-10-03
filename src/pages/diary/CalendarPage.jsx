@@ -28,6 +28,7 @@ import DiaryDialog from '@/components/diary/DiaryDialog'
 import DiaryEntryModal from '@/components/diary/DiaryEntryModal'
 import WeekExtrasModal from '@/components/roster/WeekExtrasModal'
 import EventModal from '@/components/forecast/EventModal'
+import { useRecountBadges } from '@/context/badges'
 
 // One screen for what is coming up.
 //
@@ -57,6 +58,7 @@ const OFF_BY_DEFAULT = { month: [], list: [], week: [] }
 const WIDE = '(min-width: 1024px)'
 
 export default function CalendarPage() {
+    const recountBadges = useRecountBadges()
     const { user } = useAuth()
     const { activeRestaurant } = useRestaurant()
     const today = todayISO()
@@ -103,6 +105,8 @@ export default function CalendarPage() {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
     const [refresh, setRefresh] = useState(0)
+    // A refresh follows something done here that the sidebar may count.
+    useEffect(() => { if (refresh) recountBadges() }, [refresh, recountBadges])
 
     const [editing, setEditing] = useState(null)
     const [viewing, setViewing] = useState(null)
@@ -522,6 +526,7 @@ export default function CalendarPage() {
         // Settled, so it leaves the waiting list whether or not the calendar
         // happens to be drawing it.
         setPending(was => was.filter(e => e.id !== event.id))
+        recountBadges()
     }
 
     // The jump says what pressing it does, and only says where you are when

@@ -24,6 +24,7 @@ import ErrorBanner from '@/components/ui/ErrorBanner'
 import Notice from '@/components/ui/Notice'
 import PageHeader from '@/components/ui/PageHeader'
 import DoorClaimModal from '@/components/invoices/DoorClaimModal'
+import { useRecountBadges } from '@/context/badges'
 
 // What was wrong with a delivery, and what has come back.
 //
@@ -81,6 +82,7 @@ function fixedSaid(claim) {
 }
 
 export default function ClaimsPage() {
+    const recountBadges = useRecountBadges()
     const { user } = useAuth()
     const { activeRestaurant } = useRestaurant()
     const restaurantId = activeRestaurant?.id
@@ -98,6 +100,8 @@ export default function ClaimsPage() {
     const [logging, setLogging] = useState(false)
     const [busy, setBusy] = useState('')
     const [refresh, setRefresh] = useState(0)
+    // A refresh follows something done here that the sidebar may count.
+    useEffect(() => { if (refresh) recountBadges() }, [refresh, recountBadges])
 
     useEffect(() => {
         if (!restaurantId) return
