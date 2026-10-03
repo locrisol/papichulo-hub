@@ -3631,6 +3631,15 @@ end $$;
 
 comment on function public.my_badges(uuid) is 'Everything the sidebar badges count for the person asking, at one restaurant, in one call. Security definer, so it repeats the policies'' checks: nothing for a switched off account, and only their own shift asks for anybody looking at a restaurant that is not theirs. Rows go out as they are where a page already has the rule, so the badge and the page agree.';
 
+create or replace function public.user_emails() returns table (id uuid, email text)
+    language sql stable security definer set search_path to 'public', 'pg_temp' as $$
+    select u.id, u.email::text
+      from auth.users u
+     where public.get_my_role() = 'super_admin'
+$$;
+
+comment on function public.user_emails() is 'Every account''s email address, for the Users page. Security definer because the addresses live in auth.users; only an active super admin gets rows, everybody else gets none.';
+
 COMMENT ON FUNCTION "public"."allergen_sheet_printed"("restaurant" "uuid") IS 'Stamps now() as when the allergen sheet was last printed for a restaurant. Managers and owners for their own restaurant, the super admin for any. Returns the stamp.';
 COMMENT ON FUNCTION "public"."allergens_changed_at"() IS 'When anything on the allergen sheet last changed, from the change log: allergens, dishes, what is in them, their categories, recipes, and a product renamed, switched on or off, made a MIX or moved section. Not prices, VAT, quantities or notes. Null when the log holds no such change.';
 COMMENT ON FUNCTION "public"."answer_time_off"("request_id" "uuid", "answer" "text", "clear_shift_ids" "uuid"[]) IS 'Approves or declines a request for time off that is still waiting, and on approval takes off the roster those of the given shifts that are theirs and inside the dates, recording them in cleared_shifts. All in one transaction. Managers only, under their own row rules. Returns the answered row.';
@@ -3675,6 +3684,8 @@ revoke all on function "public"."finish_checklist_round"("round" "uuid") from pu
 grant execute on function "public"."finish_checklist_round"("round" "uuid") to authenticated, service_role;
 revoke all on function "public"."my_badges"("restaurant" "uuid") from public, anon;
 grant execute on function "public"."my_badges"("restaurant" "uuid") to authenticated, service_role;
+revoke all on function "public"."user_emails"() from public, anon;
+grant execute on function "public"."user_emails"() to authenticated, service_role;
 revoke all on function "public"."handle_delete_user"() from public, anon, authenticated, service_role;
 grant execute on function "public"."handle_delete_user"() to service_role;
 revoke all on function "public"."handle_new_user"() from public, anon, authenticated, service_role;

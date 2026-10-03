@@ -1251,6 +1251,27 @@ maybe('what each role can see and do', () => {
         })
     })
 
+    // The addresses live in auth.users, so Users reads them through a
+    // security definer function that answers the super admin and nobody else.
+    describe('the account emails', () => {
+        it('are read by the super admin only', async () => {
+            const { data, error } = await superadmin.rpc('user_emails')
+            expect(error).toBeNull()
+            expect(data.length).toBeGreaterThan(0)
+            expect(data[0]).toHaveProperty('email')
+        })
+
+        it('come back empty for everybody else', async () => {
+            for (const client of [manager, owner, employee]) {
+                const { data, error } = await client.rpc('user_emails')
+                expect(error).toBeNull()
+                expect(data).toEqual([])
+            }
+            const { error } = await anon.rpc('user_emails')
+            expect(error, 'user_emails answered nobody').not.toBeNull()
+        })
+    })
+
     // Since 3 October. Security definer, so it repeats the policies' checks itself.
     describe('the sidebar badges', () => {
         // And the checklists, which everybody at the restaurant ticks.

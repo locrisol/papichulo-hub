@@ -172,6 +172,35 @@ describe('adding an account', () => {
         expect(await screen.findByText(/Invite sent to maria@papichulo.ie/)).toBeInTheDocument()
     })
 
+    // The same dialog, on an account that exists, with the address the
+    // database gave for it. Everything goes through the function, because the
+    // email is the one field the app cannot write.
+    it('edits an account through the function, with its email filled in', async () => {
+        const rpc = db.rpc
+        db.rpc = vi.fn(() => Promise.resolve({ data: [{ id: 'u1', email: 'ana@papichulo.ie' }], error: null }))
+        db.functions.invoke = vi.fn(() => Promise.resolve({ data: { id: 'u1', emailChanged: true }, error: null }))
+        await show()
+        expect(screen.getAllByText('ana@papichulo.ie').length).toBeGreaterThan(0)
+        const row = screen.getAllByText('Ana').map(el => el.closest('tr')).find(Boolean)
+        await userEvent.click(within(row).getByRole('button', { name: 'Edit' }))
+        expect(screen.getByRole('dialog', { name: 'Edit account' })).toBeInTheDocument()
+        expect(screen.getByLabelText('Restaurant')).toHaveValue('dl')
+        expect(screen.getByLabelText('Email address')).toHaveValue('ana@papichulo.ie')
+        await userEvent.clear(screen.getByLabelText('Email address'))
+        await userEvent.type(screen.getByLabelText('Email address'), 'ana.silva@papichulo.ie')
+        await userEvent.selectOptions(screen.getByLabelText('Role'), 'store_manager')
+        await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+        await waitFor(() => expect(db.functions.invoke).toHaveBeenCalledWith('invite-user', {
+            body: {
+                action: 'update', id: 'u1', fullName: 'Ana', email: 'ana.silva@papichulo.ie', role: 'store_manager',
+                restaurantId: 'dl', employeeId: null,
+            },
+        }))
+        expect(await screen.findByText(/Ana saved. They sign in with ana.silva@papichulo.ie/)).toBeInTheDocument()
+        db.rpc = rpc
+    })
+
     it('keeps the dialog open and says why when it did not go', async () => {
         db.functions.invoke = vi.fn(() => Promise.resolve({ data: { error: 'That email already has an account.' }, error: null }))
         await show()

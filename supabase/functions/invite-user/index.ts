@@ -1,4 +1,5 @@
-// Gives somebody an account: Add account on Users, super admin only.
+// Gives somebody an account, Add account on Users, and changes one, Edit on
+// the same page. Super admin only.
 //
 // Supabase sends the invite, an email with a link to choose their own
 // password, so no password ever passes through a manager, a chat or this
@@ -14,7 +15,7 @@
 // Deploy with JWT verification on. The URL, the anon key and the service key
 // are given to every function; APP_URL is the secret the mail functions use.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { callerProblem, cleanEmail, inviteProblem, linkSite } from './invite.js'
+import { callerProblem, cleanEmail, inviteProblem, updateProblem, linkSite } from './invite.js'
 
 function serviceKey() {
     for (const name of ['SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SECRET_KEY', 'SB_SECRET_KEY']) {
@@ -36,6 +37,77 @@ const json = (body: unknown, status = 200) =>
         status,
         headers: { ...CORS, 'Content-Type': 'application/json' },
     })
+
+// Changing an account from Users: name, email, role, restaurant and the
+// person on the team it is linked to. The email is the one thing the app
+// cannot write itself, so the whole change comes through here and is checked
+// once (updateProblem). The email goes first, because an address already
+// taken is the likeliest refusal and nothing has changed yet when it comes.
+async function changeAccount(admin: any, callerId: string, body: any) {
+    const id = String(body.id || '')
+    const { data: current } = id
+        ? await admin.from('users').select('id, role, restaurant_id').eq('id', id).maybeSingle()
+        : { data: null }
+    let employee = null
+    if (body.employeeId) {
+        const { data } = await admin
+            .from('employees').select('id, restaurant_id, user_id')
+            .eq('id', body.employeeId).maybeSingle()
+        employee = data
+    }
+    const wrong = updateProblem(body, current, employee, callerId)
+    if (wrong) return json({ error: wrong }, 400)
+
+    const email = cleanEmail(body.email)
+    const { data: account, error: readError } = await admin.auth.admin.getUserById(id)
+    if (readError || !account?.user) return json({ error: 'That account could not be read. Try again.' }, 502)
+    const emailChanged = cleanEmail(account.user.email) !== email
+    if (emailChanged) {
+        // Confirmed here and now: the super admin typed it, and a mail asking
+        // the old address to agree would go to the inbox being left behind.
+        const { error } = await admin.auth.admin.updateUserById(id, { email, email_confirm: true })
+        if (error) {
+            if (error.code === 'email_exists' || /already been registered|already exists/i.test(error.message || '')) {
+                return json({ error: 'That email already has an account.' }, 409)
+            }
+            console.error('invite-user change', error.message)
+            return json({ error: 'The email could not be changed. Try again in a few minutes.' }, 502)
+        }
+    }
+
+    const { error: rowError } = await admin.from('users').update({
+        full_name: String(body.fullName).trim(),
+        role: body.role,
+        restaurant_id: body.role === 'super_admin' ? (body.restaurantId || null) : body.restaurantId,
+    }).eq('id', id)
+    if (rowError) {
+        console.error('invite-user change', rowError.message)
+        return json({
+            error: emailChanged
+                ? 'The email was changed, but the rest could not be saved. Try again.'
+                : 'That could not be saved. Try again.',
+        }, 500)
+    }
+
+    // The link follows the pick: whoever was linked and is not picked any
+    // more is unlinked, which is what a move to another restaurant means, and
+    // the pick is linked if nobody has them.
+    const { data: linked } = await admin.from('employees').select('id').eq('user_id', id)
+    const was = (linked || []).map((e: { id: string }) => e.id)
+    const unlink = was.filter((e: string) => e !== body.employeeId)
+    if (unlink.length) {
+        const { error } = await admin.from('employees').update({ user_id: null }).in('id', unlink)
+        if (error) return json({ error: 'Saved, but the link to the team could not be changed. Try again.' }, 500)
+    }
+    if (body.employeeId && !was.includes(body.employeeId)) {
+        const { data: now, error } = await admin
+            .from('employees').update({ user_id: id })
+            .eq('id', body.employeeId).is('user_id', null)
+            .select('id')
+        if (error || !now?.length) return json({ error: 'Saved, but that person could not be linked. Try again.' }, 500)
+    }
+    return json({ id, emailChanged })
+}
 
 Deno.serve(async (request) => {
     if (request.method === 'OPTIONS') return new Response('ok', { headers: CORS })
@@ -60,12 +132,15 @@ Deno.serve(async (request) => {
     if (refused) return json({ error: refused }, 403)
 
     // ---------- what they asked for ----------
-    let body: { fullName?: string, email?: string, role?: string, restaurantId?: string | null, employeeId?: string | null, origin?: string }
+    let body: { action?: string, id?: string, fullName?: string, email?: string, role?: string, restaurantId?: string | null, employeeId?: string | null, origin?: string }
     try {
         body = await request.json()
     } catch {
         return json({ error: 'That request could not be read.' }, 400)
     }
+
+    // Edit on Users, on an account that exists. Everything else is an invite.
+    if (body.action === 'update') return await changeAccount(admin, user.id, body)
 
     let employee = null
     if (body.employeeId) {
