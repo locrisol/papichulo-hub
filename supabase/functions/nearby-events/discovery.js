@@ -215,10 +215,10 @@ export function wholeAnswer(payload) {
 // **Nothing used to go.** A show Ticketmaster withdrew, or moved somewhere we
 // do not watch, kept its old date and its on sale status for ever, and
 // last_seen_at was written by every sync and read by nothing. Now a night
-// still to come that a whole answer no longer lists is marked withdrawn, which
-// the roster and the calendar say as "No longer listed". The next answer that
-// lists it again writes its real status back over that, so nothing is lost by
-// being wrong.
+// still to come that a whole answer no longer lists is marked withdrawn, and
+// the roster and the calendar leave it out (see nearbyRows in lib/nearby). The
+// next answer that lists it again writes its real status back over that, so it
+// shows again and nothing is lost by being wrong.
 //
 // After today and never today, in Irish dates: the window starts at this
 // minute, so tonight's show is missing from an evening sync simply because it

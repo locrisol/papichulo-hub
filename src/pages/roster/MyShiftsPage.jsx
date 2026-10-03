@@ -327,9 +327,10 @@ export default function MyShiftsPage() {
             setOpeningHours(restRes.data?.opening_hours || null)
             setBreakRules(restRes.data?.break_rules || null)
             setRosterRules(restRes.data?.roster_rules || null)
-            // Everything but a cancelled night, the same as the roster, and
-            // nothing rather than a quiet week when the read failed. See
-            // rosterNearby.
+            // Everything but a cancelled night or one the feed stopped
+            // listing, the same as the roster, and nothing rather than a
+            // quiet week when the read failed. See rosterNearby and
+            // nearbyRows.
             const near = rosterNearby(eventRes, nearRes, restRes.data)
             setNearbyOn(near.rows)
             setNearbyPlaces(near.places)

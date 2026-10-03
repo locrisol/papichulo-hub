@@ -19,22 +19,16 @@ export default function DiaryChip({ item, onOpen, canEdit = true, compact = fals
     // Struck through when it is called off, with the reason in the tooltip and
     // in the listing when it is opened. A night called off stays on the
     // calendar so whoever looks learns it is off, rather than wondering where
-    // it went.
-    //
-    // **A night the feed stopped listing is said instead**, because it may
-    // still be on: we worked it out, Ticketmaster never said so, and a line
-    // through it reads as called off. My shifts draws this chip too, on a
-    // phone, where a tooltip is never seen.
+    // it went. One the feed stopped listing never reaches here. See nearbyRows.
     const off = offWords(item.off)
     const struck = item.off === 'cancelled' ? 'line-through' : ''
-    const said = item.off === 'withdrawn' ? ` (${off})` : ''
     const title = off ? `${item.title} (${off})` : item.title
 
     const inside = (
         <>
             {item.time && <span className="tabular-nums font-bold">{item.time}</span>}
             {item.time && ' '}
-            {item.title}{said}
+            {item.title}
         </>
     )
 

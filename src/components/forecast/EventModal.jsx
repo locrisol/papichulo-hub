@@ -3,9 +3,9 @@ import Modal from '@/components/ui/Modal'
 import ClockField from '@/components/ui/ClockField'
 import { categoryStyle, statusNote, dayName } from '@/lib/events'
 import {
-    placeName, elsewhere, walkWords, hostOf, sinceWords, whenWords, eventName, offFor,
+    placeName, elsewhere, walkWords, hostOf, sinceWords, whenWords, eventName,
 } from '@/lib/nearby'
-import { fullDate, toISODate, todayISO } from '@/lib/dates'
+import { fullDate, todayISO } from '@/lib/dates'
 import { fmtMoney } from '@/lib/format'
 import {
     badge, fieldClass, labelClass, secondaryButton, checkbox, checkRow, hintClass,
@@ -87,13 +87,6 @@ export default function EventModal({ row, canEdit = false, sameName = 0, onRenam
         // decides whether it is watched at all.
         const ours = placeName(row?.place)
         if (other && ours) rows.push({ label: 'Found on', value: `${ours}'s listings` })
-    }
-
-    // When the feed last listed a night it has since stopped listing, which is
-    // the question somebody looking at it will have: is this news or old news.
-    const seen = event.last_seen_at ? new Date(event.last_seen_at) : null
-    if (offFor(event) === 'withdrawn' && seen && !isNaN(seen)) {
-        rows.push({ label: 'Last listed', value: fullDate(toISODate(seen)) })
     }
 
     if (event.min_price != null || event.max_price != null) {

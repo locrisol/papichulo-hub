@@ -1,5 +1,5 @@
 import { kindChip, kindDash } from '@/lib/diary'
-import { markedWords } from '@/lib/nearby'
+import { chipWords } from '@/lib/nearby'
 
 // One thing on near us, on a roster.
 //
@@ -31,9 +31,7 @@ export default function NearbyChip({ row, short = false, bare = false, compact =
     // bare is for a row already headed with the place's name. Saying it again
     // on every chip underneath is the place said twice in the narrowest cell
     // on the screen.
-    //
-    // A night the feed stopped listing says so after its name. See markedWords.
-    const words = markedWords(row, { short, withPlace: !bare })
+    const words = chipWords(row, { short, withPlace: !bare })
 
     const look = `block w-full text-left rounded-md border-l-[3px] ${kindChip(kind)} `
         + `${row?.checked === false ? kindDash(kind) : ''} `

@@ -3,6 +3,7 @@ import {
     shareName, weekTable, sheetLayout, wrapLines,
 } from '@/lib/rosterShare'
 import { ABSENCE_KINDS } from '@/lib/absences'
+import { rosterNearby } from '@/lib/nearby'
 
 const DATES = [
     '2026-08-23', '2026-08-24', '2026-08-25', '2026-08-26',
@@ -332,13 +333,45 @@ describe('weekTable', () => {
         expect(t.extras[4][0].checked).toBe(false)
     })
 
-    // A night the feed stopped listing stays on the sheet and says so, the
-    // same as on screen. Ticketmaster did not say it was off; we worked it out.
-    it('says on the card when the feed stopped listing a night', () => {
-        const gone = { ...headline[0], off: 'withdrawn' }
-        expect(build({ nearby: [gone] }).headlines[0].perDay[4][0].name).toBe('Westlife (No longer listed)')
-        expect(build({ nearby: [{ ...gone, ownRow: false }] }).extras[4][0].name)
-            .toBe('Westlife [3Arena] (No longer listed)')
+    // A night the feed stopped listing is not on the sheet, the same as on
+    // screen. His words, 3 Oct 2026: there is no need to show it. Read the way
+    // the roster reads it, so the sheet cannot keep what the screen drops.
+    describe('a night the feed stopped listing', () => {
+        const arena = { id: 'p1', name: '3Arena', short_name: '3Arena' }
+        const odeon = { id: 'p2', name: 'Odeon Point Square', short_name: 'Odeon' }
+        const pairs = [
+            { place: arena, relation: 'walk', walk_minutes: 2, is_active: true, own_row: true },
+            { place: odeon, relation: 'walk', walk_minutes: 1, is_active: true },
+        ]
+        const night = (id, place, status) => ({
+            id, place_id: place, name: id, event_date: DATES[4], event_time: '19:00:00',
+            source: 'ticketmaster', review: 'trusted', status,
+        })
+        const sheet = events => {
+            const near = rosterNearby({ data: events, error: null }, { data: pairs, error: null }, {})
+            return build({ nearby: near.rows, nearbyPlaces: near.places })
+        }
+
+        it('is not in the band or in Also on', () => {
+            const t = sheet([night('Westlife', 'p1', 'withdrawn'), night('Wicked', 'p2', 'withdrawn')])
+            expect(t.headlines[0].perDay[4]).toEqual([])
+            expect(t.extras[4]).toEqual([])
+        })
+
+        it('leaves the night beside it alone', () => {
+            const t = sheet([night('Westlife', 'p1', 'withdrawn'), night('Lankum', 'p1', 'onsale')])
+            expect(t.headlines[0].perDay[4].map(c => c.name)).toEqual(['Lankum'])
+        })
+
+        // Cancelled was already off the roster and stays off.
+        it('goes the same way as a cancelled one', () => {
+            expect(sheet([night('Westlife', 'p1', 'canceled')]).headlines[0].perDay[4]).toEqual([])
+        })
+
+        it('is back once the feed lists it again', () => {
+            expect(sheet([night('Westlife', 'p1', 'onsale')]).headlines[0].perDay[4].map(c => c.name))
+                .toEqual(['Westlife'])
+        })
     })
 
     it('adds each person and each day up', () => {
