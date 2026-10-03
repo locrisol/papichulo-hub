@@ -96,8 +96,8 @@ describe('typing a price', () => {
         const clicker = open()
         const dialog = await editRow(clicker, 0)
 
-        await clicker.clear(box(dialog, 'Price per Case (€)'))
-        await clicker.type(box(dialog, 'Price per Case (€)'), '12.5')
+        await clicker.clear(box(dialog, 'Price per case (€)'))
+        await clicker.type(box(dialog, 'Price per case (€)'), '12.5')
         await clicker.click(dialog.getByRole('button', { name: 'Save changes' }))
 
         await waitFor(() => expect(events()).toHaveLength(1))
@@ -113,8 +113,8 @@ describe('typing a price', () => {
         const clicker = open()
         const dialog = await editRow(clicker, 0)
 
-        await clicker.clear(box(dialog, 'Price per Case (€)'))
-        await clicker.type(box(dialog, 'Price per Case (€)'), '9.5')
+        await clicker.clear(box(dialog, 'Price per case (€)'))
+        await clicker.type(box(dialog, 'Price per case (€)'), '9.5')
         await clicker.click(dialog.getByRole('button', { name: 'Save changes' }))
 
         await waitFor(() => expect(written.some(w => w.how === 'update')).toBe(true))
@@ -124,12 +124,12 @@ describe('typing a price', () => {
     it('records the first price a product is given', async () => {
         tables.product_supplier_prices = []
         const clicker = open()
-        await clicker.click(await screen.findByRole('button', { name: '+ Add Price' }))
+        await clicker.click(await screen.findByRole('button', { name: '+ Add price' }))
 
         await clicker.selectOptions(screen.getByRole('combobox'), 's1')
-        await clicker.type(box(screen, 'Price per Case (€)'), '11.5')
-        await clicker.type(box(screen, 'Units per Case (KG)'), '5')
-        await clicker.click(screen.getByRole('button', { name: 'Add Price' }))
+        await clicker.type(box(screen, 'Price per case (€)'), '11.5')
+        await clicker.type(box(screen, 'Units per case (KG)'), '5')
+        await clicker.click(screen.getByRole('button', { name: 'Add price' }))
 
         await waitFor(() => expect(events()).toHaveLength(1))
         expect(events()[0]).toMatchObject({ reason: 'created', price_per_unit: 2.3, previous_per_unit: null })
@@ -141,13 +141,13 @@ describe('typing a price', () => {
     it('points a code the invoices already met at the price typed with it', async () => {
         tables.product_supplier_prices = []
         const clicker = open()
-        await clicker.click(await screen.findByRole('button', { name: '+ Add Price' }))
+        await clicker.click(await screen.findByRole('button', { name: '+ Add price' }))
 
         await clicker.selectOptions(screen.getByRole('combobox'), 's1')
-        await clicker.type(box(screen, 'Supplier Code (optional)'), '483508')
-        await clicker.type(box(screen, 'Price per Case (€)'), '11.5')
-        await clicker.type(box(screen, 'Units per Case (KG)'), '5')
-        await clicker.click(screen.getByRole('button', { name: 'Add Price' }))
+        await clicker.type(box(screen, 'Supplier code (optional)'), '483508')
+        await clicker.type(box(screen, 'Price per case (€)'), '11.5')
+        await clicker.type(box(screen, 'Units per case (KG)'), '5')
+        await clicker.click(screen.getByRole('button', { name: 'Add price' }))
 
         await waitFor(() => expect(written.some(w => w.table === 'supplier_codes')).toBe(true))
         const price = written.find(w => w.table === 'product_supplier_prices')

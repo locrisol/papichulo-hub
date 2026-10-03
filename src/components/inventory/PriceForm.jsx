@@ -40,7 +40,7 @@ export function PriceFields({ formData, onChange, errors = {}, suppliers, unit }
             onChange={e => onChange('supplier_id', e.target.value)}
             className={fieldClass}
           >
-            <option value="">Select a supplier...</option>
+            <option value="">Pick a supplier</option>
             {suppliers.map(s => (
               <option key={s.id} value={s.id}>{s.name}</option>
             ))}
@@ -49,7 +49,7 @@ export function PriceFields({ formData, onChange, errors = {}, suppliers, unit }
         </div>
 
         <div>
-          <label className={labelClass}>Purchase Type</label>
+          <label className={labelClass}>Purchase type</label>
           <div className="flex gap-4 mt-2">
             <label className="flex items-center gap-2 cursor-pointer">
               <input
@@ -74,7 +74,7 @@ export function PriceFields({ formData, onChange, errors = {}, suppliers, unit }
       </div>
 
       <div className="mb-4">
-        <label className={labelClass}>Supplier Code (optional)</label>
+        <label className={labelClass}>Supplier code (optional)</label>
         <input
           type="text"
           value={formData.supplier_code}
@@ -90,7 +90,7 @@ export function PriceFields({ formData, onChange, errors = {}, suppliers, unit }
       {isCase ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
           <div>
-            <label className={labelClass}>Price per Case (€)</label>
+            <label className={labelClass}>Price per case (€)</label>
             <input
               {...numberField({
                 value: formData.price_per_case,
@@ -102,7 +102,7 @@ export function PriceFields({ formData, onChange, errors = {}, suppliers, unit }
           </div>
           <div>
             <label className={labelClass}>
-              Units per Case ({unit || '...'})
+              Units per case ({unit || '...'})
             </label>
             <input
               {...numberField({

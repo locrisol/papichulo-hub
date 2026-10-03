@@ -197,7 +197,7 @@ export default function SuppliersPage() {
                         onClick={() => { resetForm(); setShowForm(true) }}
                         className={primaryButton()}
                     >
-                        + Add Supplier
+                        + Add supplier
                     </button>
                 )}
             </PageHeader>

@@ -75,8 +75,8 @@ export default function PriceCountUnitsEditor({ price, unit, onClose }) {
     async function handleAdd() {
         setError('')
         const f = parseFloat(factor)
-        if (!label.trim()) { setError('Label is required (e.g. Box, Bag, Tin).'); return }
-        if (isNaN(f) || f <= 0) { setError('Factor must be greater than 0.'); return }
+        if (!label.trim()) { setError('Enter a pack name, like Box, Bag or Tin.'); return }
+        if (isNaN(f) || f <= 0) { setError(`Enter how many ${unit} are in one ${label.trim()}.`); return }
 
         setSaving(true)
         const { data, error } = await supabase
@@ -101,14 +101,14 @@ export default function PriceCountUnitsEditor({ price, unit, onClose }) {
     async function handleDelete(formatId) {
         const format = formats.find(f => f.id === formatId)
         const ok = await confirm({
-            title: 'Remove this pack format?',
-            message: 'It stops being offered as a way of counting this product on a stock take. Counts '
-                + 'already taken keep the figures they were saved with.',
+            title: 'Remove this pack?',
+            message: 'It stops being offered as a way of counting this product on a stock take. Stock takes '
+                + 'already done keep the figures they were saved with.',
             details: format ? [
-                { label: 'Format', value: format.label || '' },
+                { label: 'Pack', value: format.label || '' },
                 { label: 'Holds', value: `${format.factor} ${unit || ''}` },
             ] : undefined,
-            confirmLabel: 'Remove it',
+            confirmLabel: 'Remove pack',
             tone: 'danger',
         })
         if (!ok) return
@@ -139,7 +139,7 @@ export default function PriceCountUnitsEditor({ price, unit, onClose }) {
     return (
         <div className="space-y-4">
             <div className="flex items-center justify-between">
-                <h4 className="text-sm font-semibold text-gray-900">Count formats</h4>
+                <h4 className="text-sm font-semibold text-gray-900">Packs</h4>
                 {onClose && (
                     <button onClick={onClose} className={rowButton()}>
                         Close
@@ -148,8 +148,8 @@ export default function PriceCountUnitsEditor({ price, unit, onClose }) {
             </div>
 
             <p className="text-xs text-gray-500">
-                Define how this product is counted during a stock take. Each format converts to the base unit ({unit}).
-                For example, a Box that holds 6 {unit} → enter factor 6.
+                The packs a stock take counts this product in while this is the preferred price.
+                For example, for a box that holds 6 {unit}, enter Box and 6.
             </p>
 
             {error && (
@@ -158,9 +158,9 @@ export default function PriceCountUnitsEditor({ price, unit, onClose }) {
 
             {/* Existing formats */}
             {loading ? (
-                <p className="text-xs text-muted">Loading formats...</p>
+                <p className="text-xs text-muted">Loading packs...</p>
             ) : formats.length === 0 ? (
-                <p className="text-xs text-muted">No formats yet. Counting will use the base unit ({unit}) only.</p>
+                <p className="text-xs text-muted">No packs yet. While this is the preferred price, it is counted in {unit} only.</p>
             ) : (
                 <div className="space-y-1.5">
                     {formats.map(f => (
@@ -173,7 +173,7 @@ export default function PriceCountUnitsEditor({ price, unit, onClose }) {
                                 onClick={() => handleDelete(f.id)}
                                 className={rowButton('danger')}
                             >
-                                Delete
+                                Remove
                             </button>
                         </div>
                     ))}
@@ -183,7 +183,7 @@ export default function PriceCountUnitsEditor({ price, unit, onClose }) {
             {/* Add format */}
             <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
                 <div className="flex-1">
-                    <label className={labelClass}>Format name</label>
+                    <label className={labelClass}>Pack name</label>
                     <input
                         type="text"
                         value={label}
@@ -194,7 +194,7 @@ export default function PriceCountUnitsEditor({ price, unit, onClose }) {
                 </div>
                 <div className="flex-1">
                     <label className={labelClass}>
-                        {unit} per {label.trim() || 'unit'}
+                        {unit} per {label.trim() || 'pack'}
                     </label>
                     <input
                         type="text"
@@ -211,7 +211,7 @@ export default function PriceCountUnitsEditor({ price, unit, onClose }) {
                     disabled={saving}
                     className={primaryButton()}
                 >
-                    Add
+                    Add pack
                 </button>
             </div>
 
@@ -225,7 +225,7 @@ export default function PriceCountUnitsEditor({ price, unit, onClose }) {
                     className={checkbox}
                 />
                 <span className="text-sm text-gray-700">
-                    Allow loose counting in {unit} (for opened boxes / partial stock)
+                    Also count loose {unit}
                 </span>
             </label>
         </div>

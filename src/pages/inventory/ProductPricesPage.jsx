@@ -238,9 +238,9 @@ export default function ProductPricesPage() {
         // 23505 is the PostgreSQL unique-violation code
         if (err.code === '23505') {
             if (formData.purchase_type === 'case') {
-                setFormProblem('A case price link with this pack size for this supplier already exists. Edit the existing one instead.')
+                setFormProblem('This supplier already has a case price with this many units per case. Edit that one instead.')
             } else {
-                setFormProblem('A loose price link for this supplier already exists. Edit the existing one instead.')
+                setFormProblem('This supplier already has a loose price. Edit that one instead.')
             }
         } else {
             setFormProblem(friendlyError(err))
@@ -363,7 +363,7 @@ export default function ProductPricesPage() {
                     onClick={() => { resetForm(); setShowForm(true) }}
                     className={primaryButton()}
                 >
-                    + Add Price
+                    + Add price
                 </button>
             </PageHeader>
 
@@ -383,12 +383,12 @@ export default function ProductPricesPage() {
             />
 
             <div className="bg-blue-50 text-blue-700 text-xs rounded-lg p-3 mb-4">
-                Case and loose prices for the same supplier are saved as separate records. Add both if your supplier offers both options. Case prices are sometimes cheaper per unit and sometimes more expensive, so it pays to compare and pick the preferred one yourself.
+                Case and loose prices from the same supplier are kept separately. If a supplier sells both, add both, compare the cost per unit, and press Set as preferred on the one to use.
             </div>
 
             {showForm && !editingPrice && (
                 <div className={`${card} overflow-hidden mb-6`}>
-                    <h3 className={cardHeader}>New Price Link</h3>
+                    <h3 className={cardHeader}>New price</h3>
                     <div className="p-6">
                         <PriceForm
                             problem={formProblem}
@@ -396,7 +396,7 @@ export default function ProductPricesPage() {
                             onChange={handleFieldChange}
                             onSubmit={handleSave}
                             onCancel={resetForm}
-                            submitLabel="Add Price"
+                            submitLabel="Add price"
                             saving={saving}
                             errors={errors}
                             suppliers={suppliers}
@@ -411,7 +411,7 @@ export default function ProductPricesPage() {
             ) : prices.length === 0 ? (
                 <div className={`${card} p-8 text-center`}>
                     <p className="text-sm text-muted">
-                        No price links yet for this product at {activeRestaurant?.name}. Click "+ Add Price" to create the first one.
+                        No prices yet for this product at {activeRestaurant?.name}. Press Add price to add the first one.
                     </p>
                 </div>
             ) : (
@@ -473,7 +473,7 @@ export default function ProductPricesPage() {
                                     {editingPrice?.id === p.id ? 'Cancel' : 'Edit'}
                                 </button>
                                 <button onClick={() => setFormatsForPriceId(p.id)} className={rowButton()}>
-                                    Formats
+                                    Packs
                                 </button>
                                 <button onClick={() => removePrice(p)} className={rowButton('danger')}>
                                     Remove
@@ -489,7 +489,7 @@ export default function ProductPricesPage() {
                             <tr className={tableHeadRow}>
                                 <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Supplier</th>
                                 <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Type</th>
-                                <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Supplier Code</th>
+                                <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Supplier code</th>
                                 <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Pack</th>
                                 <th className={`text-right px-4 py-3 ${tableHeadCell}`}>Cost / {product?.unit || 'Unit'}</th>
                                 <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Preferred</th>
@@ -549,7 +549,7 @@ export default function ProductPricesPage() {
                                                     onClick={() => setFormatsForPriceId(p.id)}
                                                     className={rowButton()}
                                                 >
-                                                    Formats
+                                                    Packs
                                                 </button>
                                                 <button
                                                     onClick={() => removePrice(p)}
@@ -572,7 +572,7 @@ export default function ProductPricesPage() {
                 the prices around them, and they pushed every row below down. */}
             {formatsPrice && (
                 <Modal
-                    title={`Pack formats for the ${getSupplierName(formatsPrice.supplier_id)} price`}
+                    title={`Packs for the ${getSupplierName(formatsPrice.supplier_id)} price`}
                     onClose={() => setFormatsForPriceId(null)}
                     width="max-w-2xl"
                 >

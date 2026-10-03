@@ -124,7 +124,7 @@ export function seriesFor({ lines, events, suppliers }) {
     }))
 
     return {
-        product: { id: 'product', name: 'What we cost from', colour: PRODUCT_LINE, heavy: true, points: pointsFromEvents(events) },
+        product: { id: 'product', name: 'Cost the Hub uses', colour: PRODUCT_LINE, heavy: true, points: pointsFromEvents(events) },
         suppliers: drawn,
         // Said out loud. A cap nobody is told about reads as "that is all there
         // is", which is the one thing a chart must never imply.

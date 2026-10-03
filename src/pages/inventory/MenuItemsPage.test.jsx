@@ -208,10 +208,10 @@ describe('adding a menu item', () => {
         const me = userEvent.setup()
         renderWithRouter(<MenuItemsPage />)
         await screen.findAllByText('Rice Bowl')
-        await me.click(screen.getByRole('button', { name: '+ Add Menu Item' }))
+        await me.click(screen.getByRole('button', { name: '+ Add menu item' }))
 
         const cancel = screen.getByRole('button', { name: 'Cancel' })
-        const create = screen.getByRole('button', { name: 'Create & Edit Components' })
+        const create = screen.getByRole('button', { name: 'Save and add components' })
         expect(cancel.compareDocumentPosition(create) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     })
 })

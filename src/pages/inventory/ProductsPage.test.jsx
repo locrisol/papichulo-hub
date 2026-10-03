@@ -103,7 +103,7 @@ async function editPeppers(clicker) {
     renderWithRouter(<ProductsPage />)
     await clicker.click((await screen.findAllByRole('button', { name: 'Edit' }))[0])
     const dialog = within(screen.getByRole('dialog'))
-    await clicker.click(dialog.getByRole('button', { name: /Who you buy it from/ }))
+    await clicker.click(dialog.getByRole('button', { name: /Supplier and price/ }))
     return dialog
 }
 
@@ -112,8 +112,8 @@ describe('the price on the product form', () => {
         const clicker = userEvent.setup()
         const dialog = await editPeppers(clicker)
 
-        await clicker.clear(box(dialog, 'Price per Case (€)'))
-        await clicker.type(box(dialog, 'Price per Case (€)'), '12.5')
+        await clicker.clear(box(dialog, 'Price per case (€)'))
+        await clicker.type(box(dialog, 'Price per case (€)'), '12.5')
         await clicker.click(dialog.getByRole('button', { name: 'Save changes' }))
 
         await waitFor(() => expect(events()).toHaveLength(1))
@@ -140,15 +140,15 @@ describe('the price on the product form', () => {
         tables.product_supplier_prices = []
         const clicker = userEvent.setup()
         renderWithRouter(<ProductsPage />)
-        await clicker.click(await screen.findByRole('button', { name: '+ Add Product' }))
-        const form = within(screen.getByText('New Product').parentElement)
+        await clicker.click(await screen.findByRole('button', { name: '+ Add product' }))
+        const form = within(screen.getByText('New product').parentElement)
 
         await clicker.type(box(form, 'Name'), 'Red Onions')
-        await clicker.click(form.getByRole('button', { name: /Who you buy it from/ }))
+        await clicker.click(form.getByRole('button', { name: /Supplier and price/ }))
         await clicker.selectOptions(form.getByText('Supplier').parentElement.querySelector('select'), 's1')
-        await clicker.type(box(form, 'Price per Case (€)'), '9')
-        await clicker.type(box(form, 'Units per Case (KG)'), '10')
-        await clicker.click(form.getByRole('button', { name: 'Add Product' }))
+        await clicker.type(box(form, 'Price per case (€)'), '9')
+        await clicker.type(box(form, 'Units per case (KG)'), '10')
+        await clicker.click(form.getByRole('button', { name: 'Add product' }))
 
         await waitFor(() => expect(events()).toHaveLength(1))
         expect(events()[0]).toMatchObject({ reason: 'created', price_per_unit: 0.9, previous_per_unit: null })
@@ -156,20 +156,20 @@ describe('the price on the product form', () => {
 })
 
 // Adding a product is up to five writes, and the product row is the first.
-// When a later one failed the form stayed open saying Add Product, and saving
+// When a later one failed the form stayed open saying Add product, and saving
 // again made a second product with the same name.
 describe('adding a product when part of it does not save', () => {
     async function addOnions(clicker) {
         tables.products = []
         tables.product_supplier_prices = []
         renderWithRouter(<ProductsPage />)
-        await clicker.click(await screen.findByRole('button', { name: '+ Add Product' }))
-        const form = within(screen.getByText('New Product').parentElement)
+        await clicker.click(await screen.findByRole('button', { name: '+ Add product' }))
+        const form = within(screen.getByText('New product').parentElement)
         await clicker.type(box(form, 'Name'), 'Red Onions')
-        await clicker.click(form.getByRole('button', { name: /Who you buy it from/ }))
+        await clicker.click(form.getByRole('button', { name: /Supplier and price/ }))
         await clicker.selectOptions(form.getByText('Supplier').parentElement.querySelector('select'), 's1')
-        await clicker.type(box(form, 'Price per Case (€)'), '9')
-        await clicker.type(box(form, 'Units per Case (KG)'), '10')
+        await clicker.type(box(form, 'Price per case (€)'), '9')
+        await clicker.type(box(form, 'Units per case (KG)'), '10')
         return form
     }
 
@@ -177,11 +177,11 @@ describe('adding a product when part of it does not save', () => {
         refused = 'product_supplier_prices'
         const clicker = userEvent.setup()
         const form = await addOnions(clicker)
-        await clicker.click(form.getByRole('button', { name: 'Add Product' }))
+        await clicker.click(form.getByRole('button', { name: 'Add product' }))
 
         expect(await screen.findByText(/Red Onions was saved, but its price was not/)).toBeInTheDocument()
         expect(screen.getByText(/Add the price from its Prices page/)).toBeInTheDocument()
-        expect(screen.queryByText('New Product')).not.toBeInTheDocument()
+        expect(screen.queryByText('New product')).not.toBeInTheDocument()
         expect(written.filter(w => w.table === 'products' && w.how === 'insert')).toHaveLength(1)
     })
 
@@ -193,7 +193,7 @@ describe('adding a product when part of it does not save', () => {
         const clicker = userEvent.setup()
         const form = await addOnions(clicker)
         await clicker.click(form.getByRole('button', { name: 'Declare the product has no allergens' }))
-        await clicker.click(form.getByRole('button', { name: 'Add Product' }))
+        await clicker.click(form.getByRole('button', { name: 'Add product' }))
 
         expect(await screen.findByText(/Red Onions was saved, but its price was not/)).toBeInTheDocument()
         expect(written.filter(w => w.table === 'product_allergens' && w.how === 'insert')).toHaveLength(1)
@@ -204,12 +204,12 @@ describe('adding a product when part of it does not save', () => {
         const clicker = userEvent.setup()
         const form = await addOnions(clicker)
         await clicker.type(form.getByPlaceholderText('Box, Bag, Tin'), 'Net')
-        await clicker.type(box(form, 'One of them is'), '5')
+        await clicker.type(box(form, 'KG per Net'), '5')
         await clicker.click(form.getByRole('button', { name: 'Add pack' }))
-        await clicker.click(form.getByRole('button', { name: 'Add Product' }))
+        await clicker.click(form.getByRole('button', { name: 'Add product' }))
 
-        const said = await screen.findByText(/Red Onions was saved, but its price and pack sizes were not/)
-        expect(said.textContent).toMatch(/Add the price from its Prices page\. Add the pack sizes under Formats on its Prices page\./)
+        const said = await screen.findByText(/Red Onions was saved, but its price and packs were not/)
+        expect(said.textContent).toMatch(/Add the price from its Prices page\. Add the packs from its Prices page\./)
     })
 
     it('says so when the pack sizes do not save, rather than nothing', async () => {
@@ -217,19 +217,19 @@ describe('adding a product when part of it does not save', () => {
         const clicker = userEvent.setup()
         const form = await addOnions(clicker)
         await clicker.type(form.getByPlaceholderText('Box, Bag, Tin'), 'Net')
-        await clicker.type(box(form, 'One of them is'), '5')
+        await clicker.type(box(form, 'KG per Net'), '5')
         await clicker.click(form.getByRole('button', { name: 'Add pack' }))
-        await clicker.click(form.getByRole('button', { name: 'Add Product' }))
+        await clicker.click(form.getByRole('button', { name: 'Add product' }))
 
-        expect(await screen.findByText(/Red Onions was saved, but its pack sizes were not/)).toBeInTheDocument()
+        expect(await screen.findByText(/Red Onions was saved, but its packs were not/)).toBeInTheDocument()
     })
 
     // A second tap while the first is on its way, on a slow phone.
-    it('makes one product when Add Product is pressed twice', async () => {
+    it('makes one product when Add product is pressed twice', async () => {
         held = { table: 'products', releases: [] }
         const clicker = userEvent.setup()
         const form = await addOnions(clicker)
-        const button = form.getByRole('button', { name: 'Add Product' })
+        const button = form.getByRole('button', { name: 'Add product' })
 
         await clicker.click(button)
         await waitFor(() => expect(held.releases).toHaveLength(1))
@@ -251,14 +251,14 @@ describe('the question before saving', () => {
         ask = () => new Promise(resolve => { answer = resolve })
         const clicker = userEvent.setup()
         renderWithRouter(<ProductsPage />)
-        await clicker.click(await screen.findByRole('button', { name: '+ Add Product' }))
-        const form = within(screen.getByText('New Product').parentElement)
+        await clicker.click(await screen.findByRole('button', { name: '+ Add product' }))
+        const form = within(screen.getByText('New product').parentElement)
         await clicker.type(box(form, 'Name'), 'Red Onions')
-        await clicker.click(form.getByRole('button', { name: 'Add Product' }))
+        await clicker.click(form.getByRole('button', { name: 'Add product' }))
 
         await waitFor(() => expect(answer).toBeTypeOf('function'))
         expect(form.queryByRole('button', { name: 'Saving...' })).not.toBeInTheDocument()
-        expect(form.getByRole('button', { name: 'Add Product' })).toBeInTheDocument()
+        expect(form.getByRole('button', { name: 'Add product' })).toBeInTheDocument()
         answer(false)
     })
 
@@ -269,16 +269,16 @@ describe('the question before saving', () => {
         ask = options => new Promise(resolve => { asked = options; answer = resolve })
         const clicker = userEvent.setup()
         renderWithRouter(<ProductsPage />)
-        await clicker.click(await screen.findByRole('button', { name: '+ Add Product' }))
-        const form = within(screen.getByText('New Product').parentElement)
+        await clicker.click(await screen.findByRole('button', { name: '+ Add product' }))
+        const form = within(screen.getByText('New product').parentElement)
         await clicker.click(form.getByText(/This is a MIX product/))
         await clicker.type(box(form, 'Name'), 'House Salsa')
-        await clicker.click(form.getByRole('button', { name: 'Add Product' }))
+        await clicker.click(form.getByRole('button', { name: 'Add product' }))
 
         await waitFor(() => expect(answer).toBeTypeOf('function'))
         expect(asked.title).toBe('Save without a recipe?')
         expect(form.queryByRole('button', { name: 'Saving...' })).not.toBeInTheDocument()
-        expect(form.getByRole('button', { name: 'Add Product' })).toBeInTheDocument()
+        expect(form.getByRole('button', { name: 'Add product' })).toBeInTheDocument()
         answer(false)
     })
 })
@@ -294,7 +294,7 @@ describe('the pack sizes on an edit', () => {
         const dialog = await editPeppers(clicker)
         await clicker.click(dialog.getByRole('button', { name: 'Save changes' }))
 
-        const said = await dialog.findByText(/Green Peppers was saved, but its pack sizes were not/)
+        const said = await dialog.findByText(/Green Peppers was saved, but its packs were not/)
         // Not a promise about the old ones: when the new ones went in and the
         // old ones would not come out, both sets are there until Save again.
         expect(said.textContent).toMatch(/Press Save changes to try again\.$/)
@@ -328,7 +328,7 @@ beforeEach(() => { asked.length = 0 })
 
 async function startAdding(me, name) {
     renderWithRouter(<ProductsPage />)
-    await me.click(await screen.findByRole('button', { name: '+ Add Product' }))
+    await me.click(await screen.findByRole('button', { name: '+ Add product' }))
     const label = screen.getAllByText('Name').find(el => el.tagName === 'LABEL')
     await me.type(label.parentElement.querySelector('input'), name)
 }
@@ -339,7 +339,7 @@ describe('saving a new MIX with nothing in it yet', () => {
         const me = userEvent.setup()
         await startAdding(me, 'House Salsa')
         await me.click(screen.getByText(/This is a MIX product/))
-        await me.click(screen.getByRole('button', { name: 'Add Product' }))
+        await me.click(screen.getByRole('button', { name: 'Add product' }))
 
         expect(asked).toHaveLength(1)
         expect(asked[0].title).toBe('Save without a recipe?')
@@ -354,7 +354,7 @@ describe('saving a new bought product with no allergens answered', () => {
         ask = async options => { asked.push(options); return false }
         const me = userEvent.setup()
         await startAdding(me, 'Rice')
-        await me.click(screen.getByRole('button', { name: 'Add Product' }))
+        await me.click(screen.getByRole('button', { name: 'Add product' }))
 
         expect(asked).toHaveLength(1)
         expect(asked[0].message).not.toMatch(/reads as having none/)
@@ -729,7 +729,7 @@ describe('telling the sidebar', () => {
         const me = userEvent.setup()
         await startAdding(me, 'Rice')
         await me.click(screen.getByRole('button', { name: 'Declare the product has no allergens' }))
-        await me.click(screen.getByRole('button', { name: 'Add Product' }))
+        await me.click(screen.getByRole('button', { name: 'Add product' }))
 
         await waitFor(() => expect(heard).toHaveBeenCalledTimes(1))
     })
@@ -743,7 +743,7 @@ describe('telling the sidebar', () => {
         const dialog = await editPeppers(me)
         await me.click(dialog.getByRole('button', { name: 'Save changes' }))
 
-        await dialog.findByText(/Green Peppers was saved, but its pack sizes were not/)
+        await dialog.findByText(/Green Peppers was saved, but its packs were not/)
         await waitFor(() => expect(heard).toHaveBeenCalledTimes(1))
     })
 
@@ -779,8 +779,8 @@ describe('a product made from a line on Review', () => {
 
     async function makeIt() {
         const clicker = openIt()
-        const form = within((await screen.findByText('New Product')).parentElement)
-        await clicker.click(form.getByRole('button', { name: 'Add Product' }))
+        const form = within((await screen.findByText('New product')).parentElement)
+        await clicker.click(form.getByRole('button', { name: 'Add product' }))
         return form
     }
 
@@ -810,21 +810,21 @@ describe('a product made from a line on Review', () => {
     it('stays and says so when the code could not be pointed at it', async () => {
         refused = 'supplier_codes'
         await makeIt()
-        expect(await screen.findByText(/invoices with code 777002 will not find it yet/)).toBeInTheDocument()
+        expect(await screen.findByText(/could not be matched to code 777002/)).toBeInTheDocument()
         expect(screen.queryByText('On Review')).toBeNull()
     })
 
     it('goes back to Review for that product only, not the next one added', async () => {
         const clicker = openIt()
-        const form = within((await screen.findByText('New Product')).parentElement)
+        const form = within((await screen.findByText('New product')).parentElement)
         await clicker.click(form.getByRole('button', { name: 'Cancel' }))
 
-        await clicker.click(await screen.findByRole('button', { name: '+ Add Product' }))
-        const next = within(screen.getByText('New Product').parentElement)
+        await clicker.click(await screen.findByRole('button', { name: '+ Add product' }))
+        const next = within(screen.getByText('New product').parentElement)
         await clicker.type(box(next, 'Name'), 'Red Onions')
-        await clicker.click(next.getByRole('button', { name: 'Add Product' }))
+        await clicker.click(next.getByRole('button', { name: 'Add product' }))
         await waitFor(() => expect(written.some(w => w.table === 'products' && w.how === 'insert')).toBe(true))
-        await waitFor(() => expect(screen.queryByText('New Product')).toBeNull())
+        await waitFor(() => expect(screen.queryByText('New product')).toBeNull())
         expect(screen.queryByText('On Review')).toBeNull()
     })
 
