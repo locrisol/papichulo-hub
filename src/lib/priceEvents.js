@@ -134,26 +134,6 @@ export function ownedByAnother(price, code, codes = []) {
     ))
 }
 
-// Refusing one.
-//
-// **A rejected price change still happened.** He paid the new price whatever
-// the Hub costs from, so rejecting means "do not move our costing" and never
-// "that did not happen". The invoice line stands, the food cost already has it,
-// and the report has to be able to say both things: what the supplier charged,
-// and where the Hub's costing did not follow.
-export function rejectPrice(row) {
-    const { line, price, product } = row
-    return {
-        product_id: product?.id || null,
-        price_id: price?.id || null,
-        supplier_code: line.code,
-        description: line.description,
-        was: to4(price?.price_per_case),
-        charged: to4(line.price_per_case),
-        difference: to2(num(line.price_per_case) - num(price?.price_per_case)),
-    }
-}
-
 // Buying it somewhere else.
 //
 // The decision with no document. Without a record of it the product's own cost

@@ -64,11 +64,6 @@ export function inPeriod(start, dateStr) {
     return dateStr >= start && dateStr <= addDays(start, PERIOD_DAYS - 1)
 }
 
-// The period before or after.
-export function stepPeriod(start, by) {
-    return addDays(start, by * PERIOD_DAYS)
-}
-
 // **A period is over when its last day is behind us.**
 //
 // The same rule the timesheet already uses to decide whether to ask about a
@@ -92,12 +87,4 @@ export function periodWords(start) {
         return `${from} ${start.slice(0, 4)} to ${to} ${end.slice(0, 4)}`
     }
     return `${from} to ${to} ${end.slice(0, 4)}`
-}
-
-// Which of the two weeks a date belongs to, 0 or 1, and null when it is in
-// neither. Used to split a person's fourteen days into the two halves the
-// summary has a column for.
-export function weekIndexOf(start, dateStr) {
-    if (!inPeriod(start, dateStr)) return null
-    return dateStr < addDays(start, 7) ? 0 : 1
 }

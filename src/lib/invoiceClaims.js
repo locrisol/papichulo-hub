@@ -1083,24 +1083,6 @@ export function isLate(waiting) {
 // none here, so the lists still sort and add up.
 const daysBetweenOrZero = (from, to) => daysBetween(from, to) ?? 0
 
-// What the week's report says about claims.
-//
-// Both halves, because they answer different questions: what came back is money
-// on the week, and what is still out is a job nobody has finished.
-export function claimsForWeek(claims, weekStart, weekEnd) {
-    const inWeek = (claims || []).filter(c => c.raised_on >= weekStart && c.raised_on <= weekEnd)
-    const settled = inWeek.filter(c => c.status === 'settled')
-    const open = inWeek.filter(claimIsOpen)
-
-    return {
-        raised: inWeek.length,
-        settled: settled.length,
-        open: open.length,
-        credited: round2(settled.reduce((t, c) => t + num(c.credited_amount), 0)),
-        waiting: round2(open.reduce((t, c) => t + num(claimBalance(c)), 0)),
-    }
-}
-
 // ---------------------------------------------------------------------------
 // How a supplier does on claims
 // ---------------------------------------------------------------------------

@@ -1,19 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
-    ABSENCE_KINDS,
-    kindLabel,
-    takesHours,
-    coversDate,
-    absencesOn,
-    absenceOn,
-    absencesInRange,
-    absenceDays,
-    absenceRange,
-    overlappingAbsence,
-    absenceProblem,
-    sortAbsences,
-    nextAbsence,
-    holidayHoursInWeek,
+    ABSENCE_KINDS, kindLabel, takesHours, coversDate, absencesOn, absenceOn, absenceDays,
+    absenceRange, overlappingAbsence, absenceProblem, sortAbsences, nextAbsence, holidayHoursInWeek,
 } from '@/lib/absences'
 
 const away = (extra = {}) => ({
@@ -113,19 +101,6 @@ describe('who is away on a day', () => {
         expect(absencesOn(declined, 'e1', '2026-08-25')).toEqual([])
     })
 
-    it('finds everything touching a week', () => {
-        const week = absencesInRange(list, '2026-08-23', '2026-08-29')
-        expect(week.map(a => a.id)).toEqual(['a1', 'a2'])
-    })
-
-    it('finds a stretch that only starts after the week', () => {
-        expect(absencesInRange(list, '2026-08-30', '2026-09-05').map(a => a.id)).toEqual(['a3'])
-    })
-
-    it('finds a stretch that runs right through a week', () => {
-        const long = [away({ starts_on: '2026-08-01', ends_on: '2026-09-30' })]
-        expect(absencesInRange(long, '2026-08-23', '2026-08-29')).toHaveLength(1)
-    })
 })
 
 describe('two stretches running into each other', () => {

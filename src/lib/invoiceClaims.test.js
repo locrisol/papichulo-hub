@@ -3,10 +3,10 @@ import { describe, it, expect } from 'vitest'
 import {
     CLAIM_KINDS, NOT_LOGGED, claimKind, emptyDoorClaim, doorClaimProblem, doorClaimPayload,
     claimAmount, claimBalance, claimIsOpen, claimTakesOff, claimCandidates, claimMatch,
-    creditSettles, creditTakenBack, voidedBy, sentBack, chasingList, isLate, claimsForWeek, bySupplier,
-    claimWeek, sentWeeks, fromEarlierWeeks, otherDeliveries, byInvoice, claimWorking, notTheDocket,
-    claimDetached, canDetach, claimReopened, claimCountSaid, claimSaid, canEditClaim, claimForm, claimChanged,
-    keepsItsAmount, claimOverLine, priceQueryStart, amountFixed, wordsOnly,
+    creditSettles, creditTakenBack, voidedBy, sentBack, chasingList, isLate, bySupplier, claimWeek,
+    sentWeeks, fromEarlierWeeks, otherDeliveries, byInvoice, claimWorking, notTheDocket,
+    claimDetached, canDetach, claimReopened, claimCountSaid, claimSaid, canEditClaim, claimForm,
+    claimChanged, keepsItsAmount, claimOverLine, priceQueryStart, amountFixed, wordsOnly,
 } from '@/lib/invoiceClaims'
 
 const LINE = {
@@ -1230,24 +1230,6 @@ describe('what is still being chased', () => {
         const list = chasingList(claims, '2026-09-20')
         expect(isLate(list[0])).toBe(true)
         expect(isLate(list[1])).toBe(false)
-    })
-})
-
-describe('what the week says about claims', () => {
-    const claims = [
-        claim({ id: 'a', raised_on: '2026-09-14', status: 'settled', credited_amount: 69.98 }),
-        claim({ id: 'b', raised_on: '2026-09-15', credited_amount: 20 }),
-        claim({ id: 'c', raised_on: '2026-09-28' }),
-    ]
-
-    it('counts what came back and what is still out', () => {
-        expect(claimsForWeek(claims, '2026-09-13', '2026-09-19')).toEqual({
-            raised: 2, settled: 1, open: 1, credited: 69.98, waiting: 49.98,
-        })
-    })
-
-    it("leaves the other week out of it", () => {
-        expect(claimsForWeek(claims, '2026-09-27', '2026-10-03').raised).toBe(1)
     })
 })
 

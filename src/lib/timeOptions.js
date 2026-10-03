@@ -105,14 +105,3 @@ export function timeOptions({ value = '', dayStart = '', endOfDay = false, free 
 
     return options
 }
-
-// Is this a time the picker would offer on its own?
-//
-// Used to decide whether a saved value needs carrying, and by the tests. A
-// blank is not off the grid, it is nothing at all.
-export function onTheGrid(value) {
-    if (!value) return true
-    if (value === END_OF_DAY) return true
-    const m = toMinutes(value)
-    return m >= 0 && m % STEP === 0
-}

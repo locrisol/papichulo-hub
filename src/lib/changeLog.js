@@ -225,17 +225,6 @@ export function changedFields(entry) {
     return out
 }
 
-// A deleted row, worth showing but not all of it. The keys that are plainly
-// plumbing are dropped and the rest are shown in the order they were stored.
-export function deletedFields(entry) {
-    const row = entry?.deleted_row
-    if (!row || typeof row !== 'object') return []
-
-    return Object.keys(row)
-        .filter(f => f !== 'id' && !NOISE.has(f) && row[f] !== null)
-        .map(f => ({ field: f, label: fieldWords(f), value: valueWords(f, row[f]) }))
-}
-
 // Who did it.
 //
 // A null email is not a gap in the record, it is the record saying nobody was

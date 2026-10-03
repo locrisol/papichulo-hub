@@ -1,50 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { dayName } from '@/lib/dates'
-import { groupByWeek, statusNote, categoryStyle, weekTitle, agendaRows } from '@/lib/events'
-
-const on = date => ({ id: date, event_date: date })
-
-describe('groupByWeek', () => {
-    it('keeps one week together', () => {
-        // Sunday 23 August 2026 to Saturday 29 August 2026.
-        const out = groupByWeek([on('2026-08-24'), on('2026-08-27'), on('2026-08-29')])
-        expect(out).toHaveLength(1)
-        expect(out[0].weekStart).toBe('2026-08-23')
-        expect(out[0].events).toHaveLength(3)
-    })
-
-    it('breaks at the Saturday, not at the month', () => {
-        const out = groupByWeek([on('2026-08-29'), on('2026-08-30')])
-        expect(out.map(w => w.weekStart)).toEqual(['2026-08-23', '2026-08-30'])
-    })
-
-    it('keeps a week that runs across the end of a month in one piece', () => {
-        const out = groupByWeek([on('2026-08-31'), on('2026-09-01'), on('2026-09-05')])
-        expect(out).toHaveLength(1)
-        expect(out[0].weekStart).toBe('2026-08-30')
-    })
-
-    it('leaves out the weeks with nothing in them', () => {
-        const out = groupByWeek([on('2026-08-24'), on('2026-09-21')])
-        expect(out.map(w => w.weekStart)).toEqual(['2026-08-23', '2026-09-20'])
-    })
-
-    it('keeps the order it was given, since the query already sorted it', () => {
-        const out = groupByWeek([on('2026-08-24'), on('2026-08-26'), on('2026-08-25')])
-        expect(out[0].events.map(e => e.event_date)).toEqual(['2026-08-24', '2026-08-26', '2026-08-25'])
-    })
-
-    it('copes with nothing at all', () => {
-        expect(groupByWeek([])).toEqual([])
-        expect(groupByWeek(null)).toEqual([])
-    })
-
-    it('loses no events on the way through', () => {
-        const dates = ['2026-08-24', '2026-08-29', '2026-08-30', '2026-09-14', '2026-09-15']
-        const out = groupByWeek(dates.map(on))
-        expect(out.flatMap(w => w.events).map(e => e.event_date)).toEqual(dates)
-    })
-})
+import { statusNote, categoryStyle, weekTitle, agendaRows } from '@/lib/events'
 
 describe('statusNote', () => {
     it('says nothing about an event that is simply on sale', () => {

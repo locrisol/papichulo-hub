@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { fullDayRun, fullDayWords, dayHoursFor, closedTheNightBefore } from '@/lib/workRun'
+import { fullDayRun, fullDayWords, closedTheNightBefore } from '@/lib/workRun'
 
 const shift = (date, starts_at, ends_at, employee_id = 'e1') =>
     ({ shift_date: date, starts_at, ends_at, employee_id })
@@ -10,17 +10,6 @@ const DAY = '2026-09-10'
 const opts = { hoursFor: () => ({ open: '10:00', close: '21:00' }) }
 
 const openToClose = date => shift(date, '10:00', '21:00')
-
-describe('dayHoursFor', () => {
-    it('adds up a day somebody was on twice', () => {
-        const shifts = [shift('2026-09-09', '09:00', '13:00'), shift('2026-09-09', '18:00', '22:00')]
-        expect(dayHoursFor(shifts, 'e1', '2026-09-09')).toBe(8)
-    })
-
-    it('leaves out everybody else', () => {
-        expect(dayHoursFor([shift('2026-09-09', '09:00', '17:00', 'other')], 'e1', '2026-09-09')).toBe(0)
-    })
-})
 
 describe('what makes a day a full one', () => {
     const isFull = shifts => fullDayRun(shifts, 'e1', DAY, opts).todayIsFull

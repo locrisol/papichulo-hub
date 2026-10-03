@@ -1,11 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-    normalise,
-    looksLikeAddress,
-    addExtra,
-    removeExtra,
-    mergeForSend,
-    recipientSummary,
+    normalise, looksLikeAddress, addExtra, removeExtra, recipientSummary,
 } from '@/lib/reportRecipients'
 
 describe('normalise', () => {
@@ -81,29 +76,6 @@ describe('removeExtra', () => {
 
     it('leaves the list alone when it is not on it', () => {
         expect(removeExtra(['x@y.ie'], 'nobody@here.ie')).toEqual(['x@y.ie'])
-    })
-})
-
-describe('mergeForSend', () => {
-    it('puts the owners first', () => {
-        expect(mergeForSend(['ana@p.ie'], ['marta@p.ie']))
-            .toEqual(['ana@p.ie', 'marta@p.ie'])
-    })
-
-    it('sends once to somebody who is on both lists', () => {
-        expect(mergeForSend(['Ana@P.ie'], ['ana@p.ie'])).toEqual(['Ana@P.ie'])
-    })
-
-    it('keeps the address as it was first written', () => {
-        expect(mergeForSend([], ['Ana.Murphy@P.ie'])).toEqual(['Ana.Murphy@P.ie'])
-    })
-
-    it('drops blanks', () => {
-        expect(mergeForSend(['a@b.ie', '', null], [])).toEqual(['a@b.ie'])
-    })
-
-    it('gives an empty list for two empty ones', () => {
-        expect(mergeForSend()).toEqual([])
     })
 })
 

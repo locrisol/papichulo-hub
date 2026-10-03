@@ -22,30 +22,6 @@ export function categoryStyle(category) {
     return CATEGORY_STYLE[category] || 'bg-gray-100 text-gray-700 border-gray-200'
 }
 
-// The same categories as a solid colour, for the dots and the stripes.
-//
-// A cell on a phone is about fifty pixels wide, so there is no room for a name
-// in it and a dot is all that fits. The soft fills above are for chips with
-// words on them and would be all but invisible at five pixels across.
-const CATEGORY_DOT = {
-    Music: 'bg-purple-600',
-    Sports: 'bg-blue-600',
-    Arts: 'bg-pink-600',
-    'Arts & Theatre': 'bg-pink-600',
-    Family: 'bg-amber-600',
-    Film: 'bg-cyan-700',
-    Miscellaneous: 'bg-gray-500',
-}
-
-export function categoryDot(category) {
-    return CATEGORY_DOT[category] || 'bg-gray-500'
-}
-
-// The categories to put in the legend under the month, in a fixed order so it
-// does not reshuffle as the months change. Only the ones that turn up at this
-// venue: 3Arena has never once had a Family listing.
-export const LEGEND = ['Music', 'Arts & Theatre', 'Film', 'Sports', 'Miscellaneous']
-
 // What the sale status is worth saying out loud, or nothing.
 //
 // On sale is the ordinary case and saying so on every event would just be noise
@@ -68,27 +44,6 @@ export function statusNote(status) {
         default:
             return null
     }
-}
-
-// Splits a list of events into weeks, Sunday to Saturday, the same weeks the
-// sales and cost screens use.
-//
-// The list is for planning ahead, and a run of thirty events with nothing
-// between them reads as one long block where "the next two weeks" is the thing
-// anybody actually wants out of it.
-//
-// Weeks with nothing in them are not returned. The gap between two events three
-// weeks apart is already obvious from their dates, and empty headings would
-// take up more room than the events do.
-export function groupByWeek(events) {
-    const weeks = []
-    for (const e of events || []) {
-        const start = weekStartOf(e.event_date)
-        const last = weeks[weeks.length - 1]
-        if (last && last.weekStart === start) last.events.push(e)
-        else weeks.push({ weekStart: start, events: [e] })
-    }
-    return weeks
 }
 
 // The heading over a week in the list.

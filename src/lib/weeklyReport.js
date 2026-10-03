@@ -166,12 +166,6 @@ export function blockedBy(readiness) {
     return null
 }
 
-// Has the week finished? A week is written up after it has ended, never while
-// it is running, so the earliest a report can be started is the Sunday after.
-export function weekIsOver(weekStart, today = todayISO()) {
-    return today > addDays(weekStart, 6)
-}
-
 // How many finished weeks the Reports list shows, and the badge counts.
 export const WEEKS_LISTED = 10
 

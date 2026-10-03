@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
     KINDS, STATE_KEYS, kindOf, kindLabel, cellColour, rateFor, dayCell,
-    personWeek, weekTotals, labourRollup, labourPercent,
-    unanswered, weekAnswered, importVerdict, summarise, planImport, ASK_ABOVE_SECONDS,
+    personWeek, weekTotals, labourPercent,
+    unanswered, importVerdict, summarise, planImport, ASK_ABOVE_SECONDS,
     planDrift, NOTICEABLE_MINUTES, ROW_BANDS,
 } from '@/lib/timesheet'
 
@@ -18,6 +18,10 @@ const aoife = { id: 'e1', full_name: 'Aoife', hourly_rate: 16.5 }
 const cathal = { id: 'e2', full_name: 'Cathal', hourly_rate: null }
 
 const shift = (over) => ({ kind: 'worked', source: 'typed', ...over })
+
+// Whether nothing is left to answer: the yes or no the Reports list asks of
+// unanswered, kept here as the plainest thing to assert.
+const weekAnswered = (rows, covered) => unanswered(rows, covered).length === 0
 
 // The week under test is the last week of October 2026, and nothing on this
 // screen asks a question about a week that has not finished, so every test
@@ -500,32 +504,6 @@ describe('what the week cost as a share of what it took', () => {
 
     it('has no answer for a week with no sales at all', () => {
         expect(labourPercent(perDay, {}).week).toBeNull()
-    })
-})
-
-describe('what the daily rollup gets', () => {
-    // labour_entries stays, because the cost dashboard, the report and
-    // weeklyReport.js all read it for the percentage. The figure in it just
-    // becomes true.
-    const rows = [personWeek({
-        person: aoife, weekStart: WEEK, restaurantRate: 15,
-        entries: [shift({ employee_id: 'e1', work_date: TUE, starts_at: '09:00:00', ends_at: '17:00:00' })],
-    })]
-    const rollup = labourRollup(rows)
-
-    it('gives one row a day, in the shape that table holds', () => {
-        expect(rollup).toHaveLength(7)
-        expect(Object.keys(rollup[0]).sort())
-            .toEqual(['entry_date', 'labour_cost', 'staff_count', 'total_hours'])
-    })
-
-    it('carries the real cost at the real rate', () => {
-        const tuesday = rollup.find(r => r.entry_date === TUE)
-        expect(tuesday).toMatchObject({ total_hours: 8, labour_cost: 132, staff_count: 1 })
-    })
-
-    it('counts nobody on a day nobody worked', () => {
-        expect(rollup.find(r => r.entry_date === SUN)).toMatchObject({ total_hours: 0, staff_count: 0 })
     })
 })
 

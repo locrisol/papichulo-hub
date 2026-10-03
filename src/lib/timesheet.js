@@ -325,21 +325,6 @@ export function labourPercent(perDay = [], sales = {}) {
     }
 }
 
-// What the daily rollup gets, so the cost dashboard and the report keep working
-// without knowing any of this exists.
-//
-// `labour_entries` stays. It is what three screens already read for the cost
-// percentage, and replacing it would break all three for no gain. The figure
-// in it just becomes true: each person at their own rate.
-export function labourRollup(rows) {
-    return weekTotals(rows).perDay.map(day => ({
-        entry_date: day.date,
-        total_hours: day.hours,
-        labour_cost: day.cost,
-        staff_count: rows.filter(row => row.days.find(d => d.date === day.date)?.hours > 0).length,
-    }))
-}
-
 // ---------------------------------------------------------------------------
 // Whether the week can go anywhere yet
 // ---------------------------------------------------------------------------
@@ -378,10 +363,6 @@ export function unanswered(rows, covered) {
         }
     }
     return out
-}
-
-export function weekAnswered(rows, covered) {
-    return unanswered(rows, covered).length === 0
 }
 
 // ---------------------------------------------------------------------------

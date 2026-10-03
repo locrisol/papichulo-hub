@@ -46,10 +46,6 @@ export const WALKABLE_MINUTES = 20
 //             read of the same page does not offer it again.
 export const LIVE = ['trusted', 'kept']
 
-export function onRoster(event) {
-    return LIVE.includes(String(event?.review || ''))
-}
-
 export function notChecked(event) {
     return event?.review === 'found'
 }
@@ -181,10 +177,6 @@ export function watching(pairings, restaurant) {
         && p.is_active !== false
         && (p.relation !== 'city' || (cityOn && countsAsCity(p)))
     ))
-}
-
-export function placeIds(pairings) {
-    return (pairings || []).map(p => p?.place?.id).filter(Boolean)
 }
 
 export function byPlace(pairings) {

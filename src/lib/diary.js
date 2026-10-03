@@ -383,24 +383,6 @@ export function datesBetween(from, to) {
     return out
 }
 
-// The map every view reads: a date to what is on it.
-//
-// A promotion running five days appears under all five, because a month cell
-// asking "what is on this day" wants the true answer. Drawing it as one band
-// rather than five chips is the view's business, and bandsForWeek is what does
-// that.
-export function entriesByDate(entries) {
-    const out = {}
-    for (const entry of entries || []) {
-        for (const date of datesBetween(entry.starts_on, entry.ends_on)) {
-            if (!out[date]) out[date] = []
-            out[date].push(entry)
-        }
-    }
-    for (const date of Object.keys(out)) out[date] = sortEntries(out[date])
-    return out
-}
-
 // -- Bands across a week ------------------------------------------------
 
 // Where a multi day entry starts in a week and how many columns it covers.

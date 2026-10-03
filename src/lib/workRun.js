@@ -1,4 +1,4 @@
-import { shiftHours, toMinutes, endMinutes, closeMinutes, shiftEdges } from '@/lib/roster'
+import { toMinutes, endMinutes, closeMinutes, shiftEdges } from '@/lib/roster'
 import { addDays } from '@/lib/dates'
 
 // How hard somebody has been going, in the days right before this one.
@@ -73,10 +73,6 @@ export function closedTheNightBefore(shifts, date, hoursFor) {
 
 export function shiftsOn(shifts, employeeId, date) {
     return (shifts || []).filter(s => s.employee_id === employeeId && s.shift_date === date)
-}
-
-export function dayHoursFor(shifts, employeeId, date) {
-    return shiftsOn(shifts, employeeId, date).reduce((total, s) => total + shiftHours(s), 0)
 }
 
 // The unbroken run of days worked immediately before a date.

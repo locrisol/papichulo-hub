@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { dayIsClosed, closedDates, noteIsEmpty, planNoteWrites } from '@/lib/closedDays'
+import { dayIsClosed, noteIsEmpty, planNoteWrites } from '@/lib/closedDays'
 
 const note = (extra = {}) => ({ id: 'n1', note_date: '2026-08-24', ...extra })
 
@@ -22,15 +22,6 @@ describe('which side decides', () => {
         expect(dayIsClosed(null, null)).toBe(false)
     })
 
-    it('lists the closed dates out of a week', () => {
-        const notes = [
-            note({ note_date: '2026-08-24', is_closed: true }),
-            note({ note_date: '2026-08-25', is_bank_holiday: true }),
-            note({ note_date: '2026-08-26', is_closed: true }),
-        ]
-        expect([...closedDates(notes)]).toEqual(['2026-08-24', '2026-08-26'])
-        expect(closedDates(null).size).toBe(0)
-    })
 })
 
 describe('noteIsEmpty', () => {

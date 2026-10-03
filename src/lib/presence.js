@@ -22,27 +22,6 @@ import { toMinutes, shiftMinutes } from '@/lib/roster'
 // A day with no opening hours recorded still has to be drawn against something.
 const FALLBACK = { from: 8 * 60, to: 24 * 60 }
 
-// The stretch of the day the bars are measured against.
-//
-// The store's own hours where they are known, and then widened to take in
-// anything rostered outside them. An opening shift starts before the doors do
-// and a closing one runs past them, and those are the two shifts most worth
-// seeing, so a span that clipped them would be hiding the point.
-export function daySpan(dayHours, shifts) {
-    let from = toMinutes(dayHours?.open)
-    let to = toMinutes(dayHours?.close)
-    if (from < 0 || to < 0 || to <= from) { from = FALLBACK.from; to = FALLBACK.to }
-
-    for (const shift of shifts || []) {
-        const starts = toMinutes(shift.starts_at)
-        if (starts < 0) continue
-        const ends = starts + shiftMinutes(shift.starts_at, shift.ends_at)
-        if (starts < from) from = starts
-        if (ends > to) to = ends
-    }
-    return { from, to }
-}
-
 // The one span the whole week is drawn against.
 //
 // Every day gets the same one, on purpose. Given its own span a four hour

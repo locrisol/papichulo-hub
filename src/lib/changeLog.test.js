@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-    tableWords, fieldWords, valueWords, changedFields, deletedFields,
+    tableWords, fieldWords, valueWords, changedFields,
     whoWords, throughTheApp, summarise, actionWords, actionTone, byDay,
     aOrAn,
 } from '@/lib/changeLog'
@@ -116,8 +116,6 @@ describe('changedFields', () => {
                 published_as: { from: null, to: copy },
             },
         }).map(f => f.field)).toEqual(['starts_at'])
-        expect(deletedFields({ deleted_row: { id: 's1', starts_at: '10:00:00', published_as: copy } })
-            .map(f => f.field)).toEqual(['starts_at'])
     })
 
     it('opens up a column that holds a set of values', () => {
@@ -174,19 +172,6 @@ describe('changedFields', () => {
     it('gives nothing for an insert, which carries no payload', () => {
         expect(changedFields({ action: 'insert' })).toEqual([])
         expect(changedFields(null)).toEqual([])
-    })
-})
-
-describe('deletedFields', () => {
-    it('shows what was in the row, without the plumbing', () => {
-        const out = deletedFields({
-            deleted_row: {
-                id: 'x', invoice_number: 'SYS-99412', total_amount: '1284.55',
-                notes: null, created_at: '2026-09-02T08:00:00Z',
-            },
-        })
-        expect(out.map(f => f.field)).toEqual(['invoice_number', 'total_amount'])
-        expect(out[1].value).toBe('€1,284.55')
     })
 })
 
