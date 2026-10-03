@@ -1253,8 +1253,15 @@ maybe('what each role can see and do', () => {
 
     // Since 3 October. Security definer, so it repeats the policies' checks itself.
     describe('the sidebar badges', () => {
-        it('gives an employee only their own shift asks', async () => {
+        // And the checklists, which everybody at the restaurant ticks.
+        it('gives an employee only their own shift asks and the checklists', async () => {
             const { data, error } = await employee.rpc('my_badges', { restaurant: ownRestaurantId })
+            expect(error).toBeNull()
+            expect(Object.keys(data).filter(k => !['asks', 'today', 'checklists'].includes(k))).toEqual([])
+        })
+
+        it('gives an employee nothing about the other restaurant', async () => {
+            const { data, error } = await employee.rpc('my_badges', { restaurant: otherRestaurantId })
             expect(error).toBeNull()
             expect(Object.keys(data).filter(k => k !== 'asks')).toEqual([])
         })
@@ -1269,6 +1276,8 @@ maybe('what each role can see and do', () => {
             const { data } = await manager.rpc('my_badges', { restaurant: ownRestaurantId })
             expect(data.role).toBe('store_manager')
             expect(data).toHaveProperty('claims_late')
+            expect(data).toHaveProperty('timesheet')
+            expect(data).toHaveProperty('permits')
         })
 
         it('does not answer somebody signed out', async () => {
