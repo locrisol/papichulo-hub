@@ -56,6 +56,9 @@ export default function TimeOffRequestDialog({ me, rules, onClose, onSaved }) {
         ? Math.round((new Date(startsOn + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000)
         : 0
     const starts = away === 0 ? 'today' : away === 1 ? 'tomorrow' : `in ${away} days`
+    // A day already gone said "starts in -2 days" with Send greyed out and no
+    // reason, because the date picker's minimum can still be typed past.
+    const past = away < 0
 
     function problem() {
         if (!startsOn) return 'Pick a day.'
@@ -160,13 +163,17 @@ export default function TimeOffRequestDialog({ me, rules, onClose, onSaved }) {
                 {/* How long it is and how far off, once there is enough to say
                     it. Somebody picking dates on a phone cannot see a calendar
                     and a week either side at the same time. */}
-                {days > 0 && !notice && (
+                {past && (
+                    <Notice tone="urgent">That date is in the past. Pick today or a later day.</Notice>
+                )}
+
+                {days > 0 && !notice && !past && (
                     <p className="text-xs text-muted">
                         {days} {days === 1 ? 'day' : 'days'} off, starting {starts}.
                     </p>
                 )}
 
-                {notice && (
+                {notice && !past && (
                     <Notice tone={blocked ? 'urgent' : 'warn'}>
                         Holidays need {noticeDays(rules)} {noticeDays(rules) === 1 ? "day's" : "days'"} notice
                         and this one starts {starts}.{' '}

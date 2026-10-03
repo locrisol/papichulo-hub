@@ -100,6 +100,25 @@ describe('ProtectedRoute', () => {
         expect(screen.queryByText('no restaurant')).not.toBeInTheDocument()
     })
 
+    // Opening the app with no signal showed "TypeError: Failed to fetch" and
+    // said signing out would fix it, which with no signal it cannot.
+    it('says the connection failed and offers to try again, not to sign out', () => {
+        Object.assign(auth, { loading: false, session: { user: { id: 'u1' } }, error: 'TypeError: Failed to fetch' })
+        show()
+        expect(screen.getByText('Could not reach the Hub')).toBeInTheDocument()
+        expect(screen.getByText('Check your connection, then try again.')).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: /Sign out/ })).not.toBeInTheDocument()
+        expect(screen.queryByText(/Failed to fetch/)).not.toBeInTheDocument()
+    })
+
+    it('says the same when it was the restaurant read that could not get through', () => {
+        Object.assign(auth, { loading: false, session: { user: { id: 'u1' } } })
+        restaurant.error = 'NetworkError when attempting to fetch resource.'
+        show()
+        expect(screen.getByText('Could not reach the Hub')).toBeInTheDocument()
+    })
+
     // A good sign-in has a session before it has a user, and the error is only
     // set once the read has actually finished. If this ever breaks, everybody
     // sees the failure screen for a moment on every sign-in.

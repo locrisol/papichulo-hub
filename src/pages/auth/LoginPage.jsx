@@ -4,15 +4,17 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import logo from '@/assets/PapiChuloLogo.png'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import { signInProblem } from '@/lib/errors'
 
 // The sign in screen.
 //
 // The only page that lives outside the app shell, so it has its own full page
 // layout instead of the sidebar and header.
 //
-// The error deliberately says "Invalid email or password" and never which of the
-// two was wrong. Saying "no account with that email" tells anyone who asks which
-// addresses exist here, which is a free list of who works for us.
+// A wrong email or password deliberately says "Invalid email or password" and
+// never which of the two was wrong. Saying "no account with that email" tells
+// anyone who asks which addresses exist here, which is a free list of who works
+// for us. No connection and too many tries say so instead (signInProblem).
 //
 // There is no sign up link because accounts are still created by hand. Letting
 // people register themselves needs the approval flow that is not built yet.
@@ -31,7 +33,7 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithPassword({ email, password })
 
     if (error) {
-      setError('Invalid email or password')
+      setError(signInProblem(error))
       setLoading(false)
     } else {
       // Go to the root and let HomeRedirect work out where this role belongs. Sending

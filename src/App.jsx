@@ -18,6 +18,7 @@ import ProtectedRoute from '@/components/auth/ProtectedRoute'
 import AppLayout from '@/components/layout/AppLayout'
 import LoginPage from '@/pages/auth/LoginPage'
 import UnauthorisedPage from '@/pages/auth/UnauthorisedPage'
+import NotFoundPage from '@/pages/auth/NotFoundPage'
 import RequireRole from '@/components/auth/RequireRole'
 import { ALL_ROLES, MANAGERS, RESTAURANT_CONFIG, ADMIN_ONLY } from '@/lib/access'
 import { useAuth } from '@/context/auth'
@@ -188,6 +189,8 @@ export default function App() {
                 <Route path="/settings/preferences" element={<RequireRole allowed={MANAGERS}><PreferencesPage /></RequireRole>} />
 
                 <Route path="/" element={<HomeRedirect />} />
+                {/* Anything else signed in: an old bookmark or a typo. */}
+                <Route path="*" element={<NotFoundPage />} />
               </Routes>
             </AppLayout>
           </ProtectedRoute>

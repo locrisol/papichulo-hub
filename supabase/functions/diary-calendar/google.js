@@ -121,11 +121,16 @@ export function description(entry) {
 // view is a list of titles and that is where somebody scans. The title line has
 // the room the roster's narrow cell does not, which is the whole rule for where
 // these show: wherever there is space for them.
+//
+// A cancelled entry starts with [Cancelled]. The Hub takes it off the roster,
+// and Google showed it under its normal title, so a month view looked exactly
+// as if it was still on. First, because a long title is cut off at the end.
 function titleOf(entry) {
     const labels = (entry.labels || [])
         .map(l => String(l ?? '').trim())
         .filter(Boolean)
-    return labels.length ? `${entry.title} ${labels.map(l => `[${l}]`).join(' ')}` : entry.title
+    const title = labels.length ? `${entry.title} ${labels.map(l => `[${l}]`).join(' ')}` : entry.title
+    return entry.status === 'cancelled' ? `[Cancelled] ${title}` : title
 }
 
 export function eventBody(entry, origin) {
@@ -140,7 +145,9 @@ export function eventBody(entry, origin) {
         description: description(entry),
         location: entry.location || undefined,
         colorId: colourFor(entry.kind),
-        transparency: entry.starts_at ? 'opaque' : 'transparent',
+        // Free once cancelled, or the time stays blocked for something that is
+        // not happening.
+        transparency: entry.starts_at && entry.status !== 'cancelled' ? 'opaque' : 'transparent',
         ...times,
         source: hubUrl ? { title: 'Open in Papi Chulo Hub', url: hubUrl } : undefined,
         reminders: entry.starts_at

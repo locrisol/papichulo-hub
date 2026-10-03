@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
-import { secondaryButton, card, pageTitle } from '@/lib/controlStyles'
+import { primaryButton, secondaryButton, card, pageTitle } from '@/lib/controlStyles'
+import { friendlyError, isConnectionError } from '@/lib/errors'
 import { NO_ACCESS } from '@/context/auth'
 import { NO_RESTAURANT } from '@/context/restaurant'
 
@@ -19,6 +20,9 @@ import { NO_RESTAURANT } from '@/context/restaurant'
 // screen says what happened and who to ask instead, and shows no reason from
 // the database: a login that is switched off, after a last day or by a
 // manager, and a new account nobody has linked to a restaurant yet.
+//
+// And no connection, where signing out cannot help and would only mean typing
+// the password again once the signal is back: Try again reloads instead.
 const SAID = {
     [NO_ACCESS]: {
         title: 'Your account is deactivated',
@@ -34,7 +38,13 @@ const SAID = {
 
 export default function CannotContinue({ reason }) {
     const navigate = useNavigate()
-    const known = SAID[reason]
+    const offline = isConnectionError(reason)
+    const known = offline
+        ? {
+            title: 'Could not reach the Hub',
+            words: 'Check your connection, then try again.',
+        }
+        : SAID[reason]
 
     async function signOutAndStartAgain() {
         await supabase.auth.signOut()
@@ -57,17 +67,27 @@ export default function CannotContinue({ reason }) {
 
                 {reason && !known && (
                     <p className="text-xs text-muted mt-3">
-                        {reason}
+                        {friendlyError({ message: reason })}
                     </p>
                 )}
 
-                <button
-                    type="button"
-                    onClick={signOutAndStartAgain}
-                    className={`${secondaryButton} mt-5`}
-                >
-                    {known ? 'Sign out' : 'Sign out and start again'}
-                </button>
+                {offline ? (
+                    <button
+                        type="button"
+                        onClick={() => window.location.reload()}
+                        className={`${primaryButton()} mt-5`}
+                    >
+                        Try again
+                    </button>
+                ) : (
+                    <button
+                        type="button"
+                        onClick={signOutAndStartAgain}
+                        className={`${secondaryButton} mt-5`}
+                    >
+                        {known ? 'Sign out' : 'Sign out and start again'}
+                    </button>
+                )}
 
                 {!known && (
                     <p className="text-xs text-muted mt-4">
