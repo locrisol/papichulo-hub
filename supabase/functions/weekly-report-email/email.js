@@ -99,14 +99,30 @@ export function escapeHtml(value) {
         .replace(/"/g, '&quot;')
 }
 
+// Typed text with its line breaks kept.
+//
+// A comment typed over three lines arrived as one, because HTML treats a line
+// break as a space. Each line is trimmed at the end so tidy() and the trailing
+// space rule above have nothing to catch.
+export function escapeLines(text) {
+    return String(text ?? '')
+        .split(/\r?\n/)
+        .map(l => escapeHtml(l.trimEnd()))
+        .join('<br />')
+}
+
 const num = v => (v == null || isNaN(Number(v)) ? 0 : Number(v))
 
+// The sign is decided from what came out, the same as fmtMoney in format.js:
+// adding decimals in binary can leave a balanced figure at minus a fraction of
+// a cent, which is nothing at all and should not read "-€0.00".
 export function money(value) {
     const n = num(value)
     const body = Math.abs(n).toLocaleString('en-IE', {
         minimumFractionDigits: 2, maximumFractionDigits: 2,
     })
-    return (n < 0 ? '-€' : '€') + body
+    const roundsToNothing = /^[0.,\s]*$/.test(body)
+    return (n < 0 && !roundsToNothing ? '-€' : '€') + body
 }
 
 // A refund is money going the other way and is written that way. A minus sign
@@ -214,9 +230,12 @@ export function weekWords(weekStart) {
 // The pieces a mail is built from
 // ---------------------------------------------------------------------------
 
-function band(colour, background, title, body) {
+// The border is a solid colour of its own rather than the text colour made see
+// through. Classic Outlook drops an eight digit colour, and the band lost its
+// edge there.
+function band(colour, background, edge, title, body) {
     return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-        style="margin:0 0 20px;border-radius:10px;background:${background};border:1px solid ${colour}55;">
+        style="margin:0 0 20px;border-radius:10px;background:${background};border:1px solid ${edge};">
         <tr><td style="padding:14px 16px;font-family:${FONT};">
             <div style="font-size:15px;font-weight:700;color:${colour};">${title}</div>
             ${body ? `<div style="margin-top:6px;font-size:13px;line-height:1.5;color:${colour};">${body}</div>` : ''}
@@ -251,7 +270,7 @@ function heading(title, number) {
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
             <tr><td style="background:${DARK};padding:14px ${SIDE}px;font-family:${FONT};">
                 <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
-                    ${number ? `<td width="26" align="center" style="background:#ffffff2e;border-radius:6px;font-family:${FONT};font-size:12px;font-weight:700;color:#ffffff;padding:4px 0;">${number}</td>` : ''}
+                    ${number ? `<td width="26" align="center" style="background:#42544B;border-radius:6px;font-family:${FONT};font-size:12px;font-weight:700;color:#ffffff;padding:4px 0;">${number}</td>` : ''}
                     <td style="${number ? `padding-left:12px;` : ''}font-family:${FONT};font-size:16px;font-weight:700;color:#ffffff;letter-spacing:.02em;">${escapeHtml(title)}</td>
                 </tr></table>
             </td></tr>
@@ -299,6 +318,12 @@ function subHeading(title) {
 // heavier on a tinted ground with a rule above it, so a column of thirteen
 // overheads has a visible bottom rather than a fourteenth line that happens to
 // be bold.
+//
+// The label may break inside a word, and the figure never may. A pasted link or
+// a long code in a label is one unbreakable word, and like a nowrap figure it
+// would hold the whole table wider than a phone.
+const BREAKS = 'word-break:break-word;overflow-wrap:anywhere;'
+
 function line({ label, value, tone, colour, indent, strong, total, inset = 0 }) {
     const weight = strong || total ? 700 : 400
     const size = total ? 15 : 14
@@ -311,7 +336,7 @@ function line({ label, value, tone, colour, indent, strong, total, inset = 0 }) 
     return `<tr>
         <td width="100%" style="padding:${pad} 0 ${pad} ${inset + (indent ? 14 : (total ? 10 : 0))}px;${rule}${ground}
             font-family:${FONT};font-size:${size}px;line-height:1.45;font-weight:${weight};
-            color:${colour || INK};">${label}</td>
+            color:${colour || INK};${BREAKS}">${label}</td>
         <td width="1%" align="right" style="padding:${pad} ${inset + (total ? 10 : 0)}px ${pad} 14px;${rule}${ground}
             font-family:${FONT};font-size:${size}px;line-height:1.45;font-weight:${weight};
             color:${tone || INK};white-space:nowrap;">${value || ''}</td>
@@ -343,7 +368,7 @@ function figures(rows) {
 
 function note(text) {
     return `<tr><td style="padding:10px ${SIDE}px 0;font-family:${FONT};font-size:13px;
-        line-height:1.55;color:${MUTED};">${escapeHtml(text)}</td></tr>`
+        line-height:1.55;color:${MUTED};${BREAKS}">${escapeLines(text)}</td></tr>`
 }
 
 // A comment is a card on the report and a card here, so a section with four of
@@ -354,7 +379,7 @@ function comments(items) {
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
             style="background:${CREAM};border-radius:8px;">
             <tr><td style="padding:11px 13px;font-family:${FONT};font-size:13.5px;
-                line-height:1.55;color:${INK};">${item.label ? `<strong>${escapeHtml(item.label)}.</strong>&nbsp;` : ''}${escapeHtml(item.note || '')}</td></tr>
+                line-height:1.55;color:${INK};${BREAKS}">${item.label ? `<strong>${escapeHtml(item.label)}.</strong>&nbsp;` : ''}${escapeLines(item.note || '')}</td></tr>
         </table>
     </td></tr>`).join('')
 }
@@ -561,6 +586,14 @@ export function stars(count) {
     return '★'.repeat(n) + '☆'.repeat(5 - n)
 }
 
+// Whether a rating moved since last week, and which way. The HTML and the plain
+// copy both ask, so they say the same thing.
+function ratingMove(rating) {
+    const moved = Boolean(rating && rating.amount != null && rating.carried_from != null
+        && Math.abs(num(rating.amount) - num(rating.carried_from)) >= 0.005)
+    return { moved, up: moved && num(rating.amount) > num(rating.carried_from) }
+}
+
 // One platform, in a block of its own wearing its own colour.
 //
 // The colour is the whole point of the block. A one star review and a refund
@@ -583,9 +616,7 @@ function platformBlock(section, platform, rated) {
     // recorded" against four of them says something is missing when there is
     // nothing to miss.
     const rating = rated ? of(section, 'rating').find(r => r.key === platform.id) : null
-    const moved = rating && rating.amount != null && rating.carried_from != null
-        && Math.abs(num(rating.amount) - num(rating.carried_from)) >= 0.005
-    const up = moved && num(rating.amount) > num(rating.carried_from)
+    const { moved, up } = ratingMove(rating)
 
     // The move goes under the rating, not beside it, the same as a share goes
     // under the money. The figure cell cannot wrap, so "4.2 out of 5 (no
@@ -613,7 +644,7 @@ function platformBlock(section, platform, rated) {
         rows.push(line({ inset: 14,
             label: mark + `&nbsp;&times;&nbsp;${count}`
                 + (review.note
-                    ? `<br /><span style="color:${MUTED};">${escapeHtml(review.note)}</span>`
+                    ? `<br /><span style="color:${MUTED};${BREAKS}">${escapeLines(review.note)}</span>`
                     : ''),
             value: '',
         }))
@@ -653,7 +684,7 @@ function platformBlock(section, platform, rated) {
             ${rows.length || remark ? `<tr><td style="padding:0 0 4px;">
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
                     style="border-collapse:collapse;">${rows.join('')}</table>
-                ${remark ? `<div style="padding:12px 14px 8px;font-family:${FONT};font-size:13px;line-height:1.55;color:${MUTED};">${escapeHtml(remark)}</div>` : ''}
+                ${remark ? `<div style="padding:12px 14px 8px;font-family:${FONT};font-size:13px;line-height:1.55;color:${MUTED};${BREAKS}">${escapeLines(remark)}</div>` : ''}
             </td></tr>` : ''}
         </table>
     </td></tr>`
@@ -695,17 +726,21 @@ function platformSection(section, f, charts, bucket, chartKey) {
 // worked out from two dates in a list, because it is the one that earns nothing
 // and it is the one somebody has to do something about today.
 export function renewalWords(person) {
-    if (person?.applied === undefined) return ''
+    const words = renewalText(person)
+    if (!words) return ''
 
-    if (!person.applied) {
-        return `<br /><span style="font-size:13px;color:${RED};">&nbsp;&nbsp;&nbsp;No renewal applied for</span>`
-    }
+    const late = person.applied && person.on && person.applied > person.on
+    const colour = !person.applied ? RED : late ? AMBER : MUTED
+    return `<br /><span style="font-size:13px;color:${colour};">&nbsp;&nbsp;&nbsp;${words}</span>`
+}
+
+// The same, as words alone, for the plain copy.
+export function renewalText(person) {
+    if (person?.applied === undefined) return ''
+    if (!person.applied) return 'No renewal applied for'
 
     const late = person.on && person.applied > person.on
-    return `<br /><span style="font-size:13px;color:${late ? AMBER : MUTED};">`
-        + `&nbsp;&nbsp;&nbsp;Renewal applied for ${fmtDate(person.applied)}`
-        + (late ? ', after it ran out' : '')
-        + '</span>'
+    return `Renewal applied for ${fmtDate(person.applied)}` + (late ? ', after it ran out' : '')
 }
 
 // The paperwork, from the copy frozen with the report rather than from the staff
@@ -946,6 +981,38 @@ function priceCard(title, figure, tone, rows, empty) {
 
 const toneFor = n => (num(n) > 0.004 ? RED : num(n) < -0.004 ? GREEN : MUTED)
 
+// Each list in the mail stops at its own count and the rest are on the Hub,
+// capped the way the cleaning list is above. His answer of 3 October was
+// fifteen of each, but the heavy week in reportEmail.test.js came to about
+// 94,000 characters like that, past where Gmail cuts a mail off once it is
+// base64, and to about 72,000 like this. Each list keeps the order the Hub
+// gives it, biggest effect first for moves and switches and furthest out first
+// for recipes, so the ones that matter most are the ones that stay.
+const PRICES_IN_MAIL = { moves: 8, switches: 4, recipes: 4 }
+
+function pricesInMail(p) {
+    return {
+        moves: p.moves.slice(0, PRICES_IN_MAIL.moves),
+        switches: p.switches.slice(0, PRICES_IN_MAIL.switches),
+        recipes: p.recipes.slice(0, PRICES_IN_MAIL.recipes),
+    }
+}
+
+function cappedRows(all, shown, toRow) {
+    const rows = shown.map(toRow)
+    if (all.length > shown.length) {
+        rows.push(`<tr><td colspan="2" style="padding:9px 14px;border-bottom:1px solid ${BORDER};font-family:${FONT};font-size:13px;">`
+            + `<span style="color:${MUTED};font-family:${FONT};">and ${all.length - shown.length} more, on the Hub</span></td></tr>`)
+    }
+    return rows
+}
+
+function cappedText(all, shown, toLine) {
+    const lines = shown.map(toLine)
+    if (all.length > shown.length) lines.push(`    and ${all.length - shown.length} more, on the Hub`)
+    return lines
+}
+
 // The headlines, one to a line, with what kind of thing it is in bold: his
 // choice on 26 September for the mail (B). The label is everything before the
 // first colon, which is how the app writes them.
@@ -970,6 +1037,7 @@ export function pricesSection(section, f) {
             + comments(sectionComments(section))
     }
     const t = p.totals || {}
+    const shown = pricesInMail(p)
 
     // The four figures an owner reads first, as rows, with what each one is
     // under its name rather than beside the money.
@@ -1002,7 +1070,7 @@ export function pricesSection(section, f) {
 
     const moves = priceCard('Same product, new price', p.moves.length ? signedMoney(t.moves) : '', toneFor(t.moves),
         [
-            ...p.moves.map(m => line({
+            ...cappedRows(p.moves, shown.moves, m => line({
                 inset: 14,
                 // The split on a line of its own, "6 cases, €3.15 less each",
                 // so the total beside it can be checked by multiplying. Absent
@@ -1025,7 +1093,7 @@ export function pricesSection(section, f) {
         'Every code cost what it did the last time it came.')
 
     const switches = priceCard('Bought as something else', p.switches.length ? signedMoney(t.switches) : '', toneFor(t.switches),
-        p.switches.map(x => line({
+        cappedRows(p.switches, shown.switches, x => line({
             inset: 14,
             label: escapeHtml(x.name)
                 + small(`${escapeHtml(x.bought)}, ${dayMonth(x.on)}. `
@@ -1038,7 +1106,7 @@ export function pricesSection(section, f) {
         'Everything came as the version recipes cost from.')
 
     const recipes = priceCard('Recipes not costing what we pay', t.recipes ? String(t.recipes) : '', t.recipes ? AMBER : MUTED,
-        p.recipes.map(r => line({
+        cappedRows(p.recipes, shown.recipes, r => line({
             inset: 14,
             label: escapeHtml(r.name)
                 + small(r.state === 'cannot'
@@ -1108,6 +1176,7 @@ export function pricesSection(section, f) {
 function pricesText(p) {
     if (!p) return ['  Prices were not read for this week.']
     const t = p.totals || {}
+    const shown = pricesInMail(p)
     const out = [
         ...(p.readFrom?.words ? [`  ${p.readFrom.words}`] : []),
         `  Same product, new price: ${p.moves.length ? signedMoney(t.moves) : 'none'}`,
@@ -1118,24 +1187,19 @@ function pricesText(p) {
     for (const w of p.words || []) out.push(`  - ${w}`)
     if (p.moves.length) {
         out.push('  Same product, new price')
-        for (const m of p.moves) {
-            out.push(`    ${m.name}: ${priceOf(m.was, m.per)} to ${priceOf(m.now, m.per)} ${m.per}, ${change(m.change)}, ${signedMoney(m.effect)}`
-                + (m.split ? ` (${m.split})` : ''))
-        }
+        out.push(...cappedText(p.moves, shown.moves, m => `    ${m.name}: ${priceOf(m.was, m.per)} to ${priceOf(m.now, m.per)} ${m.per}, ${change(m.change)}, ${signedMoney(m.effect)}`
+            + (m.split ? ` (${m.split})` : '')))
     }
     if (p.switches.length) {
         out.push('  Bought as something else')
-        for (const x of p.switches) {
-            out.push(`    ${x.name}: ${x.bought}` + (x.cannot ? ', cannot be compared' : `, ${change(x.change)}, ${signedMoney(x.effect)}`))
-        }
+        out.push(...cappedText(p.switches, shown.switches, x => `    ${x.name}: ${x.bought}`
+            + (x.cannot ? ', cannot be compared' : `, ${change(x.change)}, ${signedMoney(x.effect)}`)))
     }
     if (p.recipes.length) {
         out.push('  Recipes not costing what we pay')
-        for (const r of p.recipes) {
-            out.push(`    ${r.name}: ` + (r.state === 'cannot'
-                ? 'cannot be compared'
-                : `recipes ${unitMoney(r.recipe)}, paid ${unitMoney(r.paid)} ${r.unit}, ${change(r.gap)}`))
-        }
+        out.push(...cappedText(p.recipes, shown.recipes, r => `    ${r.name}: ` + (r.state === 'cannot'
+            ? 'cannot be compared'
+            : `recipes ${unitMoney(r.recipe)}, paid ${unitMoney(r.paid)} ${r.unit}, ${change(r.gap)}`)))
     }
     if (p.back.length) {
         out.push('  Came back')
@@ -1168,6 +1232,53 @@ function changeWords(change) {
 // The whole thing
 // ---------------------------------------------------------------------------
 
+// The page every mail in this folder sits in.
+//
+// The metas are for phones: a viewport so nothing lays the mail out at desktop
+// width first, Apple's opt out so it does not resize the type itself, and no
+// automatic links on figures that look like a phone number or a date. The
+// preheader is the line an inbox shows under the subject. Left out, the inbox
+// shows the first words of the mail, which repeat the subject.
+//
+// An inbox fills the rest of that line with whatever text comes next, which
+// is the mail's own heading again. So the preheader is followed by a run of
+// invisible characters that fill the line instead. They are entities, so
+// tidy() leaves them alone and no line ends in a space.
+//
+// heldNotice finds the <body> tag and puts its band straight after it, so the
+// body tag has to stay a plain one.
+const PREVIEW_FILLER = '&#847;&zwnj;&nbsp;'.repeat(80)
+
+export function page(inner, { subject = '', preheader = '' } = {}) {
+    return `<!doctype html><html lang="en"><head><meta charset="utf-8" />`
+        + `<meta name="viewport" content="width=device-width,initial-scale=1" />`
+        + `<meta name="x-apple-disable-message-reformatting" />`
+        + `<meta name="format-detection" content="telephone=no,date=no,address=no,email=no" />`
+        + `<meta name="color-scheme" content="light dark" />`
+        + `<meta name="supported-color-schemes" content="light dark" />`
+        + `<title>${escapeHtml(subject)}</title></head>`
+        + `<body style="margin:0;padding:0;background:${CREAM};">`
+        + (preheader
+            ? `<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">${escapeHtml(preheader)}${PREVIEW_FILLER}</div>`
+            : '')
+        + inner
+        + '</body></html>'
+}
+
+// The week in one line, for the inbox preview. The two figures the report is
+// written to arrive at, and a correction says so first.
+export function headline(f = {}, correction = false) {
+    const share = pct(f.earningsPct)
+    return (correction ? 'Corrected. ' : '')
+        + `Net sales ${money(f.net)}, net earnings ${money(f.earnings)}`
+        + (share ? ` (${share})` : '')
+}
+
+// This report on the Hub, or the list of them for a report with no id.
+export function reportLink(appUrl, report) {
+    return `${appUrl}/reports${report?.id ? `/${report.id}` : ''}`
+}
+
 export function reportEmail({
     report, restaurant, sections = [], figures: f = {}, charts = {},
     publisher, appUrl, changes = [], isTest = false,
@@ -1184,12 +1295,12 @@ export function reportEmail({
 
     let bands = ''
     if (isTest) {
-        bands += band(AMBER, '#FEF6E7', 'This is a test',
+        bands += band(AMBER, '#FEF6E7', '#F3D9A6', 'This is a test',
             'Nobody else has been sent it. It is the report exactly as it would go out, '
             + 'so anything that looks wrong here would have looked wrong to everybody.')
     }
     if (correction) {
-        bands += band(RED, '#FEF2F2', 'This replaces the report sent earlier',
+        bands += band(RED, '#FEF2F2', '#F5C2C2', 'This replaces the report sent earlier',
             changes.length === 0
                 ? 'Something was written up again. The figures are the same as the ones you already have.'
                 : '<strong>What changed:</strong><br />'
@@ -1220,10 +1331,12 @@ export function reportEmail({
         .map((section, i) => (known[section.key] || ownSection)({ ...section, number: i + 1 }))
         .join('')
 
+    // align and bgcolor say again what the style already says, for classic
+    // Outlook, which reads neither the auto margin nor the background.
     const hubButton = appUrl
-        ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
-            <tr><td align="center" style="background:${BLUE};border-radius:10px;">
-                <a href="${escapeHtml(appUrl)}/reports" style="display:inline-block;padding:16px 32px;
+        ? `<table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
+            <tr><td align="center" bgcolor="${BLUE}" style="background:${BLUE};border-radius:10px;">
+                <a href="${escapeHtml(reportLink(appUrl, report))}" style="display:inline-block;padding:16px 32px;
                     font-family:${FONT};font-size:16px;font-weight:700;color:#ffffff;
                     text-decoration:none;">Open this report in the Hub</a>
             </td></tr>
@@ -1234,20 +1347,16 @@ export function reportEmail({
         </div>`
         : ''
 
-    const html = tidy(`<!doctype html>
-<html><head><meta name="color-scheme" content="light dark" />
-<meta name="supported-color-schemes" content="light dark" /></head>
-<body style="margin:0;padding:0;background:${CREAM};">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+    const html = tidy(page(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
     style="background:${CREAM};padding:0;">
 <tr><td align="center">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
     style="width:100%;max-width:${WIDTH}px;background:#ffffff;overflow:hidden;">
 
-    <tr><td style="background:${DARK};padding:22px ${SIDE}px;font-family:${FONT};">
-        <div style="font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:#ffffff99;">Weekly summary report</div>
+    <tr><td style="background:${DARK};padding:22px ${SIDE}px;font-family:${FONT};color:#ffffff;">
+        <div style="font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:#A9C0B2;">Weekly summary report</div>
         <div style="margin-top:5px;font-size:22px;font-weight:700;color:#ffffff;">${escapeHtml(place)}</div>
-        <div style="margin-top:4px;font-size:14px;color:#ffffffcc;">Week ${weekNumber(weekStart)}&nbsp;&middot;&nbsp;${weekWords(weekStart)}</div>
+        <div style="margin-top:4px;font-size:14px;color:#D1D5D3;">Week ${weekNumber(weekStart)}&nbsp;&middot;&nbsp;${weekWords(weekStart)}</div>
     </td></tr>
 
     <tr><td style="padding:18px 0 26px;">
@@ -1261,8 +1370,7 @@ export function reportEmail({
             ? `Written up by ${escapeHtml(publisher)}. Replies come straight back to them.` : ''}</td></tr>
 
 </table>
-</td></tr></table>
-</body></html>`)
+</td></tr></table>`, { subject, preheader: headline(f, correction) }))
 
     return {
         subject,
@@ -1287,6 +1395,13 @@ export function reportEmail({
 // one line: a space at the end of a line arrived as "=20" while the mail went
 // as quoted printable. It goes as base64 now (see mime.js), and the trimming
 // stays along with tidy().
+
+// Typed text, one line of the copy for each line somebody typed, indented to
+// sit under whatever it belongs to.
+function typed(text, indent) {
+    if (!text) return []
+    return String(text).split(/\r?\n/).map(l => indent + l)
+}
 
 function plainText({ report, restaurant, sections, figures: f, publisher, appUrl, changes, isTest, correction }) {
     const out = []
@@ -1339,10 +1454,22 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
             for (const platform of (f.platforms || []).filter(p => p.bucket === bucket)) {
                 out.push(share(platform.name, platform.taken, null))
 
+                // A corporate account has no rating, the same as in the HTML.
+                if (bucket === 'online_platform') {
+                    const rating = of(section, 'rating').find(r => r.key === platform.id)
+                    const { moved, up } = ratingMove(rating)
+                    out.push('    Overall rating: ' + (rating?.amount == null
+                        ? 'not recorded'
+                        : `${num(rating.amount).toFixed(1)} out of 5`
+                            + (moved
+                                ? ` (${up ? 'up' : 'down'} from ${num(rating.carried_from).toFixed(1)})`
+                                : (rating.carried_from != null ? ' (no change)' : ''))))
+                }
+
                 const reviews = of(section, 'review').filter(r => r.key === platform.id)
                 if (reviews.length) out.push('    Reviews')
                 for (const review of reviews) {
-                    out.push(`      ${num(review.meta?.stars)} star`
+                    out.push(`      ${num(review.meta?.stars)} star x ${num(review.meta?.count) || 1}`
                         + (review.note ? `: ${review.note}` : ''))
                 }
 
@@ -1352,6 +1479,8 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
                     out.push(`      ${negative(refund.amount)} ${refund.note || ''}`
                         + (refund.meta?.claimed ? ' (claimed back)' : ' (not claimed)'))
                 }
+
+                out.push(...typed(noteFor(section, platform.id), '    '))
             }
         } else if (section.key === 'people_ops') {
             for (const [state, title] of [
@@ -1361,14 +1490,17 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
                 if (!state) continue
                 out.push(`  ${title}`)
                 out.push(`  ${state.fine} of ${state.total} fine`)
-                const group = (label, people) => {
+                const group = (label, people, withDate) => {
                     if (!people.length) return
                     out.push(`  ${label}`)
-                    for (const p of people) out.push(`    - ${p.name}`)
+                    for (const p of people) {
+                        out.push(`    - ${p.name}` + (withDate && p.on ? ` (${fmtDate(p.on)})` : ''))
+                        if (renewalText(p)) out.push(`      ${renewalText(p)}`)
+                    }
                 }
-                group('Out of date:', state.expired)
-                group('Runs out soon:', state.expiring)
-                group('Nothing on file:', state.missing)
+                group('Out of date:', state.expired, true)
+                group('Runs out soon:', state.expiring, true)
+                group('Nothing on file:', state.missing, false)
             }
             if (f.paperwork?.allergenSheet?.words) {
                 out.push('  Allergen sheet')
@@ -1396,16 +1528,18 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
             for (const action of open) {
                 const weeks = weeksOpen(action.opened_on, weekStart)
                 out.push(`  ${action.label}`
-                    + (weeks === 0 ? ' (new this week)' : ` (open ${weeks} weeks)`))
+                    + (weeks === 0 ? ' (new this week)' : ` (open ${weeks} week${weeks === 1 ? '' : 's'})`))
             }
         }
 
-        for (const comment of sectionComments(section)) out.push(`  ${comment.note || ''}`)
+        for (const comment of sectionComments(section)) {
+            out.push(...typed(`${comment.label ? comment.label + '. ' : ''}${comment.note || ''}`, '  '))
+        }
         out.push('')
     }
 
     if (appUrl) {
-        out.push(`Open it in the Hub: ${appUrl}/reports`)
+        out.push(`Open it in the Hub: ${reportLink(appUrl, report)}`)
         out.push('Easier to read there, and you can put this week beside any other one.')
     }
     if (publisher) out.push(`Written up by ${publisher}. Replies come straight back to them.`)
