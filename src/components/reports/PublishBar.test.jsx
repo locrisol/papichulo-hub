@@ -48,6 +48,15 @@ describe('a published report that went out', () => {
         expect(screen.getByText('It went to owner@papichulo.ie.')).toBeInTheDocument()
         expect(screen.queryByRole('button', { name: 'Send it' })).not.toBeInTheDocument()
     })
+
+    // The database gives the time back in UTC. Cut to its first ten
+    // characters, a report sent just after midnight in summer said the day
+    // before. Built from local parts so it reads the same on any machine.
+    it('says the day it was sent here', () => {
+        const justAfterMidnight = new Date(2026, 8, 28, 0, 30).toISOString()
+        draw({ status: 'published', send_count: 1, sent_to: ['owner@papichulo.ie'], published_at: justAfterMidnight })
+        expect(screen.getByText('Sent, last on 28/09/2026')).toBeInTheDocument()
+    })
 })
 
 describe('a report re-opened after a send that reached nobody', () => {

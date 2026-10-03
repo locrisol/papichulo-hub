@@ -21,6 +21,8 @@ import {
 import JumpButton from '@/components/ui/JumpButton'
 import DateStepper from '@/components/ui/DateStepper'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import Notice from '@/components/ui/Notice'
+import SaveState from '@/components/ui/SaveState'
 import TimesheetWeek from '@/components/timesheet/TimesheetWeek'
 import TimesheetPhone from '@/components/timesheet/TimesheetPhone'
 import TimesheetDay from '@/components/timesheet/TimesheetDay'
@@ -791,11 +793,8 @@ export default function TimesheetPage() {
                             onClick={() => goToWeek(lastWeekStart())}
                         />
                     )}
-                >
-                    <span className="text-sm font-semibold text-gray-800 whitespace-nowrap">
-                        {shortDate(weekStart)} to {shortDate(weekEnd)}
-                    </span>
-                </DateStepper>
+                    weekStart={weekStart}
+                />
 
                 {/* Pick any date; it snaps to that week's Sunday. The same
                     control Weekly Sales and the cost dashboard have beside
@@ -830,25 +829,12 @@ export default function TimesheetPage() {
                         says so. Whether it has gone to the accountant is the
                         other half of where the week stands, so it is on the
                         same line rather than captioning a button. */}
-                    <p className="text-xs">
-                        <span
-                            className={problem ? 'font-bold text-red-700' : 'text-muted'}
-                            aria-live="polite"
-                        >
-                            {/* **Not saved** is the state that matters and it
-                                was the one this line could not say. The words
-                                were up at the top of the page, above a table
-                                you have scrolled past by the time you are
-                                typing into it, so a refused write looked like
-                                nothing happening. */}
-                            {problem
-                                ? 'Not saved'
-                                : saving
-                                    ? 'Saving'
-                                    : savedAt
-                                        ? `Saved at ${savedAt.toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}`
-                                        : 'Saves as you type'}
-                        </span>
+                    {/* **Not saved** is the state that matters and it was
+                        the one this line could not say. The words were up at
+                        the top of the page, above a table you have scrolled
+                        past by the time you are typing into it, so a refused
+                        write looked like nothing happening. */}
+                    <SaveState problem={!!problem} saving={saving} savedAt={savedAt}>
                         {/* The day it was sent here, read off the timestamp,
                             and never the first ten characters of it: the
                             database gives it back in UTC, so a send just after
@@ -858,7 +844,7 @@ export default function TimesheetPage() {
                             {' '}&middot;{' '}
                             {filedAt ? `Sent ${shortDate(toISODate(new Date(filedAt)))}` : 'Not sent yet'}
                         </span>
-                    </p>
+                    </SaveState>
                 </div>
 
                 {/* Kept together so they wrap together and share a line, and
@@ -885,7 +871,7 @@ export default function TimesheetPage() {
             </div>
 
             {(unsaid.length > 0 || changed.length > 0 || noClockOut.length > 0) && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4 text-xs text-amber-800 space-y-1">
+                <Notice tone="warn" className="mb-4 space-y-1">
                     {/* Three different things to answer, said separately
                         because they want different answers. A shift nobody
                         has accounted for, a till time somebody moved and has
@@ -924,7 +910,7 @@ export default function TimesheetPage() {
                             clock in and add a comment.
                         </p>
                     )}
-                </div>
+                </Notice>
             )}
 
             {loading ? (

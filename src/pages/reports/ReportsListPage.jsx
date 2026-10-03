@@ -6,7 +6,10 @@ import { useRestaurant } from '@/context/restaurant'
 import { fmtMoney, num } from '@/lib/format'
 import { shortDate, addDays, weekNumber, weekRange } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
-import { tableCard, tableHeadRow, tableHeadCell, badge, secondaryButton } from '@/lib/controlStyles'
+import {
+    tableCard, tableHeadRow, tableHeadCell, badge, secondaryButton, primaryButton, cardEdge, pageTitle,
+    pageSubtitle,
+} from '@/lib/controlStyles'
 import {
     reportableWeeks,
     weekReadiness,
@@ -154,7 +157,7 @@ function WeekAction({ week, blocked, canWrite, starting, onOpen, onStart, onSale
         <button
             onClick={onStart}
             disabled={starting}
-            className={`${wide ? 'w-full ' : ''}px-4 py-2 bg-accent text-white rounded-lg text-sm font-semibold shadow-sm hover:bg-accent-ink transition-colors disabled:opacity-50`}
+            className={`${wide ? 'w-full ' : ''}${primaryButton()}`}
         >
             {starting ? 'Starting' : 'Start'}
         </button>
@@ -404,8 +407,8 @@ export default function ReportsListPage() {
         <div className="space-y-4">
             <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div>
-                    <h1 className="font-serif text-2xl font-bold text-sidebar">Reports</h1>
-                    <p className="text-sm text-muted mt-1">
+                    <h2 className={pageTitle}>Reports</h2>
+                    <p className={pageSubtitle}>
                         One report a week, written from the figures already in the Hub.
                     </p>
                 </div>
@@ -434,9 +437,7 @@ export default function ReportsListPage() {
                     return (
                         <div
                             key={week.weekStart}
-                            className={`rounded-xl border p-4 ${blocked
-                                ? 'bg-accent-light/50 border-accent/30'
-                                : 'bg-white border-border'}`}
+                            className={`${cardEdge} p-4 ${blocked ? 'bg-accent-light/50' : 'bg-white'}`}
                         >
                             <div className="flex items-start justify-between gap-2">
                                 <div className="min-w-0">

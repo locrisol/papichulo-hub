@@ -62,7 +62,7 @@ const SHEET = {
 // bands come from costTargets, the same as the dashboard and the report, so a
 // week cannot be judged differently depending on the screen you read it on.
 // Only the colours are this screen's own.
-const PERCENT_TONE = { green: 'text-green-700', amber: 'text-amber-600', red: 'text-red-600', none: 'text-gray-900' }
+const PERCENT_TONE = { green: 'text-green-700', amber: 'text-amber-700', red: 'text-red-600', none: 'text-gray-900' }
 
 // The same three judgements on the dark green of the Cost column, where the
 // text colours above would be unreadable.

@@ -247,19 +247,21 @@ function Decision({ item, busy, onCostFrom, onMakeUsual, onRenumber, onGiveReaso
         buttons = (
             <>
                 <label className="sr-only" htmlFor={`reason-${item.id}`}>Why it came back</label>
-                <select
-                    id={`reason-${item.id}`}
-                    value={reason}
-                    onChange={e => setReason(e.target.value)}
-                    className={`${compactField} w-auto`}
-                >
-                    <option value="">Why?</option>
-                    {/* Something else says what in a note at the door, and there
-                        is no note here, so it would be no reason at all. */}
-                    {CLAIM_KINDS.filter(kind => kind.value !== 'something_else').map(kind => (
-                        <option key={kind.value} value={kind.value}>{kind.label}</option>
-                    ))}
-                </select>
+                <div>
+                    <select
+                        id={`reason-${item.id}`}
+                        value={reason}
+                        onChange={e => setReason(e.target.value)}
+                        className={compactField}
+                    >
+                        <option value="">Why?</option>
+                        {/* Something else says what in a note at the door, and
+                            there is no note here, so it would be no reason at all. */}
+                        {CLAIM_KINDS.filter(kind => kind.value !== 'something_else').map(kind => (
+                            <option key={kind.value} value={kind.value}>{kind.label}</option>
+                        ))}
+                    </select>
+                </div>
                 <button
                     type="button"
                     disabled={!!busy || !reason}
@@ -384,8 +386,8 @@ function WeekInShort({ section }) {
                 under={`${section.back.length} credit ${section.back.length === 1 ? 'note' : 'notes'}`}
             >
                 {reasons.map(r => (
-                    <span key={r.kind} className={`${badge} border bg-white text-gray-700 border-gray-300 inline-flex items-center gap-1.5`}>
-                        <i className="inline-block w-2 h-2 rounded-sm" style={{ background: r.colour }} />
+                    <span key={r.kind} className={`${badge} border bg-white text-gray-700 border-gray-300`}>
+                        <i className="inline-block w-2 h-2 mr-1.5 rounded-sm" style={{ background: r.colour }} />
                         {r.label} <b className="tabular-nums">{fmtMoney(r.money)}</b>
                     </span>
                 ))}
@@ -437,7 +439,7 @@ function Chip({ name, change, note, tone }) {
 }
 
 function More({ count }) {
-    return <span className={`${badge} border border-dashed border-gray-300 text-muted font-medium`}>+ {count} more</span>
+    return <span className={`${badge} border border-dashed border-gray-300 text-muted`}>+ {count} more</span>
 }
 
 // ---------------------------------------------------------------------------

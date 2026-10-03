@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { cardHeader } from '@/lib/controlStyles'
+import { cardHeader, denseField } from '@/lib/controlStyles'
 import { isOwnSection } from '@/lib/weeklyReport'
 import { useConfirm } from '@/context/confirm'
 
@@ -41,18 +41,20 @@ export default function ReportSectionHead({ section, canEdit, onRename, onRemove
     return (
         <div className={`${cardHeader} rounded-t-xl flex flex-wrap items-center justify-between gap-x-3 gap-y-2`}>
             {renaming ? (
-                <input
-                    value={title}
-                    onChange={e => setTitle(e.target.value)}
-                    onBlur={commit}
-                    onKeyDown={e => {
-                        if (e.key === 'Enter') e.currentTarget.blur()
-                        if (e.key === 'Escape') { setTitle(section.title); setRenaming(false) }
-                    }}
-                    autoFocus
-                    aria-label="What this section is called"
-                    className="flex-1 min-w-[8rem] bg-white/15 border border-white/40 rounded px-2 py-1 text-white text-xs font-bold uppercase tracking-wider focus:outline-none focus:ring-2 focus:ring-white/60"
-                />
+                <div className="flex-1 min-w-[8rem]">
+                    <input
+                        value={title}
+                        onChange={e => setTitle(e.target.value)}
+                        onBlur={commit}
+                        onKeyDown={e => {
+                            if (e.key === 'Enter') e.currentTarget.blur()
+                            if (e.key === 'Escape') { setTitle(section.title); setRenaming(false) }
+                        }}
+                        autoFocus
+                        aria-label="What this section is called"
+                        className={denseField}
+                    />
+                </div>
             ) : (
                 <span className="min-w-0">{section.title}</span>
             )}

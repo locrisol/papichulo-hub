@@ -38,7 +38,7 @@ const NOT_IN_THE_WAY = -1
 
 const box = 'block w-full font-sans text-xs tabular-nums tracking-tight text-center '
     + 'border border-gray-300 rounded px-1 py-0.5 bg-white text-gray-900 '
-    + 'focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/25 '
+    + 'focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent '
     + 'placeholder:text-gray-300 disabled:bg-gray-50 disabled:text-gray-400'
 
 export default function TimeCell({

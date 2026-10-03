@@ -9,7 +9,9 @@ import { addDays, weekNumber, weekRange, todayISO, shortDate } from '@/lib/dates
 import { bankHolidaysBetween, BANK_HOLIDAY_INK } from '@/lib/bankHolidays'
 import { resolveTarget, statusFor } from '@/lib/costTargets'
 import { friendlyError } from '@/lib/errors'
-import { card, cardHeader, badge, secondaryButton } from '@/lib/controlStyles'
+import {
+    card, cardHeader, badge, secondaryButton, primaryButton, fieldClass, pageTitle, pageSubtitle,
+} from '@/lib/controlStyles'
 import { useState as useLocalState } from 'react'
 import {
     reportFigures, sectionKey, publishCheck, figuresToStore, platformShare,
@@ -46,6 +48,7 @@ import BackButton from '@/components/ui/BackButton'
 import AddButton from '@/components/ui/AddButton'
 import { can, RESTAURANT_CONFIG } from '@/lib/access'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import SaveState from '@/components/ui/SaveState'
 
 // One week's report.
 //
@@ -73,7 +76,7 @@ const UNREAD = 'Part of this week could not be read, so it cannot go out yet. Re
 
 const TONE = {
     green: 'text-green-700',
-    amber: 'text-amber-600',
+    amber: 'text-amber-700',
     red: 'text-red-600',
     none: 'text-muted',
 }
@@ -142,6 +145,9 @@ export default function ReportPage() {
     // autosave asks somebody to take it on trust, and nobody does with figures.
     const [saving, setSaving] = useState(false)
     const [savedAt, setSavedAt] = useState(null)
+    // Whether the last write failed, kept apart from error. A week that could
+    // not be read also fills error, and that is not a save going wrong.
+    const [writeFailed, setWriteFailed] = useState(false)
 
     const isStoreManager = can(user, RESTAURANT_CONFIG)
     const canEdit = isStoreManager && report?.status === 'draft'
@@ -607,8 +613,9 @@ export default function ReportPage() {
         const { error: err } = await run()
         setSaving(false)
 
-        if (err) { setError(friendlyError(err)); return false }
+        if (err) { setError(friendlyError(err)); setWriteFailed(true); return false }
         setError('')
+        setWriteFailed(false)
         setSavedAt(new Date())
         setRefresh(n => n + 1)
         return true
@@ -1279,10 +1286,8 @@ export default function ReportPage() {
             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                 <div className="min-w-0">
                     <BackButton to="/reports" className="mb-2">All reports</BackButton>
-                    <h1 className="font-serif text-2xl font-bold text-sidebar leading-tight">
-                        Week {weekNumber(week)}
-                    </h1>
-                    <p className="text-sm text-muted mt-1">
+                    <h2 className={pageTitle}>Week {weekNumber(week)}</h2>
+                    <p className={pageSubtitle}>
                         {weekRange(week)} &middot; {activeRestaurant?.name}
                     </p>
                     {/* A week with a bank holiday in it is not comparable with
@@ -1301,15 +1306,7 @@ export default function ReportPage() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3 flex-shrink-0 self-start">
-                    {canEdit && (
-                        <span className="text-xs text-muted" aria-live="polite">
-                            {saving
-                                ? 'Saving'
-                                : savedAt
-                                    ? `Saved at ${savedAt.toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}`
-                                    : 'Saves as you type'}
-                        </span>
-                    )}
+                    {canEdit && <SaveState problem={writeFailed} saving={saving} savedAt={savedAt} />}
                     <span className={`${badge} ${report.status === 'draft' || mailMissing(report)
                         ? 'bg-accent-light text-accent-ink'
                         : 'bg-green-50 text-green-700'}`}>
@@ -1649,14 +1646,16 @@ function AddSection({ onAdd }) {
         <div className={`${card} p-4`}>
             <p className="text-xs font-bold text-muted uppercase tracking-wider mb-2">A section of your own</p>
             <div className="flex flex-wrap gap-2">
-                <input
-                    value={title}
-                    onChange={e => setTitle(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Escape') { setTitle(''); setOpen(false) } }}
-                    autoFocus
-                    placeholder="What is it called"
-                    className="flex-1 min-w-[12rem] bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
-                />
+                <div className="flex-1 min-w-[12rem]">
+                    <input
+                        value={title}
+                        onChange={e => setTitle(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Escape') { setTitle(''); setOpen(false) } }}
+                        autoFocus
+                        placeholder="What is it called"
+                        className={fieldClass}
+                    />
+                </div>
                 <button
                     onClick={async () => {
                         if (!title.trim()) return
@@ -1664,7 +1663,7 @@ function AddSection({ onAdd }) {
                         setTitle('')
                         setOpen(false)
                     }}
-                    className="px-4 py-2 bg-accent text-white rounded-lg text-sm font-semibold shadow-sm hover:bg-accent-ink transition-colors"
+                    className={primaryButton()}
                 >
                     Add
                 </button>

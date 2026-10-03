@@ -8,7 +8,7 @@ import { resolveTarget, statusFor, targetInForce } from '@/lib/costTargets'
 import { reportFigures } from '@/lib/weeklyReport'
 import { fromEarlierWeeks } from '@/lib/invoiceClaims'
 import CostTargetModal from '@/components/costs/CostTargetModal'
-import { dateField, card, rowButton } from '@/lib/controlStyles'
+import { dateField, card, rowButton, badge } from '@/lib/controlStyles'
 import JumpButton from '@/components/ui/JumpButton'
 import DateStepper from '@/components/ui/DateStepper'
 import { friendlyError } from '@/lib/errors'
@@ -18,6 +18,7 @@ import { DAY_NAMES } from '@/lib/events'
 import { bankHolidayOn, BANK_HOLIDAY_INK, BANK_HOLIDAY_LABEL } from '@/lib/bankHolidays'
 import { can, RESTAURANT_CONFIG } from '@/lib/access'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import Notice from '@/components/ui/Notice'
 
 // The cost dashboard. Everything else in the Hub feeds this: sales give the
 // denominator, invoices give food and packaging, labour gives hours times rate,
@@ -71,7 +72,7 @@ function earlierWords(earlier) {
 function KpiCard({ label, pct, target, amount, status, onEdit, temporaryUntil, footnote }) {
     const colour = {
         green: 'text-green-700',
-        amber: 'text-amber-600',
+        amber: 'text-amber-700',
         red: 'text-red-600',
         none: 'text-muted',
     }[status]
@@ -83,7 +84,9 @@ function KpiCard({ label, pct, target, amount, status, onEdit, temporaryUntil, f
         none: 'bg-gray-300',
     }[status]
 
-    const badge = {
+    // Named for what it says rather than badge, which is the shared pill
+    // shape it is drawn in.
+    const verdict = {
         green: { text: 'On track', cls: 'bg-green-50 text-green-700' },
         amber: { text: 'Near limit', cls: 'bg-amber-50 text-amber-700' },
         red: { text: 'Over target', cls: 'bg-red-50 text-red-700' },
@@ -121,11 +124,11 @@ function KpiCard({ label, pct, target, amount, status, onEdit, temporaryUntil, f
             </div>
 
             <div className="mt-2 flex items-center gap-2 flex-wrap">
-                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${badge.cls}`}>
-                    {badge.text}
+                <span className={`${badge} ${verdict.cls}`}>
+                    {verdict.text}
                 </span>
                 {temporaryUntil && (
-                    <span className="text-xs text-amber-600">
+                    <span className="text-xs text-amber-700">
                         temporary, ends after {shortDate(temporaryUntil)}
                     </span>
                 )}
@@ -363,23 +366,26 @@ export default function CostDashboardPage() {
 
                 {/* Four controls in one row fits a laptop and does not fit a
                     phone, where the date box was pushed clean off the right
-                    edge. The three week buttons stay together on their own line
-                    and the date box drops underneath them, full width so it is
-                    easy to hit with a thumb. On anything wider it goes back to
-                    being one row. */}
-                <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
+                    edge. On a phone the arrows keep their own line with the
+                    week between them, and the jump button and the date box
+                    drop underneath, full width so they are easy to hit with a
+                    thumb. On anything wider it goes back to being one row, and
+                    the date box wraps under the arrows where there is not room,
+                    as on a tablet with the sidebar showing. */}
+                <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 w-full sm:w-auto">
                     <DateStepper
                         onBack={() => shiftWeek(-1)}
                         onNext={() => shiftWeek(1)}
                         backLabel="Previous week"
                         nextLabel="Next week"
-                    >
-                        <JumpButton
-                            isCurrent={isThisWeek}
-                            onClick={() => goToWeek(weekStartOf(todayISO()))}
-                            className="w-full sm:w-auto"
-                        />
-                    </DateStepper>
+                        weekStart={weekStart}
+                        jump={
+                            <JumpButton
+                                isCurrent={isThisWeek}
+                                onClick={() => goToWeek(weekStartOf(todayISO()))}
+                            />
+                        }
+                    />
                     <input type="date" value={pickerDate}
                         onChange={e => {
                             const v = e.target.value
@@ -402,10 +408,10 @@ export default function CostDashboardPage() {
                 until the new week replaces it, which is what the cards and
                 the charts underneath already do. */}
             {ready && netSales === 0 && (
-                <div className="bg-amber-50 text-amber-700 text-sm rounded-lg p-4 mb-4">
+                <Notice tone="warn" className="mb-4">
                     No sales are recorded for this week, so the percentages cannot be worked out. Enter the week's
                     sales and everything here fills in.
-                </div>
+                </Notice>
             )}
 
             {/* The current week is only ever part of a week. Halfway through, a
@@ -414,10 +420,10 @@ export default function CostDashboardPage() {
                 nothing, and a week with no sales at all already has the message
                 above rather than this one. */}
             {ready && isThisWeek && netSales > 0 && (
-                <div className="bg-blue-50 text-blue-700 text-sm rounded-lg p-4 mb-4">
+                <Notice tone="info" className="mb-4">
                     Week in progress. These figures are worked out from the days entered so far, so they will keep
                     moving as the rest of the week goes in.
-                </div>
+                </Notice>
             )}
 
             {/* The four costs.
@@ -519,7 +525,7 @@ export default function CostDashboardPage() {
                                         {r.label}
                                         {share != null && (
                                             <span className="block text-xs text-muted tabular-nums">
-                                                {share.toFixed(1)}% of net
+                                                {fmtPct(share)} of net
                                                 {r.target ? ` · target ${r.target}%` : ' · no target set'}
                                             </span>
                                         )}
@@ -544,7 +550,7 @@ export default function CostDashboardPage() {
                             <span className={`whitespace-nowrap ${grossProfit >= 0 ? 'text-green-700' : 'text-red-600'}`}>
                                 {fmtMoney(grossProfit)}
                                 {figures.grossProfitPct != null && (
-                                    <span className="font-normal text-sm ml-2">({figures.grossProfitPct.toFixed(0)}%)</span>
+                                    <span className="font-normal text-sm ml-2">({fmtPct(figures.grossProfitPct)})</span>
                                 )}
                             </span>
                         </div>

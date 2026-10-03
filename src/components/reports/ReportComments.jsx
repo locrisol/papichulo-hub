@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { useRemoveCard } from '@/components/reports/useRemoveCard'
-import { removeButton } from '@/lib/controlStyles'
+import { removeButton, fieldClass } from '@/lib/controlStyles'
 import AutoTextarea from '@/components/ui/AutoTextarea'
 import AddButton from '@/components/ui/AddButton'
 
@@ -66,7 +66,7 @@ export default function ReportComments({ items, canEdit, onAdd, onSave, onRemove
                                     if (!text) return onRemove(item.id)
                                     onSave(item.id, text)
                                 }}
-                                className="flex-1 bg-transparent text-sm text-gray-800 focus:outline-none"
+                                className="flex-1 bg-transparent text-base pointer-fine:text-sm text-gray-800 focus:outline-none"
                             />
                         ) : (
                             <p className="flex-1 text-sm text-gray-800">{item.note}</p>
@@ -97,7 +97,7 @@ export default function ReportComments({ items, canEdit, onAdd, onSave, onRemove
                         onChange={e => setAdding(e.target.value)}
                         onBlur={add}
                         placeholder="Add a comment"
-                        className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 shadow-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
+                        className={fieldClass}
                     />
                     {adding.trim() && (
                         <AddButton

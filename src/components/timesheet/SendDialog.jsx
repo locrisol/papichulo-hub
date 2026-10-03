@@ -9,6 +9,7 @@ import { sendTimesheet, sentWords } from '@/lib/timesheetMail'
 import { friendlyError } from '@/lib/errors'
 import Modal from '@/components/ui/Modal'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import Notice from '@/components/ui/Notice'
 import AutoTextarea from '@/components/ui/AutoTextarea'
 import Recipients from '@/components/reports/Recipients'
 import {
@@ -266,7 +267,7 @@ export default function SendDialog({
                 )}
 
                 {unfinished && (
-                    <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4 text-xs text-amber-800">
+                    <Notice tone="warn" className="mb-4">
                         <strong className="font-bold">This period has not finished yet.</strong>{' '}
                         {canSend ? (
                             <>
@@ -279,7 +280,7 @@ export default function SendDialog({
                                 nothing on them.
                             </>
                         )}
-                    </div>
+                    </Notice>
                 )}
 
                 {loading && (
@@ -287,7 +288,7 @@ export default function SendDialog({
                 )}
 
                 {blocked && (
-                    <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4 text-xs text-amber-800 space-y-1">
+                    <Notice tone="warn" className="mb-4 space-y-1">
                         {unsaid.length > 0 && (
                             <p>
                                 <strong className="font-bold">
@@ -317,7 +318,7 @@ export default function SendDialog({
                             </p>
                         )}
                         {canSend && <p>A test can still be sent.</p>}
-                    </div>
+                    </Notice>
                 )}
 
                 <Recipients
