@@ -126,6 +126,7 @@ export default function OpeningHoursModal({ onClose }) {
                                 onChange={v => set(i, "open", v)}
                                 compact
                                 className="flex-1 min-w-0"
+                                placeholder="Not set"
                                 aria-label={`${day} opens`}
                                 />
                             <span className="text-muted text-sm">to</span>
@@ -134,6 +135,7 @@ export default function OpeningHoursModal({ onClose }) {
                                 onChange={v => set(i, "close", v)}
                                 compact
                                 className="flex-1 min-w-0"
+                                placeholder="Not set"
                                 aria-label={`${day} closes`}
                                 />
                             <button

@@ -293,9 +293,12 @@ describe('a style that is a function gets called', () => {
 
     it.each(users)('%s calls them', path => {
         // The import line names them without calling them and is the one place
-        // that is meant to.
+        // that is meant to. Comments go too: chip is a word the comments use
+        // for a dozen things that are not the style.
         const body = sources[path]
             .replace(/import\s*\{[^}]*\}\s*from\s*'@\/lib\/controlStyles'/g, '')
+            .replace(/\/\*[\s\S]*?\*\//g, '')
+            .replace(/(^|\s)\/\/.*$/gm, '$1')
         const bare = FUNCTIONS.filter(name => (
             new RegExp(String.raw`\b${name}\b\s*(?!\()`).test(body)
         ))
