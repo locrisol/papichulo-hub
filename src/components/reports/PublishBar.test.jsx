@@ -30,14 +30,14 @@ describe('a published report whose mail never went', () => {
 
     it('offers to send it, without re-opening it', () => {
         const { onSend, onReopen } = draw(report)
-        fireEvent.click(screen.getByRole('button', { name: 'Send it' }))
+        fireEvent.click(screen.getByRole('button', { name: 'Send report' }))
         expect(onSend).toHaveBeenCalled()
         expect(onReopen).not.toHaveBeenCalled()
     })
 
     it('does not offer it twice while one is going', () => {
         draw(report, { busy: true })
-        expect(screen.getByRole('button', { name: 'Sending' })).toBeDisabled()
+        expect(screen.getByRole('button', { name: 'Sending...' })).toBeDisabled()
     })
 })
 
@@ -46,7 +46,7 @@ describe('a published report that went out', () => {
         draw({ status: 'published', send_count: 1, sent_to: ['owner@papichulo.ie'], published_at: '2026-09-28T09:00:00Z' })
         expect(screen.getByText(/^Sent, last on/)).toBeInTheDocument()
         expect(screen.getByText('It went to owner@papichulo.ie.')).toBeInTheDocument()
-        expect(screen.queryByRole('button', { name: 'Send it' })).not.toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: 'Send report' })).not.toBeInTheDocument()
     })
 
     // The database gives the time back in UTC. Cut to its first ten
@@ -68,6 +68,6 @@ describe('a report re-opened after a send that reached nobody', () => {
 
     it('still calls it a correction after one that went', () => {
         draw({ status: 'draft', send_count: 1, sent_to: ['owner@papichulo.ie'] })
-        expect(screen.getByRole('button', { name: 'Publish again and re-send' })).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Publish again and resend' })).toBeInTheDocument()
     })
 })

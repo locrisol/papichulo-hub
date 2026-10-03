@@ -36,7 +36,7 @@ function Renewal({ person }) {
     const late = person.on && person.applied > person.on
     return (
         <span className="block text-xs text-muted">
-            Renewal applied for {shortDate(person.applied)}{late ? ', after it ran out' : ''}
+            Applied to renew on {shortDate(person.applied)}{late ? ', after it expired' : ''}
         </span>
     )
 }
@@ -80,12 +80,12 @@ function Summary({ title, state, asOf, noun }) {
             <b className="text-gray-900">
                 {title}: {state.fine} of {state.total} in date.
             </b>
-            <Who label="Out of date:" people={state.expired} />
-            <Who label="Runs out soon:" people={state.expiring} />
+            <Who label="Expired:" people={state.expired} />
+            <Who label="Expires soon:" people={state.expiring} />
             <Who label="Nothing on file:" people={state.missing} />
             {next && (
                 <p className="text-muted mt-1.5">
-                    The next {noun} runs out on {shortDate(next.on)}, in {days} {days === 1 ? 'day' : 'days'}.
+                    The next {noun} expires on {shortDate(next.on)}, in {days} {days === 1 ? 'day' : 'days'}.
                 </p>
             )}
         </Line>
@@ -112,7 +112,7 @@ export default function ReportPaperwork({ paperwork, weekStart, asOf, allergenSh
         return (
             <div className="space-y-2">
                 <p className="text-sm text-muted">
-                    Nobody was on the books this week, so there is no paperwork to check.
+                    Nobody was on the team this week, so there is no paperwork to check.
                 </p>
                 <AllergenSheet due={allergenSheet} />
             </div>
@@ -132,9 +132,9 @@ export default function ReportPaperwork({ paperwork, weekStart, asOf, allergenSh
             </div>
 
             <p className="text-xs text-muted mt-2">
-                {paperwork.people} on the books in the week of {shortDate(weekStart)}, checked as things stand
-                today, leaving out anybody who has left since. Anything inside {WARN_DAYS} days counts as running
-                out, and anybody with no permit to expire counts as in date.
+                {paperwork.people} on the team in the week of {shortDate(weekStart)}, checked as of today,
+                leaving out anybody who has left since. Anything that expires within {WARN_DAYS} days counts as
+                expiring soon, and anybody with no permit to expire counts as in date.
             </p>
         </div>
     )

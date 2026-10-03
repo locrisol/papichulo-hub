@@ -125,7 +125,7 @@ describe('keeping the list', () => {
     // to.
     it('puts the list back when it could not be kept', async () => {
         open({ canSend: true, onKeepList: async () => 'That could not be saved, so nothing has changed.' })
-        await userEvent.click(screen.getByRole('button', { name: 'Take payroll@example.ie off the list' }))
+        await userEvent.click(screen.getByRole('button', { name: 'Remove payroll@example.ie from the list' }))
 
         await waitFor(() => expect(screen.getByText('That could not be saved, so nothing has changed.')).toBeInTheDocument())
         expect(screen.getByText('payroll@example.ie')).toBeInTheDocument()

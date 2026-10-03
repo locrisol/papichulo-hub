@@ -68,7 +68,7 @@ export default function Recipients({
                                 type="button"
                                 onClick={() => onChange(removeExtra(extras, address))}
                                 disabled={busy}
-                                aria-label={`Take ${address} off the list`}
+                                aria-label={`Remove ${address} from the list`}
                                 className={removeButton}
                             >
                                 ×
@@ -121,7 +121,7 @@ export default function Recipients({
                     {problem && <p role="alert" className="text-xs text-accent-ink mt-2">{problem}</p>}
                     <p className="text-xs text-muted mt-2">
                         Any address works. They do not need a Hub account, and whoever is added stays
-                        on every week from now until they are taken off.
+                        on every week from now until they are removed.
                     </p>
                 </div>
             ) : (

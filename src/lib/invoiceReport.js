@@ -1019,8 +1019,8 @@ export function priceWords(section) {
     if (owed.length) {
         const priced = owed.filter(o => o.money != null)
         out.push(priced.length
-            ? `Still owed: ${fmtMoney(totals.owed)} on ${plural(owed.length, 'claim', 'claims')}.`
-            : `Still owed: ${plural(owed.length, 'claim', 'claims')} waiting on a credit.`)
+            ? `Still owed: ${fmtMoney(totals.owed)} on ${plural(owed.length, 'delivery problem', 'delivery problems')}.`
+            : `Still owed: ${plural(owed.length, 'delivery problem', 'delivery problems')} waiting for a credit.`)
     }
 
     // Money this week takes off for a delivery in an earlier one, because
@@ -1031,10 +1031,10 @@ export function priceWords(section) {
         const one = weeks.length === 1
         out.push(earlier.length === 1
             ? `From an earlier week: ${fmtMoney(earlier[0].money)} on ${earlier[0].what}, from the delivery in the week of `
-                + `${dayMonth(earlier[0].delivered)}, whose report had already gone out.`
-            : `From earlier weeks: ${fmtMoney(totals.earlier)} on ${plural(earlier.length, 'claim', 'claims')}, `
+                + `${dayMonth(earlier[0].delivered)}, whose report had already been sent.`
+            : `From earlier weeks: ${fmtMoney(totals.earlier)} on ${plural(earlier.length, 'delivery problem', 'delivery problems')}, `
                 + `from the deliveries in the week${one ? '' : 's'} of ${listed(weeks.map(w => dayMonth(w)), weeks.length)}, `
-                + `whose report${one ? '' : 's'} had already gone out.`)
+                + `whose report${one ? '' : 's'} had already been sent.`)
     }
 
     if (!out.length) out.push('Nothing moved on prices this week and nothing came back.')

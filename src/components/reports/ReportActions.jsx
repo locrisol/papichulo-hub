@@ -64,9 +64,8 @@ export default function ReportActions({ section, weekStart, canEdit, onAdd, onSa
     return (
         <div>
             <p className="text-sm text-muted mb-3">
-                These carry from week to week on their own until they are ticked off. Nothing has to be retyped,
-                and nothing quietly disappears because somebody forgot to mention it again. Tick one that is
-                done; remove one that should never have been here.
+                These carry over from week to week until they are ticked off. Tick one when it is done, or
+                remove it if it should not be on the list.
             </p>
 
             <div className="space-y-2">
@@ -179,7 +178,7 @@ export default function ReportActions({ section, weekStart, canEdit, onAdd, onSa
                             keepFocus
                             onClick={add}
                         >
-                            {busy ? 'Adding' : 'Add task'}
+                            {busy ? 'Adding...' : 'Add task'}
                         </AddButton>
                     )}
                 </div>

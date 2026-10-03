@@ -587,13 +587,13 @@ describe('a start and a finish at the same time', () => {
 })
 
 describe('saying that it saved', () => {
-    // The same three words the report page uses, because it is the same
+    // The same words the report page uses, because it is the same
     // promise: no Save button on either, both write when you leave a box, and
     // this line is the only thing that says it happened.
-    it('says it saves as you type before anything has', async () => {
+    it('says it saves as you leave each box before anything has', async () => {
         render(<TimesheetPage />)
         await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
-        expect(screen.getByText('Saves as you type')).toBeInTheDocument()
+        expect(screen.getByText('Saves as you leave each box')).toBeInTheDocument()
     })
 
     it('says when it last saved', async () => {
@@ -693,7 +693,7 @@ describe('sending the hours', () => {
         expect(screen.queryByRole('button', { name: 'Send the hours' })).not.toBeInTheDocument()
         await userEvent.click(screen.getByRole('button', { name: 'Download the hours' }))
         expect(await screen.findByRole('button', { name: 'Download the PDF' })).toBeInTheDocument()
-        expect(screen.queryByRole('button', { name: 'Send it' })).not.toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: 'Send' })).not.toBeInTheDocument()
     })
 
     // A write the rules turn away changes no row and says nothing at all, so
@@ -703,7 +703,7 @@ describe('sending the hours', () => {
         await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
 
         await userEvent.click(screen.getByRole('button', { name: 'Send the hours' }))
-        await userEvent.click(await screen.findByRole('button', { name: 'Take payroll@example.ie off the list' }))
+        await userEvent.click(await screen.findByRole('button', { name: 'Remove payroll@example.ie from the list' }))
 
         await waitFor(() => expect(updated.some(u => u.table === 'restaurants')).toBe(true))
         expect(await screen.findByText('That could not be saved, so nothing has changed.')).toBeInTheDocument()

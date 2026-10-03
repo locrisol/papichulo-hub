@@ -81,11 +81,11 @@ function unansweredWords(waiting) {
     const said = []
     if (missing.length) {
         said.push(`${who(missing)} ${missing.length === 1 ? 'has a rostered shift' : 'have rostered shifts'} `
-            + 'with nothing said on the timesheet.')
+            + 'with no times, time off or comment on the timesheet.')
     }
     if (changed.length) {
         said.push(`${who(changed)} ${changed.length === 1 ? 'has hours' : 'have hours'} `
-            + "the till's report does not have, with nothing said about them.")
+            + "the till's report does not have, and no comment to explain them.")
     }
     if (open.length) {
         said.push(`${who(open)} ${open.length === 1 ? 'has' : 'have'} a clock in with no clock out `
@@ -134,7 +134,7 @@ function WeekAction({ week, blocked, canWrite, starting, onOpen, onStart, onSale
     if (week.report) {
         return (
             <button onClick={onOpen} className={`${width}${secondaryButton}`}>
-                {week.report.status === 'draft' ? 'Carry on' : 'Read'}
+                {week.report.status === 'draft' ? 'Continue' : 'Open'}
             </button>
         )
     }
@@ -146,7 +146,7 @@ function WeekAction({ week, blocked, canWrite, starting, onOpen, onStart, onSale
                 onClick={toSales ? onSales : onTimesheet}
                 className={`${width}${secondaryButton}`}
             >
-                {toSales ? 'Open weekly sales' : 'Open the timesheet'}
+                {toSales ? 'Open Weekly sales' : 'Open the timesheet'}
             </button>
         )
     }
@@ -159,7 +159,7 @@ function WeekAction({ week, blocked, canWrite, starting, onOpen, onStart, onSale
             disabled={starting}
             className={`${wide ? 'w-full ' : ''}${primaryButton()}`}
         >
-            {starting ? 'Starting' : 'Start'}
+            {starting ? 'Starting...' : 'Start'}
         </button>
     )
 }
@@ -171,7 +171,7 @@ function StateBadge({ report }) {
     if (report.status === 'draft') {
         return (
             <span className={`${badge} bg-accent-light text-accent-ink`}>
-                {report.send_count > 0 ? 'Re-opened' : 'Draft'}
+                {report.send_count > 0 ? 'Reopened' : 'Draft'}
             </span>
         )
     }
@@ -413,7 +413,7 @@ export default function ReportsListPage() {
                     </p>
                 </div>
                 <button onClick={load} className={secondaryButton} disabled={loading}>
-                    {loading ? 'Loading' : 'Refresh'}
+                    {loading ? 'Loading...' : 'Refresh'}
                 </button>
             </div>
 
@@ -570,8 +570,8 @@ export default function ReportsListPage() {
 
             <p className="text-sm text-muted px-1">
                 {canWrite
-                    ? 'A week can be started once every one of its days has been entered or marked closed, and every rostered shift has something said on the timesheet. A day that does not add up against the till is noted, not enforced.'
-                    : 'Reports are written by the store manager. This is the same list they see, so any week can be read here without going back through a mailbox.'}
+                    ? 'A week can be started once every day has been entered or marked closed, and every rostered shift has times, time off or a comment on the timesheet. A day that does not match the till is shown, but does not stop the week being started.'
+                    : 'Reports are written by the store manager. This is the same list they see, so you can open any week here instead of searching your email.'}
             </p>
         </div>
     )

@@ -47,16 +47,16 @@ export default function PublishBar({
                 <div className="min-w-0">
                     <p className="text-sm font-bold text-sidebar">Published, not sent</p>
                     <p className="text-xs text-muted mt-0.5">
-                        The figures are frozen, but the mail did not go out, so nobody has this week yet.
+                        The figures are frozen, but the mail did not go out, so nobody has received this report yet.
                     </p>
                 </div>
                 {canWrite && (
                     <div className="flex flex-wrap gap-2">
                         <button type="button" onClick={onReopen} disabled={busy} className={secondaryButton}>
-                            Re-open
+                            Reopen
                         </button>
                         <button type="button" onClick={onSend} disabled={busy} className={primaryButton()}>
-                            {busy ? 'Sending' : 'Send it'}
+                            {busy ? 'Sending...' : 'Send report'}
                         </button>
                     </div>
                 )}
@@ -80,7 +80,7 @@ export default function PublishBar({
                 </div>
                 {canWrite && (
                     <button onClick={onReopen} disabled={busy} className={secondaryButton}>
-                        {busy ? 'Re-opening' : 'Re-open to correct it'}
+                        {busy ? 'Reopening...' : 'Reopen report'}
                     </button>
                 )}
                 {mailed && <Outcome>{mailed}</Outcome>}
@@ -102,7 +102,7 @@ export default function PublishBar({
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0">
                     <p className="text-sm font-bold text-sidebar">
-                        {reopened ? 'Re-opened' : 'Not sent yet'}
+                        {reopened ? 'Reopened' : 'Not sent yet'}
                     </p>
                     <p className="text-xs text-muted mt-0.5">
                         {correction
@@ -124,7 +124,7 @@ export default function PublishBar({
                             disabled={busy}
                             className={secondaryButton}
                         >
-                            {busy ? 'Working' : 'Send a test'}
+                            {busy ? 'Working...' : 'Send a test'}
                         </button>
                     )}
                     <button
@@ -133,8 +133,8 @@ export default function PublishBar({
                         className={primaryButton()}
                     >
                         {busy
-                            ? 'Publishing'
-                            : correction ? 'Publish again and re-send' : 'Publish and send'}
+                            ? 'Publishing...'
+                            : correction ? 'Publish again and resend' : 'Publish and send'}
                     </button>
                 </div>
             </div>
@@ -152,15 +152,15 @@ export default function PublishBar({
             {!stopped && onTest && (
                 <p className="text-xs text-muted mt-2">
                     A test goes to everyone on the list below except the owners, marked as a test.
-                    Nothing is frozen and it does not count as a send, so try it as many times as
-                    it takes.
+                    Nothing is frozen and it does not count as a send, so you can send as many tests
+                    as you need.
                 </p>
             )}
 
             {stopped && (
                 <div className="mt-3 pt-3 border-t border-accent/30">
                     <p className="text-xs font-bold text-accent-ink uppercase tracking-wider mb-1.5">
-                        {blockers.length === 1 ? 'One thing first' : `${blockers.length} things first`}
+                        Not ready to send
                     </p>
                     {/* A sentence, or a sentence with the place to sort it out,
                         when that place is another screen. A button rather than
@@ -184,13 +184,13 @@ export default function PublishBar({
             {!stopped && warnings.length > 0 && (
                 <div className="mt-3 pt-3 border-t border-border">
                     <p className="text-xs font-bold text-muted uppercase tracking-wider mb-1.5">
-                        Worth knowing before you send it
+                        Warnings
                     </p>
                     <ul className="text-sm text-muted space-y-1 list-disc pl-5">
                         {warnings.map(w => <li key={w}>{w}</li>)}
                     </ul>
                     <p className="text-xs text-muted mt-2">
-                        None of these stop it going out. If the week really was like that, send it.
+                        These do not stop the report being sent. If the week really was like that, you can send it.
                     </p>
                 </div>
             )}

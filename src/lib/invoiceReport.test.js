@@ -741,7 +741,7 @@ describe('the words', () => {
 
     it('says what is still owed', () => {
         const owed = [{ money: 24.75 }]
-        expect(priceWords({ owed, totals: { owed: 24.75 } })).toEqual(['Still owed: €24.75 on 1 claim.'])
+        expect(priceWords({ owed, totals: { owed: 24.75 } })).toEqual(['Still owed: €24.75 on 1 delivery problem.'])
     })
 
     it('says what cannot be checked', () => {
@@ -786,7 +786,7 @@ describe('from an earlier week', () => {
     it('says so in the words, with the week it is from', () => {
         expect(section.words).toContain(
             'From an earlier week: €22.34 on COKE ZERO 24X330ML, from the delivery in the week of 6 September, '
-            + 'whose report had already gone out.',
+            + 'whose report had already been sent.',
         )
     })
 
@@ -796,8 +796,8 @@ describe('from an earlier week', () => {
             { money: 10, what: 'b', delivered: '2026-08-30' },
         ]
         expect(priceWords({ earlier: more, totals: { earlier: 32.34 } })).toEqual([
-            'From earlier weeks: €32.34 on 2 claims, from the deliveries in the weeks of 30 August and 6 September, '
-            + 'whose reports had already gone out.',
+            'From earlier weeks: €32.34 on 2 delivery problems, from the deliveries in the weeks of 30 August and 6 September, '
+            + 'whose reports had already been sent.',
         ])
     })
 })

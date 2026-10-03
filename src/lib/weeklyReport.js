@@ -283,8 +283,8 @@ export function figureGaps(figures) {
     const days = figures.tradingDays
 
     if (figures.labourDays === 0) {
-        out.push('No hours have been entered for this week, so labour is counting as nothing '
-            + 'and the profit below is far higher than it really is.')
+        out.push('No hours have been entered for this week, so labour is counted as zero '
+            + 'and net earnings are far higher than they really are.')
     } else if (days > 0 && figures.labourDays < days) {
         out.push(`Hours are entered for ${figures.labourDays} of the ${days} days traded, `
             + 'so labour is lower than it really was.')
@@ -453,7 +453,7 @@ export function deliveryBlockers({ weekStart, today = todayISO(), rows = [], day
     const said = []
 
     if (today < out) {
-        said.push(`The delivery platforms bill Monday to Sunday, so their statements for ${span} `
+        said.push(`The online platforms bill Monday to Sunday, so their statements for ${span} `
             + `come out on ${dayWords(out)}. The report can be sent from then.`)
     }
 

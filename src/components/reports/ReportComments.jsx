@@ -106,7 +106,7 @@ export default function ReportComments({ items, canEdit, onAdd, onSave, onRemove
                             keepFocus
                             onClick={add}
                         >
-                            {busy ? 'Adding' : 'Add comment'}
+                            {busy ? 'Adding...' : 'Add comment'}
                         </AddButton>
                     )}
                 </div>
