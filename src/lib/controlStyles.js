@@ -412,10 +412,10 @@ export const inactiveBadge = `${badge} bg-red-200 text-red-800`
 // more planned after it. Here so they are one size and one shape, and only the
 // colour says which kind it is.
 //
-//   waiting   amber, something waiting on you. Its white number is about 2.1
-//             to 1, which fails for text this size. Kept as it was for now;
-//             the plan for the rest of the sidebar counts gives it a dark
-//             number instead.
+//   waiting   amber, something waiting on you. The number is in the sidebar
+//             green, about 6.7 to 1 on amber-500; the white it had was 2.1 and
+//             failed. The disc is about 6.7 to 1 on the sidebar and 5.3 on the
+//             highlighted row.
 //   urgent    red, something already wrong that a customer could be told.
 //             red-600 is the one that works both ways: the white number on it
 //             is 4.8 to 1, and the disc is 3 to 1 against the sidebar green.
@@ -428,12 +428,21 @@ export const inactiveBadge = `${badge} bg-red-200 text-red-800`
 // stretch it.
 export function navBadge(tone = 'waiting') {
     const colour = {
-        waiting: 'bg-amber-500 text-white',
+        waiting: 'bg-amber-500 text-sidebar',
         urgent: 'bg-red-600 text-white',
-    }[tone] || 'bg-amber-500 text-white'
+    }[tone] || 'bg-amber-500 text-sidebar'
 
     return `relative ${colour} text-[0.65rem] font-bold min-w-[1.15rem] h-[1.15rem] px-1 `
         + 'rounded-full grid place-items-center flex-shrink-0'
+}
+
+// A badge that is one state rather than a number of jobs (a sheet to print, a
+// count left open), on its sidebar item. The same colours as navBadge, which
+// pass against the sidebar green as shapes, and relative for the same reason:
+// the words for a screen reader sit inside it.
+export function navDot(tone = 'waiting') {
+    const colour = { waiting: 'bg-amber-500', urgent: 'bg-red-600' }[tone] || 'bg-amber-500'
+    return `relative ${colour} w-2.5 h-2.5 rounded-full flex-shrink-0`
 }
 
 // The same counts as a dot on the menu button, for a phone. The sidebar is a

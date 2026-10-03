@@ -1,6 +1,6 @@
 # Migrations
 
-**`001` to `035` are in here. `001` to `034` are run on live, `035` is his to run, and the next one is `036`.**
+**`001` to `036` are in here. `001` to `035` are run on live, `036` is his to run, and the next one is `037`.**
 
 `028` to `034` were run on 1 October, `034` before development reached main.
 papichulo-hub.vercel.app still runs main, which reads the tables `034` closed
@@ -243,6 +243,14 @@ it, which the built in mailer would only deliver to the Supabase team. The
 screens cope with `035` not being run yet: they just do not ask. On live,
 check the trigger is there afterwards with the query at the bottom of this
 file.
+
+`036` is the sidebar badges: `report_reads`, which report each person has
+opened (so an owner's Reports count goes down when they open one, and a
+correction counts again), and `my_badges()`, every count the sidebar shows in
+one call. Security definer, because two counts need what staff cannot read: an
+edited shift's real date and when the allergen sheet last changed. It repeats
+the policies' checks itself. Run it before the badges branch is deployed, or
+the sidebar shows no counts at all (it does not break).
 
 ## What was here before
 

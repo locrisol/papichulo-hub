@@ -1250,4 +1250,46 @@ maybe('what each role can see and do', () => {
             expect(error, 'a manager was allowed to call unwatched_tables').not.toBeNull()
         })
     })
+
+    // Since 036. Security definer, so it repeats the policies' checks itself.
+    describe('the sidebar badges', () => {
+        it('gives an employee only their own shift asks', async () => {
+            const { data, error } = await employee.rpc('my_badges', { restaurant: ownRestaurantId })
+            expect(error).toBeNull()
+            expect(Object.keys(data).filter(k => k !== 'asks')).toEqual([])
+        })
+
+        it('gives a manager nothing about the other restaurant', async () => {
+            const { data, error } = await manager.rpc('my_badges', { restaurant: otherRestaurantId })
+            expect(error).toBeNull()
+            expect(Object.keys(data).filter(k => k !== 'asks')).toEqual([])
+        })
+
+        it('gives a manager their own restaurant', async () => {
+            const { data } = await manager.rpc('my_badges', { restaurant: ownRestaurantId })
+            expect(data.role).toBe('store_manager')
+            expect(data).toHaveProperty('claims_late')
+        })
+
+        it('does not answer somebody signed out', async () => {
+            const { error } = await anon.rpc('my_badges', { restaurant: ownRestaurantId })
+            expect(error, 'my_badges answered nobody').not.toBeNull()
+        })
+
+        // Nobody can say somebody else opened a report.
+        it('refuses a report read in the name of somebody else', async () => {
+            const { data: reports } = await owner.from('weekly_reports').select('id').eq('status', 'published').limit(1)
+            if (!reports?.length) return
+            const { data: auth } = await manager.auth.getUser()
+            const { error } = await owner.from('report_reads')
+                .insert({ report_id: reports[0].id, user_id: auth.user.id, send_count: 1 })
+            expect(error?.code).toBe('42501')
+        })
+
+        it('lets nobody read the report reads of somebody else', async () => {
+            const { data: auth } = await owner.auth.getUser()
+            const { data } = await manager.from('report_reads').select('report_id').eq('user_id', auth.user.id)
+            expect(data).toEqual([])
+        })
+    })
 })

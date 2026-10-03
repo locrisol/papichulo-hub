@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { supabase, everyRow } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { useConfirm } from '@/context/confirm'
+import { useRecountBadges } from '@/context/badges'
 import { useRestaurant } from '@/context/restaurant'
 import { fmtMoney, num, fmtPct } from '@/lib/format'
 import { addDays, weekNumber, weekRange, todayISO, shortDate } from '@/lib/dates'
@@ -110,6 +111,25 @@ export default function ReportPage() {
     const confirm = useConfirm()
 
     const [report, setReport] = useState(null)
+    const recountBadges = useRecountBadges()
+
+    // Opening a published report is the one badge that looking clears: an
+    // owner's Reports count is the reports they have not opened. Saved for
+    // every role, and for this send of it, so a correction counts again.
+    // Nothing is said if it fails: it is a note of having looked, nothing
+    // more, and before 036 there is no table for it.
+    const readId = report?.status === 'published' ? report.id : null
+    const readSend = report?.send_count || 1
+    useEffect(() => {
+        if (!readId) return
+        // read_at is left to its default, so it stays the first time it was
+        // opened: an owner's count starts from their first read, and a second
+        // look must not move that on.
+        supabase.from('report_reads')
+            .upsert({ report_id: readId, send_count: readSend }, { onConflict: 'report_id,user_id' })
+            .then(({ error }) => { if (!error) recountBadges() })
+    }, [readId, readSend, recountBadges])
+
     const [sections, setSections] = useState([])
     const [figures, setFigures] = useState(null)
     const [targets, setTargets] = useState({})

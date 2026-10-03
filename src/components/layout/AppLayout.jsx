@@ -6,13 +6,14 @@ import { useRestaurant } from '@/context/restaurant'
 import BackToTop from '@/components/layout/BackToTop'
 import ErrorBoundary from '@/components/ui/ErrorBoundary'
 import { ScrollProvider } from '@/context/ScrollContext'
-import { can, MANAGERS, roleLabel } from '@/lib/access'
+import { can, roleLabel } from '@/lib/access'
 import { navItems, navTarget, activeNavPath } from '@/lib/nav'
 import { noAllergensDeclared } from '@/lib/allergens'
 import { everyReadArrived } from '@/lib/allergenSheet'
 import { onAllergensChanged } from '@/lib/allergensChanged'
-import { navBadge, menuDot } from '@/lib/controlStyles'
-import { cannotAnswer } from '@/lib/timeOff'
+import { navBadge, navDot, menuDot } from '@/lib/controlStyles'
+import { useBadges } from '@/components/layout/useBadges'
+import { BadgesContext } from '@/context/badges'
 
 // Whoever can open Products is whoever gets its count, read off the nav so the
 // two cannot drift apart.
@@ -70,52 +71,9 @@ export default function AppLayout({ children }) {
     const location = useLocation()
     const { restaurants, activeRestaurant, switchRestaurant } = useRestaurant()
 
-    // Anything on the roster waiting on an answer, counted on the menu so it is
-    // visible from wherever you happen to be. Swaps and time off together,
-    // because from where a manager is standing they are the same job.
-    //
-    // Counted rather than listed, and read again whenever the page changes, so
-    // it goes back down as soon as it has been dealt with.
-    //
-    // Only what this person can answer. A store manager's own holiday or day
-    // off is an owner's (see cannotAnswer), and counted it told them there was
-    // something to do when the Roster had nothing for them to press.
-    const [waitingCount, setWaitingCount] = useState(0)
-    // Who they are on the team, asked once per account rather than on every
-    // page change, since it does not change while they are signed in.
-    const onTheTeam = useRef({ account: null, employee: null })
-    const isManager = can(user, MANAGERS)
-
-    useEffect(() => {
-        let live = true
-        async function count() {
-            if (!activeRestaurant?.id || !isManager) {
-                if (live) setWaitingCount(0)
-                return
-            }
-            if (user.role === 'store_manager' && onTheTeam.current.account !== user.id) {
-                const { data, error } = await supabase.rpc('get_my_employee_id')
-                if (!error) onTheTeam.current = { account: user.id, employee: data || null }
-            }
-            const me = onTheTeam.current.account === user.id ? onTheTeam.current.employee : null
-            // The requests themselves rather than a count of them, to ask each
-            // one the same question the Roster asks. A handful at most.
-            const [swaps, off] = await Promise.all([
-                supabase.from('shift_requests')
-                    .select('id', { count: 'exact', head: true })
-                    .eq('restaurant_id', activeRestaurant.id)
-                    .eq('status', 'accepted'),
-                supabase.from('absences')
-                    .select('employee_id, can_work_from, can_work_to')
-                    .eq('restaurant_id', activeRestaurant.id)
-                    .eq('status', 'requested'),
-            ])
-            const theirs = (off.data || []).filter(a => !cannotAnswer(a, me, user.role))
-            if (live) setWaitingCount((swaps.count || 0) + theirs.length)
-        }
-        count()
-        return () => { live = false }
-    }, [activeRestaurant?.id, user?.id, user?.role, isManager, location.pathname])
+    // Everything waiting on this person, item by item: my_badges() and the
+    // two counts read the way their pages read them. See lib/badges.
+    const { badges, recount: recountBadges } = useBadges(user, activeRestaurant, location.pathname)
 
     // Products with no allergens set, counted on Products in red. Until one is
     // answered, the customer sheet asks people to see staff about every dish
@@ -180,13 +138,6 @@ export default function AppLayout({ children }) {
     // The count at the end of an item, if it has one, and the words a screen
     // reader says for it instead of a bare number.
     function countOn(path) {
-        if (path === '/roster' && waitingCount > 0) {
-            return {
-                count: waitingCount,
-                tone: 'waiting',
-                words: `${waitingCount} ${waitingCount === 1 ? 'request' : 'requests'} waiting for approval`,
-            }
-        }
         if (path === PRODUCTS.path && noAllergens > 0) {
             return {
                 count: noAllergens,
@@ -194,17 +145,21 @@ export default function AppLayout({ children }) {
                 words: `Allergens not set for ${noAllergens} ${noAllergens === 1 ? 'product' : 'products'}`,
             }
         }
-        return null
+        return badges[path] || null
     }
 
     // On a phone the sidebar is a drawer, so its counts are out of sight until
-    // it is opened. A dot on the menu button says there is something in there:
-    // red while any product has no allergens set, otherwise amber while the
-    // roster has something waiting. A screen reader hears every count it
-    // stands for, as the button's description, so its name stays the same.
-    const behindMenu = [countOn(PRODUCTS.path), countOn('/roster')].filter(Boolean)
+    // it is opened. A dot on the menu button says there is something in there,
+    // red if anything behind it is, otherwise amber. One dot, not a total: a
+    // sheet to print, three invoice lines and a swap add up to nothing. A
+    // screen reader hears every count it stands for, as the button's
+    // description, so its name stays the same.
+    const behindMenu = navItems.filter(n => can(user, n.roles)).map(n => countOn(n.path)).filter(Boolean)
     const dot = behindMenu.length > 0
-        ? { tone: behindMenu[0].tone, words: behindMenu.map(c => c.words).join('. ') }
+        ? {
+            tone: behindMenu.some(c => c.tone === 'urgent') ? 'urgent' : 'waiting',
+            words: behindMenu.map(c => c.words).join('. '),
+        }
         : null
     const dotWords = useId()
 
@@ -302,12 +257,16 @@ export default function AppLayout({ children }) {
                                             <path d={icons[item.icon]} />
                                         </svg>
                                         <span className="flex-1 text-left">{item.label}</span>
-                                        {counted && (
+                                        {counted && (counted.dot ? (
+                                            <span className={navDot(counted.tone)}>
+                                                <span className="sr-only">{counted.words}</span>
+                                            </span>
+                                        ) : (
                                             <span className={navBadge(counted.tone)}>
                                                 <span aria-hidden="true">{counted.count}</span>
                                                 <span className="sr-only">{counted.words}</span>
                                             </span>
-                                        )}
+                                        ))}
                                     </button>
                                 )
                             })}
@@ -466,7 +425,9 @@ export default function AppLayout({ children }) {
                                 a key, so a move tries again without drawing
                                 the page afresh when nothing went wrong. */}
                             <ErrorBoundary resetKey={location.pathname} inPage>
-                                {children}
+                                <BadgesContext.Provider value={recountBadges}>
+                                    {children}
+                                </BadgesContext.Provider>
                             </ErrorBoundary>
                         </div>
                     </ScrollProvider>

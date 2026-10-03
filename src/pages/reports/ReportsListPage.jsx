@@ -12,6 +12,7 @@ import {
 } from '@/lib/controlStyles'
 import {
     reportableWeeks,
+    WEEKS_LISTED,
     weekReadiness,
     blockedBy,
     carriedItems,
@@ -45,7 +46,7 @@ import ErrorBanner from '@/components/ui/ErrorBanner'
 // uses for anything a store runs itself. That is enforced in the database, not
 // here. Hiding the button is only about not offering a screen that will refuse.
 
-const WEEKS_SHOWN = 10
+const WEEKS_SHOWN = WEEKS_LISTED
 
 
 // The days nobody has entered, named rather than counted. "Thursday and
@@ -164,7 +165,25 @@ function WeekAction({ week, blocked, canWrite, starting, onOpen, onStart, onSale
     )
 }
 
-function StateBadge({ report }) {
+// A published report an owner has not opened in the Hub, or not since it was
+// corrected: what their Reports badge counts (my_badges), on the row it
+// counts, by the same rule. Only once they have opened one in the Hub at all,
+// only ones published after that, and only the last four weeks, so an owner
+// who reads the mail is never shown a list of New.
+function unopened(report, reads) {
+    if (!reads?.length || report?.status !== 'published' || !report.published_at) return false
+    const first = reads.map(r => r.read_at).sort()[0]
+    const published = new Date(report.published_at)
+    if (published <= new Date(first) || Date.now() - published > 28 * 86400000) return false
+    const read = reads.find(r => r.report_id === report.id)
+    return !(read && read.send_count >= report.send_count)
+}
+
+function NewPill() {
+    return <span className={`${badge} bg-amber-100 text-amber-800 mr-1`}>New</span>
+}
+
+function StateBadge({ report, isNew = false }) {
     if (!report) {
         return <span className={`${badge} bg-gray-100 text-gray-600`}>Not started</span>
     }
@@ -181,9 +200,12 @@ function StateBadge({ report }) {
         return <span className={`${badge} bg-accent-light text-accent-ink`}>Not sent</span>
     }
     return (
-        <span className={`${badge} bg-green-50 text-green-700`}>
-            {report.send_count > 1 ? `Sent ${report.send_count} times` : 'Sent'}
-        </span>
+        <>
+            {isNew && <NewPill />}
+            <span className={`${badge} bg-green-50 text-green-700`}>
+                {report.send_count > 1 ? `Sent ${report.send_count} times` : 'Sent'}
+            </span>
+        </>
     )
 }
 
@@ -200,6 +222,22 @@ export default function ReportsListPage() {
     const [starting, setStarting] = useState(null)
 
     const restaurantId = activeRestaurant?.id
+
+    // Which reports an owner has opened, and which send, for the New pill.
+    // Only owners: theirs is the badge that counts them. Nothing is said if
+    // it cannot be read; the rows simply carry no pill.
+    const owner = user?.role === 'owner'
+    const [seen, setSeen] = useState(null)
+    useEffect(() => {
+        if (!owner) return undefined
+        let alive = true
+        supabase.from('report_reads').select('report_id, send_count, read_at')
+            .then(({ data, error }) => {
+                if (alive && !error) setSeen(data || [])
+            })
+        return () => { alive = false }
+    }, [owner, restaurantId])
+    const isNew = report => unopened(report, seen)
 
     useEffect(() => {
         if (!restaurantId) return
@@ -451,7 +489,7 @@ export default function ReportsListPage() {
                                 <div className="flex-shrink-0">
                                     {blocked
                                         ? <BlockedBadge readiness={week.readiness} />
-                                        : <StateBadge report={week.report} />}
+                                        : <StateBadge report={week.report} isNew={isNew(week.report)} />}
                                 </div>
                             </div>
 
@@ -526,7 +564,7 @@ export default function ReportsListPage() {
                                         <td className="px-5 py-3">
                                             {blocked
                                                 ? <BlockedBadge readiness={week.readiness} />
-                                                : <StateBadge report={week.report} />}
+                                                : <StateBadge report={week.report} isNew={isNew(week.report)} />}
                                         </td>
                                         <td className="px-5 py-3 text-right whitespace-nowrap">
                                             <WeekAction

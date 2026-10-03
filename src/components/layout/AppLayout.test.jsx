@@ -16,9 +16,8 @@ import { allergensChanged } from '@/lib/allergensChanged'
 let db
 let tables
 let user
-// What the roster's count of swaps answers, and who the account is on the team.
-let waiting
-let myEmployeeId
+// What my_badges() answers for the person signed in.
+let answer
 // The real everyRow, paging through the mock the way it pages through the API.
 vi.mock('@/lib/supabase', async importOriginal => ({
     everyRow: (await importOriginal()).everyRow,
@@ -37,11 +36,13 @@ const pot = { id: 'pot', name: 'Dip pot', section: 'Packaging', is_mix: false, i
 
 beforeEach(() => {
     user = A_MANAGER
-    waiting = { swaps: 2 }
-    myEmployeeId = 'e9'
+    answer = {
+        role: 'store_manager', me: 'e9', today: '2026-10-07', has_store_manager: true, shifts: [],
+        // Two agreed swaps and a colleague's holiday, waiting for an answer.
+        swaps: 2,
+        absences: [{ employee_id: 'e1', kind: 'holiday', can_work_from: null, can_work_to: null, asker_role: 'employee' }],
+    }
     tables = {
-        // A colleague's holiday, waiting for an answer.
-        absences: [{ id: 'a1', restaurant_id: 'r1', status: 'requested', employee_id: 'e1', can_work_from: null, can_work_to: null }],
         products: [rice, cheese, pot],
         product_allergens: [],
         mix_recipes: [],
@@ -50,8 +51,6 @@ beforeEach(() => {
     }
     db = {
         from: vi.fn(table => {
-            // The swaps are a count, asked for with head: true.
-            if (table === 'shift_requests') return makeQuery({ data: null, count: waiting.swaps, error: null })
             const q = tableOf(tables[table] || [])
             // With a count of the rows it hands back, the way the database
             // answers when asked for one.
@@ -59,7 +58,7 @@ beforeEach(() => {
             q.then = (resolve, reject) => answer(r => ({ ...r, count: r.data.length })).then(resolve, reject)
             return q
         }),
-        rpc: vi.fn(name => Promise.resolve({ data: name === 'get_my_employee_id' ? myEmployeeId : null, error: null })),
+        rpc: vi.fn(name => Promise.resolve(name === 'my_badges' ? { data: answer, error: null } : { data: null, error: null })),
         auth: { signOut: vi.fn() },
     }
 })
@@ -178,45 +177,31 @@ describe('when the count on Products is worked out', () => {
     })
 })
 
-describe('the count on Roster', () => {
-    // Moved onto the shared style without changing how it looks.
-    it('stays amber, with words for a screen reader', async () => {
+describe('the counts from my_badges', () => {
+    // The rules are lib/badges' and tested there. These are the drawing.
+    it('puts the number on its item, dark on amber, with words for a screen reader', async () => {
         show()
-
-        const badge = (await within(navButton('Roster')).findByText('3 requests waiting for approval')).parentElement
-        expect(badge).toHaveClass('bg-amber-500', 'text-white')
+        const badge = (await within(navButton('Roster')).findByText('3 waiting for you on the roster')).parentElement
+        expect(badge).toHaveClass('bg-amber-500', 'text-sidebar')
+        expect(db.rpc).toHaveBeenCalledWith('my_badges', { restaurant: A_RESTAURANT.id })
     })
 
-    // A store manager's own holiday is an owner's to answer, and the Roster
-    // says so with no button. Counted, it told them there was something to do
-    // and there was nothing they could do.
-    it('leaves out a store manager\'s own time off', async () => {
-        myEmployeeId = 'e1'
-        waiting = { swaps: 0 }
+    // One state rather than a number of jobs.
+    it('draws a dot with no number for a sheet to print', async () => {
+        answer = { ...answer, swaps: 0, absences: [], sheet: { printed_at: null, every_months: 3, changed_at: null } }
         show()
-        await waitFor(() => expect(db.from).toHaveBeenCalledWith('absences'))
+        const words = await within(navButton('Public allergens')).findByText('A new allergen sheet needs printing')
+        expect(words.parentElement).toHaveClass('w-2.5', 'h-2.5')
+        expect(within(navButton('Public allergens')).queryByText(/^\d+$/)).toBeNull()
+    })
+
+    // Before 036 is run there is no function. No badges, nothing broken.
+    it('shows no counts when the function is not there yet', async () => {
+        db.rpc = vi.fn(() => Promise.resolve({ data: null, error: { message: 'function my_badges does not exist' } }))
+        show()
+        await waitFor(() => expect(db.rpc).toHaveBeenCalled())
         await act(async () => {})
-
-        expect(within(navButton('Roster')).queryByText(/waiting for approval/)).not.toBeInTheDocument()
-    })
-
-    it('still counts it for an owner, who answers it', async () => {
-        user = { ...A_MANAGER, role: 'owner' }
-        myEmployeeId = 'e1'
-        waiting = { swaps: 0 }
-        show()
-
-        expect(await within(navButton('Roster')).findByText('1 request waiting for approval')).toBeInTheDocument()
-    })
-
-    // Part of a day stays theirs to answer, so it is still theirs to count.
-    it('still counts a store manager\'s own part of a day', async () => {
-        myEmployeeId = 'e1'
-        waiting = { swaps: 0 }
-        tables.absences[0].can_work_to = '15:00'
-        show()
-
-        expect(await within(navButton('Roster')).findByText('1 request waiting for approval')).toBeInTheDocument()
+        expect(within(navButton('Roster')).queryByText(/waiting/)).toBeNull()
     })
 })
 
@@ -229,26 +214,26 @@ describe('the dot on the menu button', () => {
     it('is red while any product has no allergens set, and says everything waiting', async () => {
         show()
 
-        const words = 'Allergens not set for 2 products. 3 requests waiting for approval'
+        const words = 'Allergens not set for 2 products. 3 waiting for you on the roster'
         await waitFor(() => expect(menu()).toHaveAccessibleDescription(words))
         expect(dot(words)).toHaveClass('bg-red-600')
     })
 
-    it('takes the roster colour when only the roster has something waiting', async () => {
+    it('is amber when nothing behind it is red', async () => {
         tables.product_allergens = [{ product_id: 'rice' }, { product_id: 'cheese' }]
         show()
 
-        const words = '3 requests waiting for approval'
+        const words = '3 waiting for you on the roster'
         await waitFor(() => expect(menu()).toHaveAccessibleDescription(words))
         expect(dot(words)).toHaveClass('bg-amber-600')
     })
 
     it('is not there with nothing to count', async () => {
         tables.product_allergens = [{ product_id: 'rice' }, { product_id: 'cheese' }]
-        waiting = { swaps: 0 }
-        tables.absences = []
+        answer = { ...answer, swaps: 0, absences: [] }
         show()
         await waitFor(() => expect(db.from).toHaveBeenCalledWith('menu_item_components'))
+        await waitFor(() => expect(db.rpc).toHaveBeenCalled())
         await act(async () => {})
 
         expect(menu()).not.toHaveAccessibleDescription()
