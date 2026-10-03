@@ -5,11 +5,12 @@ import { useRestaurant } from '@/context/restaurant'
 import { friendlyError, functionError } from '@/lib/errors'
 import { todayISO } from '@/lib/dates'
 import {
-    modalFooter, secondaryButton, fieldClass, labelClass, checkbox, checkRow, primaryButton,
+    modalFooter, secondaryButton, fieldClass, labelClass, hintClass, checkbox, checkRow, primaryButton, rowButton,
 } from '@/lib/controlStyles'
 import { ModalSectionBar } from '@/components/ui/ModalSection'
 import Modal from '@/components/ui/Modal'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import Notice from '@/components/ui/Notice'
 import {
     CITY_CAPACITY, CITY_RADIUS_KM, WALKABLE_MINUTES,
     walkWords, sourceWords, placeTag, readWords, feedWords, pastWalking, cityProblem,
@@ -430,7 +431,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                             </select>
                             {/* The one judgement in the whole feature,
                                 and no API can make it. */}
-                            <p className="text-xs text-muted mt-1">
+                            <p className={hintClass}>
                                 The second one shows nothing until you type how many it
                                 holds, and only counts over{' '}
                                 {CITY_CAPACITY.toLocaleString('en-IE')}.
@@ -481,7 +482,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                                 onChange={e => setForm({ ...form, page_url: e.target.value })}
                                 placeholder="https://paviliontheatre.ie/events"
                             />
-                            <p className="text-xs text-muted mt-1">
+                            <p className={hintClass}>
                                 Read once a week. Anything found waits on the calendar for
                                 somebody to keep it.
                             </p>
@@ -489,7 +490,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                                 because where the month or the page
                                 number goes is part of the address and
                                 only the address knows where. */}
-                            <p className="text-xs text-muted mt-1">
+                            <p className={hintClass}>
                                 Some sites hand over one month or a few events at a time.
                                 Put <code className="font-mono">{'{month}'}</code> or{' '}
                                 <code className="font-mono">{'{page}'}</code> in the address
@@ -507,7 +508,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                                 value={form.page_depth}
                                 onChange={e => setForm({ ...form, page_depth: e.target.value })}
                             />
-                            <p className="text-xs text-muted mt-1">
+                            <p className={hintClass}>
                                 Only does anything when the address has{' '}
                                 <code className="font-mono">{'{page}'}</code> in it. One
                                 unless the site is stingy.
@@ -532,7 +533,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                                 roster is unreadable; read as a
                                 programme it is one row per film, kept
                                 the first time it appears. */}
-                            <p className="text-xs text-muted mt-1">
+                            <p className={hintClass}>
                                 A programme keeps each thing once, the first time it turns
                                 up, so a film showing all month is one line rather than
                                 thirty.
@@ -592,7 +593,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                                     type="button"
                                     disabled={busy}
                                     onClick={() => stopWatching(rows.find(r => r.id === editingId))}
-                                    className="ml-auto text-sm font-medium text-red-700 hover:text-red-800 px-3 py-2"
+                                    className={`${rowButton('danger')} ml-auto disabled:opacity-50`}
                                 >
                                     Take it off the list
                                 </button>
@@ -691,7 +692,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                                 calendar until somebody keeps it.
                             </p>
                         </div>
-                        {read && <p className="text-sm text-green-700 bg-green-50 rounded-lg p-3 mb-3">{read}</p>}
+                        <Notice tone="good" className="mb-3">{read}</Notice>
 
                         <ModalSectionBar title="Look for what is near us" />
                         <form onSubmit={findNearby} className="py-3 flex flex-wrap gap-2 items-end">
@@ -777,7 +778,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                                     type="button"
                                     disabled={busy}
                                     onClick={() => takeOn(found)}
-                                    className={`${secondaryButton} py-1 px-3 text-xs`}
+                                    className={`${rowButton()} disabled:opacity-50`}
                                 >
                                     Watch it
                                 </button>

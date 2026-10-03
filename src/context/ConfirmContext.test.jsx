@@ -113,4 +113,25 @@ describe('useConfirm', () => {
         expect(screen.getByText('Copied.')).toBeInTheDocument()
         expect(screen.queryByRole('button', { name: /cancel/i })).not.toBeInTheDocument()
     })
+
+    // Enter answers the button that does the thing, so it has to be the one
+    // holding the focus when the dialog opens.
+    it('puts the focus on the confirm button', async () => {
+        setup(() => {}, { message: 'Sure?', confirmLabel: 'Delete' })
+
+        await userEvent.click(screen.getByRole('button', { name: 'Delete it' }))
+
+        expect(screen.getByRole('button', { name: 'Delete' })).toHaveFocus()
+    })
+
+    // The shared main button in its red tone, not a red laid over the orange.
+    it('makes a danger confirm the red main button', async () => {
+        setup(() => {}, { message: 'Sure?', confirmLabel: 'Delete', tone: 'danger' })
+
+        await userEvent.click(screen.getByRole('button', { name: 'Delete it' }))
+
+        const button = screen.getByRole('button', { name: 'Delete' })
+        expect(button).toHaveClass('bg-red-600')
+        expect(button).not.toHaveClass('bg-accent')
+    })
 })

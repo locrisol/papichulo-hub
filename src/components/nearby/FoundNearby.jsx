@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { card, secondaryButton } from '@/lib/controlStyles'
+import { card, rowButton, primaryButton } from '@/lib/controlStyles'
 import { foundWords, eventName } from '@/lib/nearby'
 
 // What a read off a page turned up, waiting for somebody to settle it.
@@ -55,7 +55,7 @@ export default function FoundNearby({ rows, today, restaurantName, onDecide, bus
                 <button
                     type="button"
                     onClick={() => setOpen(v => !v)}
-                    className={`${secondaryButton} py-1 px-3 text-xs`}
+                    className={rowButton()}
                 >
                     {open ? 'Not now' : 'Show me'}
                 </button>
@@ -99,7 +99,7 @@ export default function FoundNearby({ rows, today, restaurantName, onDecide, bus
                                     type="button"
                                     disabled={busy}
                                     onClick={() => onDecide(row.event, 'kept', names[row.event.id])}
-                                    className="px-3 py-1.5 rounded-lg bg-green-brand hover:bg-green-brand/90 disabled:opacity-50 text-white text-xs font-semibold transition-colors"
+                                    className={primaryButton('sm', 'good')}
                                 >
                                     Keep
                                 </button>
@@ -107,7 +107,7 @@ export default function FoundNearby({ rows, today, restaurantName, onDecide, bus
                                     type="button"
                                     disabled={busy}
                                     onClick={() => onDecide(row.event, 'dismissed')}
-                                    className={`${secondaryButton} py-1.5 px-3 text-xs`}
+                                    className={`${rowButton()} disabled:opacity-50`}
                                 >
                                     Not for us
                                 </button>

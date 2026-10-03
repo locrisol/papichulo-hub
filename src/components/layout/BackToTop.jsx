@@ -74,7 +74,10 @@ export default function BackToTop({ scrollers = [], raised = false }) {
             // Bottom right, out of the way of a thumb reaching for the bottom
             // left. Smaller on a phone, where the screen it is covering is
             // smaller too.
-            className={`fixed right-4 md:right-5 z-40 w-11 h-11 md:w-12 md:h-12 rounded-full bg-sidebar/90 text-white shadow-lg flex items-center justify-center transition-colors hover:bg-sidebar-active focus:outline-none focus:ring-2 focus:ring-accent ${raised ? 'bottom-22 sm:bottom-4 md:bottom-5' : 'bottom-4 md:bottom-5'}`}
+            //
+            // z-20, the level AppLayout keeps for page furniture, so the open
+            // menu on a phone (z-30 behind it, z-40 itself) covers it.
+            className={`fixed right-4 md:right-5 z-20 w-11 h-11 md:w-12 md:h-12 rounded-full bg-sidebar/90 text-white shadow-lg flex items-center justify-center transition-colors hover:bg-sidebar-active focus:outline-none focus:ring-2 focus:ring-accent ${raised ? 'bottom-22 sm:bottom-4 md:bottom-5' : 'bottom-4 md:bottom-5'}`}
         >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />

@@ -5,7 +5,8 @@ import { supabase } from '@/lib/supabase'
 import { useRestaurant } from '@/context/restaurant'
 import { friendlyError } from '@/lib/errors'
 import { BANK_HOLIDAY } from '@/lib/roster'
-import { modalFooter, removeButton, primaryButton } from '@/lib/controlStyles'
+import { WEEKDAY_NAMES } from '@/lib/dates'
+import { modalFooter, removeButton, primaryButton, secondaryButton, rowButton } from '@/lib/controlStyles'
 import ModalSection from '@/components/ui/ModalSection'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 
@@ -26,14 +27,12 @@ import ErrorBanner from '@/components/ui/ErrorBanner'
 // each August is a date that gets forgotten. A single day that is not like the
 // others, a late night for a concert or an early close for renovations, is set
 // on the roster against that day rather than here.
-const FULL_DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-
 export default function OpeningHoursModal({ onClose }) {
     const { activeRestaurant, setActiveRestaurant } = useRestaurant()
 
     const [hours, setHours] = useState(() => {
         const stored = activeRestaurant?.opening_hours || {}
-        return FULL_DAYS.map((_, i) => ({
+        return WEEKDAY_NAMES.map((_, i) => ({
             open: stored[String(i)]?.open || '',
             close: stored[String(i)]?.close || '',
         }))
@@ -106,7 +105,7 @@ export default function OpeningHoursModal({ onClose }) {
                 {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
 
                 <div className="space-y-3 sm:space-y-2 mb-4">
-                    {FULL_DAYS.map((day, i) => (
+                    {WEEKDAY_NAMES.map((day, i) => (
                         <div key={day} className="flex flex-wrap items-center gap-2">
                             {/* The day sits over its own times on a phone
                                 rather than beside them.
@@ -154,7 +153,7 @@ export default function OpeningHoursModal({ onClose }) {
                 <button
                     type="button"
                     onClick={copyDown}
-                    className="text-sm text-blue-600 hover:text-blue-800 font-medium mb-4"
+                    className={`${rowButton('plain')} mb-4`}
                 >
                     Fill the empty days with the first one
                 </button>
@@ -202,7 +201,7 @@ export default function OpeningHoursModal({ onClose }) {
                     <button
                         type="button"
                         onClick={onClose}
-                        className="px-4 py-2 border border-border text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 bg-white"
+                        className={secondaryButton}
                     >
                         Cancel
                     </button>

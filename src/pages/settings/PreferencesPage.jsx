@@ -4,8 +4,9 @@ import { useAuth } from '@/context/auth'
 import { friendlyError } from '@/lib/errors'
 import { landingChoices, landingFor, pageLabel } from '@/lib/nav'
 import { homeFor } from '@/lib/access'
-import { card, pageTitle, labelClass, hintClass, fieldClass, primaryButton } from '@/lib/controlStyles'
+import { card, labelClass, hintClass, fieldClass, primaryButton } from '@/lib/controlStyles'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import PageHeader from '@/components/ui/PageHeader'
 
 // Your own settings, not the restaurant's.
 //
@@ -51,7 +52,7 @@ export default function PreferencesPage() {
 
     return (
         <div className="space-y-6">
-            <h1 className={pageTitle}>Preferences</h1>
+            <PageHeader title="Preferences" />
 
             {error && <ErrorBanner>{error}</ErrorBanner>}
 

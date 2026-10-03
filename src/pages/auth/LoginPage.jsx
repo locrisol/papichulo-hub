@@ -1,4 +1,4 @@
-import { labelClass } from '@/lib/controlStyles'
+import { labelClass, fieldClass, primaryButton } from '@/lib/controlStyles'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
@@ -47,7 +47,7 @@ export default function LoginPage() {
         <div className="flex flex-col items-center mb-8">
           <img src={logo} alt="Papi Chulo" className="h-16 mb-4" />
           <h1 className="text-2xl font-bold text-gray-900">Papi Chulo Hub</h1>
-          <p className="text-sm text-gray-500 mt-1">Business Management System</p>
+          <p className="text-sm text-muted mt-1">Business Management System</p>
         </div>
 
         {error && (
@@ -58,37 +58,41 @@ export default function LoginPage() {
 
         <form onSubmit={handleLogin}>
           <div className="mb-4">
-            <label className={labelClass}>
+            <label htmlFor="login-email" className={labelClass}>
               Email Address
             </label>
             <input
+              id="login-email"
               type="email"
+              autoComplete="username"
               value={email}
               onChange={e => setEmail(e.target.value)}
               placeholder="email@papichulo.ie"
               required
-              className="w-full border border-gray-200 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-600"
+              className={fieldClass}
             />
           </div>
 
           <div className="mb-6">
-            <label className={labelClass}>
+            <label htmlFor="login-password" className={labelClass}>
               Password
             </label>
             <input
+              id="login-password"
               type="password"
+              autoComplete="current-password"
               value={password}
               onChange={e => setPassword(e.target.value)}
               placeholder="••••••••"
               required
-              className="w-full border border-gray-200 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-600"
+              className={fieldClass}
             />
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-semibold py-3 rounded-lg transition-colors"
+            className={`${primaryButton('xl')} w-full`}
           >
             {loading ? 'Signing in...' : 'Sign in'}
           </button>
