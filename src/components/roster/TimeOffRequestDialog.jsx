@@ -6,8 +6,11 @@ import { friendlyError } from '@/lib/errors'
 import { todayISO } from '@/lib/dates'
 import { noticeProblem, noticeDays } from '@/lib/timeOff'
 import { emailTheAsk } from '@/lib/rosterMail'
-import { modalFooter, secondaryButton } from '@/lib/controlStyles'
+import {
+    modalFooter, primaryButton, secondaryButton, fieldClass, labelClass, hintClass, segmentTrack, segmentButton,
+} from '@/lib/controlStyles'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import Notice from '@/components/ui/Notice'
 
 // Asking for time off.
 //
@@ -24,8 +27,6 @@ const KINDS = [
     { id: 'day_off', label: 'Day off' },
     { id: 'part', label: 'Part of a day' },
 ]
-
-const field = 'w-full px-3 py-2.5 border border-border rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent'
 
 export default function TimeOffRequestDialog({ me, rules, onClose, onSaved }) {
     const today = todayISO()
@@ -94,45 +95,40 @@ export default function TimeOffRequestDialog({ me, rules, onClose, onSaved }) {
     return (
         <Modal title="Request time off" onClose={onClose}>
             <div className="px-6 py-4 space-y-4">
-                <div>
-                    <div className="flex gap-1.5">
-                        {KINDS.map(k => (
-                            <button
-                                key={k.id}
-                                type="button"
-                                onClick={() => setKind(k.id)}
-                                className={`flex-1 text-xs font-semibold px-2 py-2.5 rounded-lg transition-colors ${
-                                    kind === k.id
-                                        ? 'bg-accent text-white'
-                                        : 'border border-gray-300 bg-white text-gray-800 hover:bg-gray-50'
-                                }`}
-                            >
-                                {k.label}
-                            </button>
-                        ))}
-                    </div>
+                <div className={segmentTrack} role="group" aria-label="What you are asking for">
+                    {KINDS.map(k => (
+                        <button
+                            key={k.id}
+                            type="button"
+                            onClick={() => setKind(k.id)}
+                            aria-pressed={kind === k.id}
+                            className={segmentButton(kind === k.id, true)}
+                        >
+                            {k.label}
+                        </button>
+                    ))}
                 </div>
 
                 <div className="flex gap-2">
                     <div className="flex-1 min-w-0">
-                        <label className="block text-xs font-medium text-muted mb-1">
+                        <label className={labelClass}>
                             {isHoliday ? 'First day' : 'Which day'}
                         </label>
                         <input type="date" value={startsOn} min={today}
-                            onChange={e => setStartsOn(e.target.value)} className={field} />
+                            onChange={e => setStartsOn(e.target.value)} className={fieldClass} />
                     </div>
                     {isHoliday && (
                         <div className="flex-1 min-w-0">
-                            <label className="block text-xs font-medium text-muted mb-1">Last day</label>
+                            <label className={labelClass}>Last day</label>
                             <input type="date" value={endsOn} min={startsOn || today}
-                                onChange={e => setEndsOn(e.target.value)} className={field} />
+                                onChange={e => setEndsOn(e.target.value)} className={fieldClass} />
                         </div>
                     )}
                 </div>
 
                 {isPart && (
                     <div>
-                        <label className="block text-xs font-medium text-muted mb-1">I can work</label>
+                        <label className={labelClass}>I can work</label>
                         {/* allowEmpty on both, because empty is an answer here
                             rather than a gap: it means from opening, or until
                             closing. Without it, picking a time once would make
@@ -144,16 +140,16 @@ export default function TimeOffRequestDialog({ me, rules, onClose, onSaved }) {
                             <TimeField value={canTo} onChange={setCanTo} allowEmpty
                                 placeholder="Until closing" aria-label="I can work until" />
                         </div>
-                        <p className="text-xs text-muted mt-1">
+                        <p className={hintClass}>
                             Leave one empty if only the other changes. Empty means opening or closing.
                         </p>
                     </div>
                 )}
 
                 <div>
-                    <label className="block text-xs font-medium text-muted mb-1">Add a note (optional)</label>
+                    <label className={labelClass}>Add a note (optional)</label>
                     <input type="text" value={note} maxLength={200}
-                        onChange={e => setNote(e.target.value)} className={field}
+                        onChange={e => setNote(e.target.value)} className={fieldClass}
                         placeholder="Optional note" />
                 </div>
 
@@ -167,24 +163,16 @@ export default function TimeOffRequestDialog({ me, rules, onClose, onSaved }) {
                 )}
 
                 {notice && (
-                    <div className={`text-xs rounded-lg px-3 py-2 border ${
-                        blocked
-                            ? 'bg-red-50 border-red-200 text-red-800'
-                            : 'bg-amber-50 border-amber-200 text-amber-800'
-                    }`}>
+                    <Notice tone={blocked ? 'urgent' : 'warn'}>
                         Holidays need {noticeDays(rules)} days' notice and this one starts in {notice.actual}{' '}
                         {notice.actual === 1 ? 'day' : 'days'}.{' '}
                         {blocked
                             ? 'Pick a later date, or speak to your manager.'
                             : 'You can still send it, but your manager may not be able to approve it.'}
-                    </div>
+                    </Notice>
                 )}
 
-                {error && (
-                    <ErrorBanner>
-                        {error}
-                    </ErrorBanner>
-                )}
+                <ErrorBanner>{error}</ErrorBanner>
             </div>
 
             <div className={modalFooter}>
@@ -195,7 +183,7 @@ export default function TimeOffRequestDialog({ me, rules, onClose, onSaved }) {
                     type="button"
                     onClick={send}
                     disabled={saving || !!stopper || blocked}
-                    className="px-5 py-2 text-sm font-semibold bg-accent hover:bg-accent/90 disabled:opacity-40 text-white rounded-lg"
+                    className={primaryButton('lg')}
                 >
                     {saving ? 'Sending...' : 'Send request'}
                 </button>

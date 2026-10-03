@@ -15,10 +15,12 @@ import {
     LAYERS, layerOf, calendarItems, itemsByDate, kindLabel, kindDot, atRestaurant, canChangeEntry,
 } from '@/lib/diary'
 import {
-    card, pageTitle, secondaryButton, segmentTrack, segmentButton,
+    card, pageTitle, pageSubtitle, primaryButton, secondaryButton, segmentTrack, segmentButton,
 } from '@/lib/controlStyles'
 import JumpButton from '@/components/ui/JumpButton'
+import DateStepper from '@/components/ui/DateStepper'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import Notice from '@/components/ui/Notice'
 import DiaryMonth from '@/components/diary/DiaryMonth'
 import DiaryWeek from '@/components/diary/DiaryWeek'
 import DiaryList from '@/components/diary/DiaryList'
@@ -539,8 +541,8 @@ export default function CalendarPage() {
         <div className="pb-24 sm:pb-6">
             <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
                 <div>
-                    <h1 className={pageTitle}>Calendar</h1>
-                    <p className="text-sm text-muted mt-0.5">
+                    <h2 className={pageTitle}>Calendar</h2>
+                    <p className={pageSubtitle}>
                         {activeRestaurant?.name}
                         {heading ? ` · ${heading}` : ''}
                     </p>
@@ -568,35 +570,30 @@ export default function CalendarPage() {
                     </div>
 
                     {view !== 'list' && (
-                        <div className="flex items-center gap-2 w-full sm:w-auto">
-                            <button
-                                type="button"
-                                onClick={() => step(-1)}
-                                className={`${secondaryButton} flex-none w-11`}
-                                aria-label="Back"
-                            >
-                                &#8249;
-                            </button>
-                            {/* The one that says something takes the room the
-                                two arrows do not need. */}
-                            <JumpButton
-                                isCurrent={atNow}
-                                unit={unit}
-                                className="flex-1 sm:flex-none"
-                                onClick={() => {
-                                    setViewMonth(monthStart(today))
-                                    setWeekStart(weekStartOf(today))
-                                }}
-                            />
-                            <button
-                                type="button"
-                                onClick={() => step(1)}
-                                className={`${secondaryButton} flex-none w-11`}
-                                aria-label="Forward"
-                            >
-                                &#8250;
-                            </button>
-                        </div>
+                        <DateStepper
+                            onBack={() => step(-1)}
+                            onNext={() => step(1)}
+                            backLabel={`Previous ${unit}`}
+                            nextLabel={`Next ${unit}`}
+                            weekStart={view === 'week' ? weekStart : null}
+                            jump={(
+                                <JumpButton
+                                    isCurrent={atNow}
+                                    unit={unit}
+                                    onClick={() => {
+                                        setViewMonth(monthStart(today))
+                                        setWeekStart(weekStartOf(today))
+                                    }}
+                                />
+                            )}
+                        >
+                            {/* The week writes itself from weekStart. */}
+                            {view === 'month' ? (
+                                <span className="text-sm font-semibold text-gray-800 whitespace-nowrap">
+                                    {monthLabel(viewMonth)}
+                                </span>
+                            ) : null}
+                        </DateStepper>
                     )}
 
                     {canWrite && (
@@ -615,7 +612,7 @@ export default function CalendarPage() {
                             <button
                                 type="button"
                                 onClick={() => openAdd()}
-                                className="hidden sm:inline-flex px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg transition-colors hover:bg-orange-600"
+                                className={`${primaryButton('md')} hidden sm:inline-flex`}
                             >
                                 + Add
                             </button>
@@ -643,7 +640,7 @@ export default function CalendarPage() {
                     busy={deciding}
                 />
             )}
-            {note && <p className="mb-3 text-sm text-green-700 bg-green-50 rounded-lg p-3">{note}</p>}
+            <Notice tone="good" className="mb-3">{note}</Notice>
             {syncing && <p className="mb-3 text-sm text-muted">Checking Ticketmaster...</p>}
 
             {/* The switches. Pressing one only changes what is drawn, so this is
@@ -715,7 +712,7 @@ export default function CalendarPage() {
                     type="button"
                     onClick={() => openAdd()}
                     aria-label="Add to the calendar"
-                    className="sm:hidden fixed bottom-4 right-4 z-40 w-14 h-14 rounded-full bg-accent text-white text-2xl leading-none shadow-lg flex items-center justify-center transition-colors hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-sidebar"
+                    className="sm:hidden fixed bottom-4 right-4 z-20 w-14 h-14 rounded-full bg-accent text-white text-2xl leading-none shadow-lg flex items-center justify-center transition-colors hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-sidebar"
                 >
                     +
                 </button>

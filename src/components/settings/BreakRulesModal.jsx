@@ -5,9 +5,10 @@ import { useRestaurant } from '@/context/restaurant'
 import { friendlyError } from '@/lib/errors'
 import { numberField } from '@/lib/numberInput'
 import { DEFAULT_BREAK_RULES, OPERATORS, breakFor } from '@/lib/roster'
-import { modalFooter, removeButton, fieldClass, segmentTrack, segmentButton, primaryButton } from '@/lib/controlStyles'
+import { modalFooter, removeButton, fieldClass, segmentTrack, segmentButton, primaryButton, secondaryButton } from '@/lib/controlStyles'
 import ModalSection from '@/components/ui/ModalSection'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import AddButton from '@/components/ui/AddButton'
 
 // The break ladder.
 //
@@ -137,7 +138,7 @@ export default function BreakRulesModal({ onClose }) {
                                                 type="button"
                                                 onClick={() => set(i, 'operator', o.value)}
                                                 aria-pressed={rule.operator === o.value}
-                                                className={segmentButton(rule.operator === o.value)}
+                                                className={segmentButton(rule.operator === o.value, true)}
                                             >
                                                 {o.label}
                                             </button>
@@ -163,7 +164,7 @@ export default function BreakRulesModal({ onClose }) {
                                         placeholder="8"
                                     />
                                 </div>
-                                <span className="text-sm text-gray-500 whitespace-nowrap">hours</span>
+                                <span className="text-sm text-muted whitespace-nowrap">hours</span>
                                 <span className="text-muted" aria-hidden="true">&rarr;</span>
                                 <div className="w-16 flex-shrink-0">
                                     <input
@@ -173,19 +174,15 @@ export default function BreakRulesModal({ onClose }) {
                                         placeholder="60"
                                     />
                                 </div>
-                                <span className="text-sm text-gray-500 whitespace-nowrap">min</span>
+                                <span className="text-sm text-muted whitespace-nowrap">min</span>
                             </div>
                         </div>
                     ))}
                 </div>
 
-                <button
-                    type="button"
-                    onClick={addRung}
-                    className="text-sm text-blue-600 hover:text-blue-800 font-medium mb-5"
-                >
+                <AddButton onClick={addRung} className="mb-5">
                     Add a rung
-                </button>
+                </AddButton>
 
                 </ModalSection>
 
@@ -196,7 +193,7 @@ export default function BreakRulesModal({ onClose }) {
                             const minutes = problem ? null : breakFor(h, clean)
                             return (
                                 <span key={h} className="text-sm whitespace-nowrap">
-                                    <span className="text-gray-500">{h}h</span>
+                                    <span className="text-muted">{h}h</span>
                                     <span className="text-muted mx-1">→</span>
                                     <span className={minutes ? 'text-gray-900 font-medium' : 'text-muted'}>
                                         {problem ? '—' : minutes ? `${minutes} min` : 'none'}
@@ -215,7 +212,7 @@ export default function BreakRulesModal({ onClose }) {
                     <button
                         type="button"
                         onClick={onClose}
-                        className="px-4 py-2 border border-border text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 bg-white"
+                        className={secondaryButton}
                     >
                         Cancel
                     </button>

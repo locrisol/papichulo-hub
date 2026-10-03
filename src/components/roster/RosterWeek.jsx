@@ -612,7 +612,7 @@ export default function RosterWeek({
                                                     // somebody is not in, which
                                                     // is what an empty cell
                                                     // should look like.
-                                                    <span className="block py-0.5 text-muted text-xs">-</span>
+                                                    <span className="block py-0.5 text-muted text-xs">—</span>
                                                 ) : (
                                                     <button
                                                         type="button"
@@ -707,7 +707,7 @@ export default function RosterWeek({
                                     <td className="px-2 py-1.5 text-center align-middle font-semibold border-l border-border whitespace-nowrap">
                                         {holidayFor(row.employee) > 0
                                             ? <span className="text-blue-700">{fmtHours(holidayFor(row.employee))}</span>
-                                            : <span className="text-muted">-</span>}
+                                            : <span className="text-muted">—</span>}
                                     </td>
                                 )}
                                 <td className="px-2 py-1.5 text-center align-middle font-semibold text-gray-900 border-l border-border whitespace-nowrap">

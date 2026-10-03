@@ -11,10 +11,14 @@ import { matches } from '@/lib/search'
 import { countName, compareForCount } from '@/lib/products'
 import { countedLine } from '@/lib/countedAt'
 import { orderFormats } from '@/lib/countUnits'
-import { card } from '@/lib/controlStyles'
+import { badge, captionClass, card, chip, fieldClass, labelClass, primaryButton, rowButton } from '@/lib/controlStyles'
 import SearchBox from '@/components/ui/SearchBox'
 import { sectionColour, sectionRank } from '@/lib/sections'
+import { breakdownParts, justLoose } from '@/lib/stockTakeSummary'
 import BackButton from '@/components/ui/BackButton'
+import CountingBar from '@/components/ui/CountingBar'
+import Notice from '@/components/ui/Notice'
+import CountedAs from '@/components/inventory/CountedAs'
 import { can, MANAGERS } from '@/lib/access'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 
@@ -57,13 +61,6 @@ function group(list) {
             items: items.sort(compareForCount),
         }))
         .sort((a, b) => sectionRank(a.section) - sectionRank(b.section))
-}
-
-// One loose entry is its own total, so "4.27 KG = 4.27 KG" says the same number
-// twice. The equals sign is there to show the arithmetic when somebody counted
-// in packs, and with a single loose entry there is no arithmetic to show.
-function justLoose(parts) {
-    return parts.length === 1 && parts[0].isLoose
 }
 
 export default function StockTakeCountPage() {
@@ -503,35 +500,6 @@ export default function StockTakeCountPage() {
         }
     }
 
-    // Return the breakdown as an array of { key, text, factor } parts, sorted
-    // by factor descending (biggest format left), with loose always last.
-    function breakdownParts(line, product) {
-        const b = line.unit_breakdown
-        if (!b || typeof b !== 'object') return null
-        const parts = []
-        for (const [label, info] of Object.entries(b)) {
-            const qty = info?.qty
-            if (qty == null) continue
-            const factor = Number(info.factor ?? 1)
-            if (label === 'loose') {
-                parts.push({ key: 'loose', text: `${fmtQty(qty)} ${product.unit}`, factor, isLoose: true })
-            } else {
-                parts.push({ key: label, text: `${fmtQty(qty)} ${label}`, factor, isLoose: false })
-            }
-        }
-        if (parts.length === 0) return null
-
-        parts.sort((a, b) => {
-            // Loose always goes last
-            if (a.isLoose && !b.isLoose) return 1
-            if (!a.isLoose && b.isLoose) return -1
-            // Otherwise biggest factor first
-            return b.factor - a.factor
-        })
-
-        return parts
-    }
-
     // Given a product's format config and the draft inputs, compute the base-unit
     // total and the breakdown to store. Returns { total, breakdown, hasAny }.
     function computeDraft(product) {
@@ -637,7 +605,7 @@ export default function StockTakeCountPage() {
     if (loading) {
         return (
             <div className="p-6">
-                <p className="text-sm text-gray-500">Loading stock take...</p>
+                <p className="text-sm text-muted">Loading stock take...</p>
             </div>
         )
     }
@@ -665,45 +633,31 @@ export default function StockTakeCountPage() {
     // list scrolling inside it.
     return (
         <div className="-mx-4 md:-mx-7 -my-4 md:-my-7 flex flex-col md:h-[calc(100vh-4rem)]">
-            {/* Fixed top bar (non-scrolling flex child).
-
-                z-20 keeps it above the section headings below, which are z-10,
-                while staying under the sidebar and its overlay. See the note in
-                AppLayout: this bar used to be level with the sidebar and so it
-                sat on top of the open menu instead of being blurred behind it. */}
-            <div className="flex-shrink-0 sticky top-0 md:static z-20 bg-white border-b border-border shadow-sm px-4 md:px-7">
-                <div className="py-3 flex items-center gap-3">
+            {/* The bar stays put while the list scrolls under it. CountingBar
+                keeps it above the section headings and under the menu. */}
+            <CountingBar
+                backTo="/inventory/stock-takes"
+                backLabel="Back to stock takes"
+                title={sessionTitle()}
+                subtitle={(
+                    <>
+                        {progress.counted}/{progress.total} products counted
+                        {isManager && (
+                            <span className="text-gray-700 font-semibold"> · {fmtMoney(totalValue)} counted</span>
+                        )}
+                    </>
+                )}
+                actions={isManager && !isClosed && (
                     <button
                         type="button"
-                        onClick={() => navigate('/inventory/stock-takes')}
-                        className="text-gray-500 hover:text-gray-700 flex-shrink-0"
-                        aria-label="Back"
+                        onClick={() => navigate(`/inventory/stock-takes/${id}/review`)}
+                        className={`${rowButton('plain')} flex-shrink-0`}
                     >
-                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-                        </svg>
+                        Review
                     </button>
-                    <div className="flex-1 min-w-0">
-                        <h1 className="font-semibold text-gray-900 truncate">
-                            {sessionTitle()}
-                        </h1>
-                        <p className="text-xs text-muted">
-                            {progress.counted}/{progress.total} products counted
-                            {isManager && (
-                                <span className="text-gray-700 font-semibold"> · {fmtMoney(totalValue)} counted</span>
-                            )}
-                        </p>
-                    </div>
-                    {isManager && !isClosed && (
-                        <button
-                            type="button"
-                            onClick={() => navigate(`/inventory/stock-takes/${id}/review`)}
-                            className="text-sm font-semibold text-accent-ink flex-shrink-0"
-                        >
-                            Review
-                        </button>
-                    )}
-                </div>
+                )}
+                progress={progress.total > 0 ? progress.counted / progress.total : 0}
+            >
                 {!isClosed && (
                     <div className="pb-2 flex flex-col sm:flex-row sm:items-center gap-2">
                         {/* Its own line on a phone and beside the filter on
@@ -719,12 +673,10 @@ export default function StockTakeCountPage() {
                         <button
                             type="button"
                             onClick={toggleUncountedFilter}
-                            className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${showUncountedOnly
-                                ? 'bg-accent text-white border-accent'
-                                : 'bg-white text-gray-700 border-border hover:bg-gray-50'
-                                }`}
+                            aria-pressed={showUncountedOnly}
+                            className={`${chip(showUncountedOnly)} inline-flex items-center gap-1.5`}
                         >
-                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
                             </svg>
                             {showUncountedOnly ? 'Showing uncounted' : 'Show uncounted only'}
@@ -736,13 +688,7 @@ export default function StockTakeCountPage() {
                         )}
                     </div>
                 )}
-                <div className="w-full bg-gray-200 h-1">
-                    <div
-                        className="bg-accent h-full transition-all"
-                        style={{ width: progress.total > 0 ? `${(progress.counted / progress.total) * 100}%` : '0%' }}
-                    />
-                </div>
-            </div>
+            </CountingBar>
 
             {/* Scrolling body */}
             <div className="flex-1 md:overflow-y-auto px-4 md:px-7 pb-20">
@@ -750,7 +696,7 @@ export default function StockTakeCountPage() {
                     <div className="pt-4">
                         <div className={`${card} p-4`}>
                             <div className="flex items-center justify-between gap-3 mb-3">
-                                <p className="text-xs font-bold uppercase tracking-widest text-muted">Value counted</p>
+                                <p className={captionClass}>Value counted</p>
                                 <p className="text-lg font-bold text-gray-900">{fmtMoney(totalValue)}</p>
                             </div>
                             <div className="space-y-1.5">
@@ -773,9 +719,9 @@ export default function StockTakeCountPage() {
                     </div>
                 )}
                 {isClosed && (
-                    <div className="mt-4 bg-amber-50 border border-amber-200 text-amber-800 text-sm px-4 py-3 rounded-lg">
+                    <Notice tone="warn" className="mt-4">
                         This stock take is closed. Counts are read-only.
-                    </div>
+                    </Notice>
                 )}
 
                 {sections.length === 0 && (
@@ -802,12 +748,12 @@ export default function StockTakeCountPage() {
                                     {isManager && (() => {
                                         const sectionValue = items.reduce((s, p) => s + getProductValue(p.id, section), 0)
                                         return sectionValue > 0 ? (
-                                            <span className="text-xs font-semibold text-white bg-white/20 px-2 py-0.5 rounded-full">
+                                            <span className={`${badge} text-white bg-white/20`}>
                                                 {fmtMoney(sectionValue)}
                                             </span>
                                         ) : null
                                     })()}
-                                    <span className="text-xs font-semibold text-white bg-white/20 px-2 py-0.5 rounded-full">
+                                    <span className={`${badge} text-white bg-white/20`}>
                                         {sectionCounted}/{items.length}
                                     </span>
                                 </span>
@@ -885,7 +831,7 @@ export default function StockTakeCountPage() {
                                                                 // been counted, and saying it twice is
                                                                 // what pushed the words off the card.
                                                                 !canSayNone && (
-                                                                    <p className="text-sm font-medium text-amber-600">Not counted</p>
+                                                                    <p className="text-sm font-medium text-amber-700">Not counted</p>
                                                                 )
                                                             )}
                                                         </div>
@@ -916,7 +862,7 @@ export default function StockTakeCountPage() {
                                                 <button
                                                     type="button"
                                                     onClick={() => undoNone(undoable)}
-                                                    className="flex-shrink-0 self-center mr-3 px-3 py-2 rounded-lg bg-accent text-white text-xs font-bold shadow-sm hover:brightness-95"
+                                                    className={`${primaryButton('sm')} flex-shrink-0 self-center mr-3`}
                                                 >
                                                     Undo
                                                 </button>
@@ -926,7 +872,6 @@ export default function StockTakeCountPage() {
                                             {/* Expanded section */}
                                             {isExpanded && (
                                                 <div className="px-4 pb-4 bg-white">
-                                                    {/* Existing lines */}
                                                     {/* Existing lines */}
                                                     {productLines.length > 0 && (
                                                         <div className="space-y-2 mb-3">
@@ -943,14 +888,7 @@ export default function StockTakeCountPage() {
                                                                                 if (parts) {
                                                                                     return (
                                                                                         <div className="flex flex-wrap items-center gap-1.5">
-                                                                                            {parts.map(part => (
-                                                                                                <span
-                                                                                                    key={part.key}
-                                                                                                    className="inline-block bg-gray-100 border border-border rounded-md px-2 py-0.5 text-xs font-medium text-gray-700"
-                                                                                                >
-                                                                                                    {part.text}
-                                                                                                </span>
-                                                                                            ))}
+                                                                                            <CountedAs parts={parts} />
                                                                                             {!justLoose(parts) && (
                                                                                                 <span className="text-xs text-muted">
                                                                                                     = {fmtQty(line.quantity_counted)} {product.unit}
@@ -980,9 +918,9 @@ export default function StockTakeCountPage() {
                                                                             <button
                                                                                 type="button"
                                                                                 onClick={() => handleDeleteLine(line, product, section)}
-                                                                                className="flex-shrink-0 inline-flex items-center gap-1 text-xs font-semibold text-red-600 hover:text-white hover:bg-red-600 border border-red-200 hover:border-red-600 px-2.5 py-1.5 rounded-md transition-colors"
+                                                                                className={`${rowButton('danger')} flex-shrink-0 inline-flex items-center gap-1`}
                                                                             >
-                                                                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                                                                <svg className="w-3.5 h-3.5" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                                                                                     <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                                                                                 </svg>
                                                                                 Delete
@@ -1004,33 +942,35 @@ export default function StockTakeCountPage() {
                                                                 <div className="flex flex-wrap gap-2">
                                                                     {config.formats.map(fmt => (
                                                                         <div key={fmt.id} className="flex-1 min-w-[120px]">
-                                                                            <label className="block text-xs font-medium text-muted mb-1">
-                                                                                {fmt.label} <span className="font-normal">({fmtQty(fmt.factor)} {product.unit})</span>
+                                                                            <label htmlFor={`count-pack-${fmt.id}`} className={labelClass}>
+                                                                                {fmt.label} ({fmtQty(fmt.factor)} {product.unit})
                                                                             </label>
                                                                             <input
+                                                                                id={`count-pack-${fmt.id}`}
                                                                                 type="text"
                                                                                 inputMode="decimal"
                                                                                 onFocus={e => e.target.select()}
                                                                                 value={draftCounts[fmt.id] || ''}
                                                                                 onChange={e => setDraftCounts(prev => ({ ...prev, [fmt.id]: e.target.value.replace(/[^0-9.]/g, '') }))}
                                                                                 placeholder="0"
-                                                                                className="w-full px-3 py-2.5 border border-border rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
+                                                                                className={fieldClass}
                                                                             />
                                                                         </div>
                                                                     ))}
                                                                     {looseAllowed && (
                                                                         <div className="flex-1 min-w-[120px]">
-                                                                            <label className="block text-xs font-medium text-muted mb-1">
-                                                                                {config.formats.length > 0 ? 'Loose' : 'Quantity'} <span className="font-normal">({product.unit})</span>
+                                                                            <label htmlFor="count-loose" className={labelClass}>
+                                                                                {config.formats.length > 0 ? 'Loose' : 'Quantity'} ({product.unit})
                                                                             </label>
                                                                             <input
+                                                                                id="count-loose"
                                                                                 type="text"
                                                                                 inputMode="decimal"
                                                                                 onFocus={e => e.target.select()}
                                                                                 value={draftCounts['loose'] || ''}
                                                                                 onChange={e => setDraftCounts(prev => ({ ...prev, loose: e.target.value.replace(/[^0-9.]/g, '') }))}
                                                                                 placeholder="0"
-                                                                                className="w-full px-3 py-2.5 border border-border rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
+                                                                                className={fieldClass}
                                                                             />
                                                                         </div>
                                                                     )}
@@ -1038,22 +978,23 @@ export default function StockTakeCountPage() {
 
                                                                 <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
                                                                     <div className="flex-1">
-                                                                        <label className="block text-xs font-medium text-muted mb-1">
-                                                                            Location <span className="font-normal">(optional)</span>
+                                                                        <label htmlFor="count-location" className={labelClass}>
+                                                                            Location (optional)
                                                                         </label>
                                                                         <input
+                                                                            id="count-location"
                                                                             type="text"
                                                                             value={draftLocation}
                                                                             onChange={e => setDraftLocation(e.target.value)}
                                                                             placeholder="e.g. back cold room"
-                                                                            className="w-full px-3 py-2.5 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
+                                                                            className={fieldClass}
                                                                         />
                                                                     </div>
                                                                     <button
                                                                         type="button"
                                                                         onClick={() => handleAddLine(product, section)}
                                                                         disabled={savingLine || !hasAny}
-                                                                        className="bg-accent hover:bg-accent/90 disabled:opacity-40 text-white font-semibold px-4 py-2.5 rounded-lg transition-colors"
+                                                                        className={primaryButton('md')}
                                                                         style={{ minHeight: '44px' }}
                                                                     >
                                                                         Add

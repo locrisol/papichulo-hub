@@ -4,7 +4,7 @@
 // browser. The component does the drawing and nothing else.
 
 import { weekStartOf, addDays } from '@/lib/dates'
-import { num } from '@/lib/format'
+import { num, fmtPct } from '@/lib/format'
 
 // How far back a chart can be asked to look.
 //
@@ -278,7 +278,7 @@ export function aside(rows, index, key, base) {
     if (base && key !== base) {
         const total = num(row[base])
         if (!total) return ''
-        return `${((num(row[key]) / total) * 100).toFixed(1)}%`
+        return fmtPct((num(row[key]) / total) * 100)
     }
 
     const before = rows[index - 1]

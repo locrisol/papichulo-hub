@@ -1,4 +1,5 @@
 import { createContext, useContext, useLayoutEffect, useRef } from 'react'
+import { readStored, writeStored, forgetStored } from '@/lib/browserStore'
 
 // The context and the hook that reads it, kept apart from the provider.
 //
@@ -62,7 +63,7 @@ export function useKeepScroll(key, ready, belongsTo) {
         function remember() {
             const at = Math.max(...boxes.map(box => box.scrollTop))
             if (at > 0) {
-                sessionStorage.setItem(store, JSON.stringify({ at, to: window.location.pathname }))
+                writeStored('session', store, JSON.stringify({ at, to: window.location.pathname }))
             }
         }
 
@@ -78,7 +79,7 @@ export function useKeepScroll(key, ready, belongsTo) {
         const stored = readPlace(`scroll:${key}`)
         const saved = stored && (!belongsTo || belongsTo(stored.to)) ? stored.at : 0
         if (!saved) {
-            sessionStorage.removeItem(`scroll:${key}`)
+            forgetStored('session', `scroll:${key}`)
             restored.current = true
             return
         }
@@ -104,9 +105,9 @@ export function useKeepScroll(key, ready, belongsTo) {
 }
 
 function readPlace(store) {
+    const raw = readStored('session', store)
+    if (!raw) return null
     try {
-        const raw = sessionStorage.getItem(store)
-        if (!raw) return null
         const place = JSON.parse(raw)
         return place && place.at > 0 ? place : null
     } catch {

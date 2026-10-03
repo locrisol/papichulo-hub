@@ -2,13 +2,12 @@ import { useState } from 'react'
 import TimeField from '@/components/ui/TimeField'
 import Modal from '@/components/ui/Modal'
 import { useConfirm } from '@/context/confirm'
-import { shortDate } from '@/lib/dates'
-import { dayName } from '@/lib/events'
+import { dayLabel } from '@/lib/dates'
 import {
     shiftMinutes, breakFor, breakLabel, shortTime, fmtHours, shiftEdges, toMinutes,
 } from '@/lib/roster'
 import { canWorkAt, availabilityOn } from '@/lib/availability'
-import { modalFooter, labelClass, fieldClass, primaryButton } from '@/lib/controlStyles'
+import { modalFooter, labelClass, fieldClass, primaryButton, secondaryButton, rowButton } from '@/lib/controlStyles'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // One shift: making it, changing it, removing it.
@@ -75,7 +74,7 @@ export default function ShiftDialog({
             title: 'Remove this shift?',
             details: [
                 { label: 'Who', value: employees.find(e => e.id === form.employeeId)?.full_name || '' },
-                { label: 'Day', value: `${dayName(date)} ${shortDate(date)}` },
+                { label: 'Day', value: dayLabel(date) },
                 { label: 'Time', value: `${form.startsAt} to ${form.endsAt}` },
             ],
             confirmLabel: 'Remove it',
@@ -100,7 +99,7 @@ export default function ShiftDialog({
 
     return (
         <Modal
-            title={`${dayName(date)} ${shortDate(date)}`}
+            title={dayLabel(date)}
             onClose={onClose}
         >
             <form onSubmit={submit}>
@@ -153,7 +152,7 @@ export default function ShiftDialog({
                     <div className="bg-gray-50 rounded-lg px-4 py-3 mb-3 text-sm">
                         <div className="flex items-center justify-between">
                             <span className="text-gray-600">{fmtHours(hours)} hours</span>
-                            <span className="text-gray-500">{breakLabel(breakMinutes)}</span>
+                            <span className="text-muted">{breakLabel(breakMinutes)}</span>
                         </div>
                         {(edges.opening || edges.closing) && (
                             <p className="text-xs text-amber-700 mt-1.5">
@@ -183,33 +182,22 @@ export default function ShiftDialog({
                 )}
                 </div>
 
-                <div className={`${modalFooter} justify-between`}>
-                    {editing ? (
-                        <button
-                            type="button"
-                            onClick={remove}
-                            className="px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 rounded-lg"
-                        >
+                <div className={modalFooter}>
+                    {editing && (
+                        <button type="button" onClick={remove} className={`${rowButton('danger')} mr-auto`}>
                             Remove
                         </button>
-                    ) : <span />}
-
-                    <div className="flex gap-3">
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className="px-4 py-2 border border-border text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 bg-white"
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            type="submit"
-                            disabled={saving || !!problem}
-                            className={primaryButton('lg')}
-                        >
-                            {saving ? 'Saving...' : editing ? 'Save' : 'Add it'}
-                        </button>
-                    </div>
+                    )}
+                    <button type="button" onClick={onClose} className={secondaryButton}>
+                        Cancel
+                    </button>
+                    <button
+                        type="submit"
+                        disabled={saving || !!problem}
+                        className={primaryButton('lg')}
+                    >
+                        {saving ? 'Saving...' : editing ? 'Save' : 'Add it'}
+                    </button>
                 </div>
             </form>
         </Modal>

@@ -19,7 +19,7 @@ import { shiftHours, shiftMinutes, toMinutes, shortTime } from '@/lib/roster'
 import { outsideAvailability, windowsLabel, dayNameOf, availabilityOn, availabilityStart } from '@/lib/availability'
 import { absencesOn, kindPhrase, isPartDay } from '@/lib/absences'
 import { hitsShift, partWords } from '@/lib/timeOff'
-import { shortDate, fullDate, addDays } from '@/lib/dates'
+import { shortDate, fullDate, addDays, daysBetween } from '@/lib/dates'
 import { irishOffset } from '@/lib/clock'
 
 // What each immigration stamp allows, in hours a week.
@@ -680,10 +680,4 @@ export function overlapFindings(clashes, employeesById) {
         name: employeesById?.[a.employee_id]?.full_name || '',
         text: `Rostered twice over the same hours on ${on(a.shift_date)}, ${shortTime(a.starts_at)} and ${shortTime(b.starts_at)}.`,
     }))
-}
-
-function daysBetween(from, to) {
-    return Math.round(
-        (new Date(to + 'T00:00:00') - new Date(from + 'T00:00:00')) / 86400000,
-    )
 }

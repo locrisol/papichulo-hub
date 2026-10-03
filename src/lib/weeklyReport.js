@@ -3,9 +3,10 @@
 // Everything in here is arithmetic and rules, kept out of the pages so it can
 // be tested without a database or a browser. The pages fetch, this decides.
 
-import { weekDates, weekStartOf, todayISO, addDays, dayMonth } from '@/lib/dates'
+import { weekDates, weekStartOf, todayISO, addDays, dayMonth, WEEKDAY_NAMES } from '@/lib/dates'
 import { tendersToShow, tenderVariance, platformsToShow, num } from '@/lib/salesTenders'
 import { byWeek } from '@/lib/reportChart'
+import { round2 } from '@/lib/format'
 import { spendOn, FOOD, PACKAGING } from '@/lib/invoiceCategories'
 
 // The sections every report starts with, in the order they are read.
@@ -338,11 +339,9 @@ export function statementWeek(weekStart) {
     }
 }
 
-const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-
 // "Monday 28 September".
 export function dayWords(date) {
-    return `${WEEKDAYS[new Date(date + 'T00:00:00').getDay()]} ${dayMonth(date)}`
+    return `${WEEKDAY_NAMES[new Date(date + 'T00:00:00').getDay()]} ${dayMonth(date)}`
 }
 
 // "Monday 21 to Sunday 27 September", or across a month end "Monday 28
@@ -350,7 +349,7 @@ export function dayWords(date) {
 export function statementWords(weekStart) {
     const { from, to } = statementWeek(weekStart)
     const first = from.slice(0, 7) === to.slice(0, 7)
-        ? `${WEEKDAYS[new Date(from + 'T00:00:00').getDay()]} ${Number(from.slice(8))}`
+        ? `${WEEKDAY_NAMES[new Date(from + 'T00:00:00').getDay()]} ${Number(from.slice(8))}`
         : dayWords(from)
     return `${first} to ${dayWords(to)}`
 }
@@ -386,8 +385,6 @@ export function platformWeeks({ platforms = [], days = [], weeks = [] }) {
     }))
 }
 
-const r2 = n => Math.round(num(n) * 100) / 100
-
 // What one platform cost in our week.
 //
 // Nothing typed is nothing known, not nought: the line says so and the report
@@ -397,11 +394,11 @@ export function deliveryCost({ statement, statementTaken, weekTaken }) {
     if (statement == null || statement === '') return { typed: false, rate: null, cost: 0 }
     const bill = num(statement)
     const over = num(statementTaken)
-    if (over <= 0) return { typed: true, rate: null, cost: r2(bill) }
+    if (over <= 0) return { typed: true, rate: null, cost: round2(bill) }
     return {
         typed: true,
         rate: (bill / over) * 100,
-        cost: r2((bill * num(weekTaken)) / over),
+        cost: round2((bill * num(weekTaken)) / over),
     }
 }
 

@@ -7,8 +7,8 @@ import { useConfirm } from '@/context/confirm'
 import { todayISO } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
 import {
-    badge, card, cardHeader, checkbox, checkRow, compactField, dateField, fieldClass, hintClass, labelClass,
-    modalFooter, pageTitle, primaryButton, rowButton, secondaryButton,
+    badge, card, cardHeader, checkbox, checkRow, fieldClass, hintClass, labelClass,
+    modalFooter, pageTitle, pageSubtitle, primaryButton, rowButton, secondaryButton,
 } from '@/lib/controlStyles'
 import { listTree, repeatWords } from '@/lib/checklists'
 import { PHOTO_BUCKET } from '@/lib/photo'
@@ -222,9 +222,9 @@ export default function ChecklistEditPage() {
             <BackButton to="/checklists">Back to checklists</BackButton>
             <header className="mt-4 mb-6 flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
-                    <h1 className={`${pageTitle} break-words`}>{list ? list.name : 'New list'}</h1>
+                    <h2 className={`${pageTitle} break-words`}>{list ? list.name : 'New list'}</h2>
                     {list && (
-                        <p className="text-sm text-muted mt-1">
+                        <p className={pageSubtitle}>
                             {repeatWords(list)}{!list.is_active && ' · Inactive: nobody sees it'}
                         </p>
                     )}
@@ -247,7 +247,7 @@ export default function ChecklistEditPage() {
             {list && (
                 <section className="mt-8">
                     <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-                        <h2 className="font-serif text-xl font-bold text-gray-900">What is on the list</h2>
+                        <h2 className={pageTitle}>What is on the list</h2>
                         {tree.length > 1 && (
                             <button type="button" className={secondaryButton} onClick={() => setArranging({
                                 title: 'Arrange the categories', table: 'checklist_categories', items: tree.map(g => g.category),
@@ -455,7 +455,7 @@ function ListForm({ list, onSaved, restaurantId, userId, onError }) {
             <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                     <label htmlFor="list-often" className={labelClass}>How often</label>
-                    <select id="list-often" className={compactField} value={often} onChange={e => setOften(e.target.value)}>
+                    <select id="list-often" className={fieldClass} value={often} onChange={e => setOften(e.target.value)}>
                         {HOW_OFTEN.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
                     <p className={hintClass}>
@@ -471,13 +471,13 @@ function ListForm({ list, onSaved, restaurantId, userId, onError }) {
                 {(often === 'once' || (weeks && weeks > 1)) && (
                     <div>
                         <label htmlFor="list-starts" className={labelClass}>{often === 'once' ? 'Can be started from' : 'Counting from the week of'}</label>
-                        <input id="list-starts" type="date" className={`${dateField} w-full`} value={startsOn} onChange={e => setStartsOn(e.target.value)} />
+                        <input id="list-starts" type="date" className={fieldClass} value={startsOn} onChange={e => setStartsOn(e.target.value)} />
                     </div>
                 )}
                 {often === 'once' && (
                     <div>
                         <label htmlFor="list-finish" className={labelClass}>Finish by (optional)</label>
-                        <input id="list-finish" type="date" className={`${dateField} w-full`} value={finishBy} min={startsOn} onChange={e => setFinishBy(e.target.value)} />
+                        <input id="list-finish" type="date" className={fieldClass} value={finishBy} min={startsOn} onChange={e => setFinishBy(e.target.value)} />
                         <p className={hintClass}>After this day the weekly report says it is late.</p>
                     </div>
                 )}

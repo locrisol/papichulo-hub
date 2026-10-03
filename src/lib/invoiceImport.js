@@ -14,7 +14,7 @@
 // spent, so the week's figure follows the document the moment it is imported,
 // while what a portion costs only moves when he says so.
 
-import { num } from '@/lib/format'
+import { num, round2, fmtMoney } from '@/lib/format'
 import { weekStartOf, addDays } from '@/lib/dates'
 import { recognisesSysco, readSyscoInvoice, readPackSize, packItems } from '@/lib/invoiceSysco'
 import { documentStatus } from '@/lib/supplierDocuments'
@@ -687,10 +687,10 @@ export function documentBlocks(doc) {
         const said = doc.deposits === null
             ? `the container deposit on it could not be read`
             : doc.deposits
-                ? `the goods come to ${fixed(doc.checks?.values?.expected)} before the `
-                    + `${fixed(doc.deposits)} container deposit`
-                : `the goods total says ${fixed(doc.checks?.values?.expected)}`
-        out.push(`The lines come to ${fixed(doc.checks?.values?.got)} and ${said}, `
+                ? `the goods come to ${euros(doc.checks?.values?.expected)} before the `
+                    + `${euros(doc.deposits)} container deposit`
+                : `the goods total says ${euros(doc.checks?.values?.expected)}`
+        out.push(`The lines come to ${euros(doc.checks?.values?.got)} and ${said}, `
             + `so something on it was not read.`)
     }
     // Only a reader that reads VAT has this check at all.
@@ -702,8 +702,8 @@ export function documentBlocks(doc) {
             out.push('The VAT codes on the lines do not add up to the VAT table at the foot, '
                 + 'so the VAT would go on the wrong lines.')
         } else {
-            out.push(`With VAT and deposit the lines come to ${fixed(payable.got)} and the amount `
-                + `payable says ${fixed(payable.expected)}, so the VAT was not read right.`)
+            out.push(`With VAT and deposit the lines come to ${euros(payable.got)} and the amount `
+                + `payable says ${euros(payable.expected)}, so the VAT was not read right.`)
         }
     }
     if (!doc.checks?.cases?.ok) {
@@ -715,6 +715,10 @@ export function documentBlocks(doc) {
 
 function fixed(n) {
     return n == null ? 'nothing' : Number(n).toFixed(2)
+}
+
+function euros(n) {
+    return n == null ? 'nothing' : fmtMoney(n)
 }
 
 // ---------------------------------------------------------------------------
@@ -738,9 +742,9 @@ function fixed(n) {
 export function fillInPlan(doc, invoice) {
     // Both on the same footing: what was typed was the amount payable, and so
     // is what the document costs.
-    const gross = round(documentTotal(doc))
-    const net = round(num(invoice?.total_amount))
-    const difference = round(gross - net)
+    const gross = round2(documentTotal(doc))
+    const net = round2(num(invoice?.total_amount))
+    const difference = round2(gross - net)
 
     return {
         gross,
@@ -748,7 +752,7 @@ export function fillInPlan(doc, invoice) {
         difference,
         same: Math.abs(difference) < 0.005,
         deducted: difference > 0.005 ? difference : 0,
-        over: difference < -0.005 ? round(-difference) : 0,
+        over: difference < -0.005 ? round2(-difference) : 0,
     }
 }
 
@@ -801,13 +805,9 @@ export function fillInClaim(plan, { invoice, doc, restaurantId, supplierId, rais
         raised_on: doc.date,
         raised_by: raisedBy || null,
         counted_week: weekStartOf(doc.date),
-        note: `The total typed in was ${plan.net.toFixed(2)} and the document says `
-            + `${plan.gross.toFixed(2)}.`,
+        note: `The total typed in was ${fmtMoney(plan.net)} and the document says `
+            + `${fmtMoney(plan.gross)}.`,
     }
-}
-
-function round(n) {
-    return Math.round(num(n) * 100) / 100
 }
 
 // ---------------------------------------------------------------------------

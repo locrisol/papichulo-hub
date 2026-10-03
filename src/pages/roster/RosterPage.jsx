@@ -9,7 +9,7 @@ import { todayISO, weekStartOf, weekDates, addDays, shortDate, weekMonthLabel } 
 import { DAY_NAMES, dayName } from '@/lib/events'
 import { rosterNearby, NEARBY_FAILED, rowsOn, PAIRING_COLUMNS } from '@/lib/nearby'
 import { fmtMoney } from '@/lib/format'
-import { secondaryButton, cardEdge, cardHeader, badge, segmentTrack, segmentButton } from '@/lib/controlStyles'
+import { primaryButton, secondaryButton, cardEdge, cardHeader, badge, segmentTrack, segmentButton } from '@/lib/controlStyles'
 import JumpButton from '@/components/ui/JumpButton'
 import DateStepper from '@/components/ui/DateStepper'
 import {
@@ -40,6 +40,8 @@ import DayNoteDialog from '@/components/roster/DayNoteDialog'
 import Modal from '@/components/ui/Modal'
 import EmployeeForm from '@/components/team/EmployeeForm'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import Notice from '@/components/ui/Notice'
+import PageHeader from '@/components/ui/PageHeader'
 import FeedTrouble from '@/components/nearby/FeedTrouble'
 import { atRestaurant, canChangeEntry } from '@/lib/diary'
 import DiaryDialog from '@/components/diary/DiaryDialog'
@@ -741,12 +743,9 @@ export default function RosterPage() {
 
     return (
         <div className="w-full">
-            <div className="mb-4">
-                <h2 className="font-serif text-2xl font-bold text-gray-900">Roster</h2>
-                <p className="text-sm text-muted mt-1">{weekMonthLabel(weekStart)}</p>
-            </div>
+            <PageHeader title="Roster" subtitle={weekMonthLabel(weekStart)} />
 
-            {error && <div className="bg-amber-50 text-amber-700 text-sm rounded-lg p-3 mb-4">{error}</div>}
+            <ErrorBanner className="mb-4">{error}</ErrorBanner>
 
             {/* A feed that has stopped answering, said here because this is
                 where its silence would pass for a quiet week. */}
@@ -760,17 +759,14 @@ export default function RosterPage() {
                     onNext={() => setWeekStart(addDays(weekStart, 7))}
                     backLabel="Previous week"
                     nextLabel="Next week"
+                    weekStart={weekStart}
                     jump={(
                         <JumpButton
                             isCurrent={weekStart === weekStartOf(today)}
                             onClick={() => setWeekStart(weekStartOf(today))}
                         />
                     )}
-                >
-                    <span className="text-sm font-semibold text-gray-800 whitespace-nowrap">
-                        {shortDate(weekStart)} to {shortDate(weekEnd)}
-                    </span>
-                </DateStepper>
+                />
 
                 {/* Wraps on a phone, and only pushed to the far right once
                     there is a far right to push it to. ml-auto on a row that
@@ -790,7 +786,7 @@ export default function RosterPage() {
                         type="button"
                         onClick={publish}
                         disabled={saving || state === 'empty' || state === 'published'}
-                        className="px-4 py-2 bg-accent text-white text-sm font-semibold rounded-lg hover:bg-orange-600 disabled:opacity-40 whitespace-nowrap"
+                        className={`${primaryButton('md')} whitespace-nowrap`}
                     >
                         Publish
                     </button>
@@ -809,20 +805,20 @@ export default function RosterPage() {
             )}
 
             {warnings.length > 0 && (
-                <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-lg p-3 mb-3">
+                <Notice tone="warn" className="mb-3">
                     <p className="font-semibold mb-1">Worth a look</p>
                     <ul className="list-disc pl-5 space-y-0.5">
                         {warnings.map((w, i) => <li key={i}>{w.text}</li>)}
                     </ul>
-                </div>
+                </Notice>
             )}
 
             {/* Somebody is waiting on an answer. Above the roster rather than
                 on a page of its own, because the answer depends on the week and
                 this is the week. */}
             {timeOffWaiting.length > 0 && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3">
-                    <p className="text-sm font-semibold text-amber-900 mb-1.5">
+                <Notice tone="warn" className="mb-3">
+                    <p className="font-semibold mb-1.5">
                         {timeOffWaiting.length === 1
                             ? 'One time off request is waiting'
                             : `${timeOffWaiting.length} time off requests are waiting`}
@@ -856,7 +852,7 @@ export default function RosterPage() {
                                         <button
                                             type="button"
                                             onClick={() => openTimeOff(a)}
-                                            className="px-3 py-1.5 rounded-lg bg-accent text-white text-xs font-semibold hover:bg-accent/90"
+                                            className={primaryButton('sm')}
                                         >
                                             Answer it
                                         </button>
@@ -865,14 +861,14 @@ export default function RosterPage() {
                             </div>
                         ))}
                     </div>
-                </div>
+                </Notice>
             )}
 
             {/* Hours a freed day left behind. Each line goes as soon as anybody
                 is rostered over it, so there is nothing to tick off. */}
             {gaps.length > 0 && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3">
-                    <p className="text-sm font-semibold text-amber-900 mb-1">
+                <Notice tone="warn" className="mb-3">
+                    <p className="font-semibold mb-1">
                         {gaps.length === 1 ? 'One shift needs covering' : `${gaps.length} shifts need covering`}
                     </p>
                     <ul className="text-xs text-amber-800 space-y-0.5">
@@ -883,7 +879,7 @@ export default function RosterPage() {
                             </li>
                         ))}
                     </ul>
-                </div>
+                </Notice>
             )}
 
             {clashes.length > 0 && (
@@ -987,7 +983,7 @@ export default function RosterPage() {
                         <button
                             type="button"
                             onClick={() => setDeskOpen(true)}
-                            className="px-4 py-2 bg-accent text-white rounded-lg text-sm font-semibold shadow-sm hover:brightness-95 whitespace-nowrap"
+                            className={`${primaryButton()} whitespace-nowrap`}
                         >
                             {agreed.length} {agreed.length === 1 ? 'change' : 'changes'} to approve
                         </button>

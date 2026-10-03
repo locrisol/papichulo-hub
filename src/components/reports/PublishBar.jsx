@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { primaryButton, secondaryButton, rowButton } from '@/lib/controlStyles'
-import { fullDate } from '@/lib/dates'
+import { stampDate } from '@/lib/dates'
 import { isCorrection, mailMissing } from '@/lib/weeklyReport'
 
 // The bar that finishes a report, or re-opens one.
@@ -24,7 +24,7 @@ import { isCorrection, mailMissing } from '@/lib/weeklyReport'
 // knowing whether five people have the week or nobody does.
 function Outcome({ children }) {
     return (
-        <p className="w-full text-sm text-sidebar bg-cream border border-border rounded-lg px-3 py-2 mt-3">
+        <p className="w-full text-sm text-sidebar bg-app-bg border border-border rounded-lg px-3 py-2 mt-3">
             {children}
         </p>
     )
@@ -71,7 +71,7 @@ export default function PublishBar({
                 <div className="min-w-0">
                     <p className="text-sm font-bold text-green-800">
                         Sent{report.send_count > 1 ? ` ${report.send_count} times` : ''}
-                        {report.published_at && `, last on ${fullDate(report.published_at.slice(0, 10))}`}
+                        {report.published_at && `, last on ${stampDate(report.published_at)}`}
                     </p>
                     <p className="text-xs text-green-800/80 mt-0.5">
                         The figures on it are frozen as they were that day, so an invoice entered since cannot

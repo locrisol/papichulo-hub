@@ -130,6 +130,18 @@ describe('keeping the list', () => {
         await waitFor(() => expect(screen.getByText('That could not be saved, so nothing has changed.')).toBeInTheDocument())
         expect(screen.getByText('payroll@example.ie')).toBeInTheDocument()
     })
+
+    // One Escape in the address box shut the box and the whole dialog, and
+    // a comment typed into the dialog went with it.
+    it('shuts only the address box on Escape', async () => {
+        const onClose = vi.fn()
+        open({ canSend: true, onClose })
+        await userEvent.click(screen.getByRole('button', { name: 'Add somebody else' }))
+        await userEvent.keyboard('{Escape}')
+
+        expect(screen.getByRole('button', { name: 'Add somebody else' })).toBeInTheDocument()
+        expect(onClose).not.toHaveBeenCalled()
+    })
 })
 
 // A clock in on the Tuesday and no clock out, and nothing rostered, so that is

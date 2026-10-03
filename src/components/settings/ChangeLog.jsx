@@ -1,6 +1,7 @@
 import {
-    tableWords, changedFields, whoWords, throughTheApp, actionWords, actionTone, dayOf,
+    tableWords, changedFields, whoWords, throughTheApp, actionWords, actionTone,
 } from '@/lib/changeLog'
+import { stampDay, clockTime } from '@/lib/dates'
 import { tableHeadRow, tableCard, card } from '@/lib/controlStyles'
 
 // The change log as a list.
@@ -14,14 +15,8 @@ import { tableHeadRow, tableCard, card } from '@/lib/controlStyles'
 // rather than worked across.
 
 function dayMonthDigits(at) {
-    const day = dayOf(at)
+    const day = stampDay(at)
     return `${day.slice(8, 10)}/${day.slice(5, 7)}`
-}
-
-function timeWords(at) {
-    const d = new Date(at)
-    if (isNaN(d)) return ''
-    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
 // What moved.
@@ -119,7 +114,7 @@ export default function ChangeLog({ entries }) {
                                 {tableWords(e.table_name)}
                             </span>
                             <span className="text-xs text-muted ml-auto tabular-nums whitespace-nowrap">
-                                {dayMonthDigits(e.changed_at)}, {timeWords(e.changed_at)}
+                                {dayMonthDigits(e.changed_at)}, {clockTime(e.changed_at)}
                             </span>
                         </div>
                         {e.label && (
@@ -148,7 +143,7 @@ export default function ChangeLog({ entries }) {
                         {entries.map(e => (
                             <tr key={e.id} className="align-baseline">
                                 <td className="px-4 py-2.5 text-xs text-muted tabular-nums whitespace-nowrap">
-                                    {dayMonthDigits(e.changed_at)}, {timeWords(e.changed_at)}
+                                    {dayMonthDigits(e.changed_at)}, {clockTime(e.changed_at)}
                                 </td>
                                 <td className="px-4 py-2.5 text-xs whitespace-nowrap"><Who entry={e} /></td>
                                 <td className="px-4 py-2.5">

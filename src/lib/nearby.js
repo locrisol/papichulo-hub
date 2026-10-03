@@ -649,7 +649,7 @@ export function whenWords(event) {
 // Today and yesterday are named because those are the two that decide whether a
 // reading is still worth anything. Everything older is dated, since "eleven
 // days ago" is harder to place than the date itself.
-export function agoWords(stamp, today) {
+export function sinceWords(stamp, today) {
     if (!stamp || !today) return ''
     const at = new Date(stamp)
     if (isNaN(at)) return ''
@@ -681,7 +681,7 @@ export function foundWords(row, today) {
     if (where) bits.push(walk ? `${where}, ${walk}` : where)
 
     const from = hostOf(row?.event?.source_url) || hostOf(row?.place?.page_url)
-    const when = agoWords(row?.event?.found_at, today)
+    const when = sinceWords(row?.event?.found_at, today)
     if (from) bits.push(when ? `read from ${from} ${when}` : `read from ${from}`)
 
     return bits.filter(Boolean).join(' · ')
@@ -699,7 +699,7 @@ export function foundWords(row, today) {
 // wrong can be two: what happened, and whether anybody has to do anything.
 export function readWords(place, today) {
     if (!place?.page_url) return ''
-    const when = agoWords(place.last_read_at, today)
+    const when = sinceWords(place.last_read_at, today)
     if (place.read_problem) {
         const said = String(place.read_problem).trim()
         const why = /[.!?]$/.test(said) ? said : `${said}.`
@@ -720,7 +720,7 @@ export function feedWords(place, today) {
     if (!place?.ticketmaster_venue_id) return ''
     if (place.feed_problem) return place.feed_problem
     if (!place.feed_synced_at) return 'not checked yet'
-    const when = agoWords(place.feed_synced_at, today)
+    const when = sinceWords(place.feed_synced_at, today)
     const listed = Number(place.feed_count)
     if (!Number.isFinite(listed)) return `checked ${when}`
     return `checked ${when}, ${listed === 0 ? 'nothing listed' : `${listed} listed`}`

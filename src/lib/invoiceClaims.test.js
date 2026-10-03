@@ -6,7 +6,7 @@ import {
     creditSettles, creditTakenBack, voidedBy, sentBack, chasingList, isLate, claimsForWeek, bySupplier,
     claimWeek, sentWeeks, fromEarlierWeeks, otherDeliveries, byInvoice, claimWorking, notTheDocket,
     claimDetached, canDetach, claimReopened, claimCountSaid, claimSaid, canEditClaim, claimForm, claimChanged,
-    keepsItsAmount, claimOverLine, priceQueryStart,
+    keepsItsAmount, claimOverLine, priceQueryStart, amountFixed, wordsOnly,
 } from '@/lib/invoiceClaims'
 
 const LINE = {
@@ -443,6 +443,23 @@ describe('changing a claim after it was logged', () => {
     // count: there is nothing to change the money from.
     it('is not offered on money that never came from a count', () => {
         expect(canEditClaim({ ...note, amount: 12.5, invoice_id: 'i1', cases: 0, units: 0 })).toBe(false)
+    })
+
+    // His answer of 3 October: a change after its week's report went out
+    // would land in no report.
+    it('keeps the money of one on a line once its week\'s report has gone out', () => {
+        const week = onLine.counted_week
+        expect(amountFixed(onLine, [week])).toBe(true)
+        expect(amountFixed(onLine, [])).toBe(false)
+        expect(amountFixed(onLine, null)).toBe(false)
+        expect(amountFixed({ ...note, counted_week: week }, [week])).toBe(false)
+    })
+
+    it('saves only the words and the note of one whose money is fixed', () => {
+        const form = { ...claimForm(onLine), kind: 'damaged', cases: '1', units: '', what: 'Chorizo bags', note: 'Rang them' }
+        expect(claimChanged(onLine, wordsOnly(onLine, form), { amount: onLine.amount })).toEqual({
+            kind: 'short', what: 'Chorizo bags', cases: 0, units: 3, note: 'Rang them', amount: 41.99,
+        })
     })
 
     it('opens the form with what was logged', () => {

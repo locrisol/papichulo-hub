@@ -5,8 +5,8 @@ import { dayIsClosed, planNoteWrites, applyNoteWrites } from '@/lib/closedDays'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
 import { useConfirm } from '@/context/confirm'
-import { fmtMoney, num } from '@/lib/format'
-import { todayISO, weekStartOf, weekDates, shortDate, addDays, fullDate, weekMonthLabel, dayList } from '@/lib/dates'
+import { fmtMoney, fmtPct, num } from '@/lib/format'
+import { todayISO, weekStartOf, weekDates, addDays, fullDate, weekMonthLabel, dayList } from '@/lib/dates'
 import { friendlyError, isPermissionError } from '@/lib/errors'
 import {
     tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord, sameLabel, trackedCopy,
@@ -14,8 +14,9 @@ import {
 } from '@/lib/salesTenders'
 import { numberField } from '@/lib/numberInput'
 import {
-    secondaryButton, dateField, tableHeadRow, card, checkbox, pageTitle, primaryButton, warningNote,
+    secondaryButton, dateField, tableHeadRow, card, checkbox, pageTitle, pageSubtitle, primaryButton,
 } from '@/lib/controlStyles'
+import { readStored, writeStored, forgetStored } from '@/lib/browserStore'
 import JumpButton from '@/components/ui/JumpButton'
 import DateStepper from '@/components/ui/DateStepper'
 import { DAY_NAMES } from '@/lib/events'
@@ -23,6 +24,7 @@ import {
     bankHolidayOn, BANK_HOLIDAY_ON_DARK, BANK_HOLIDAY_WASH_CLASS, BANK_HOLIDAY_LABEL,
 } from '@/lib/bankHolidays'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import Notice from '@/components/ui/Notice'
 import SalesImportDialog from '@/components/sales/SalesImportDialog'
 
 // Week entry grid: metrics as rows, days as columns, mirroring the layout the
@@ -184,19 +186,17 @@ export default function WeeklySalesPage() {
         if (!dirty || !restaurantId) return
         const key = `${restaurantId}:${weekStart}`
         if (loadedKey.current !== key) return
-        try {
-            const draft = {}
-            for (const [date, day] of Object.entries(days)) {
-                const base = loaded.current.view[date]
-                if (!sameDay(day, base)) draft[date] = { base, edit: day }
-            }
-            if (Object.keys(draft).length) {
-                localStorage.setItem(draftKey(restaurantId, weekStart), JSON.stringify(draft))
-            } else {
-                localStorage.removeItem(draftKey(restaurantId, weekStart))
-            }
-        } catch {
-            // Storage may be full or blocked; a failed draft must not break entry.
+        const draft = {}
+        for (const [date, day] of Object.entries(days)) {
+            const base = loaded.current.view[date]
+            if (!sameDay(day, base)) draft[date] = { base, edit: day }
+        }
+        // Storage may be full or blocked, and these say nothing when it is, so
+        // a failed draft cannot break entry.
+        if (Object.keys(draft).length) {
+            writeStored('local', draftKey(restaurantId, weekStart), JSON.stringify(draft))
+        } else {
+            forgetStored('local', draftKey(restaurantId, weekStart))
         }
     }, [days, dirty, restaurantId, weekStart])
 
@@ -295,7 +295,7 @@ export default function WeeklySalesPage() {
         const restored = []
         const moved = []
         try {
-            const raw = localStorage.getItem(draftKey(restaurantId, weekStart))
+            const raw = readStored('local', draftKey(restaurantId, weekStart))
             if (raw) {
                 const draft = JSON.parse(raw)
                 for (const d of dates) {
@@ -311,10 +311,11 @@ export default function WeeklySalesPage() {
                     }
                     restored.push(d)
                 }
-                if (!restored.length) localStorage.removeItem(draftKey(restaurantId, weekStart))
+                if (!restored.length) forgetStored('local', draftKey(restaurantId, weekStart))
             }
         } catch {
-            localStorage.removeItem(draftKey(restaurantId, weekStart))
+            // A draft that will not read back is no use to anybody.
+            forgetStored('local', draftKey(restaurantId, weekStart))
         }
 
         loaded.current = { view, rows: byDate }
@@ -478,11 +479,7 @@ export default function WeeklySalesPage() {
     // for a dropped connection, where keeping what was typed is the whole point.
     function discardDraftIfRefused(err) {
         if (!isPermissionError(err)) return
-        try {
-            localStorage.removeItem(draftKey(restaurantId, weekStart))
-        } catch {
-            // Nothing to lose if it cannot be cleared.
-        }
+        forgetStored('local', draftKey(restaurantId, weekStart))
         setDirty(false)
     }
 
@@ -663,11 +660,7 @@ export default function WeeklySalesPage() {
         }
 
         // The database now matches the screen, so the draft is no longer needed.
-        try {
-            localStorage.removeItem(draftKey(restaurantId, weekStart))
-        } catch {
-            // Failing to clear a draft is harmless.
-        }
+        forgetStored('local', draftKey(restaurantId, weekStart))
 
         const noteErr = await applyNoteWrites(supabase, {
             restaurantId, userId: user.id, plan: notePlan,
@@ -745,7 +738,7 @@ export default function WeeklySalesPage() {
     // were bare text with nothing marking them as different. Everything looked
     // the same on a screen that is nothing but numbers.
     const inputCls =
-        'w-full border rounded-md px-2 py-1.5 text-sm text-right shadow-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent disabled:text-gray-400 disabled:shadow-none'
+        'w-full border rounded-md px-2 py-1.5 text-base pointer-fine:text-sm text-right shadow-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent disabled:text-gray-400 disabled:shadow-none'
 
     // A filled box is faintly green, an empty one is white, and every box on a
     // closed day is red.
@@ -782,9 +775,12 @@ export default function WeeklySalesPage() {
     // it baked in, a tinted row ended up with two background classes on the same
     // cell and which one won came down to the order Tailwind happens to emit
     // them in. That is why the gross row and the net row did not match.
-    const labelCellBase = 'px-3 py-2 text-sm font-medium text-gray-800 whitespace-nowrap sticky left-0 z-10'
+    //
+    // The weight is passed in the same way, for the same reason: a bold row
+    // added font-semibold beside the base's font-medium.
+    const labelCellBase = 'px-3 py-2 text-sm text-gray-800 whitespace-nowrap sticky left-0 z-10'
     const totalCellBase = 'px-3 py-2 text-sm font-semibold text-gray-700 text-right whitespace-nowrap'
-    const labelCellCls = `${labelCellBase} bg-gray-50`
+    const labelCellCls = `${labelCellBase} font-medium bg-gray-50`
     const totalCellCls = `${totalCellBase} bg-gray-50`
 
     // Called as functions rather than rendered as components, so React keeps the
@@ -793,7 +789,7 @@ export default function WeeklySalesPage() {
         const bg = tint || 'bg-gray-50'
         return (
             <tr key={key} className={`border-b border-border ${tint || ''}`}>
-                <td className={`${labelCellBase} ${bg} ${bold ? 'font-semibold' : ''}`}>{label}</td>
+                <td className={`${labelCellBase} ${bg} ${bold ? 'font-semibold' : 'font-medium'}`}>{label}</td>
                 {dates.map((d, i) => (
                     <td key={d} className={`px-1.5 py-1.5 ${closedCol(d)}`}>
                         <input
@@ -985,7 +981,7 @@ export default function WeeklySalesPage() {
         const weekGap = weekSum - weekReceipt
 
         return (
-            <tr key={key} className="border-t-2 border-gray-300 border-b border-border bg-gray-200">
+            <tr key={key} className="border-t-2 border-t-gray-300 border-b border-b-border bg-gray-200">
                 <td className={`${labelCellBase} bg-gray-200 font-semibold`}>{label} tracked</td>
                 {dates.map(d => {
                     const day = days[d]
@@ -996,7 +992,7 @@ export default function WeeklySalesPage() {
                         <td key={d} className={`px-3 py-2 text-right whitespace-nowrap ${closedCol(d)}`}>
                             <div className="text-sm text-gray-900">{fmtMoney(sum)}</div>
                             {showGap && (
-                                <div className="text-xs text-amber-600">
+                                <div className="text-xs text-amber-700">
                                     {gap > 0 ? '+' : ''}{fmtMoney(gap)}
                                 </div>
                             )}
@@ -1005,9 +1001,9 @@ export default function WeeklySalesPage() {
                 })}
                 <td className="px-3 py-2 text-right whitespace-nowrap">
                     <div className="text-sm font-semibold text-gray-900">{fmtMoney(weekSum)}</div>
-                    <div className="text-xs text-muted">{pctOfGross(weekSum, weekGross).toFixed(1)}% of sales</div>
+                    <div className="text-xs text-muted">{fmtPct(pctOfGross(weekSum, weekGross))} of sales</div>
                     {comparable && Math.abs(weekGap) >= 0.01 && (
-                        <div className="text-xs text-amber-600">
+                        <div className="text-xs text-amber-700">
                             {weekGap > 0 ? '+' : ''}{fmtMoney(weekGap)} vs receipt
                         </div>
                     )}
@@ -1031,8 +1027,8 @@ export default function WeeklySalesPage() {
                         lose track of the month, so it is said once up here. */}
                     <p className="font-serif text-xl font-bold text-gray-900">{weekMonthLabel(weekStart)}</p>
                     <h2 className={`${pageTitle} mt-1`}>Weekly sales</h2>
-                    <p className="text-sm text-gray-500 mt-1">
-                        {activeRestaurant?.name} · enter the whole week, Sunday to Saturday
+                    <p className={pageSubtitle}>
+                        {[activeRestaurant?.name, 'enter the whole week, Sunday to Saturday'].filter(Boolean).join(' · ')}
                     </p>
                 </div>
                 {/* The till's report first, the same words the Timesheet
@@ -1063,19 +1059,19 @@ export default function WeeklySalesPage() {
                 straight on this grid with no explanation. Seven days across is
                 never going to be comfortable on a phone, so rather than pretend
                 otherwise it says so and points at the form that is. */}
-            <div className="md:hidden bg-blue-50 text-blue-800 text-sm rounded-lg p-3 mb-4">
+            <Notice tone="info" className="md:hidden mb-4">
                 This grid is meant for a computer. On a phone the Day view above is easier to use. It takes one day
                 at a time and saves to exactly the same place, so it makes no difference which one you use.
-            </div>
+            </Notice>
 
-            {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
-            {success && <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{success}</div>}
+            <ErrorBanner className="mb-4">{error}</ErrorBanner>
+            <Notice tone="good" className="mb-4">{success}</Notice>
             {notRestored.length > 0 && (
-                <div className={`${warningNote} mb-4`}>
+                <Notice tone="warn" className="mb-4">
                     Unsaved changes to {dayList(notRestored)} on this device were not restored,
                     because {notRestored.length === 1 ? 'that day was' : 'those days were'} changed
                     somewhere else since. What is showing now is what was saved.
-                </div>
+                </Notice>
             )}
 
             {/* Week navigation */}
@@ -1086,22 +1082,16 @@ export default function WeeklySalesPage() {
                         onNext={() => shiftWeek(1)}
                         backLabel="Previous week"
                         nextLabel="Next week"
+                        weekStart={weekStart}
                         jump={(
                             <JumpButton
                                 isCurrent={weekStart === weekStartOf(todayISO())}
                                 onClick={() => goToWeek(weekStartOf(todayISO()))}
                             />
                         )}
-                    >
-                        {/* The width that keeps the arrows still lives in
-                            DateStepper now, so every screen with these arrows
-                            gets it. */}
-                        <span className="text-sm font-medium text-gray-900 text-center whitespace-nowrap">
-                            {shortDate(dates[0])} - {shortDate(dates[6])}
-                        </span>
-                    </DateStepper>
+                    />
 
-                    {dirty && <span className="text-xs text-amber-600 font-medium ml-2">Unsaved changes</span>}
+                    {dirty && <span className="text-xs text-amber-700 font-medium ml-2">Unsaved changes</span>}
 
                     {/* Pick any date; it snaps to that week's Sunday */}
                     <input
@@ -1152,7 +1142,7 @@ export default function WeeklySalesPage() {
 
                             {/* Closed sits in the header: it is a property of the day */}
                             <tr className="border-b border-border bg-gray-50">
-                                <td className="px-3 py-1.5 text-xs text-gray-500 sticky left-0 bg-gray-50 z-10">Closed</td>
+                                <td className="px-3 py-1.5 text-xs text-muted sticky left-0 bg-gray-50 z-10">Closed</td>
                                 {dates.map(d => (
                                     <td key={d} className={`px-1.5 py-1.5 text-center ${closedCol(d)}`}>
                                         <input
@@ -1191,7 +1181,7 @@ export default function WeeklySalesPage() {
 
                             {/* Reconciliation closes the receipt block */}
                             <tr className="border-b-2 border-border bg-gray-50">
-                                <td className={`${labelCellCls} font-semibold bg-gray-50`}>Reconciliation</td>
+                                <td className={`${labelCellBase} font-semibold bg-gray-50`}>Reconciliation</td>
                                 {dates.map(d => {
                                     const v = varianceFor(d)
                                     // Any cent at all. This is the till receipt,
@@ -1204,7 +1194,7 @@ export default function WeeklySalesPage() {
                                     return (
                                         <td key={d} className={`px-3 py-2 text-right text-sm whitespace-nowrap ${closedCol(d)}`}>
                                             {closed
-                                                ? <span className="text-muted">-</span>
+                                                ? <span className="text-muted">—</span>
                                                 : <span className={warn ? 'text-red-600 font-semibold' : 'text-green-700'}>{fmtMoney(v)}</span>}
                                         </td>
                                     )

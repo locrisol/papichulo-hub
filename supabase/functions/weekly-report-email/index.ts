@@ -164,11 +164,16 @@ async function byGmail(mail: Mail, user: string, password: string) {
             client: { preprocessors: [headersFor(mail)] },
         })
 
+        // Left out when there is none rather than passed as undefined. A key
+        // passed as undefined is what broke the time off mail on this same
+        // account. See roster-email.
+        const replyTo = replyToFor(mail.replyTo, Deno.env.get('MAIL_REPLY_TO'))
+
         try {
             await client.send({
                 from: mail.from,
                 to: mail.to,
-                replyTo: replyToFor(mail.replyTo, Deno.env.get('MAIL_REPLY_TO')),
+                ...(replyTo ? { replyTo } : {}),
                 subject: mail.subject,
                 // Finished base64 parts rather than content and html, which
                 // denomailer would write as quoted printable and lose a full
@@ -231,18 +236,26 @@ async function byGmail(mail: Mail, user: string, password: string) {
     }
 }
 
+// The same mail as byGmail sends, the hours PDF included. Resend takes an
+// attachment's content as base64, which is what the timesheet path builds.
 async function byResend(mail: Mail, key: string) {
+    const body: Record<string, unknown> = {
+        from: mail.from,
+        to: mail.to,
+        subject: mail.subject,
+        html: mail.html,
+        text: mail.text,
+    }
+    const replyTo = replyToFor(mail.replyTo, Deno.env.get('MAIL_REPLY_TO'))
+    if (replyTo) body.reply_to = replyTo
+    if (mail.attachments?.length) {
+        body.attachments = mail.attachments.map(a => ({ filename: a.filename, content: a.content }))
+    }
+
     const res = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            from: mail.from,
-            to: mail.to,
-            reply_to: replyToFor(mail.replyTo, Deno.env.get('MAIL_REPLY_TO')),
-            subject: mail.subject,
-            html: mail.html,
-            text: mail.text,
-        }),
+        body: JSON.stringify(body),
     })
     if (!res.ok) throw new Error(`Resend said ${res.status}: ${await res.text()}`)
 }

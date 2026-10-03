@@ -4,7 +4,7 @@ import { supabase, everyRow } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
 import { useConfirm } from '@/context/confirm'
-import { fmtMoney, num } from '@/lib/format'
+import { fmtMoney, num, round4 } from '@/lib/format'
 import { shortDate } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
 import {
@@ -15,10 +15,12 @@ import { acceptPrice, movePreferred, codeRow, ignoreCode, ownedByAnother, newGro
 import { prefillLink } from '@/lib/products'
 import { readToDecide } from '@/lib/invoiceReview'
 import {
-    card, cardHeader, pageTitle, secondaryButton, primaryButton, rowButton, badge,
+    card, cardHeader, secondaryButton, primaryButton, rowButton, badge,
     hintClass,
 } from '@/lib/controlStyles'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import Notice from '@/components/ui/Notice'
+import PageHeader from '@/components/ui/PageHeader'
 import WarningUntilSeen from '@/components/ui/WarningUntilSeen'
 import MatchLineModal from '@/components/invoices/MatchLineModal'
 
@@ -393,7 +395,7 @@ export default function InvoiceReviewPage() {
         const product = data.products.find(p => p.id === productId)
         const perCase = num(row.line.price_per_case)
         const perUnit = unitsPerCase > 0
-            ? Math.round((perCase / unitsPerCase) * 10000) / 10000
+            ? round4(perCase / unitsPerCase)
             : null
 
         // A price row for exactly this pack from this supplier, then one for a
@@ -474,7 +476,7 @@ export default function InvoiceReviewPage() {
             return {
                 r,
                 units,
-                unitPrice: units > 0 ? Math.round((charged / units) * 10000) / 10000 : null,
+                unitPrice: units > 0 ? round4(charged / units) : null,
                 agrees: samePrice({ perCase: charged, units }, priceRow),
             }
         })
@@ -571,23 +573,20 @@ export default function InvoiceReviewPage() {
 
     return (
         <>
-            <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
-                <div>
-                    <h2 className={pageTitle}>Review</h2>
-                    <p className="text-sm text-gray-500 mt-1">
-                        {activeRestaurant?.name},{' '}
-                        {waiting === 0 ? 'nothing waiting' : `${waiting} ${waiting === 1 ? 'line' : 'lines'} waiting`}
-                    </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                    <Link to="/invoices/import" className={secondaryButton}>Import invoices</Link>
-                    <Link to="/invoices" className={secondaryButton}>Invoices</Link>
-                </div>
-            </div>
+            <PageHeader
+                title="Review"
+                subtitle={[
+                    activeRestaurant?.name,
+                    waiting === 0 ? 'nothing waiting' : `${waiting} ${waiting === 1 ? 'line' : 'lines'} waiting`,
+                ].filter(Boolean).join(' · ')}
+            >
+                <Link to="/invoices/import" className={secondaryButton}>Import invoices</Link>
+                <Link to="/invoices" className={secondaryButton}>Invoices</Link>
+            </PageHeader>
 
-            {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
+            <ErrorBanner className="mb-4">{error}</ErrorBanner>
             {warned && <WarningUntilSeen className="mb-4" onSeen={() => setWarned('')}>{warned}</WarningUntilSeen>}
-            {said && <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{said}</div>}
+            <Notice tone="good" className="mb-4">{said}</Notice>
 
             {waiting === 0 && (
                 <div className={`${card} p-6 text-center`}>

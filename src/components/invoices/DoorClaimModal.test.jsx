@@ -183,6 +183,28 @@ describe('changing a note already logged', () => {
         expect(screen.getByRole('button', { name: 'Next' })).toBeInTheDocument()
     })
 
+    // Its week's report has gone out, so the money stays (amountFixed).
+    it('shows what was wrong and how many and does not offer them once the report has gone out', async () => {
+        const onSave = vi.fn(async () => null)
+        render(
+            <DoorClaimModal
+                claim={{ ...CHORIZO, invoice_line_id: 'l1' }}
+                fixed
+                suppliers={SUPPLIERS}
+                onClose={() => {}}
+                onSave={onSave}
+            />,
+        )
+        expect(screen.getByLabelText('What was wrong')).toHaveValue('Short, 3 cases missing')
+        expect(screen.getByLabelText('What was wrong')).toBeDisabled()
+        expect(screen.getByText(/has gone out, so what was wrong and how many\s+can no longer change\./)).toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: 'Damaged' })).toBeNull()
+        expect(screen.queryByLabelText('Full cases')).toBeNull()
+        await userEvent.type(screen.getByLabelText('Anything else'), 'Rang them')
+        await pick('Save changes')
+        expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ note: 'Rang them' }))
+    })
+
     it('shows what was wrong with the change and stays open', async () => {
         change({ ...CHORIZO, invoice_line_id: 'l1' }, vi.fn(async () => 'That line only billed 1 case, less than this claim.'))
         await pick('Next')

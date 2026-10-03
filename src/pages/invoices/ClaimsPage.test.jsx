@@ -620,30 +620,49 @@ describe('changing a claim after it was logged', () => {
             + 'product_supplier_prices(price_per_case, price_per_unit, units_per_case, products(unit)))')
     })
 
-    // That report stays as it was sent.
-    it('says when its week\'s report has already gone out', async () => {
+    // His answer of 3 October: once that week's report has gone out, a
+    // change would land in no report, so only the words and the note change.
+    it('keeps its count and money once its week\'s report has gone out', async () => {
         tables.invoice_line_claims = [ON]
         tables.weekly_reports = [{ id: 'w1', restaurant_id: 'r1', week_start: NOTED_WEEK, status: 'published' }]
+        doorNote = { ...asLogged, what: 'Chorizo, the bags', note: 'Rang them' }
+        renderWithRouter(<ClaimsPage />)
+        await userEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+        await userEvent.click(screen.getByRole('button', { name: 'Save the note' }))
+        await waitFor(() => expect(updated).toHaveLength(1))
+        expect(updated[0].row).toEqual({
+            kind: 'short', what: 'Chorizo, the bags', cases: 3, units: 0, note: 'Rang them', amount: 83.97,
+        })
+        expect(screen.queryByText(/^This changes the claim/)).toBeNull()
+        expect(await screen.findByText('Changes saved.')).toBeInTheDocument()
+        expect(answered).toBeNull()
+    })
+
+    // The page read no report, and one went out while the form was open.
+    it('refuses a new count once the report has gone out since the page was read', async () => {
+        tables.invoice_line_claims = [ON]
+        doorNote = asLogged
+        renderWithRouter(<ClaimsPage />)
+        await userEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+        tables.weekly_reports = [{ id: 'w1', restaurant_id: 'r1', week_start: NOTED_WEEK, status: 'published' }]
+        await userEvent.click(screen.getByRole('button', { name: 'Save the note' }))
+        await waitFor(() => expect(answered).toBe(`The report for the week of ${shortDate(NOTED_WEEK)} has gone out, `
+            + 'so this claim stays at €83.97. Only what it was and the note can change now.'))
+        expect(updated).toEqual([])
+    })
+
+    // Read back and left open while the report went out.
+    it('refuses the read back money once the report has gone out since', async () => {
+        tables.invoice_line_claims = [ON]
         doorNote = asLogged
         renderWithRouter(<ClaimsPage />)
         await userEvent.click(await screen.findByRole('button', { name: 'Edit' }))
         await userEvent.click(screen.getByRole('button', { name: 'Save the note' }))
-        expect(await screen.findByText(`The report for the week of ${shortDate(NOTED_WEEK)} has already gone out. `
-            + 'That report stays as it was sent.')).toBeInTheDocument()
-    })
-
-    // Changed once already, its amount is the first change's and not what
-    // that report took off, so no figure is put on the report.
-    it('names no figure for a report already sent, which a changed claim no longer knows', async () => {
-        tables.invoice_line_claims = [{ ...ON, cases: 0, units: 3, amount: 21 }]
+        await screen.findByText('This changes the claim from €83.97 to €21.00.')
         tables.weekly_reports = [{ id: 'w1', restaurant_id: 'r1', week_start: NOTED_WEEK, status: 'published' }]
-        doorNote = { ...asLogged, note: 'Rang them on Friday' }
-        renderWithRouter(<ClaimsPage />)
-        await userEvent.click(await screen.findByRole('button', { name: 'Edit' }))
-        await userEvent.click(screen.getByRole('button', { name: 'Save the note' }))
-        expect(await screen.findByText(/has already gone out\. That report stays as it was sent\.$/)).toBeInTheDocument()
-        expect(screen.queryByText(/off it/)).toBeNull()
-        expect(screen.queryByText(/^This changes the claim/)).toBeNull()
+        await userEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+        expect(await screen.findByText(/so this claim stays at €83\.97\./)).toBeInTheDocument()
+        expect(updated).toEqual([])
     })
 
     it('refuses a count for more than the line billed, in the form', async () => {
@@ -825,5 +844,28 @@ describe('an employee looking at their own', () => {
         expect(waiting).toHaveTextContent('Two bags of rice split')
         expect(waiting).not.toHaveTextContent('Lettuce warm')
         expect((await screen.findByText('Finished')).parentElement).toHaveTextContent('Lettuce warm')
+    })
+})
+
+// How each supplier does. Six columns scrolled sideways on a phone, so the
+// figures are a card each there too, and both say the same.
+describe('each supplier', () => {
+    const SETTLED = {
+        ...CLAIM, id: 'c2', status: 'settled', amount: 20, credited_amount: 10,
+        invoice_id: 'i1', invoice_line_id: 'line1', settled_on: '2026-09-28',
+    }
+
+    it('gives the share that came back as a percent, on the cards and in the table', async () => {
+        tables.invoice_line_claims = [SETTLED]
+        renderWithRouter(<ClaimsPage />)
+        expect(await screen.findAllByText('50.0%')).toHaveLength(2)
+        expect(screen.getAllByText('1 day')).toHaveLength(2)
+        expect(screen.getAllByText('Usual wait')).toHaveLength(2)
+    })
+
+    it('writes the day a problem was raised the way the rest of the page does', async () => {
+        renderWithRouter(<ClaimsPage />)
+        expect(await screen.findByText(new RegExp(`Sysco Ireland, ${shortDate(CLAIM.raised_on)}, docket`)))
+            .toBeInTheDocument()
     })
 })

@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { fmtUnitCost } from '@/lib/format'
-import { shortDate, todayISO, addDays } from '@/lib/dates'
+import { shortDate, todayISO, addDays, daysBetween } from '@/lib/dates'
 import { ticks } from '@/lib/reportChart'
 import {
-    rangesFor, defaultRange, stepCorners, withinWindow, priceScale, daysBetween,
+    rangesFor, defaultRange, stepCorners, withinWindow, priceScale,
 } from '@/lib/priceHistory'
 import { segmentTrack, segmentButton, hintClass } from '@/lib/controlStyles'
 
@@ -119,7 +119,7 @@ export default function PriceHistoryChart({ series, unit = 'unit', height = 220 
                                 type="button"
                                 onClick={() => { setRange(r.key); setAt(null) }}
                                 aria-pressed={chosen.key === r.key}
-                                className={`${segmentButton(chosen.key === r.key)} normal-case`}
+                                className={segmentButton(chosen.key === r.key, true)}
                             >
                                 <span className="sm:hidden">{r.short}</span>
                                 <span className="hidden sm:inline">{r.label}</span>

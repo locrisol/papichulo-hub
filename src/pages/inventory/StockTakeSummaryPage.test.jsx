@@ -40,6 +40,8 @@ const db = {
 vi.mock('@/lib/supabase', () => ({ supabase: new Proxy({}, { get: (_, k) => db[k] }) }))
 vi.mock('@/context/auth', () => ({ useAuth: () => ({ user: { id: 'u1', role: 'store_manager', full_name: 'A Manager' } }) }))
 vi.mock('@/context/restaurant', () => ({ useRestaurant: () => ({ activeRestaurant: { id: 'r1', name: 'Point Campus' } }) }))
+const exportStockTakePdf = vi.fn()
+vi.mock('@/lib/stockTakePdf', () => ({ exportStockTakePdf: (...args) => exportStockTakePdf(...args) }))
 
 const { default: StockTakeSummaryPage } = await import('./StockTakeSummaryPage')
 
@@ -140,5 +142,26 @@ describe('reopening a closed count', () => {
         } finally {
             db.from.mockImplementation(plain)
         }
+    })
+})
+
+// The PDF is made in the browser and can fail, with the logo or the library
+// not loading on a weak signal. It used to fail with nothing on screen.
+describe('downloading the PDF', () => {
+    it('says so when it cannot be made', async () => {
+        exportStockTakePdf.mockRejectedValueOnce(new Error('Failed to fetch'))
+        open()
+        const clicker = userEvent.setup()
+        await clicker.click(await screen.findByRole('button', { name: 'Download PDF' }))
+        expect(await screen.findByRole('alert')).toBeInTheDocument()
+    })
+
+    it('makes it from this count', async () => {
+        exportStockTakePdf.mockResolvedValueOnce()
+        open()
+        const clicker = userEvent.setup()
+        await clicker.click(await screen.findByRole('button', { name: 'Download PDF' }))
+        await waitFor(() => expect(exportStockTakePdf).toHaveBeenCalled())
+        expect(exportStockTakePdf.mock.calls.at(-1)[0]).toMatchObject({ title: 'End of August', session: { id: 'st1' } })
     })
 })

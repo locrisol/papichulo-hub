@@ -309,3 +309,39 @@ describe('the allergen page when one read fails', () => {
         expect(screen.queryByText(ASK_STAFF)).toBeNull()
     })
 })
+
+// Red for contains and amber for may contain was the only difference between
+// the two on a chip, which a colour blind customer cannot see.
+describe('telling contains from may contain', () => {
+    const MILK_AND_MAYBE_NUTS = {
+        ...WHOLE,
+        public_product_allergens: { data: [{ product_id: 'p1', milk: 'contains', nuts: 'may_contain' }], error: null },
+    }
+
+    it('marks a may contain chip with a ~, and a contains chip with nothing', async () => {
+        answer(MILK_AND_MAYBE_NUTS)
+        renderWithRouter(<PublicAllergensPage slugOverride="point-campus" />)
+        const row = (await screen.findByText('Plain Rice')).closest('button')
+
+        expect(within(row).getByText('Nuts').closest('span')).toHaveTextContent('~May contain: Nuts')
+        expect(within(row).getByText('Milk').closest('span')).toHaveTextContent('Contains: Milk')
+        expect(within(row).getByText('Milk').closest('span')).not.toHaveTextContent('~')
+    })
+
+    it('says what the ~ means in the key', async () => {
+        answer(MILK_AND_MAYBE_NUTS)
+        renderWithRouter(<PublicAllergensPage slugOverride="point-campus" />)
+        await screen.findByText('Plain Rice')
+        expect(screen.getByText('~ May contain')).toBeInTheDocument()
+    })
+
+    it('tells a screen reader whether a dish is open', async () => {
+        answer(MILK_AND_MAYBE_NUTS)
+        renderWithRouter(<PublicAllergensPage slugOverride="point-campus" />)
+        const row = (await screen.findByText('Plain Rice')).closest('button')
+        expect(row).toHaveAttribute('aria-expanded', 'false')
+
+        await userEvent.click(row)
+        expect(row).toHaveAttribute('aria-expanded', 'true')
+    })
+})

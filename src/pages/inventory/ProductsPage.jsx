@@ -27,11 +27,15 @@ import { claimCode } from '@/lib/invoiceReview'
 import { matches } from '@/lib/search'
 import { orderFormats } from '@/lib/countUnits'
 import {
-  tableHeadRow, tableHeadCell, badge, card, cardEdge, rowButton, pageTitle, primaryButton, secondaryButton, urgentNote,
-  warningNote,
+  tableHeadRow, tableHeadCell, badge, mixBadge, inactiveBadge, card, cardEdge, cardHeader, rowButton, chip,
+  primaryButton, secondaryButton, urgentNote,
 } from '@/lib/controlStyles'
+import { readStored, writeStored } from '@/lib/browserStore'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import Notice from '@/components/ui/Notice'
+import PageHeader from '@/components/ui/PageHeader'
 import ShowInactiveButton from '@/components/ui/ShowInactiveButton'
+import useShowInactive from '@/components/ui/useShowInactive'
 
 // Every column in the table, in the order it appears.
 //
@@ -87,31 +91,22 @@ const EMPTY_RECIPE = {
 // All has no colour of its own, so it keeps the app's accent. Written once
 // because there are two rows of them and they have to be the same control asked
 // twice, not two kinds of control.
+//
+// The shared chip, with the section's ink laid over it through style where
+// there is one. A style beats a class whatever order the stylesheet is in, so
+// the ink always wins over the chip's own orange or grey.
 function FilterChip({ label, isOn, ink, onClick }) {
-  const base = 'px-3 py-1.5 rounded-full text-xs font-medium border transition-colors '
-
-  if (!ink) {
-    return (
-      <button
-        type="button"
-        onClick={onClick}
-        className={base + (isOn
-          ? 'bg-accent border-accent text-white'
-          : 'bg-white border-border text-gray-600 hover:bg-gray-50')}
-      >
-        {label}
-      </button>
-    )
-  }
+  const inked = !ink ? undefined : isOn
+    ? { backgroundColor: ink, borderColor: ink }
+    : { color: ink, borderColor: ink }
 
   return (
     <button
       type="button"
       onClick={onClick}
-      className={base + (isOn ? 'text-white' : 'bg-white hover:bg-gray-50')}
-      style={isOn
-        ? { backgroundColor: ink, borderColor: ink }
-        : { color: ink, borderColor: ink }}
+      aria-pressed={isOn}
+      className={chip(isOn)}
+      style={inked}
     >
       {label}
     </button>
@@ -134,10 +129,10 @@ const STICK_TOP = 'top-[-1.75rem]'
 // and the cards both say it, and a label that reads Drink in one place and
 // Purchased in the other is worse than not saying it at all.
 function typeBadge(p) {
-  if (!p.is_active) return { label: p.is_mix ? 'MIX' : 'Purchased', cls: 'bg-gray-100 text-muted' }
-  if (p.is_mix) return { label: 'MIX', cls: 'bg-amber-500 text-white' }
-  if (p.category === 'drink') return { label: 'Drink', cls: 'bg-sky-100 text-sky-800' }
-  return { label: 'Purchased', cls: 'bg-green-100 text-green-800' }
+  if (!p.is_active) return { label: p.is_mix ? 'MIX' : 'Purchased', cls: `${badge} bg-gray-100 text-muted` }
+  if (p.is_mix) return { label: 'MIX', cls: mixBadge }
+  if (p.category === 'drink') return { label: 'Drink', cls: `${badge} bg-sky-100 text-sky-800` }
+  return { label: 'Purchased', cls: `${badge} bg-green-100 text-green-800` }
 }
 
 const COLUMNS = [
@@ -267,9 +262,7 @@ export default function ProductsPage() {
   const [activeSections, setActiveSections] = useState([])
   const [showForm, setShowForm] = useState(!!fromLink)
   const [editingProduct, setEditingProduct] = useState(null)
-  const [showInactive, setShowInactive] = useState(() => {
-    return localStorage.getItem('productsShowInactive') === 'true'
-  })
+  const [showInactive, setShowInactive] = useShowInactive('productsShowInactive')
 
   // What the count of products with no allergens set is worked out from,
   // beyond the products and recipes this page already holds: which products
@@ -294,13 +287,13 @@ export default function ProductsPage() {
   // through. Kept for the session: each one is answered on its own Allergens
   // or Recipe page, and coming back from it is a fresh visit to this one that
   // should land on the same short list rather than all of them.
-  const [onlyNoAllergens, setOnlyNoAllergens] = useState(() => {
-    try { return sessionStorage.getItem('productsOnlyNoAllergens') === 'true' } catch { return false }
-  })
+  const [onlyNoAllergens, setOnlyNoAllergens] = useState(
+    () => readStored('session', 'productsOnlyNoAllergens') === 'true',
+  )
 
   function showOnlyNoAllergens(on) {
     setOnlyNoAllergens(on)
-    try { sessionStorage.setItem('productsOnlyNoAllergens', String(on)) } catch { /* only a convenience */ }
+    writeStored('session', 'productsOnlyNoAllergens', on)
   }
   const [formData, setFormData] = useState(() => ({
     name: '',
@@ -1097,13 +1090,8 @@ export default function ProductsPage() {
   // inside another component is a new type on every render, so React throws the
   // old one away and builds it again.
   function rowActionList(p) {
-    const editing = editingProduct?.id === p.id
     return {
-      primary: {
-        label: editing ? 'Cancel' : 'Edit',
-        tone: 'edit',
-        onClick: () => editing ? resetForm() : startEdit(p),
-      },
+      primary: { label: 'Edit', tone: 'edit', onClick: () => startEdit(p) },
       items: [
         { label: 'Allergens', onClick: () => navigate(`/catalogue/products/${p.id}/allergens`) },
         p.is_mix && { label: 'Recipe', onClick: () => navigate(`/catalogue/products/${p.id}/recipe`) },
@@ -1230,7 +1218,7 @@ export default function ProductsPage() {
     // effect. One extra render, once, when the last one is answered.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setOnlyNoAllergens(false)
-    try { sessionStorage.setItem('productsOnlyNoAllergens', 'false') } catch { /* only a convenience */ }
+    writeStored('session', 'productsOnlyNoAllergens', false)
   }, [noneLeft, onlyNoAllergens])
 
   // Where a product with no allergens set is answered. A MIX with no recipe
@@ -1323,30 +1311,15 @@ export default function ProductsPage() {
 
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        <div>
-          <h2 className={pageTitle}>Products</h2>
-          <p className="text-sm text-gray-500 mt-1">
-            Showing prices for {activeRestaurant?.name}
-          </p>
-        </div>
-        <div className="flex gap-3">
-          <ShowInactiveButton
-            showing={showInactive}
-            onToggle={() => {
-              const next = !showInactive
-              setShowInactive(next)
-              localStorage.setItem('productsShowInactive', next)
-            }}
-          />
-          <button
-            onClick={() => { resetForm(); setShowForm(true) }}
-            className={primaryButton()}
-          >
-            + Add Product
-          </button>
-        </div>
-      </div>
+      <PageHeader title="Products" subtitle={`Showing prices for ${activeRestaurant?.name ?? ''}`}>
+        <ShowInactiveButton showing={showInactive} onToggle={() => setShowInactive(on => !on)} />
+        <button
+          onClick={() => { resetForm(); setShowForm(true) }}
+          className={primaryButton()}
+        >
+          + Add Product
+        </button>
+      </PageHeader>
 
       {error && (
         <ErrorBanner className="mb-4">{error}</ErrorBanner>
@@ -1356,37 +1329,39 @@ export default function ProductsPage() {
           so the answer to "which one am I filling in" is the paper rather than
           a field somebody has to go back and read. */}
       {showForm && !editingProduct && (
-        <div className={`${cardEdge} ${sectionColour(formData.section).bg} p-6 mb-6`}>
-          <h3 className="text-sm font-semibold text-gray-900 mb-4">New Product</h3>
-          <ProductForm
-            problem={formProblem}
-            formData={formData}
-            onChange={handleFieldChange}
-            onSubmit={handleSave}
-            onCancel={resetForm}
-            submitLabel="Add Product"
-            saving={saving && !asking}
-            errors={errors}
-            extras
-            priceForm={priceForm}
-            onPriceChange={handlePriceChange}
-            priceErrors={priceErrors}
-            nameClash={nameClash}
-            heldForNames={heldForNames}
-            suppliers={activeSuppliers}
-            formats={formats}
-            onFormatsChange={setFormats}
-            allergens={allergens}
-            onAllergenChange={handleAllergenChange}
-            allergensAnswered={allergensTouched}
-            allergensUnread={allergensUnread}
-            onNoAllergens={handleNoAllergens}
-            recipe={recipe}
-            onRecipeChange={setRecipe}
-            ingredientOptions={ingredientOptions}
-            openExtra={openExtra}
-            onOpenExtra={setOpenExtra}
-          />
+        <div className={`${card} overflow-hidden mb-6`}>
+          <h3 className={cardHeader}>New Product</h3>
+          <div className={`p-6 ${sectionColour(formData.section).bg}`}>
+            <ProductForm
+              problem={formProblem}
+              formData={formData}
+              onChange={handleFieldChange}
+              onSubmit={handleSave}
+              onCancel={resetForm}
+              submitLabel="Add Product"
+              saving={saving && !asking}
+              errors={errors}
+              extras
+              priceForm={priceForm}
+              onPriceChange={handlePriceChange}
+              priceErrors={priceErrors}
+              nameClash={nameClash}
+              heldForNames={heldForNames}
+              suppliers={activeSuppliers}
+              formats={formats}
+              onFormatsChange={setFormats}
+              allergens={allergens}
+              onAllergenChange={handleAllergenChange}
+              allergensAnswered={allergensTouched}
+              allergensUnread={allergensUnread}
+              onNoAllergens={handleNoAllergens}
+              recipe={recipe}
+              onRecipeChange={setRecipe}
+              ingredientOptions={ingredientOptions}
+              openExtra={openExtra}
+              onOpenExtra={setOpenExtra}
+            />
+          </div>
         </div>
       )}
 
@@ -1437,9 +1412,9 @@ export default function ProductsPage() {
           show only those. Its own line rather than a third row of chips: it
           is not a way of sorting the catalogue, it is a job to get done. */}
       {(answersFailed || recipesFailed) && (
-        <p className={`${warningNote} mb-4`}>
+        <Notice tone="warn" className="mb-4">
           Could not check which products have allergens set. Check your connection and reload the page.
-        </p>
+        </Notice>
       )}
       {noAllergens.size > 0 && (
         <div className={`${urgentNote} flex flex-wrap items-center justify-between gap-x-4 gap-y-2 mb-4`}>
@@ -1453,7 +1428,7 @@ export default function ProductsPage() {
       )}
 
       {loading ? (
-        <div className="text-sm text-gray-500">Loading products...</div>
+        <div className="text-sm text-muted">Loading products...</div>
       ) : (
         <>
         {/* Phone: one card per product instead of a table to swipe.
@@ -1477,17 +1452,17 @@ export default function ProductsPage() {
                 // keeps its own background, so a deactivated one still reads
                 // as deactivated first and as a freezer product second.
                 style={{ borderLeftWidth: '6px', borderLeftColor: productInk(p) }}
-                className={`rounded-xl border p-4 ${!p.is_active
-                  ? 'bg-red-100 border-red-200'
+                className={`${cardEdge} p-4 ${!p.is_active
+                  ? 'bg-red-100'
                   : p.is_mix
-                    ? 'bg-amber-50 border-amber-200'
-                    : 'bg-white border-border'}`}
+                    ? 'bg-amber-50'
+                    : 'bg-white'}`}
               >
                 <div className="flex items-start justify-between gap-2">
                   <p className={`font-semibold ${p.is_active ? 'text-gray-900' : 'text-muted'}`}>
                     {p.name}
                   </p>
-                  <span className={`${badge} flex-shrink-0 ${typeBadge(p).cls}`}>
+                  <span className={`${typeBadge(p).cls} flex-shrink-0`}>
                     {typeBadge(p).label}
                   </span>
                 </div>
@@ -1510,7 +1485,7 @@ export default function ProductsPage() {
                       {heldFor(p)}
                     </span>
                   )}
-                  <span className="text-xs text-gray-500">
+                  <span className="text-xs text-muted">
                     {p.unit}
                     {/* The unit is right there in front of it, so the packs
                         do not repeat it. */}
@@ -1525,30 +1500,30 @@ export default function ProductsPage() {
                   {/* The table says this with a red row, which a single card
                       cannot do on its own, so it says it in words instead. */}
                   {!p.is_active && (
-                    <span className={`${badge} bg-red-200 text-red-800`}>Inactive</span>
+                    <span className={inactiveBadge}>Inactive</span>
                   )}
                   {noAllergensMark(p)}
                 </div>
 
                 <dl className="mt-3 space-y-1.5 text-sm">
                   <div className="flex items-baseline justify-between gap-3">
-                    <dt className="text-gray-500">Cost/unit</dt>
+                    <dt className="text-muted">Cost/unit</dt>
                     <dd className={`font-medium text-right ${p.is_active ? 'text-gray-900' : 'text-muted'}`}>
                       {v.cost ?? (
-                        <span className="text-amber-600 text-xs">
+                        <span className="text-amber-700 text-xs">
                           {p.is_mix ? 'Incomplete' : 'No price set'}
                         </span>
                       )}
                     </dd>
                   </div>
                   <div className="flex items-baseline justify-between gap-3">
-                    <dt className="text-gray-500">Supplier</dt>
+                    <dt className="text-muted">Supplier</dt>
                     <dd className={`text-right ${p.is_active ? 'text-gray-700' : 'text-muted'} ${p.is_mix ? 'italic' : ''}`}>
                       {v.supplier}
                     </dd>
                   </div>
                   <div className="flex items-baseline justify-between gap-3">
-                    <dt className="text-gray-500">Weight loss</dt>
+                    <dt className="text-muted">Weight loss</dt>
                     <dd className={`text-right ${p.is_active ? 'text-gray-700' : 'text-muted'}`}>
                       {v.weightLoss}
                     </dd>
@@ -1558,48 +1533,11 @@ export default function ProductsPage() {
                 <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-black/10">
                   {rowActions(p)}
                 </div>
-
-                {editingProduct?.id === p.id && (
-                  <div className={`mt-3 pt-3 border-t border-black/10 ${sectionColour(formData.section).bg} -mx-4 -mb-4 px-4 pb-4 rounded-b-xl`}>
-                    <ProductForm
-                      problem={formProblem}
-                      formData={formData}
-                      onChange={handleFieldChange}
-                      onSubmit={handleSave}
-                      onCancel={resetForm}
-                      submitLabel="Save Changes"
-                      saving={saving && !asking}
-                      errors={errors}
-                      nameClash={nameClash}
-                      heldForNames={heldForNames}
-                      extras
-                      recipeBlock={false}
-                      priceForm={priceForm}
-                      onPriceChange={handlePriceChange}
-                      priceErrors={priceErrors}
-                      suppliers={activeSuppliers}
-                      formats={formats}
-                      onFormatsChange={setFormats}
-                      allergens={allergens}
-                      onAllergenChange={handleAllergenChange}
-                      allergensAnswered={allergensTouched}
-                      allergensUnread={allergensUnread}
-                      onNoAllergens={handleNoAllergens}
-                      recipe={recipe}
-                      onRecipeChange={setRecipe}
-                      ingredientOptions={ingredientOptions}
-                      openExtra={openExtra}
-                      onOpenExtra={setOpenExtra}
-                      otherPriceCount={Math.max(0, (priceCounts[editingProduct?.id] || 0) - 1)}
-                      onOpenPrices={() => navigate(`/catalogue/products/${editingProduct.id}/prices`)}
-                    />
-                  </div>
-                )}
               </div>
             )
           })}
           {filteredProducts.length === 0 && (
-            <div className={`${card} px-4 py-8 text-center text-sm text-gray-500`}>
+            <div className={`${card} px-4 py-8 text-center text-sm text-muted`}>
               No products found.
             </div>
           )}
@@ -1730,7 +1668,7 @@ export default function ProductsPage() {
                       </td>
                       <td className={`px-4 py-3 ${p.is_active ? 'text-gray-700' : 'text-muted'}`}>{p.unit}</td>
                       <td className="px-4 py-3">
-                        <span className={`${badge} ${typeBadge(p).cls}`}>
+                        <span className={typeBadge(p).cls}>
                           {typeBadge(p).label}
                         </span>
                       </td>
@@ -1741,7 +1679,7 @@ export default function ProductsPage() {
                         {p.is_mix
                           ? (mixResult?.cost !== null
                               ? fmtUnitCost(mixResult.cost)
-                              : <span className="text-amber-600 text-xs">Incomplete</span>)
+                              : <span className="text-amber-700 text-xs">Incomplete</span>)
                           : (price ? fmtUnitCost(parseFloat(price.price_per_unit)) : '—')}
                       </td>
                       <td className={`px-4 py-3 ${p.is_active ? 'text-gray-700' : 'text-muted'}`}>
@@ -1757,7 +1695,7 @@ export default function ProductsPage() {
             </tbody>
           </table>
           {filteredProducts.length === 0 && (
-            <div className="px-4 py-8 text-center text-sm text-gray-500 rounded-b-xl">
+            <div className="px-4 py-8 text-center text-sm text-muted rounded-b-xl">
               No products found.
             </div>
           )}

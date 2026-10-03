@@ -3,12 +3,12 @@ import Modal from '@/components/ui/Modal'
 import ClockField from '@/components/ui/ClockField'
 import { categoryStyle, statusNote, dayName } from '@/lib/events'
 import {
-    placeName, elsewhere, walkWords, hostOf, agoWords, whenWords, eventName, offFor,
+    placeName, elsewhere, walkWords, hostOf, sinceWords, whenWords, eventName, offFor,
 } from '@/lib/nearby'
 import { fullDate, toISODate, todayISO } from '@/lib/dates'
 import { fmtMoney } from '@/lib/format'
 import {
-    badge, fieldClass, labelClass, dateField, secondaryButton, checkbox, checkRow, hintClass,
+    badge, fieldClass, labelClass, secondaryButton, checkbox, checkRow, hintClass,
 } from '@/lib/controlStyles'
 
 // One thing on near us, opened from the calendar or from the list beside it.
@@ -111,9 +111,9 @@ export default function EventModal({ row, canEdit = false, sameName = 0, onRenam
     // fact and a reading. A feed needs no such line: the venue itself said so.
     const source = hostOf(event.source_url)
     if (fromAPage && source) {
-        // Today here, the way agoWords counts. The UTC date put a reading found
+        // Today here, the way sinceWords counts. The UTC date put a reading found
         // the evening before on today, from midnight to one all summer.
-        const when = agoWords(event.found_at, todayISO())
+        const when = sinceWords(event.found_at, todayISO())
         rows.push({ label: 'Read from', value: when ? `${source}, ${when}` : source })
     }
 
@@ -195,7 +195,7 @@ export default function EventModal({ row, canEdit = false, sameName = 0, onRenam
                             <input
                                 id="event-ends"
                                 type="date"
-                                className={dateField}
+                                className={fieldClass}
                                 value={ends}
                                 min={event.event_date}
                                 onChange={e => setEnds(e.target.value)}

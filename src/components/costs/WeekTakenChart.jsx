@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { fmtMoney } from '@/lib/format'
+import { fmtMoney, fmtPct } from '@/lib/format'
+import { segmentTrack, segmentButton } from '@/lib/controlStyles'
 import { toSlices, BAR_COLOUR } from '@/lib/weekTaken'
 import WeekTakenPie from '@/components/costs/WeekTakenPie'
 
@@ -46,31 +47,21 @@ export default function WeekTakenChart({ rows }) {
     // much more than a fifth of it would draw as a row of stubs.
     const biggest = Math.max(...slices.map(s => s.amount))
 
-    const toggle = (value, label) => (
-        <button
-            type="button"
-            onClick={() => setView(value)}
-            aria-pressed={view === value}
-            className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors ${
-                view === value
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
-            }`}
-        >
-            {label}
-        </button>
-    )
-
     return (
         <div>
             <div className="flex justify-end mb-3">
-                <div
-                    className="inline-flex bg-gray-100 rounded-lg p-1 gap-1"
-                    role="group"
-                    aria-label="How to show this"
-                >
-                    {toggle('bars', 'Bars')}
-                    {toggle('pie', 'Pie')}
+                <div className={segmentTrack} role="group" aria-label="How to show this">
+                    {[['bars', 'Bars'], ['pie', 'Pie']].map(([value, label]) => (
+                        <button
+                            key={value}
+                            type="button"
+                            onClick={() => setView(value)}
+                            aria-pressed={view === value}
+                            className={segmentButton(view === value)}
+                        >
+                            {label}
+                        </button>
+                    ))}
                 </div>
             </div>
 
@@ -95,7 +86,7 @@ export default function WeekTakenChart({ rows }) {
                             <div className="flex justify-between items-baseline gap-3 mb-1">
                                 <span className="text-sm text-gray-700">{s.label}</span>
                                 <span className="text-xs text-muted whitespace-nowrap tabular-nums">
-                                    {share(s.amount).toFixed(1)}%
+                                    {fmtPct(share(s.amount))}
                                 </span>
                             </div>
                             <div className="flex items-center gap-3">

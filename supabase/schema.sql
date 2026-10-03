@@ -4457,8 +4457,9 @@ create policy report_charts_write on storage.objects
     )
   );
 
--- Publishing a corrected report draws the charts again over the old ones,
--- so the same people need to be able to replace what they wrote.
+-- Each publish or test draws new files beside the old ones (uploadCharts in
+-- reportMail.js), so a correction never shows a chart a mail cached. Replacing
+-- is still allowed to the same people, it is just no longer how the app works.
 drop policy if exists report_charts_replace on storage.objects;
 create policy report_charts_replace on storage.objects
   for update

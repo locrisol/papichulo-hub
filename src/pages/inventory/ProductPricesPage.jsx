@@ -11,10 +11,13 @@ import Modal from '@/components/ui/Modal'
 import PriceCountUnitsEditor from '@/components/inventory/PriceCountUnitsEditor'
 import { friendlyError } from '@/lib/errors'
 import { claimCode } from '@/lib/invoiceReview'
-import { tableHeadRow, tableCard, badge, card, rowButton, pageTitle, primaryButton } from '@/lib/controlStyles'
+import {
+    tableHeadRow, tableHeadCell, tableCard, badge, card, cardHeader, rowButton, primaryButton,
+} from '@/lib/controlStyles'
 import { useConfirm } from '@/context/confirm'
 import BackButton from '@/components/ui/BackButton'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import PageHeader from '@/components/ui/PageHeader'
 import ProductPriceHistory from '@/components/inventory/ProductPriceHistory'
 import { useSaveOnce } from '@/components/ui/useSaveOnce'
 
@@ -352,22 +355,17 @@ export default function ProductPricesPage() {
         <div>
             <BackButton to="/catalogue/products" className="mb-4">Back to products</BackButton>
 
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-                <div>
-                    <h2 className={pageTitle}>
-                        Prices: {product?.name || '...'}
-                    </h2>
-                    <p className="text-sm text-gray-500 mt-1">
-                        {product ? `${product.section} • ${product.unit} • ` : ''}for {activeRestaurant?.name}
-                    </p>
-                </div>
+            <PageHeader
+                title={`Prices: ${product?.name || '...'}`}
+                subtitle={`${product ? `${product.section} · ${product.unit} · ` : ''}for ${activeRestaurant?.name ?? ''}`}
+            >
                 <button
                     onClick={() => { resetForm(); setShowForm(true) }}
                     className={primaryButton()}
                 >
                     + Add Price
                 </button>
-            </div>
+            </PageHeader>
 
             {error && (
                 <ErrorBanner className="mb-4">{error}</ErrorBanner>
@@ -389,28 +387,30 @@ export default function ProductPricesPage() {
             </div>
 
             {showForm && !editingPrice && (
-                <div className={`${card} p-6 mb-6`}>
-                    <h3 className="text-sm font-semibold text-gray-900 mb-4">New Price Link</h3>
-                    <PriceForm
-                      problem={formProblem}
-                        formData={formData}
-                        onChange={handleFieldChange}
-                        onSubmit={handleSave}
-                        onCancel={resetForm}
-                        submitLabel="Add Price"
-                        saving={saving}
-                        errors={errors}
-                        suppliers={suppliers}
-                        unit={product?.unit}
-                    />
+                <div className={`${card} overflow-hidden mb-6`}>
+                    <h3 className={cardHeader}>New Price Link</h3>
+                    <div className="p-6">
+                        <PriceForm
+                            problem={formProblem}
+                            formData={formData}
+                            onChange={handleFieldChange}
+                            onSubmit={handleSave}
+                            onCancel={resetForm}
+                            submitLabel="Add Price"
+                            saving={saving}
+                            errors={errors}
+                            suppliers={suppliers}
+                            unit={product?.unit}
+                        />
+                    </div>
                 </div>
             )}
 
             {loading ? (
-                <div className="text-sm text-gray-500">Loading prices...</div>
+                <div className="text-sm text-muted">Loading prices...</div>
             ) : prices.length === 0 ? (
                 <div className={`${card} p-8 text-center`}>
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-muted">
                         No price links yet for this product at {activeRestaurant?.name}. Click "+ Add Price" to create the first one.
                     </p>
                 </div>
@@ -487,13 +487,13 @@ export default function ProductPricesPage() {
                     <table className="w-full text-sm">
                         <thead>
                             <tr className={tableHeadRow}>
-                                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Supplier</th>
-                                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Type</th>
-                                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Supplier Code</th>
-                                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Pack</th>
-                                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Cost / {product?.unit || 'Unit'}</th>
-                                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Preferred</th>
-                                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Actions</th>
+                                <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Supplier</th>
+                                <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Type</th>
+                                <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Supplier Code</th>
+                                <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Pack</th>
+                                <th className={`text-right px-4 py-3 ${tableHeadCell}`}>Cost / {product?.unit || 'Unit'}</th>
+                                <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Preferred</th>
+                                <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -516,13 +516,13 @@ export default function ProductPricesPage() {
                                                 {p.purchase_type === 'case' ? 'Case' : 'Loose'}
                                             </span>
                                         </td>
-                                        <td className="px-4 py-3 text-gray-500">{p.supplier_code || '—'}</td>
-                                        <td className="px-4 py-3 text-gray-500">
+                                        <td className="px-4 py-3 text-muted">{p.supplier_code || '—'}</td>
+                                        <td className="px-4 py-3 text-muted">
                                             {p.purchase_type === 'case'
                                                 ? `${parseFloat(p.units_per_case)} ${product?.unit} @ ${fmtMoney(parseFloat(p.price_per_case))}`
                                                 : '—'}
                                         </td>
-                                        <td className="px-4 py-3 font-medium text-gray-900">
+                                        <td className="px-4 py-3 font-medium text-gray-900 text-right tabular-nums">
                                             {fmtUnitCost(parseFloat(p.price_per_unit))}
                                         </td>
                                         <td className="px-4 py-3">
@@ -588,9 +588,9 @@ export default function ProductPricesPage() {
 
             {editingPrice && (
                 <Modal title={`Edit the ${getSupplierName(editingPrice.supplier_id)} price`} onClose={resetForm} width="max-w-2xl">
-                    <div className="p-5">
+                    <div className="px-6 py-4">
                         <PriceForm
-                          problem={formProblem}
+                            problem={formProblem}
                             formData={formData}
                             onChange={handleFieldChange}
                             onSubmit={handleSave}

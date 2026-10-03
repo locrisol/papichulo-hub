@@ -21,7 +21,7 @@ import { can, ALL_ROLES, MANAGERS, RESTAURANT_CONFIG, ADMIN_ONLY, homeFor } from
 // link that goes nowhere is worse than no link.
 export const navItems = [
     { path: '/dashboard', label: 'Cost Dashboard', icon: 'costs', section: 'Overview', roles: MANAGERS },
-    { path: '/reports', label: 'Reports', icon: 'weekly', section: 'Overview', roles: MANAGERS },
+    { path: '/reports', label: 'Reports', icon: 'report', section: 'Overview', roles: MANAGERS },
 
     // Sales module. Daily Sales is the per-day entry form; Weekly Sales is the
     // Sunday to Saturday grid where a whole week can be entered in one pass.
@@ -29,23 +29,23 @@ export const navItems = [
     // explicitly, otherwise the day form redirects wide screens to the grid and
     // the link would appear to do nothing.
     { path: '/sales', search: '?view=day', label: 'Daily Sales', icon: 'sales', section: 'Operations', roles: MANAGERS },
-    { path: '/sales/weekly', label: 'Weekly Sales', icon: 'weekly', section: 'Operations', roles: MANAGERS },
-    { path: '/costs/timesheet', label: 'Timesheet', icon: 'costs', section: 'Operations', roles: MANAGERS },
+    { path: '/sales/weekly', label: 'Weekly Sales', icon: 'table', section: 'Operations', roles: MANAGERS },
+    { path: '/costs/timesheet', label: 'Timesheet', icon: 'clock', section: 'Operations', roles: MANAGERS },
     { path: '/invoices', label: 'Invoices', icon: 'invoice', section: 'Operations', roles: MANAGERS },
-    { path: '/invoices/import', label: 'Import invoices', icon: 'invoice', section: 'Operations', roles: MANAGERS },
+    { path: '/invoices/import', label: 'Import invoices', icon: 'download', section: 'Operations', roles: MANAGERS },
     // Everybody, and that is the whole point. Whoever signs for a delivery
     // knows what was wrong within a minute and has forgotten by Friday, and the
     // supplier never credits anything that was not asked for at the door.
-    { path: '/invoices/claims', label: 'Delivery problems', icon: 'waste', section: 'Operations', roles: ALL_ROLES },
+    { path: '/invoices/claims', label: 'Delivery problems', icon: 'truck', section: 'Operations', roles: ALL_ROLES },
     { path: '/waste', label: 'Waste', icon: 'waste', section: 'Operations', roles: ALL_ROLES },
-    { path: '/waste/summary', label: 'Waste summary', icon: 'waste', section: 'Operations', roles: MANAGERS },
+    { path: '/waste/summary', label: 'Waste summary', icon: 'pie', section: 'Operations', roles: MANAGERS },
     // Everybody, because the people cleaning are the ones ticking. Setting the
     // lists up and the reports on them are reached from inside, managers only.
     { path: '/checklists', label: 'Checklists', icon: 'check', section: 'Operations', roles: ALL_ROLES },
 
     // { path: '/catalogue', label: 'Products', icon: 'cat', section: 'Inventory' },
     { path: '/catalogue/products', label: 'Products', icon: 'cat', section: 'Catalogue', roles: MANAGERS },
-    { path: '/catalogue/menu-items', label: 'Menu Items', icon: 'menu', section: 'Catalogue', roles: MANAGERS },
+    { path: '/catalogue/menu-items', label: 'Menu Items', icon: 'book', section: 'Catalogue', roles: MANAGERS },
     // Employees can see suppliers on purpose: if a delivery is wrong they need
     // the rep's number. Nothing here is commercially sensitive.
     { path: '/catalogue/suppliers', label: 'Suppliers', icon: 'suppliers', section: 'Catalogue', roles: ALL_ROLES },
@@ -61,7 +61,7 @@ export const navItems = [
     // layer on it and the rest of it is the same everywhere.
     { path: '/calendar', label: 'Calendar', icon: 'forecast', section: 'Analytics', roles: ALL_ROLES },
 
-    { path: '/my-shifts', label: 'My shifts', icon: 'weekly', section: 'People', roles: ALL_ROLES },
+    { path: '/my-shifts', label: 'My shifts', icon: 'person', section: 'People', roles: ALL_ROLES },
     { path: '/roster', label: 'Roster', icon: 'weekly', section: 'People', roles: MANAGERS },
     { path: '/team', label: 'Team', icon: 'users', section: 'People', roles: MANAGERS },
 
@@ -71,11 +71,11 @@ export const navItems = [
     // Super Admin's. Team keeps working either way: it reads the users table
     // itself, only the accounts at the restaurant being worked on, and the
     // policy decides which of those come back.
-    { path: '/settings/users', label: 'Users', icon: 'users', section: 'Settings', roles: ADMIN_ONLY },
+    { path: '/settings/users', label: 'Users', icon: 'idcard', section: 'Settings', roles: ADMIN_ONLY },
 
     // What the database recorded, which is a different question from who got
     // in and belongs beside it rather than inside it.
-    { path: '/settings/changes', label: 'Changes', icon: 'weekly', section: 'Settings', roles: ADMIN_ONLY },
+    { path: '/settings/changes', label: 'Changes', icon: 'undo', section: 'Settings', roles: ADMIN_ONLY },
     { path: '/settings/restaurant', label: 'Restaurant', icon: 'restaurant', section: 'Settings', roles: RESTAURANT_CONFIG },
 
     // Yours, not the restaurant's. An owner sees nothing else under Settings,
@@ -125,4 +125,15 @@ export function pageLabel(path) {
 // wide screen to the weekly grid and the link looks like it did nothing.
 export function navTarget(item) {
     return item ? `${item.path}${item.search || ''}` : ''
+}
+
+// Which item on the menu the page belongs to: the one whose path is the
+// longest start of the address. An exact match alone left nothing lit on a
+// page reached from a list, like one report or the invoice history, and a
+// plain prefix match would light Invoices and Delivery problems together on
+// /invoices/claims. Only one lights.
+export function activeNavPath(items, pathname) {
+    return items
+        .filter(n => pathname === n.path || pathname.startsWith(`${n.path}/`))
+        .reduce((best, n) => (!best || n.path.length > best.length ? n.path : best), null)
 }

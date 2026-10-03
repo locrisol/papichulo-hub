@@ -60,6 +60,10 @@ vi.mock('@/context/restaurant', () => ({
 }))
 vi.mock('@/context/confirm', () => ({ useConfirm: () => vi.fn(async () => true) }))
 
+// jsdom has no scrolling, and the product picker keeps its highlighted row in
+// view.
+Element.prototype.scrollIntoView ??= () => {}
+
 const { default: WasteLogPage } = await import('./WasteLogPage')
 
 // Find the product, pick it and type how much went in the bin.
@@ -67,7 +71,7 @@ async function pick(name, quantity) {
     renderWithRouter(<WasteLogPage />)
     const clicker = userEvent.setup()
     await clicker.type(await screen.findByPlaceholderText('Product name'), name)
-    await clicker.click(screen.getByRole('button', { name: new RegExp(name) }))
+    await clicker.click(screen.getByRole('option', { name: new RegExp(name) }))
     await clicker.type(screen.getByPlaceholderText('0'), quantity)
     return clicker
 }
@@ -157,6 +161,30 @@ describe('an employee logging a MIX', () => {
     })
 })
 
+// The picker is the shared ProductSelect, which shows every match. The one
+// written for this page stopped at eight and said nothing about the rest.
+describe('picking a product', () => {
+    it('offers every match, not only the first eight', async () => {
+        const many = Array.from({ length: 10 }, (_, i) => ({
+            id: `t${i}`, name: `Tomato ${i + 1}`, unit: 'KG', is_active: true, is_mix: false,
+        }))
+        setUp({ products: many })
+        renderWithRouter(<WasteLogPage />)
+        await userEvent.type(await screen.findByPlaceholderText('Product name'), 'Tomato')
+        expect(screen.getAllByRole('option', { name: /Tomato/ })).toHaveLength(10)
+    })
+
+    it('clears the product once it is on the list', async () => {
+        const clicker = await pick('Tomatoes', '1')
+        expect(screen.getByPlaceholderText('Product name')).toHaveValue('Tomatoes (KG)')
+
+        await clicker.click(screen.getByRole('button', { name: 'Add to list' }))
+        expect(screen.getByPlaceholderText('Product name')).toHaveValue('')
+        expect(screen.getByPlaceholderText('0')).toHaveValue('')
+        expect(screen.getByText('Not saved yet')).toBeInTheDocument()
+    })
+})
+
 describe('an employee logging something bought', () => {
     it('still says when it has no price', async () => {
         await pick('Limes', '1')
@@ -225,6 +253,6 @@ describe('the list for the day', () => {
         expect(await screen.findByText('Old Chilli')).toBeInTheDocument()
 
         await userEvent.type(screen.getByPlaceholderText('Product name'), 'Old')
-        expect(screen.queryByRole('button', { name: /Old Chilli/ })).not.toBeInTheDocument()
+        expect(screen.queryByRole('option', { name: /Old Chilli/ })).not.toBeInTheDocument()
     })
 })

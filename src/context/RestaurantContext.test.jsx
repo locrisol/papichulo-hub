@@ -166,3 +166,46 @@ describe('where the restaurant is read from', () => {
         expect(asked()[0].query.eq).toHaveBeenCalledWith('is_active', true)
     })
 })
+
+// A private window, or a browser told to block site data, throws on reading
+// the saved restaurant. That throw used to land before loading ended, so the
+// Hub sat at Loading for good.
+describe('a browser that will not give up what it saved', () => {
+    it('still finishes loading, on their own restaurant', async () => {
+        signedIn = { id: 'u1', role: 'store_manager', restaurant_id: 'r1' }
+        const refused = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+            throw new DOMException('The operation is insecure.', 'SecurityError')
+        })
+        let ctx
+        function Grab() { ctx = useRestaurant(); return null }
+        render(<RestaurantProvider><Shows /><Grab /></RestaurantProvider>)
+
+        expect(await screen.findByText('Point Campus')).toBeInTheDocument()
+        expect(ctx.loading).toBe(false)
+        expect(refused).toHaveBeenCalled()
+        refused.mockRestore()
+    })
+
+    it('does not stop a switch when it will not keep the choice', async () => {
+        localStorage.clear()
+        signedIn = { id: 'u0', role: 'super_admin', restaurant_id: null }
+        db.from.mockImplementationOnce(() => makeQuery({
+            data: [
+                { id: 'r2', name: 'Dun Laoghaire', is_active: true },
+                { id: 'r1', name: 'Point Campus', is_active: true },
+            ],
+            error: null,
+        }))
+        const refused = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+            throw new DOMException('The quota has been exceeded.', 'QuotaExceededError')
+        })
+        let ctx
+        function Grab() { ctx = useRestaurant(); return null }
+        render(<RestaurantProvider><Shows /><Grab /></RestaurantProvider>)
+        await screen.findByText('Dun Laoghaire')
+
+        act(() => ctx.switchRestaurant(ctx.restaurants.find(r => r.id === 'r1')))
+        expect(await screen.findByText('Point Campus')).toBeInTheDocument()
+        refused.mockRestore()
+    })
+})

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { fmtMoney, fmtQty, fmtUnitCost, fmtPct, num, namesList } from '@/lib/format'
+import { fmtMoney, fmtQty, fmtUnitCost, fmtPct, num, namesList, round2, round4 } from '@/lib/format'
 
 describe('fmtMoney', () => {
   it('formats a value over 1000 with a thousands separator and 2 decimals', () => {
@@ -138,4 +138,40 @@ describe('namesList', () => {
         expect(namesList([])).toBe('')
         expect(namesList(undefined)).toBe('')
     })
+})
+
+describe('round2', () => {
+  it('rounds to the cent', () => {
+    expect(round2(2.345)).toBe(2.35)
+    expect(round2(12.344)).toBe(12.34)
+    expect(round2(7)).toBe(7)
+  })
+
+  it('takes what the database sends, which is often a string', () => {
+    expect(round2('2.345')).toBe(2.35)
+    expect(round2('19.999')).toBe(20)
+  })
+
+  it('turns nothing into zero', () => {
+    expect(round2(null)).toBe(0)
+    expect(round2(undefined)).toBe(0)
+    expect(round2('')).toBe(0)
+  })
+
+  it('rounds a negative the same way', () => {
+    expect(round2(-2.345)).toBe(-2.35)
+    expect(round2(-12.344)).toBe(-12.34)
+  })
+})
+
+describe('round4', () => {
+  it('rounds to four places', () => {
+    expect(round4(0.30335)).toBe(0.3034)
+    expect(round4('2.34565')).toBe(2.3457)
+    expect(round4(-6.48751)).toBe(-6.4875)
+  })
+
+  it('turns nothing into zero', () => {
+    expect(round4(null)).toBe(0)
+  })
 })

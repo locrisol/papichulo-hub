@@ -5,17 +5,19 @@ import ModalSection from '@/components/ui/ModalSection'
 import { supabase } from '@/lib/supabase'
 import { friendlyError } from '@/lib/errors'
 import { useConfirm } from '@/context/confirm'
-import { fullDate } from '@/lib/dates'
+import { fullDate, shortDate, dayLabel } from '@/lib/dates'
 import { numberField } from '@/lib/numberInput'
-import { modalFooter, secondaryButton, badge, rowButton, labelClass, fieldClass } from '@/lib/controlStyles'
+import {
+    modalFooter, primaryButton, secondaryButton, badge, rowButton, labelClass, fieldClass, hintClass,
+} from '@/lib/controlStyles'
+import ErrorBanner from '@/components/ui/ErrorBanner'
+import Notice from '@/components/ui/Notice'
 import {
     ABSENCE_KINDS, kindOf, kindLabel, takesHours, sortAbsences, absenceRange,
     absenceDays, absenceProblem, overlappingAbsence,
 } from '@/lib/absences'
 import { shiftsHit, asCleared, isPartDay, partWords } from '@/lib/timeOff'
 import { shortTime } from '@/lib/roster'
-import { dayName } from '@/lib/events'
-import { shortDate } from '@/lib/dates'
 
 // The days somebody is not there.
 //
@@ -291,7 +293,7 @@ export default function TimeOffDialog({
                                 onChange={e => change('endsOn', e.target.value)}
                                 className={fieldClass}
                             />
-                            <p className="text-xs text-muted mt-1">
+                            <p className={hintClass}>
                                 Leave it empty for a single day.
                             </p>
                         </div>
@@ -314,7 +316,7 @@ export default function TimeOffDialog({
                                     className={`${fieldClass} text-right`}
                                     placeholder="0.00"
                                 />
-                                <p className="text-xs text-muted mt-1">
+                                <p className={hintClass}>
                                     Off the payslip. The app holds no entitlement.
                                 </p>
                             </div>
@@ -352,7 +354,7 @@ export default function TimeOffDialog({
                                         aria-label="Can work until"
                                         />
                                 </div>
-                                <p className="text-xs text-muted mt-1">
+                                <p className={hintClass}>
                                     The hours they can still work. Leave both empty for the whole day,
                                     or fill one in for somebody leaving early or starting late.
                                 </p>
@@ -379,35 +381,36 @@ export default function TimeOffDialog({
                         </p>
                     )}
 
-                    {(problem || error) && (
-                        <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mt-3">{problem || error}</p>
-                    )}
+                    {/* What is wrong with what is typed, as it is typed, and
+                        apart from a save that failed, which is the alert. */}
+                    {problem && <p className="text-sm text-red-700 mt-3">{problem}</p>}
+                    <ErrorBanner className="mt-3">{error}</ErrorBanner>
 
                     {/* What this empties. Somebody going off sick this morning
                         is the case that matters: the shifts are already out and
                         somebody has to cover them. */}
                     {!problem && clashing.length > 0 && (
-                        <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2.5 mt-3">
-                            <p className="text-sm font-semibold text-red-800">
+                        <Notice tone="urgent" className="mt-3">
+                            <p className="font-semibold">
                                 {person?.full_name || 'They'} {clashing.length === 1 ? 'is' : 'is'} rostered on{' '}
                                 {clashing.length} of {clashing.length === 1 ? 'these days' : 'these days'}
                             </p>
                             <ul className="text-xs text-red-700 mt-1 space-y-0.5">
                                 {clashing.map(x => (
                                     <li key={x.id}>
-                                        {dayName(x.shift_date)} {shortDate(x.shift_date)},{' '}
+                                        {dayLabel(x.shift_date)},{' '}
                                         {shortTime(x.starts_at)} to {shortTime(x.ends_at)}
                                     </li>
                                 ))}
                             </ul>
-                        </div>
+                        </Notice>
                     )}
 
                     <div className="flex flex-wrap gap-2 mt-4">
                         <button
                             type="submit"
                             disabled={saving || !!problem}
-                            className="px-5 py-2 bg-accent text-white text-sm font-semibold rounded-lg hover:bg-orange-600 disabled:opacity-50"
+                            className={primaryButton('lg')}
                         >
                             {saving ? 'Saving...' : editing ? 'Save it' : clashing.length > 0 ? 'Add it, leave the shifts' : 'Add it'}
                         </button>
@@ -416,7 +419,7 @@ export default function TimeOffDialog({
                                 type="button"
                                 onClick={e => save(e, true)}
                                 disabled={saving || !!problem}
-                                className="px-5 py-2 bg-green-brand text-white text-sm font-semibold rounded-lg hover:bg-green-brand/90 disabled:opacity-50"
+                                className={primaryButton('lg', 'good')}
                             >
                                 Add it and free {clashing.length === 1 ? 'that day' : `those ${clashing.length} days`}
                             </button>
@@ -459,7 +462,7 @@ export default function TimeOffDialog({
                                                 </span>
                                             )}
                                             {absence.hours != null && (
-                                                <span className="font-normal text-gray-500">
+                                                <span className="font-normal text-muted">
                                                     {' '}· {Number(absence.hours).toFixed(2)} hours
                                                 </span>
                                             )}

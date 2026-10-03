@@ -18,6 +18,7 @@
 // varchar, so a restaurant near three places could watch one of them.
 
 import { functionError } from '@/lib/errors'
+import { readStored, writeStored } from '@/lib/browserStore'
 
 // How long to leave it before fetching again. The spec asks for at least once a
 // day. Twelve hours means a normal day gets two goes at it without every page
@@ -62,22 +63,17 @@ export async function syncEvents(supabase, restaurantId) {
 // Whether it is worth fetching for this restaurant. Kept per browser, which is
 // fine: the point is to avoid pointless calls, and with the free tier allowing
 // 5,000 a day even a busy team is nowhere near it.
+//
+// A browser with no storage reads as never fetched, so it just fetches. Better a
+// wasted call than no events.
 export function syncIsDue(restaurantId) {
-    try {
-        const last = localStorage.getItem(syncKey(restaurantId))
-        if (!last) return true
-        const hours = (Date.now() - Number(last)) / 1000 / 60 / 60
-        return hours >= SYNC_EVERY_HOURS
-    } catch {
-        // No storage, so just fetch. Better a wasted call than no events.
-        return true
-    }
+    const last = readStored('local', syncKey(restaurantId))
+    if (!last) return true
+    const hours = (Date.now() - Number(last)) / 1000 / 60 / 60
+    return hours >= SYNC_EVERY_HOURS
 }
 
+// Not being able to remember is harmless, it only means we fetch again.
 export function markSynced(restaurantId) {
-    try {
-        localStorage.setItem(syncKey(restaurantId), String(Date.now()))
-    } catch {
-        // Not being able to remember is harmless, it only means we fetch again.
-    }
+    writeStored('local', syncKey(restaurantId), Date.now())
 }

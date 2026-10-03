@@ -21,3 +21,23 @@ describe('DateStepper at the edge of what a screen opens', () => {
         expect(next).toHaveBeenCalledTimes(1)
     })
 })
+
+// Six screens wrote the week out themselves, two ways in two weights.
+describe('DateStepper given the week', () => {
+    it('writes the week itself, Monday to Sunday', () => {
+        render(<DateStepper onBack={() => {}} onNext={() => {}} weekStart="2026-08-31" />)
+        const week = screen.getByText('31 Aug to 6 Sept')
+        expect(week.className).toContain('font-semibold')
+        expect(week.className).toContain('whitespace-nowrap')
+    })
+
+    it('leaves the middle to the screen when it brings its own', () => {
+        render(
+            <DateStepper onBack={() => {}} onNext={() => {}} weekStart="2026-08-31">
+                <span>Week 36</span>
+            </DateStepper>,
+        )
+        expect(screen.getByText('Week 36')).toBeInTheDocument()
+        expect(screen.queryByText('31 Aug to 6 Sept')).toBeNull()
+    })
+})

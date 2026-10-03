@@ -1,5 +1,6 @@
 import { fmtMoney } from '@/lib/format'
 import { invoiceCategory, invoiceSplit } from '@/lib/invoiceCategories'
+import { badge } from '@/lib/controlStyles'
 
 // What an invoice was spent on, as the coloured labels the invoice screens use.
 //
@@ -16,7 +17,7 @@ export default function CategoryBadges({ invoice }) {
                 return (
                     <span
                         key={s.category}
-                        className={`inline-block px-2 py-1 rounded-full border text-xs font-semibold whitespace-nowrap ${cat.soft}`}
+                        className={`${badge} border ${cat.soft}`}
                     >
                         {cat.label}{split.length > 1 ? ` ${fmtMoney(s.amount)}` : ''}
                     </span>

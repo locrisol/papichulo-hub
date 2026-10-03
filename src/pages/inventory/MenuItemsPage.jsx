@@ -1,10 +1,10 @@
-import { fmtMoney } from '@/lib/format'
+import { fmtMoney, fmtPct } from '@/lib/format'
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useRestaurant } from '@/context/restaurant'
 import { useConfirm } from '@/context/confirm'
-import { menuItemCost } from '@/lib/mixCost'
+import { menuItemCost, menuMargin, marginTone } from '@/lib/mixCost'
 import { deriveMenuItemAllergens, neverEnteredInDish, summariseAllergens } from '@/lib/allergens'
 import CategoryManagerModal from '@/components/inventory/CategoryManagerModal'
 import { useKeepScroll } from '@/context/scroll'
@@ -12,10 +12,15 @@ import { useSaveOnce } from '@/components/ui/useSaveOnce'
 import ArrangeList from '@/components/ui/ArrangeList'
 import { friendlyError } from '@/lib/errors'
 import { everyReadArrived, productsWithARow, optionsWithoutARow } from '@/lib/allergenSheet'
-import { secondaryButton, tableHeadRow, tableHeadCell, tableCard, badge, card, rowButton, labelClass, pageTitle, primaryButton } from '@/lib/controlStyles'
+import {
+  secondaryButton, tableHeadRow, tableHeadCell, tableCard, badge, inactiveBadge, card, cardEdge, cardHeader, rowButton,
+  labelClass, hintClass, fieldError, fieldClass, primaryButton,
+} from '@/lib/controlStyles'
 import { numberField } from '@/lib/numberInput'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import PageHeader from '@/components/ui/PageHeader'
 import ShowInactiveButton from '@/components/ui/ShowInactiveButton'
+import useShowInactive from '@/components/ui/useShowInactive'
 
 // Every dish we sell, with what it costs us and what it makes.
 //
@@ -30,9 +35,9 @@ import ShowInactiveButton from '@/components/ui/ShowInactiveButton'
 // Everything here is per restaurant. The selling price is the same in both, but
 // the cost follows whichever supplier that restaurant prefers, so the same dish
 // can have a different margin in each one.
-
-const MARGIN_GREEN = 65   // >= 65% net margin = green
-const MARGIN_AMBER = 60   // 60-65% = amber, < 60% = red
+//
+// The margin lines, green at 65% and amber at 60%, are in lib/mixCost, which
+// the dish page reads too.
 
 export default function MenuItemsPage() {
   const confirm = useConfirm()
@@ -67,9 +72,7 @@ export default function MenuItemsPage() {
 
   const [showForm, setShowForm] = useState(false)
   const [showCategoryModal, setShowCategoryModal] = useState(false)
-  const [showInactive, setShowInactive] = useState(() => {
-    return localStorage.getItem('menuItemsShowInactive') === 'true'
-  })
+  const [showInactive, setShowInactive] = useShowInactive('menuItemsShowInactive')
 
   const [formData, setFormData] = useState(emptyForm())
 
@@ -289,17 +292,12 @@ export default function MenuItemsPage() {
     for (const item of menuItems) {
       const mine = lines.get(item.id) || []
       const cost = menuItemCost(mine, products, recipeLines, prices)
-      const vat = parseFloat(item.vat_rate) || 0
-      const net = parseFloat(item.selling_price) / (1 + vat / 100)
+      const margin = menuMargin(item.selling_price, item.vat_rate, cost)
       out.set(item.id, {
         components: mine,
         cost,
-        net,
-        margin: cost === null ? null : {
-          net,
-          margin: net - cost,
-          marginPct: net > 0 ? ((net - cost) / net) * 100 : null,
-        },
+        net: margin.net,
+        margin: cost === null ? null : margin,
         allergens: deriveMenuItemAllergens(mine, products, recipeLines, allergens),
         // Something in it nobody ever entered allergens for, which the line
         // above can only read as none.
@@ -331,13 +329,6 @@ export default function MenuItemsPage() {
   const getItemCost = item => forItem(item.id).cost
   const getNet = item => forItem(item.id).net
   const getMargin = item => forItem(item.id).margin
-
-  function marginColour(pct) {
-    if (pct === null) return 'text-muted'
-    if (pct >= MARGIN_GREEN) return 'text-green-700'
-    if (pct >= MARGIN_AMBER) return 'text-amber-700'
-    return 'text-red-600'
-  }
 
   // The row buttons, written once and used by the table and the phone cards, so
   // the two cannot end up offering different things. A plain function rather
@@ -446,36 +437,21 @@ export default function MenuItemsPage() {
       {/* Allowed to wrap. A title, a subtitle and three buttons never fit
           across a phone, and with no wrapping the title was squeezed into a
           narrow column while the last button hung off the right edge. */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        <div>
-          <h2 className={pageTitle}>Menu Items</h2>
-          <p className="text-sm text-gray-500 mt-1">
-            Costs and margins for {activeRestaurant?.name}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2 sm:gap-3">
-          <button
-            onClick={() => setShowCategoryModal(true)}
-            className={secondaryButton}
-          >
-            Manage Categories
-          </button>
-          <ShowInactiveButton
-            showing={showInactive}
-            onToggle={() => {
-              const next = !showInactive
-              setShowInactive(next)
-              localStorage.setItem('menuItemsShowInactive', next)
-            }}
-          />
-          <button
-            onClick={() => { resetForm(); setShowForm(true) }}
-            className={primaryButton()}
-          >
-            + Add Menu Item
-          </button>
-        </div>
-      </div>
+      <PageHeader title="Menu Items" subtitle={`Costs and margins for ${activeRestaurant?.name ?? ''}`}>
+        <button
+          onClick={() => setShowCategoryModal(true)}
+          className={secondaryButton}
+        >
+          Manage Categories
+        </button>
+        <ShowInactiveButton showing={showInactive} onToggle={() => setShowInactive(on => !on)} />
+        <button
+          onClick={() => { resetForm(); setShowForm(true) }}
+          className={primaryButton()}
+        >
+          + Add Menu Item
+        </button>
+      </PageHeader>
 
       {error && (
         <ErrorBanner className="mb-4">{error}</ErrorBanner>
@@ -485,9 +461,9 @@ export default function MenuItemsPage() {
       )}
 
       {showForm && (
-        <div className={`${card} p-6 mb-6`}>
-          <h3 className="text-sm font-semibold text-gray-900 mb-4">New Menu Item</h3>
-          <form onSubmit={handleSave}>
+        <div className={`${card} overflow-hidden mb-6`}>
+          <h3 className={cardHeader}>New Menu Item</h3>
+          <form onSubmit={handleSave} className="p-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
               <div>
                 <label className={labelClass}>Name</label>
@@ -495,23 +471,23 @@ export default function MenuItemsPage() {
                   type="text"
                   value={formData.name}
                   onChange={e => handleFieldChange('name', e.target.value)}
-                  className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+                  className={fieldClass}
                 />
-                {errors.name && <p className="text-xs text-red-600 mt-1">{errors.name}</p>}
+                {errors.name && <p className={fieldError}>{errors.name}</p>}
               </div>
               <div>
                 <label className={labelClass}>Category</label>
                 <select
                   value={formData.category_id}
                   onChange={e => handleFieldChange('category_id', e.target.value)}
-                  className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+                  className={fieldClass}
                 >
                   <option value="">Select a category...</option>
                   {categories.filter(c => c.is_active).map(c => (
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>
-                {errors.category_id && <p className="text-xs text-red-600 mt-1">{errors.category_id}</p>}
+                {errors.category_id && <p className={fieldError}>{errors.category_id}</p>}
               </div>
               <div>
                 <label className={labelClass}>Selling Price (€, gross)</label>
@@ -520,9 +496,9 @@ export default function MenuItemsPage() {
                     value: formData.selling_price,
                     onChange: v => handleFieldChange('selling_price', v),
                   })}
-                  className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+                  className={fieldClass}
                 />
-                {errors.selling_price && <p className="text-xs text-red-600 mt-1">{errors.selling_price}</p>}
+                {errors.selling_price && <p className={fieldError}>{errors.selling_price}</p>}
               </div>
               <div>
                 <label className={labelClass}>VAT Rate (%)</label>
@@ -531,10 +507,10 @@ export default function MenuItemsPage() {
                     value: formData.vat_rate,
                     onChange: v => handleFieldChange('vat_rate', v),
                   })}
-                  className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+                  className={fieldClass}
                 />
-                {errors.vat_rate && <p className="text-xs text-red-600 mt-1">{errors.vat_rate}</p>}
-                <p className="text-xs text-muted mt-1">Use 0 if no VAT applies. Margin calculation handles any rate.</p>
+                {errors.vat_rate && <p className={fieldError}>{errors.vat_rate}</p>}
+                <p className={hintClass}>Use 0 if no VAT applies. Margin calculation handles any rate.</p>
               </div>
             </div>
             <div className="mb-4">
@@ -543,7 +519,7 @@ export default function MenuItemsPage() {
                 value={formData.notes}
                 onChange={e => handleFieldChange('notes', e.target.value)}
                 rows={2}
-                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+                className={fieldClass}
               />
             </div>
             {/* Above the button row rather than inside it. As a sibling of the
@@ -553,7 +529,14 @@ export default function MenuItemsPage() {
               <ErrorBanner className="mb-3">{formProblem}</ErrorBanner>
             )}
 
-            <div className="flex gap-3">
+            <div className="flex flex-wrap justify-end gap-3">
+              <button
+                type="button"
+                onClick={resetForm}
+                className={secondaryButton}
+              >
+                Cancel
+              </button>
               <button
                 type="submit"
                 disabled={saving}
@@ -561,25 +544,18 @@ export default function MenuItemsPage() {
               >
                 {saving ? 'Saving...' : 'Create & Edit Components'}
               </button>
-              <button
-                type="button"
-                onClick={resetForm}
-                className="px-4 py-2 border border-border text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 bg-white transition-colors"
-              >
-                Cancel
-              </button>
             </div>
           </form>
         </div>
       )}
 
       {loading ? (
-        <div className="text-sm text-gray-500">Loading menu items...</div>
+        <div className="text-sm text-muted">Loading menu items...</div>
       ) : loadFailed ? (
         <button type="button" onClick={() => fetchAll()} className={primaryButton()}>Try again</button>
       ) : itemsByCategory.every(g => g.items.length === 0) ? (
         <div className={`${card} p-8 text-center`}>
-          <p className="text-sm text-gray-500">No menu items yet. Click "+ Add Menu Item" to add your first.</p>
+          <p className="text-sm text-muted">No menu items yet. Click "+ Add Menu Item" to add your first.</p>
         </div>
       ) : (
         <div className="space-y-6">
@@ -635,9 +611,7 @@ export default function MenuItemsPage() {
                     return (
                       <div
                         key={item.id}
-                        className={`rounded-xl border p-4 ${item.is_active
-                          ? 'bg-white border-border'
-                          : 'bg-red-100 border-red-200'}`}
+                        className={`${cardEdge} p-4 ${item.is_active ? 'bg-white' : 'bg-red-100'}`}
                       >
                         <div className="flex items-start justify-between gap-2">
                           <p className={`font-semibold ${item.is_active ? 'text-gray-900' : 'text-muted'}`}>
@@ -646,10 +620,10 @@ export default function MenuItemsPage() {
                           {/* The table says this with a red row, which a single
                               card cannot do, so it says it in words. */}
                           {!item.is_active && (
-                            <span className={`${badge} flex-shrink-0 bg-red-200 text-red-800`}>Inactive</span>
+                            <span className={`${inactiveBadge} flex-shrink-0`}>Inactive</span>
                           )}
                         </div>
-                        <p className="text-xs text-gray-500 mt-0.5">
+                        <p className="text-xs text-muted mt-0.5">
                           {counts.components} {counts.components === 1 ? 'component' : 'components'}
                           {counts.choices > 0
                             && `, ${counts.choices} ${counts.choices === 1 ? 'choice' : 'choices'}`}
@@ -657,15 +631,15 @@ export default function MenuItemsPage() {
 
                         <dl className="mt-3 space-y-1.5 text-sm">
                           <div className="flex items-baseline justify-between gap-3">
-                            <dt className="text-gray-500">Cost</dt>
+                            <dt className="text-muted">Cost</dt>
                             <dd className={`text-right font-medium ${item.is_active ? 'text-gray-900' : 'text-muted'}`}>
                               {cost !== null
                                 ? fmtMoney(cost)
-                                : <span className="text-amber-600 text-xs">Incomplete</span>}
+                                : <span className="text-amber-700 text-xs">Incomplete</span>}
                             </dd>
                           </div>
                           <div className="flex items-baseline justify-between gap-3">
-                            <dt className="text-gray-500">Price (gross)</dt>
+                            <dt className="text-muted">Price (gross)</dt>
                             <dd className={`text-right ${item.is_active ? 'text-gray-700' : 'text-muted'}`}>
                               {fmtMoney(parseFloat(item.selling_price))}
                               <span className="text-xs text-muted ml-1">
@@ -674,28 +648,26 @@ export default function MenuItemsPage() {
                             </dd>
                           </div>
                           <div className="flex items-baseline justify-between gap-3">
-                            <dt className="text-gray-500">Net</dt>
+                            <dt className="text-muted">Net</dt>
                             <dd className={`text-right ${item.is_active ? 'text-gray-700' : 'text-muted'}`}>
                               {fmtMoney(getNet(item))}
                             </dd>
                           </div>
                           <div className="flex items-baseline justify-between gap-3">
-                            <dt className="text-gray-500">Margin</dt>
+                            <dt className="text-muted">Margin</dt>
                             <dd className="text-right">
                               {m ? (
-                                <span className={`font-medium ${marginColour(m.marginPct)}`}>
+                                <span className={`font-medium ${marginTone(m.marginPct)}`}>
                                   {fmtMoney(m.margin)}
-                                  <span className="text-xs ml-1">
-                                    ({m.marginPct !== null ? `${m.marginPct.toFixed(1)}%` : '—'})
-                                  </span>
+                                  <span className="text-xs ml-1">({fmtPct(m.marginPct)})</span>
                                 </span>
                               ) : (
-                                <span className="text-amber-600 text-xs">—</span>
+                                <span className="text-amber-700 text-xs">—</span>
                               )}
                             </dd>
                           </div>
                           <div className="flex items-baseline justify-between gap-3">
-                            <dt className="text-gray-500">Allergens</dt>
+                            <dt className="text-muted">Allergens</dt>
                             <dd className={`text-right text-xs ${item.is_active ? 'text-gray-600' : 'text-muted'}`}>
                               {allergenSummary(item)}
                             </dd>
@@ -719,10 +691,10 @@ export default function MenuItemsPage() {
                       <tr className={tableHeadRow}>
                         <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Name</th>
                         <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Components</th>
-                        <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Cost</th>
-                        <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Price (gross)</th>
-                        <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Net</th>
-                        <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Margin</th>
+                        <th className={`text-right px-4 py-3 ${tableHeadCell}`}>Cost</th>
+                        <th className={`text-right px-4 py-3 ${tableHeadCell}`}>Price (gross)</th>
+                        <th className={`text-right px-4 py-3 ${tableHeadCell}`}>Net</th>
+                        <th className={`text-right px-4 py-3 ${tableHeadCell}`}>Margin</th>
                         <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Allergens</th>
                         <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Actions</th>
                       </tr>
@@ -751,28 +723,28 @@ export default function MenuItemsPage() {
                                 </span>
                               )}
                             </td>
-                            <td className={`px-4 py-3 ${item.is_active ? 'text-gray-700' : 'text-muted'}`}>
-                              {cost !== null ? fmtMoney(cost) : <span className="text-amber-600 text-xs">Incomplete</span>}
+                            <td className={`px-4 py-3 text-right tabular-nums ${item.is_active ? 'text-gray-700' : 'text-muted'}`}>
+                              {cost !== null ? fmtMoney(cost) : <span className="text-amber-700 text-xs">Incomplete</span>}
                             </td>
-                            <td className={`px-4 py-3 ${item.is_active ? 'text-gray-700' : 'text-muted'}`}>
+                            <td className={`px-4 py-3 text-right tabular-nums ${item.is_active ? 'text-gray-700' : 'text-muted'}`}>
                               {fmtMoney(parseFloat(item.selling_price))}
                               <span className="text-xs text-muted ml-1">(VAT {parseFloat(item.vat_rate)}%)</span>
                             </td>
-                            <td className={`px-4 py-3 ${item.is_active ? 'text-gray-700' : 'text-muted'}`}>
+                            <td className={`px-4 py-3 text-right tabular-nums ${item.is_active ? 'text-gray-700' : 'text-muted'}`}>
                               {fmtMoney(getNet(item))}
                             </td>
-                            <td className="px-4 py-3">
+                            <td className="px-4 py-3 text-right tabular-nums">
                               {m ? (
                                 <>
-                                  <span className={`font-medium ${marginColour(m.marginPct)}`}>
+                                  <span className={`font-medium ${marginTone(m.marginPct)}`}>
                                     {fmtMoney(m.margin)}
                                   </span>
-                                  <span className={`text-xs ml-1 ${marginColour(m.marginPct)}`}>
-                                    ({m.marginPct !== null ? `${m.marginPct.toFixed(1)}%` : '—'})
+                                  <span className={`text-xs ml-1 ${marginTone(m.marginPct)}`}>
+                                    ({fmtPct(m.marginPct)})
                                   </span>
                                 </>
                               ) : (
-                                <span className="text-amber-600 text-xs">—</span>
+                                <span className="text-amber-700 text-xs">—</span>
                               )}
                             </td>
                             <td className={`px-4 py-3 text-xs ${item.is_active ? 'text-gray-600' : 'text-muted'}`}>

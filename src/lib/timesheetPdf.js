@@ -1,6 +1,8 @@
 import { AWAY_LOOK, KIND_LOOK, BANK_LOOK, COUNTED_DAYS, awayWords } from '@/lib/timesheet'
 import { periodWords } from '@/lib/payPeriod'
-import { addDays, weekRange, stampDateTime } from '@/lib/dates'
+import { addDays, weekRange, stampDateTime, WEEKDAY_NAMES } from '@/lib/dates'
+import { fmtHours } from '@/lib/roster'
+import { loadJsPdf, footers, rgb, LOGO_WIDTH, LOGO_HEIGHT } from '@/lib/pdfPage'
 import logo from '@/assets/PapiChuloLogoPrint.png?inline'
 
 // The pay period as a piece of paper, for the accountant's files.
@@ -19,21 +21,6 @@ import logo from '@/assets/PapiChuloLogoPrint.png?inline'
 // The figures are not worked out here. They come from personPeriod, the same
 // one the mail is built from, and a test runs that against the function's own
 // copy so the paper and the mail cannot disagree.
-
-let jsPdfModule = null
-
-// jsPDF is fetched when somebody asks for a PDF, not when the screen opens. It
-// is 400KB, and most visits to the timesheet never press the button.
-async function loadJsPdf() {
-    if (!jsPdfModule) jsPdfModule = (await import('jspdf')).default
-    return jsPdfModule
-}
-
-// The logo, in millimetres. The file is 400 by 249. The same size and the same
-// place the stock take and the allergen sheets put it, so a page of this is
-// recognisably from the same set.
-const LOGO_WIDTH = 26
-const LOGO_HEIGHT = (LOGO_WIDTH * 249) / 400
 
 // The summary's five figure columns, and what they are called. Exported so a
 // test can measure the words against the width rather than somebody finding out
@@ -59,20 +46,13 @@ const INK = [40, 40, 40]
 const MUTED = [107, 100, 89]
 const LINE = [222, 217, 207]
 
-function rgb(hex) {
-    const n = parseInt(String(hex).slice(1), 16)
-    return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
-}
-
-const h = n => (Number(n) || 0).toFixed(2)
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`
 
 function dayWords(iso) {
     const d = new Date(`${String(iso).slice(0, 10)}T00:00:00Z`)
-    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
     const months = ['January', 'February', 'March', 'April', 'May', 'June',
         'July', 'August', 'September', 'October', 'November', 'December']
-    return `${days[d.getUTCDay()]} ${d.getUTCDate()} ${months[d.getUTCMonth()]}`
+    return `${WEEKDAY_NAMES[d.getUTCDay()]} ${d.getUTCDate()} ${months[d.getUTCMonth()]}`
 }
 
 function clock(time) {
@@ -117,6 +97,10 @@ export async function timesheetPdf({
         // width. Widening that gap only broke the logo away from the name.
         // Identity on one side, the period and the stamp on the other, and the
         // line under them now has something at both ends.
+        //
+        // The same logo at the same size as the stock take and the checklists,
+        // so a page of this is recognisably from the same set, though not in
+        // quite the same place.
         pdf.addImage(logo, 'PNG', marginX, 11, LOGO_WIDTH, LOGO_HEIGHT)
         const textX = marginX + LOGO_WIDTH + 7
 
@@ -169,7 +153,7 @@ export async function timesheetPdf({
         pdf.text(continued ? `${person.name}, continued` : person.name, marginX + 3, y)
 
         pdf.setFontSize(9)
-        pdf.text(`${h(person.worked)} h`, right - 3, y, { align: 'right' })
+        pdf.text(`${fmtHours(person.worked)} h`, right - 3, y, { align: 'right' })
 
         y += 7
     }
@@ -279,8 +263,8 @@ export async function timesheetPdf({
     pdf.setFont('helvetica', 'normal')
     for (const person of people) {
         const marks = []
-        if (person.trial > 0) marks.push([KIND_LOOK.trial, `Trial ${h(person.trial)} h`])
-        if (person.training > 0) marks.push([KIND_LOOK.training, `Training ${h(person.training)} h`])
+        if (person.trial > 0) marks.push([KIND_LOOK.trial, `Trial ${fmtHours(person.trial)} h`])
+        if (person.training > 0) marks.push([KIND_LOOK.training, `Training ${fmtHours(person.training)} h`])
         if (person.sickDays > 0) marks.push([AWAY_LOOK.sick, `${plural(person.sickDays, 'day')} sick`])
         if (person.sickParts > 0) marks.push([AWAY_LOOK.sick, `${plural(person.sickParts, 'part day')} sick`])
         if (person.unpaidDays > 0) marks.push([AWAY_LOOK.unpaid, `${plural(person.unpaidDays, 'day')} unpaid`])
@@ -298,16 +282,16 @@ export async function timesheetPdf({
         pdf.setFont('helvetica', 'normal')
         pdf.setFontSize(8.5)
         const figures = [
-            h(person.week[0]), h(person.week[1]), null,
-            person.bankHoliday > 0 ? h(person.bankHoliday) : '-',
-            person.holiday > 0 ? h(person.holiday) : '-',
+            fmtHours(person.week[0]), fmtHours(person.week[1]), null,
+            person.bankHoliday > 0 ? fmtHours(person.bankHoliday) : '-',
+            person.holiday > 0 ? fmtHours(person.holiday) : '-',
         ]
         figures.forEach((value, i) => {
             if (value === null) return
             pdf.text(value, mid(i), y, { align: 'center' })
         })
         pdf.setFont('helvetica', 'bold')
-        pdf.text(h(person.worked), mid(2), y, { align: 'center' })
+        pdf.text(fmtHours(person.worked), mid(2), y, { align: 'center' })
 
         if (marks.length) {
             let x = marginX + 2
@@ -332,7 +316,7 @@ export async function timesheetPdf({
     pdf.setFontSize(8.5)
     pdf.setTextColor(...INK)
     pdf.text('Everybody', marginX + 2, y)
-    ;[h(T.week[0]), h(T.week[1]), h(T.worked), h(T.bankHoliday), h(T.holiday)]
+    ;[fmtHours(T.week[0]), fmtHours(T.week[1]), fmtHours(T.worked), fmtHours(T.bankHoliday), fmtHours(T.holiday)]
         .forEach((value, i) => pdf.text(value, mid(i), y, { align: 'center' }))
     y += 8
 
@@ -384,11 +368,11 @@ export async function timesheetPdf({
         // it. Drawn as two things with a gap, it reads as a label and a figure.
         let fx = marginX
         for (const [label, value] of [
-            ['Week 1', h(person.week[0])],
-            ['Week 2', h(person.week[1])],
-            ['Hours worked', h(person.worked)],
-            ['Bank holiday', h(person.bankHoliday)],
-            ['Holiday', h(person.holiday)],
+            ['Week 1', fmtHours(person.week[0])],
+            ['Week 2', fmtHours(person.week[1])],
+            ['Hours worked', fmtHours(person.worked)],
+            ['Bank holiday', fmtHours(person.bankHoliday)],
+            ['Holiday', fmtHours(person.holiday)],
         ]) {
             pdf.setFont('helvetica', 'normal')
             pdf.setFontSize(7)
@@ -453,7 +437,7 @@ export async function timesheetPdf({
                         drawMark(AWAY_LOOK[day.away], awayWords(day), after, y)
                     }
                     pdf.setFont('helvetica', 'bold')
-                    pdf.text(`${h(day.hours)} h`, right, y, { align: 'right' })
+                    pdf.text(`${fmtHours(day.hours)} h`, right, y, { align: 'right' })
                 } else if (day.away && AWAY_LOOK[day.away]) {
                     drawMark(AWAY_LOOK[day.away], awayWords(day), x, y)
                 } else {
@@ -494,7 +478,7 @@ export async function timesheetPdf({
             pdf.setFontSize(8)
             pdf.setTextColor(...INK)
             pdf.text(`Week ${w + 1}`, marginX + 2, y + 1.4)
-            pdf.text(`${h(person.week[w])} h`, right, y + 1.4, { align: 'right' })
+            pdf.text(`${fmtHours(person.week[w])} h`, right, y + 1.4, { align: 'right' })
             y += 8.5
         }
 
@@ -504,18 +488,10 @@ export async function timesheetPdf({
 
     // Every page says what it is and where it sits, because one of them will be
     // printed on its own and queried three months later.
-    const pages = pdf.getNumberOfPages()
-    for (let page = 1; page <= pages; page++) {
-        pdf.setPage(page)
-        pdf.setFont('helvetica', 'italic')
-        pdf.setFontSize(7)
-        pdf.setTextColor(140)
-        pdf.text(
-            `${restaurant?.name || 'Papi Chulo'}, hours, ${period}. Nothing on this page is money.`,
-            marginX, pageHeight - 8,
-        )
-        pdf.text(`Page ${page} of ${pages}`, right, pageHeight - 8, { align: 'right' })
-    }
+    footers(pdf, {
+        left: `${restaurant?.name || 'Papi Chulo'}, hours, ${period}. Nothing on this page is money.`,
+        margin: marginX,
+    })
 
     // Saving is the only part a test skips, since a test has no business
     // putting a file anywhere. The document is handed back either way, so the

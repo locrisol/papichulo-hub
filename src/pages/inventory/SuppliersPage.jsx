@@ -5,11 +5,15 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { can, MANAGERS } from '@/lib/access'
 import ShowInactiveButton from '@/components/ui/ShowInactiveButton'
+import useShowInactive from '@/components/ui/useShowInactive'
 import { friendlyError } from '@/lib/errors'
-import { tableHeadRow, tableHeadCell, tableCard, badge, card, cardHeader, rowButton, pageTitle, primaryButton } from '@/lib/controlStyles'
+import {
+    tableHeadRow, tableHeadCell, tableCard, badge, inactiveBadge, card, cardEdge, cardHeader, rowButton, primaryButton,
+} from '@/lib/controlStyles'
 import SupplierForm from '@/components/inventory/SupplierForm'
 import Modal from '@/components/ui/Modal'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import PageHeader from '@/components/ui/PageHeader'
 
 // Who we buy from.
 //
@@ -25,6 +29,10 @@ import ErrorBanner from '@/components/ui/ErrorBanner'
 //
 // Suppliers are deactivated and never deleted. Old invoices and prices point at
 // them, and those have to keep making sense.
+
+// A supplier still in use. Switched off is the shared red Inactive pill.
+const ACTIVE = `${badge} bg-green-100 text-green-800`
+
 export default function SuppliersPage() {
     const confirm = useConfirm()
     const { user } = useAuth()
@@ -54,9 +62,7 @@ export default function SuppliersPage() {
         contact_phone: '',
         notes: '',
     })
-    const [showInactive, setShowInactive] = useState(() => {
-        return localStorage.getItem('suppliersShowInactive') === 'true'
-    })
+    const [showInactive, setShowInactive] = useShowInactive('suppliersShowInactive')
 
     // The button is hidden from an employee, and this is the other half of that.
     // The preference is kept per browser, so somebody who had it on as a manager
@@ -179,37 +185,22 @@ export default function SuppliersPage() {
 
     return (
         <div>
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-                <div>
-                    <h2 className={pageTitle}>Suppliers</h2>
-                    <p className="text-sm text-gray-500 mt-1">
-                        {isManager ? 'Manage your supplier directory' : 'Who we buy from, and how to reach them'}
-                    </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                    {/* Managers only now, and the button decides that itself.
-                        It used to be offered to everybody, on the grounds that a
-                        filter is not a change. His call on 13 September: a
-                        supplier somebody turned off is not an employee's
-                        business either way. */}
-                    <ShowInactiveButton
-                        showing={showingInactive}
-                        onToggle={() => {
-                            const next = !showInactive
-                            setShowInactive(next)
-                            localStorage.setItem('suppliersShowInactive', next)
-                        }}
-                    />
-                    {isManager && (
-                        <button
-                            onClick={() => { resetForm(); setShowForm(true) }}
-                            className={primaryButton()}
-                        >
-                            + Add Supplier
-                        </button>
-                    )}
-                </div>
-            </div>
+            <PageHeader
+                title="Suppliers"
+                subtitle={isManager ? 'Manage your supplier directory' : 'Who we buy from, and how to reach them'}
+            >
+                {/* Managers only, and the button decides that itself. A
+                    supplier somebody turned off is not an employee's business. */}
+                <ShowInactiveButton showing={showingInactive} onToggle={() => setShowInactive(on => !on)} />
+                {isManager && (
+                    <button
+                        onClick={() => { resetForm(); setShowForm(true) }}
+                        className={primaryButton()}
+                    >
+                        + Add Supplier
+                    </button>
+                )}
+            </PageHeader>
 
             {error && (
                 <ErrorBanner className="mb-4">{error}</ErrorBanner>
@@ -220,7 +211,7 @@ export default function SuppliersPage() {
                     <h3 className={cardHeader}>New supplier</h3>
                     <div className="p-6">
                         <SupplierForm
-                          problem={formProblem}
+                            problem={formProblem}
                             formData={formData}
                             onChange={handleFieldChange}
                             onSubmit={handleSave}
@@ -233,7 +224,7 @@ export default function SuppliersPage() {
             )}
 
             {loading ? (
-                <div className="text-sm text-gray-500">Loading suppliers...</div>
+                <div className="text-sm text-muted">Loading suppliers...</div>
             ) : (
                 <>
                 {/* Cards on a phone, the table on anything wider.
@@ -245,17 +236,13 @@ export default function SuppliersPage() {
                     {filteredSuppliers.map(s => (
                         <div
                             key={s.id}
-                            className={`rounded-xl border p-4 ${
-                                s.is_active ? 'bg-white border-border' : 'bg-red-100 border-red-200'
-                            }`}
+                            className={`${cardEdge} p-4 ${s.is_active ? 'bg-white' : 'bg-red-100'}`}
                         >
                             <div className="flex items-start justify-between gap-2">
                                 <p className={`font-semibold ${s.is_active ? 'text-gray-900' : 'text-muted'}`}>
                                     {s.name}
                                 </p>
-                                <span className={`${badge} flex-shrink-0 ${
-                                    s.is_active ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'
-                                }`}>
+                                <span className={`${s.is_active ? ACTIVE : inactiveBadge} flex-shrink-0`}>
                                     {s.is_active ? 'Active' : 'Inactive'}
                                 </span>
                             </div>
@@ -275,19 +262,19 @@ export default function SuppliersPage() {
                                 links rather than text to copy out by hand. */}
                             <dl className="mt-3 space-y-1.5 text-sm">
                                 <div className="flex items-baseline justify-between gap-3">
-                                    <dt className="text-gray-500">Email</dt>
+                                    <dt className="text-muted">Email</dt>
                                     <dd className="text-right min-w-0 truncate">
                                         {s.contact_email
                                             ? <a href={`mailto:${s.contact_email}`} className="text-blue-700 underline">{s.contact_email}</a>
-                                            : <span className="text-muted">-</span>}
+                                            : <span className="text-muted">—</span>}
                                     </dd>
                                 </div>
                                 <div className="flex items-baseline justify-between gap-3">
-                                    <dt className="text-gray-500">Phone</dt>
+                                    <dt className="text-muted">Phone</dt>
                                     <dd className="text-right">
                                         {s.contact_phone
                                             ? <a href={`tel:${s.contact_phone}`} className="text-blue-700 underline">{s.contact_phone}</a>
-                                            : <span className="text-muted">-</span>}
+                                            : <span className="text-muted">—</span>}
                                     </dd>
                                 </div>
                             </dl>
@@ -340,11 +327,10 @@ export default function SuppliersPage() {
                                                 {s.category}
                                             </span>
                                         </td>
-                                        <td className={`px-4 py-3 ${s.is_active ? 'text-gray-700' : 'text-muted'}`}>{s.contact_email || '-'}</td>
-                                        <td className={`px-4 py-3 ${s.is_active ? 'text-gray-700' : 'text-muted'}`}>{s.contact_phone || '-'}</td>
+                                        <td className={`px-4 py-3 ${s.is_active ? 'text-gray-700' : 'text-muted'}`}>{s.contact_email || '—'}</td>
+                                        <td className={`px-4 py-3 ${s.is_active ? 'text-gray-700' : 'text-muted'}`}>{s.contact_phone || '—'}</td>
                                         <td className="px-4 py-3">
-                                            <span className={`${badge} ${s.is_active ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'
-                                                }`}>
+                                            <span className={s.is_active ? ACTIVE : inactiveBadge}>
                                                 {s.is_active ? 'Active' : 'Inactive'}
                                             </span>
                                         </td>
@@ -380,9 +366,9 @@ export default function SuppliersPage() {
                 down the page. */}
             {editingSupplier && (
                 <Modal title={`Edit ${editingSupplier.name}`} onClose={resetForm} width="max-w-2xl">
-                    <div className="p-6">
+                    <div className="px-6 py-4">
                         <SupplierForm
-                          problem={formProblem}
+                            problem={formProblem}
                             formData={formData}
                             onChange={handleFieldChange}
                             onSubmit={handleSave}

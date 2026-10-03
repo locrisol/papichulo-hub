@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { weeksOpen } from '@/lib/weeklyReport'
 import { useRemoveCard } from '@/components/reports/useRemoveCard'
-import { removeButton } from '@/lib/controlStyles'
+import { removeButton, fieldClass } from '@/lib/controlStyles'
 import AutoTextarea from '@/components/ui/AutoTextarea'
 import AddButton from '@/components/ui/AddButton'
 
@@ -119,7 +119,7 @@ export default function ReportActions({ section, weekStart, canEdit, onAdd, onSa
                                             if (!text) return onRemove(item.id)
                                             if (text !== item.label) onSave(item.id, { label: text })
                                         }}
-                                        className="w-full bg-transparent text-sm text-gray-800 focus:outline-none"
+                                        className="w-full bg-transparent text-base pointer-fine:text-sm text-gray-800 focus:outline-none"
                                     />
                                 ) : (
                                     <p className={`text-sm ${done ? 'text-muted line-through' : 'text-gray-800'}`}>
@@ -170,7 +170,7 @@ export default function ReportActions({ section, weekStart, canEdit, onAdd, onSa
                         onChange={e => setAdding(e.target.value)}
                         onBlur={add}
                         placeholder="What needs doing"
-                        className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 shadow-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
+                        className={fieldClass}
                     />
                     {adding.trim() && (
                         <AddButton

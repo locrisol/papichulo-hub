@@ -12,6 +12,8 @@ import {
   neverEntered,
   neverEnteredInDish,
   noAllergensDeclared,
+  allergenLook,
+  MAY_CONTAIN_MARK,
 } from '@/lib/allergens'
 
 // --- Fixtures ------------------------------------------------------------
@@ -421,5 +423,22 @@ describe('the printed sheet columns', () => {
     for (const key of SHEET_ORDER) {
       expect(ALLERGEN_SHORT[key].split(' '), key).toHaveLength(1)
     }
+  })
+})
+
+// Red and amber were the only difference between the two on a chip, which a
+// colour blind customer cannot see.
+describe('allergenLook', () => {
+  it('marks may contain with the same ~ the printed sheet uses', () => {
+    expect(MAY_CONTAIN_MARK).toBe('~')
+    expect(allergenLook('may_contain').mark).toBe('~')
+  })
+
+  it('leaves contains unmarked, so the two never look alike', () => {
+    expect(allergenLook('contains').mark).toBe('')
+  })
+
+  it('has no look at all for none', () => {
+    expect(allergenLook('none')).toBeNull()
   })
 })

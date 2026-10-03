@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen, fireEvent, waitFor } from '@testing-library/react'
+import { screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { mockSupabase, makeQuery, renderWithRouter, tableOf } from '@/test/helpers'
 import { todayISO, weekStartOf, addDays } from '@/lib/dates'
 
@@ -374,5 +374,38 @@ describe('a request already answered', () => {
 
         expect(await screen.findAllByText('Turned down')).toHaveLength(1)
         await waitFor(() => expect(screen.getAllByText('Turned down')).toHaveLength(1))
+    })
+})
+
+// Asking somebody to take a shift happens in a dialog that covers the page.
+// A failed send went into the page's own line, behind the dialog, so the
+// person holding it open saw nothing happen and pressed Send again.
+describe('an ask that fails to send', () => {
+    const monday = addDays(weekStartOf(todayISO()), 1)
+    const mine = {
+        id: 's1', restaurant_id: 'r1', employee_id: 'e1', shift_date: monday,
+        starts_at: '09:00:00', ends_at: '17:00:00', break_minutes: 30, note: null,
+        published_at: '2026-09-01T10:00:00Z',
+    }
+
+    it('says so inside the dialog, and starts clean when it opens again', async () => {
+        tables({ shift_requests: { data: null, error: { message: 'Failed to fetch' } } })
+        const plain = db.from
+        db.from = vi.fn(table => (table === 'roster_published' ? filtered([mine]) : plain(table)))
+
+        renderWithRouter(<MyShiftsPage />)
+        fireEvent.click(await screen.findByRole('button', { name: 'Ask somebody to take this' }))
+        const dialog = await screen.findByRole('dialog')
+        fireEvent.click(within(dialog).getByRole('button', { name: /Ben Test/ }))
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Send the ask' }))
+
+        expect(await within(dialog).findByRole('alert'))
+            .toHaveTextContent('Could not reach the server. Check your connection and try again.')
+        expect(screen.getAllByRole('alert')).toHaveLength(1)
+
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+        await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+        fireEvent.click(screen.getByRole('button', { name: 'Ask somebody to take this' }))
+        expect(within(await screen.findByRole('dialog')).queryByRole('alert')).toBeNull()
     })
 })

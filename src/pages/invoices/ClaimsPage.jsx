@@ -4,8 +4,8 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
 import { useConfirm } from '@/context/confirm'
-import { fmtMoney } from '@/lib/format'
-import { todayISO, shortDate, fullDate, addDays } from '@/lib/dates'
+import { fmtMoney, fmtPct } from '@/lib/format'
+import { todayISO, shortDate, addDays } from '@/lib/dates'
 import { orderByUse } from '@/lib/supplierOrder'
 import { numberField } from '@/lib/numberInput'
 import { friendlyError } from '@/lib/errors'
@@ -13,14 +13,16 @@ import { can, MANAGERS } from '@/lib/access'
 import { unitWord } from '@/lib/invoiceReport'
 import {
     claimKind, doorClaimPayload, claimWorking, notTheDocket, claimDetached, canDetach, claimReopened, claimTakesOff, claimIsOpen, claimSaid, claimCountSaid, claimWeek, sentWeeks, fromEarlierWeeks,
-    canEditClaim, claimChanged, keepsItsAmount, claimOverLine, priceQueryStart,
+    canEditClaim, claimChanged, keepsItsAmount, amountFixed, wordsOnly, claimOverLine, priceQueryStart,
     claimCandidates, claimMatch, otherDeliveries, byInvoice, chasingList, isLate, LATE_AFTER_DAYS, bySupplier,
 } from '@/lib/invoiceClaims'
 import {
-    card, cardHeader, pageTitle, primaryButton, secondaryButton, rowButton, badge,
-    hintClass, captionClass, tableCard, tableHeadRow, tableHeadCell, compactField, infoNote,
+    card, cardHeader, primaryButton, secondaryButton, rowButton, badge,
+    hintClass, tableCard, tableHeadRow, tableHeadCell, denseField, infoNote,
 } from '@/lib/controlStyles'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import Notice from '@/components/ui/Notice'
+import PageHeader from '@/components/ui/PageHeader'
 import DoorClaimModal from '@/components/invoices/DoorClaimModal'
 
 // What was wrong with a delivery, and what has come back.
@@ -71,13 +73,11 @@ function lineName(line) {
     return [line?.raw_description, line?.pack_size].filter(Boolean).join(' ')
 }
 
-// Where a changed claim's money comes off: the week it already had (reweigh).
-// What that report took off is not said. The claim's amount now is the last
-// change's, not what it was the day the report went out.
-function keptSaid({ week, gone }) {
-    return gone
-        ? `The report for the week of ${shortDate(week)} has already gone out. That report stays as it was sent.`
-        : `It still comes off the week of ${shortDate(week)}.`
+// A change to the money once that week's report has gone out (amountFixed),
+// when the page did not know yet: it went out while the form was open.
+function fixedSaid(claim) {
+    return `The report for the week of ${shortDate(claim.counted_week)} has gone out, so this claim stays at `
+        + `${fmtMoney(claim.amount)}. Only what it was and the note can change now.`
 }
 
 export default function ClaimsPage() {
@@ -90,6 +90,8 @@ export default function ClaimsPage() {
     const [claims, setClaims] = useState([])
     const [invoices, setInvoices] = useState([])
     const [suppliers, setSuppliers] = useState([])
+    // The weeks whose report has gone out, for amountFixed.
+    const [sent, setSent] = useState([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
     const [said, setSaid] = useState('')
@@ -110,7 +112,7 @@ export default function ClaimsPage() {
             setError('')
             const from = addDays(todayISO(), -LOOK_BACK_DAYS)
 
-            const [sup, cl, inv] = await Promise.all([
+            const [sup, cl, inv, gone] = await Promise.all([
                 supabase.from('suppliers').select('id, name').eq('is_active', true),
                 // An employee reads their own through my_claims, which has no
                 // euros: no amount, nothing credited, no invoice. With no
@@ -140,10 +142,11 @@ export default function ClaimsPage() {
                         .order('invoice_date', { ascending: false })
                         .order('id')
                     : Promise.resolve({ data: [] }),
+                manager ? sentWeeks(supabase, restaurantId) : Promise.resolve({ weeks: [] }),
             ])
 
             if (!alive) return
-            const failed = sup.error || cl.error || inv.error
+            const failed = sup.error || cl.error || inv.error || gone.error
             if (failed) { setError(friendlyError(failed)); setLoading(false); return }
 
             // Most used first, the order the Invoices page offers them in. An
@@ -153,6 +156,7 @@ export default function ClaimsPage() {
             setSuppliers(orderByUse(sup.data || [], [...(inv.data || []), ...(cl.data || [])]))
             setClaims(cl.data || [])
             setInvoices(inv.data || [])
+            setSent(gone.weeks || [])
             setLoading(false)
         }
 
@@ -252,15 +256,16 @@ export default function ClaimsPage() {
     }
 
     // The same working for a claim already on a line whose count was changed.
-    // Its week was decided when it went on the line and stays. A report sent
-    // for that week stays as it was sent, so that is said rather than left to
-    // be found.
+    // Its week was decided when it went on the line and stays. Asked again
+    // here, because a report can go out while the form is open, and then the
+    // money stays as it is (amountFixed).
     async function reweigh(claim, changed, line, priced = {}) {
         const working = claimWorking(changed, line, priced, { changing: true })
         if (working.problem) return { problem: working.problem }
-        const { weeks: sent, error: e0 } = await sentWeeks(supabase, restaurantId)
+        const { weeks: now, error: e0 } = await sentWeeks(supabase, restaurantId)
         if (e0) return { problem: friendlyError(e0) }
-        return { ...working, kept: { week: claim.counted_week, gone: sent.includes(claim.counted_week) } }
+        if (amountFixed(claim, now)) return { problem: fixedSaid(claim) }
+        return { ...working, kept: claim.counted_week }
     }
 
     // Three full cases typed for three single items, say. Only while it is as
@@ -271,7 +276,13 @@ export default function ClaimsPage() {
     async function change(claim, patch) {
         setError('')
         setSaid('')
+        const moved = claim.invoice_line_id && Number(patch.amount) !== Number(claim.amount)
         setBusy(claim.id)
+        // Read back and left open, the report can have gone out since.
+        if (moved) {
+            const { weeks: now, error: e0 } = await sentWeeks(supabase, restaurantId)
+            if (e0 || amountFixed(claim, now)) { setBusy(''); return e0 ? friendlyError(e0) : fixedSaid(claim) }
+        }
         const guarded = supabase.from('invoice_line_claims')
             .update(patch)
             .eq('id', claim.id)
@@ -284,7 +295,6 @@ export default function ClaimsPage() {
         ).select('id')
         setBusy('')
         if (e1) return friendlyError(e1)
-        const moved = claim.invoice_line_id && Number(patch.amount) !== Number(claim.amount)
         setSaid(changedSince(data)
             || (moved ? `Changes saved. The claim is ${fmtMoney(patch.amount)} now.` : 'Changes saved.'))
         setRefresh(n => n + 1)
@@ -417,21 +427,15 @@ export default function ClaimsPage() {
 
     return (
         <>
-            <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
-                <div>
-                    <h2 className={pageTitle}>Delivery problems</h2>
-                    <p className="text-sm text-gray-500 mt-1">{activeRestaurant?.name}</p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                    <button type="button" onClick={() => setLogging(true)} className={primaryButton()}>
-                        Log a problem
-                    </button>
-                    {manager && <Link to="/invoices/import" className={secondaryButton}>Import invoices</Link>}
-                </div>
-            </div>
+            <PageHeader title="Delivery problems" subtitle={activeRestaurant?.name}>
+                <button type="button" onClick={() => setLogging(true)} className={primaryButton()}>
+                    Log a problem
+                </button>
+                {manager && <Link to="/invoices/import" className={secondaryButton}>Import invoices</Link>}
+            </PageHeader>
 
-            {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
-            {said && <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{said}</div>}
+            <ErrorBanner className="mb-4">{error}</ErrorBanner>
+            <Notice tone="good" className="mb-4">{said}</Notice>
 
             <div className={`${card} p-4 mb-6`}>
                 <p className="text-sm text-gray-900">
@@ -481,6 +485,7 @@ export default function ClaimsPage() {
                                     days={days}
                                     late={isLate({ days })}
                                     manager={manager}
+                                    fixed={amountFixed(claim, sent)}
                                     busy={busy === claim.id}
                                     suppliers={suppliers}
                                     invoices={invoices}
@@ -502,58 +507,52 @@ export default function ClaimsPage() {
                 able to put a number on: how much of what was asked for came
                 back, and how long it took. */}
             {!loading && manager && perSupplier.length > 0 && (
-                <div className={`${tableCard} mb-6`}>
-                    <table className="w-full">
-                        <thead>
-                            <tr className={tableHeadRow}>
-                                <th className={`${tableHeadCell} text-left px-4 py-2`}>Supplier</th>
-                                <th className={`${tableHeadCell} text-right px-4 py-2`}>Asked</th>
-                                <th className={`${tableHeadCell} text-right px-4 py-2`}>Back</th>
-                                <th className={`${tableHeadCell} text-right px-4 py-2`}>Waiting</th>
-                                <th className={`${tableHeadCell} text-right px-4 py-2`}>Usual wait</th>
-                                <th className={`${tableHeadCell} text-right px-4 py-2`}>Oldest</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-border">
-                            {perSupplier.map(row => (
-                                <tr key={row.supplierId || 'none'}>
-                                    <td className="px-4 py-2 text-sm text-gray-900">
-                                        {row.name}
-                                        <span className="text-xs text-muted">
-                                            {' '}&#183; {row.raised} raised
-                                            {row.refused ? `, ${row.refused} refused` : ''}
-                                        </span>
-                                    </td>
-                                    <td className="px-4 py-2 text-sm text-right tabular-nums">
-                                        {fmtMoney(row.asked)}
-                                    </td>
-                                    <td className="px-4 py-2 text-sm text-right tabular-nums">
-                                        {fmtMoney(row.credited)}
-                                        {row.backPct != null && (
-                                            <span className="text-xs text-muted"> {row.backPct}%</span>
-                                        )}
-                                    </td>
-                                    <td className="px-4 py-2 text-sm text-right tabular-nums font-semibold">
-                                        {row.waiting > 0 ? fmtMoney(row.waiting) : ''}
-                                    </td>
-                                    <td className="px-4 py-2 text-sm text-right tabular-nums text-muted">
-                                        {row.typicalDays == null
-                                            ? ''
-                                            : `${row.typicalDays} ${row.typicalDays === 1 ? 'day' : 'days'}`}
-                                    </td>
-                                    <td className={`px-4 py-2 text-sm text-right tabular-nums ${
-                                        row.oldest >= LATE_AFTER_DAYS ? 'font-bold text-amber-800' : 'text-muted'
-                                    }`}
-                                    >
-                                        {row.oldest == null
-                                            ? ''
-                                            : `${row.oldest} ${row.oldest === 1 ? 'day' : 'days'}`}
-                                    </td>
+                <>
+                    {/* One card a supplier on a phone, where six columns
+                        would scroll sideways. */}
+                    <div className="md:hidden space-y-3 mb-6">
+                        {perSupplier.map(row => (
+                            <div key={row.supplierId || 'none'} className={`${card} p-4`}>
+                                <SupplierName row={row} />
+                                <dl className="mt-3 space-y-1.5 text-sm">
+                                    {supplierFigures(row).map(({ label, value, tone }) => (
+                                        <div key={label} className="flex items-baseline justify-between gap-3">
+                                            <dt className="text-muted">{label}</dt>
+                                            <dd className={`text-right tabular-nums ${tone}`}>{value}</dd>
+                                        </div>
+                                    ))}
+                                </dl>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className={`${tableCard} hidden md:block mb-6`}>
+                        <table className="w-full">
+                            <thead>
+                                <tr className={tableHeadRow}>
+                                    <th className={`${tableHeadCell} text-left px-4 py-2`}>Supplier</th>
+                                    {SUPPLIER_FIGURES.map(label => (
+                                        <th key={label} className={`${tableHeadCell} text-right px-4 py-2`}>{label}</th>
+                                    ))}
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
+                            </thead>
+                            <tbody className="divide-y divide-border">
+                                {perSupplier.map(row => (
+                                    <tr key={row.supplierId || 'none'}>
+                                        <td className="px-4 py-2">
+                                            <SupplierName row={row} />
+                                        </td>
+                                        {supplierFigures(row).map(({ label, value, tone }) => (
+                                            <td key={label} className={`px-4 py-2 text-sm text-right tabular-nums ${tone}`}>
+                                                {value}
+                                            </td>
+                                        ))}
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </>
             )}
 
             {!loading && settled.length > 0 && (
@@ -596,8 +595,50 @@ export default function ClaimsPage() {
     )
 }
 
+// The figures on each supplier, in the order the table heads them. Worked
+// out once, so the phone cards and the table cannot say different things.
+const SUPPLIER_FIGURES = ['Asked', 'Back', 'Waiting', 'Usual wait', 'Oldest']
+
+function daysWords(days) {
+    return days == null ? '—' : `${days} ${days === 1 ? 'day' : 'days'}`
+}
+
+function supplierFigures(row) {
+    const figures = {
+        Asked: { value: fmtMoney(row.asked), tone: '' },
+        Back: {
+            value: (
+                <>
+                    {fmtMoney(row.credited)}
+                    {row.backPct != null && <span className="text-xs text-muted"> {fmtPct(row.backPct)}</span>}
+                </>
+            ),
+            tone: '',
+        },
+        Waiting: { value: row.waiting > 0 ? fmtMoney(row.waiting) : '—', tone: 'font-semibold' },
+        'Usual wait': { value: daysWords(row.typicalDays), tone: 'text-muted' },
+        Oldest: {
+            value: daysWords(row.oldest),
+            tone: row.oldest >= LATE_AFTER_DAYS ? 'font-bold text-amber-800' : 'text-muted',
+        },
+    }
+    return SUPPLIER_FIGURES.map(label => ({ label, ...figures[label] }))
+}
+
+function SupplierName({ row }) {
+    return (
+        <p className="text-sm text-gray-900">
+            {row.name}
+            <span className="text-xs text-muted">
+                {' '}&#183; {row.raised} raised
+                {row.refused ? `, ${row.refused} refused` : ''}
+            </span>
+        </p>
+    )
+}
+
 function ClaimRow({
-    claim, balance, days, late, manager, busy, suppliers, invoices, onWeigh, onReweigh, onAttach, onChange, onDetach, onClose,
+    claim, balance, days, late, manager, fixed, busy, suppliers, invoices, onWeigh, onReweigh, onAttach, onChange, onDetach, onClose,
 }) {
     const kind = claimKind(claim.kind)
     const supplier = suppliers.find(s => s.id === claim.supplier_id)
@@ -651,14 +692,16 @@ function ClaimRow({
     }
 
     // From the form. On no line it saves as it is, and so does a price query
-    // with only its words changed (keepsItsAmount). On a line the money is
+    // with only its words changed (keepsItsAmount), and one whose week's
+    // report has gone out, with only its words (amountFixed). On a line the money is
     // worked out first, and a count the line cannot hold goes back to the
     // form, where the numbers can be fixed, a price query's before its price
     // is asked; that price is then asked on the row, the same as putting it
     // on a line.
     async function edited(form) {
-        if (!claim.invoice_line_id || keepsItsAmount(claim, form)) {
-            const failed = await onChange(claim, claimChanged(claim, form, { amount: claim.amount }))
+        if (!claim.invoice_line_id || fixed || keepsItsAmount(claim, form)) {
+            const said = fixed ? wordsOnly(claim, form) : form
+            const failed = await onChange(claim, claimChanged(claim, said, { amount: claim.amount }))
             if (!failed) setEditing(false)
             return failed
         }
@@ -704,7 +747,7 @@ function ClaimRow({
                         <span className="text-sm font-bold text-gray-900">{claim.what}</span>
                     </div>
                     <p className="text-xs text-muted mt-1">
-                        {supplier?.name || 'Unknown supplier'}, {fullDate(claim.raised_on)}
+                        {supplier?.name || 'Unknown supplier'}, {shortDate(claim.raised_on)}
                         {claim.docket_number ? `, docket ${claim.docket_number}` : ', no docket number'}
                         {said && <>{' '}&#183; {said}</>}
                     </p>
@@ -804,15 +847,17 @@ function ClaimRow({
                                 {fmtMoney(pricing.line.price_per_case)} a case. What should they have charged?
                             </label>
                             <div className="flex flex-wrap items-center gap-2">
-                                <input
-                                    id={`agreed-${claim.id}`}
-                                    {...numberField({
-                                        value: pricing.agreed,
-                                        onChange: agreed => setPricing(p => ({ ...p, agreed })),
-                                        decimals: 2,
-                                    })}
-                                    className={`${compactField} w-28`}
-                                />
+                                <div className="w-28">
+                                    <input
+                                        id={`agreed-${claim.id}`}
+                                        {...numberField({
+                                            value: pricing.agreed,
+                                            onChange: agreed => setPricing(p => ({ ...p, agreed })),
+                                            decimals: 2,
+                                        })}
+                                        className={denseField}
+                                    />
+                                </div>
                                 <button
                                     type="button"
                                     disabled={busy || weighing || pricing.agreed === ''}
@@ -860,7 +905,7 @@ function ClaimRow({
                             </p>
                             <p>
                                 {confirming.kept
-                                    ? keptSaid(confirming.kept)
+                                    ? `It still comes off the week of ${shortDate(confirming.kept)}.`
                                     : confirming.moved
                                         ? `The report for the week of ${shortDate(confirming.delivered)} has gone out, `
                                             + `so it comes off the week of ${shortDate(confirming.week)}.`
@@ -885,7 +930,13 @@ function ClaimRow({
             )}
 
             {editing && (
-                <DoorClaimModal claim={claim} suppliers={suppliers} onClose={() => setEditing(false)} onSave={edited} />
+                <DoorClaimModal
+                    claim={claim}
+                    fixed={fixed}
+                    suppliers={suppliers}
+                    onClose={() => setEditing(false)}
+                    onSave={edited}
+                />
             )}
 
             {manager && (
@@ -915,7 +966,7 @@ function ClaimRow({
             )}
 
             {!manager && (
-                <p className={`${captionClass} mt-2 normal-case tracking-normal font-normal text-muted`}>
+                <p className="text-xs text-muted mt-2">
                     Logged. A manager will put it against the invoice once it comes in.
                 </p>
             )}
@@ -933,7 +984,7 @@ function LinePicker({ lines, note, busy, onChoose }) {
     const groups = byInvoice(lines)
 
     if (!groups.length) {
-        return <p className={`${hintClass} mt-2`}>No invoice from them has come in for around that day.</p>
+        return <p className="text-xs text-muted mt-2">No invoice from them has come in for around that day.</p>
     }
 
     return (

@@ -1,7 +1,8 @@
-import { weekDates, shortDate } from '@/lib/dates'
-import { DAY_NAMES } from '@/lib/events'
-import { bandsForWeek, kindChip } from '@/lib/diary'
+import { weekDates, dayLabel } from '@/lib/dates'
+import { bandsForWeek } from '@/lib/diary'
+import { iconButton } from '@/lib/controlStyles'
 import DiaryChip from './DiaryChip'
+import DiaryBand from './DiaryBand'
 
 // One week, which is the shape anybody rostering is actually working in.
 //
@@ -31,13 +32,7 @@ export default function DiaryWeek({ weekStart, today, byDate, onOpen, onAdd, can
                         <div key={entry.id} className="grid grid-cols-7 py-0.5">
                             {start > 0 && <div style={{ gridColumn: `span ${start}` }} />}
                             <div style={{ gridColumn: `span ${span}` }} className="px-0.5">
-                                {(() => {
-                                    const look = `block w-full text-left truncate rounded-md border-l-[3px] px-2 py-1 text-xs font-bold ${kindChip(entry.kind)}`
-                                    const inside = <>{runsIn && '‹ '}{entry.title}{runsOn && ' ›'}</>
-                                    return canEdit
-                                        ? <button type="button" onClick={() => onOpen(entry)} className={look}>{inside}</button>
-                                        : <span className={look}>{inside}</span>
-                                })()}
+                                <DiaryBand entry={entry} runsIn={runsIn} runsOn={runsOn} canEdit={canEdit} onOpen={onOpen} />
                             </div>
                         </div>
                     ))}
@@ -45,21 +40,26 @@ export default function DiaryWeek({ weekStart, today, byDate, onOpen, onAdd, can
             )}
 
             <div className="grid grid-cols-1 sm:grid-cols-7">
-                {dates.map((date, i) => (
+                {dates.map(date => (
                     <div
                         key={date}
                         className={`border-b sm:border-b-0 sm:border-r border-border last:border-r-0 last:border-b-0 ${date === today ? 'bg-accent-light/40' : 'bg-white'}`}
                     >
-                        <div className="flex items-center justify-between gap-2 px-2 py-1.5 bg-gray-50 sm:bg-transparent border-b border-border">
-                            <span className={`text-xs font-bold ${date === today ? 'text-accent-ink' : 'text-gray-700'}`}>
-                                {DAY_NAMES[i]} {shortDate(date)}
+                        {/* On a phone and on a wide screen the + sits beside
+                            the date. In between, a column is too narrow for a
+                            thumb sized + and the date both, so the + goes under
+                            it. The date is held at two lines there, the most it
+                            takes, so all seven headers line up. */}
+                        <div className="flex items-center justify-between gap-x-2 sm:flex-col sm:items-start xl:flex-row xl:items-center px-2 py-1.5 bg-gray-50 sm:bg-transparent border-b border-border">
+                            <span className={`min-w-0 text-xs font-bold sm:min-h-[2rem] xl:min-h-0 ${date === today ? 'text-accent-ink' : 'text-gray-700'}`}>
+                                {dayLabel(date)}
                             </span>
                             {canEdit && (
                                 <button
                                     type="button"
                                     onClick={() => onAdd(date)}
                                     aria-label={`Add something on ${date}`}
-                                    className="text-muted hover:text-accent-ink text-base leading-none px-1"
+                                    className={`${iconButton} sm:self-center xl:self-auto`}
                                 >
                                     +
                                 </button>
@@ -74,23 +74,9 @@ export default function DiaryWeek({ weekStart, today, byDate, onOpen, onAdd, can
                             <span className="sm:hidden contents">
                                 {bands.filter(b => dates.indexOf(date) >= b.start
                                     && dates.indexOf(date) < b.start + b.span)
-                                    .map(b => (canEdit ? (
-                                        <button
-                                            key={b.entry.id}
-                                            type="button"
-                                            onClick={() => onOpen(b.entry)}
-                                            className={`block w-full text-left truncate rounded-md border-l-[3px] px-1.5 py-1 text-xs font-bold ${kindChip(b.entry.kind)}`}
-                                        >
-                                            {b.entry.title}
-                                        </button>
-                                    ) : (
-                                        <span
-                                            key={b.entry.id}
-                                            className={`block w-full text-left truncate rounded-md border-l-[3px] px-1.5 py-1 text-xs font-bold ${kindChip(b.entry.kind)}`}
-                                        >
-                                            {b.entry.title}
-                                        </span>
-                                    )))}
+                                    .map(b => (
+                                        <DiaryBand key={b.entry.id} entry={b.entry} canEdit={canEdit} onOpen={onOpen} />
+                                    ))}
                             </span>
 
                             {rest(date).map(item => (

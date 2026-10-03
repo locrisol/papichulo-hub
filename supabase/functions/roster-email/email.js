@@ -30,6 +30,19 @@ export function escapeHtml(value) {
         .replace(/"/g, '&quot;')
 }
 
+// Typed text with its line breaks kept, the same as the report's own copy: a
+// function only deploys what is inside its own folder. HTML reads a line break
+// as a space, so a note typed over two lines arrived as one.
+export function escapeLines(text) {
+    return String(text ?? '')
+        .split(/\r?\n/)
+        .map(l => escapeHtml(l.trimEnd()))
+        .join('<br />')
+}
+
+// The same text for the plain copy, with nothing left at the end of a line.
+const trimLines = text => String(text ?? '').split(/\r?\n/).map(l => l.trimEnd()).join('\n')
+
 export function fmtDate(iso) {
     if (!iso) return ''
     const d = new Date(String(iso).length === 10 ? iso + 'T00:00:00Z' : iso)
@@ -87,7 +100,10 @@ export function noticeWords(absence, now) {
     const asked = new Date(String(absence.created_at || now))
     const start = new Date(absence.starts_on + 'T00:00:00Z')
     if (isNaN(asked) || isNaN(start)) return ''
-    const days = Math.round((start - new Date(asked.toISOString().slice(0, 10) + 'T00:00:00Z')) / 86400000)
+    // The day it was asked in Ireland, not in UTC: asked at half twelve at
+    // night in summer is still yesterday in UTC, and counted a day too many.
+    const askedOn = asked.toLocaleDateString('en-CA', { timeZone: 'Europe/Dublin' })
+    const days = Math.round((start - new Date(askedOn + 'T00:00:00Z')) / 86400000)
     if (days < 0) return ''
     if (days === 0) return 'Asked for today'
     return `Asked ${days} ${days === 1 ? 'day' : 'days'} ahead`
@@ -95,15 +111,24 @@ export function noticeWords(absence, now) {
 
 // ---------------------------------------------------------------- the shell
 
+// The small line over the name, in a solid colour for each band. Classic
+// Outlook drops a see-through one; these are white at three quarters on each.
+const BAND_SOFT = { [GREEN]: '#CBDED4', [RED]: '#EEC6C6' }
+
 function shell({ restaurantName, bandColour, bandText, body, footer }) {
     return `<!doctype html>
-<html><body style="margin:0;padding:0;background:${CREAM};">
+<html lang="en"><head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="x-apple-disable-message-reformatting" />
+<meta name="format-detection" content="telephone=no,date=no,address=no,email=no" />
+</head><body style="margin:0;padding:0;background:${CREAM};">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${CREAM};padding:24px 12px;">
 <tr><td align="center">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border:1px solid ${BORDER};border-radius:12px;overflow:hidden;font-family:${FONT};">
 
 <tr><td style="background:${bandColour};padding:18px 24px;">
-  <div style="font-size:12px;letter-spacing:1.6px;color:rgba(255,255,255,0.75);font-weight:700;">PAPI CHULO</div>
+  <div style="font-size:12px;letter-spacing:1.6px;color:${BAND_SOFT[bandColour] || '#ffffff'};font-weight:700;">PAPI CHULO</div>
   <div style="font-size:18px;color:#ffffff;font-weight:700;margin-top:2px;">${escapeHtml(bandText || restaurantName)}</div>
 </td></tr>
 
@@ -404,7 +429,7 @@ export function swapAskEmail({ request, halves, nameOf, restaurantName, appUrl }
     const rows = [
         mine.length > 0 ? ['You take', halfLines(mine, nameOf, meId)] : null,
         theirs.length > 0 ? ['You give', halfLines(theirs, nameOf, meId)] : null,
-        request.message ? ['Their note', `<em>&ldquo;${escapeHtml(request.message)}&rdquo;</em>`] : null,
+        request.message ? ['Their note', `<em>&ldquo;${escapeLines(request.message)}&rdquo;</em>`] : null,
     ]
 
     const body = `<p style="margin:0;font-size:17px;font-weight:700;">${escapeHtml(headline)}</p>
@@ -419,7 +444,7 @@ ${button(appUrl ? `${appUrl}/my-shifts` : '', 'Answer it')}
         '',
         ...mine.map(h => halfWords(h, nameOf, meId)),
         ...theirs.map(h => halfWords(h, nameOf, meId)),
-        request.message ? `Their note: "${request.message}"` : null,
+        request.message ? `Their note: "${trimLines(request.message)}"` : null,
         '',
         'Saying yes does not change the roster on its own. A manager still has to approve it.',
         appUrl ? `${appUrl}/my-shifts` : null,
@@ -497,7 +522,7 @@ export function swapDeskEmail({ request, halves, nameOf, restaurantName, appUrl 
 
     const rows = [
         ['What they agreed', halfLines(halves, nameOf, null)],
-        request.message ? ['Their note', `<em>&ldquo;${escapeHtml(request.message)}&rdquo;</em>`] : null,
+        request.message ? ['Their note', `<em>&ldquo;${escapeLines(request.message)}&rdquo;</em>`] : null,
     ]
 
     const body = `<p style="margin:0;font-size:17px;font-weight:700;">${escapeHtml(asker)} and ${escapeHtml(them)} agreed a swap</p>
@@ -511,7 +536,7 @@ ${button(appUrl ? `${appUrl}/roster` : '', 'Open the roster')}
         `${asker} and ${them} agreed a shift swap.`,
         '',
         ...halves.map(h => halfWords(h, nameOf, null)),
-        request.message ? `Their note: "${request.message}"` : null,
+        request.message ? `Their note: "${trimLines(request.message)}"` : null,
         '',
         'The roster does not change until you approve it.',
         appUrl ? `${appUrl}/roster` : null,

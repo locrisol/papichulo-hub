@@ -3,7 +3,7 @@ import { useConfirm } from '@/context/confirm'
 import { supabase } from '@/lib/supabase'
 import { useRestaurant } from '@/context/restaurant'
 import { friendlyError } from '@/lib/errors'
-import { tableHeadRow, modalFooter, rowButton, secondaryButton, fieldClass, primaryButton } from '@/lib/controlStyles'
+import { tableHeadRow, modalFooter, rowButton, secondaryButton, fieldClass, denseField, inactiveBadge, hintClass, primaryButton } from '@/lib/controlStyles'
 import ArrangeList from '@/components/ui/ArrangeList'
 import { ModalSectionBar } from '@/components/ui/ModalSection'
 import Modal from '@/components/ui/Modal'
@@ -223,14 +223,14 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
               type="text"
               value={editName}
               onChange={e => setEditName(e.target.value)}
-              className="w-full border border-border rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+              className={denseField}
             />
           </td>
           <td className="px-3 py-2">
             <select
               value={editBucket}
               onChange={e => setEditBucket(e.target.value)}
-              className="w-full border border-border rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+              className={denseField}
             >
               {BUCKETS.map(b => (
                 <option key={b.value} value={b.value}>{b.label}</option>
@@ -262,8 +262,8 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
         <td className={`px-3 py-2 font-medium ${p.is_active ? 'text-gray-900' : 'text-muted'}`}>
           {p.name}
         </td>
-        <td className={`px-3 py-2 text-xs ${p.is_active ? 'text-gray-700' : 'text-muted'}`}>
-          {p.is_active ? 'Active' : 'Inactive'}
+        <td className="px-3 py-2 text-xs text-gray-700">
+          {p.is_active ? 'Active' : <span className={inactiveBadge}>Retired</span>}
         </td>
         <td className="px-3 py-2">
           <div className="flex gap-3">
@@ -277,7 +277,7 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
               onClick={() => toggleActive(p)}
               className={rowButton(p.is_active ? 'danger' : 'good')}
             >
-              {p.is_active ? 'Deactivate' : 'Reactivate'}
+              {p.is_active ? 'Retire' : 'Bring back'}
             </button>
           </div>
         </td>
@@ -343,9 +343,9 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
                       <span className={`text-sm font-semibold ${p.is_active ? 'text-gray-900' : 'text-muted'}`}>
                         {p.name}
                       </span>
-                      <span className={`text-xs whitespace-nowrap ${p.is_active ? 'text-green-700' : 'text-muted'}`}>
-                        {p.is_active ? 'Active' : 'Retired'}
-                      </span>
+                      {p.is_active
+                        ? <span className="text-xs whitespace-nowrap text-green-700">Active</span>
+                        : <span className={inactiveBadge}>Retired</span>}
                     </div>
                     <div className="flex flex-wrap gap-3 mt-2 pt-2 border-t border-border">
                       <button onClick={() => startEdit(p)} className={rowButton('edit')}>Edit</button>
@@ -386,7 +386,7 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
             <ErrorBanner className="mb-4">{error}</ErrorBanner>
           )}
 
-          <p className="text-xs text-gray-500 mb-4">
+          <p className="text-xs text-muted mb-4">
             Platforms feed the Online Platform and Corporate totals on the sales entry form. Retire one rather than deleting it, so weeks already entered keep their figures. Arrange sets the order they appear in.
           </p>
 
@@ -408,14 +408,14 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
                   value={newName}
                   onChange={e => setNewName(e.target.value)}
                   placeholder="Platform name"
-                  className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+                  className={fieldClass}
                 />
               </div>
               <div className="w-40">
                 <select
                   value={newBucket}
                   onChange={e => setNewBucket(e.target.value)}
-                  className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+                  className={fieldClass}
                 >
                   {BUCKETS.map(b => (
                     <option key={b.value} value={b.value}>{b.label}</option>
@@ -429,7 +429,7 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
                 Add
               </button>
             </form>
-            <p className="text-xs text-muted mt-2">
+            <p className={hintClass}>
               A new platform goes on the end of its group. Use Arrange to move it.
             </p>
           </div>

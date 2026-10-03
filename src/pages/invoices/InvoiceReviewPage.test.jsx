@@ -65,7 +65,7 @@ describe('how far back it asks', () => {
         tables.invoice_lines = [line('l1', '777001', 'BASMATI RICE', 14.5)]
         renderWithRouter(<InvoiceReviewPage />)
         expect(await screen.findByText('BASMATI RICE')).toBeInTheDocument()
-        expect(screen.getByText('Point Campus, 1 line waiting')).toBeInTheDocument()
+        expect(screen.getByText('Point Campus · 1 line waiting')).toBeInTheDocument()
     })
 
     it('has no date to look back to', async () => {

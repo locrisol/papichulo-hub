@@ -3,6 +3,7 @@ import { fullDate } from '@/lib/dates'
 import { card, badge, rowButton } from '@/lib/controlStyles'
 import { invoiceCategory } from '@/lib/invoiceCategories'
 import { PILES, documentTotal } from '@/lib/invoiceImport'
+import Notice from '@/components/ui/Notice'
 
 // One file, read, before anybody presses anything.
 //
@@ -58,7 +59,7 @@ export default function DocumentCard({ file, busy, onForget, onLinkAccount, onFi
             {/* Which restaurant's costs this lands in, which is the one thing on
                 the paper that cannot be worked out any other way. */}
             {where?.what === 'unknown' && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3 text-xs text-amber-900">
+                <Notice tone="warn" className="mb-3">
                     <strong className="font-bold">Account {where.accountNo} is new.</strong>{' '}
                     Nothing in the Hub says whose it is. Suppliers are shared between the two
                     restaurants, so this is the only thing on the page that says where the money
@@ -66,15 +67,15 @@ export default function DocumentCard({ file, busy, onForget, onLinkAccount, onFi
                     <button type="button" disabled={busy} onClick={onLinkAccount} className={`${rowButton('good')} mt-2 block`}>
                         It is ours
                     </button>
-                </div>
+                </Notice>
             )}
 
             {where?.what === 'elsewhere' && (
-                <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3 text-xs text-red-800">
+                <Notice tone="urgent" className="mb-3">
                     <strong className="font-bold">This one is not ours.</strong>{' '}
                     Account {where.accountNo} belongs to {restaurantName || 'the other restaurant'},
                     so importing it here would put its cost on the wrong week in two places at once.
-                </div>
+                </Notice>
             )}
 
             {place?.what === 'already_here' && (
@@ -87,7 +88,7 @@ export default function DocumentCard({ file, busy, onForget, onLinkAccount, onFi
                 a way to say this is another delivery. Two typed in for one day
                 is the usual pattern, and only the nearest used to be offered. */}
             {state === 'by_hand' && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 mb-3 text-xs text-blue-900">
+                <Notice tone="info" className="mb-3">
                     <strong className="font-bold">
                         {place.candidates.length === 1
                             ? 'There is one typed in for that day.'
@@ -130,7 +131,7 @@ export default function DocumentCard({ file, busy, onForget, onLinkAccount, onFi
                     <button type="button" disabled={busy} onClick={onAsNew} className={`${rowButton()} mt-2 block`}>
                         It is a different delivery, import it as new
                     </button>
-                </div>
+                </Notice>
             )}
 
             {state === 'ready' && place?.what === 'by_hand' && (
@@ -143,7 +144,7 @@ export default function DocumentCard({ file, busy, onForget, onLinkAccount, onFi
                 shortage was very likely taken off before the total was typed.
                 Importing it would take the same money off twice. */}
             {state === 'on_hand' && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3 text-xs text-amber-900">
+                <Notice tone="warn" className="mb-3">
                     <strong className="font-bold">
                         This credits invoice {file.onHand.invoiceNumber}, which was typed in by hand
                         {file.onHand.typed?.invoice_date ? ` on ${fullDate(file.onHand.typed.invoice_date)}` : ''}.
@@ -165,13 +166,15 @@ export default function DocumentCard({ file, busy, onForget, onLinkAccount, onFi
                             </button>
                         </div>
                     )}
-                </div>
+                </Notice>
             )}
 
             {blocks?.length > 0 && (
-                <ul className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3 text-xs text-red-800 space-y-1">
-                    {blocks.map(said => <li key={said}>{said}</li>)}
-                </ul>
+                <Notice tone="urgent" className="mb-3">
+                    <ul className="space-y-1">
+                        {blocks.map(said => <li key={said}>{said}</li>)}
+                    </ul>
+                </Notice>
             )}
 
             {totals?.length > 0 && (

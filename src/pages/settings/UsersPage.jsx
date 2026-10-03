@@ -2,14 +2,16 @@ import { useState, useEffect } from 'react'
 import { useConfirm } from '@/context/confirm'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
-import { canManageUser, ALL_ROLES } from '@/lib/access'
+import { canManageUser, ALL_ROLES, roleLabel } from '@/lib/access'
 import { friendlyError } from '@/lib/errors'
-import { tableHeadRow, tableCard, badge, rowButton, pageTitle, secondaryButton } from '@/lib/controlStyles'
-import { latestByUser, lastUsed, agoWords } from '@/lib/loginEvents'
-import { fullDate } from '@/lib/dates'
+import { tableHeadRow, tableCard, card, badge, inactiveBadge, rowButton, primaryButton, secondaryButton } from '@/lib/controlStyles'
+import { latestByUser, lastUsed, lastSeenWords } from '@/lib/loginEvents'
+import { stampDate } from '@/lib/dates'
+import { readStored, writeStored } from '@/lib/browserStore'
 import SignInHistory from '@/components/settings/SignInHistory'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import ArrangeList from '@/components/ui/ArrangeList'
+import PageHeader from '@/components/ui/PageHeader'
 
 // Everyone with an account, and turning them on or off.
 //
@@ -34,6 +36,10 @@ import ArrangeList from '@/components/ui/ArrangeList'
 // at the end, because that is a thing to fix rather than a place to work: a new
 // account lands there until somebody says where it belongs.
 const NO_RESTAURANT = 'none'
+
+// Switched on, in green. Switched off is the strong red inactiveBadge, the same
+// one every other list uses for a row that is off.
+const activeBadge = `${badge} bg-green-100 text-green-800`
 
 // Highest first, and the ladder comes from lib/access rather than a second list
 // written out here. ALL_ROLES runs employee upwards, so reversing it is the
@@ -77,7 +83,7 @@ function groupByRestaurant(users, restaurants) {
 function TestChip({ person }) {
   if (!person.is_test) return null
   return (
-    <span className={`${badge} bg-cream text-muted ml-2`} title="A developer account, not a person">
+    <span className={`${badge} bg-app-bg text-muted ml-2`} title="A developer account, not a person">
       test
     </span>
   )
@@ -97,7 +103,6 @@ export default function UsersPage() {
   const [arranging, setArranging] = useState(false)
   const [showFor, setShowFor] = useState(null)
   const [showEvents, setShowEvents] = useState([])
-  const seesLogins = user?.role === 'super_admin'
 
   useEffect(() => {
     fetchData()
@@ -171,7 +176,7 @@ export default function UsersPage() {
           + 'turn them back on here whenever you want.',
         details: [
           { label: 'Email', value: person.email || '' },
-          { label: 'Role', value: (person.role || '').replace('_', ' ') },
+          { label: 'Role', value: roleLabel(person.role) },
           { label: 'Restaurant', value: getRestaurantName(person.restaurant_id) },
         ],
         confirmLabel: 'Deactivate',
@@ -207,12 +212,12 @@ export default function UsersPage() {
   function seenWords(person) {
     const at = lastUsed(lastSeen.get(person.id))
     if (!at) return 'Never'
-    return agoWords(at) || fullDate(at.slice(0, 10))
+    return lastSeenWords(at) || stampDate(at)
   }
 
   function getRestaurantName(restaurantId) {
-    if (!restaurantId) return '-'
-    return restaurants.find(r => r.id === restaurantId)?.name || '-'
+    if (!restaurantId) return '—'
+    return restaurants.find(r => r.id === restaurantId)?.name || '—'
   }
 
   const lastSeen = latestByUser(logins)
@@ -221,8 +226,9 @@ export default function UsersPage() {
   // Which groups are shut, kept per browser like the other list preferences.
   // Open is the default: somebody arriving wants to see people, not headings.
   const [shut, setShut] = useState(() => {
+    // A value the browser has mangled reads as nothing shut.
     try {
-      return JSON.parse(localStorage.getItem('usersShutGroups') || '[]')
+      return JSON.parse(readStored('local', 'usersShutGroups') || '[]')
     } catch {
       return []
     }
@@ -231,42 +237,31 @@ export default function UsersPage() {
   function toggleGroup(key) {
     const next = shut.includes(key) ? shut.filter(k => k !== key) : [...shut, key]
     setShut(next)
-    try {
-      localStorage.setItem('usersShutGroups', JSON.stringify(next))
-    } catch {
-      // A private window refuses to store it. The page still works, the
-      // choice just does not survive a reload.
-    }
+    writeStored('local', 'usersShutGroups', JSON.stringify(next))
   }
 
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        <div>
-          <h2 className={pageTitle}>User Management</h2>
-          <p className="text-sm text-gray-500 mt-1">Manage user accounts and access levels</p>
-        </div>
-        {/* Adding a user is not built yet. Creating an account needs the service
-            role key, which cannot go in the browser, so the plan is to let people
-            sign themselves up and have a manager approve them. That is #81. */}
-        <div className="flex flex-wrap gap-2">
-          {/* Only a super admin reaches this page, and only a super admin can
-              write a restaurant row, so the button does not need a guard the
-              route has already applied. */}
-          {restaurants.length > 1 && (
-            <button onClick={() => setArranging(true)} className={secondaryButton}>
-              Arrange restaurants
-            </button>
-          )}
-          <button
-            disabled
-            title="Adding a user is not built yet. See issue #81."
-            className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg opacity-50 cursor-not-allowed"
-          >
-            + Add User
+      {/* Adding a user is not built yet. Creating an account needs the service
+          role key, which cannot go in the browser, so the plan is to let people
+          sign themselves up and have a manager approve them. That is #81. */}
+      <PageHeader title="User Management" subtitle="Manage user accounts and access levels">
+        {/* Only a super admin reaches this page, and only a super admin can
+            write a restaurant row, so the button does not need a guard the
+            route has already applied. */}
+        {restaurants.length > 1 && (
+          <button onClick={() => setArranging(true)} className={secondaryButton}>
+            Arrange restaurants
           </button>
-        </div>
-      </div>
+        )}
+        <button
+          disabled
+          title="Adding a user is not built yet. See issue #81."
+          className={primaryButton('md')}
+        >
+          + Add User
+        </button>
+      </PageHeader>
 
       {error && (
         <ErrorBanner className="mb-4">
@@ -275,7 +270,7 @@ export default function UsersPage() {
       )}
 
       {loading ? (
-        <div className="text-sm text-gray-500">Loading users...</div>
+        <div className="text-sm text-muted">Loading users...</div>
       ) : (
         <div className="space-y-5">
         {groups.map(g => {
@@ -317,35 +312,31 @@ export default function UsersPage() {
             put the status and the one button on this screen out of reach. */}
         <div className="md:hidden space-y-3 pt-3">
           {g.users.map(u => (
-            <div key={u.id} className="rounded-xl border border-border bg-white p-4">
+            <div key={u.id} className={`${card} p-4`}>
               <div className="flex items-start justify-between gap-2">
                 <p className="font-semibold text-gray-900">
                   {u.full_name}
                   {u.id === user?.id && <span className="text-xs text-muted ml-2">you</span>}
                   <TestChip person={u} />
                 </p>
-                <span className={`${badge} flex-shrink-0 ${
-                  u.is_active ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'
-                }`}>
+                <span className={`${u.is_active ? activeBadge : inactiveBadge} flex-shrink-0`}>
                   {u.is_active ? 'Active' : 'Inactive'}
                 </span>
               </div>
 
               {/* No restaurant here any more: the heading above says it. */}
               <div className="flex flex-wrap items-center gap-2 mt-2">
-                <span className={`${badge} bg-green-50 text-green-700 capitalize`}>
-                  {u.role.replace('_', ' ')}
+                <span className={`${badge} bg-green-50 text-green-700`}>
+                  {roleLabel(u.role)}
                 </span>
               </div>
 
-              {seesLogins && (
-                <button
-                  onClick={() => openHistory(u)}
-                  className="mt-2 text-xs text-gray-500 hover:text-accent-ink transition-colors"
-                >
-                  Last seen <span className="font-semibold">{seenWords(u)}</span>
-                </button>
-              )}
+              <button
+                onClick={() => openHistory(u)}
+                className="mt-2 text-xs text-muted hover:text-accent-ink transition-colors"
+              >
+                Last seen <span className="font-semibold">{seenWords(u)}</span>
+              </button>
 
               {canManageUser(user, u) && (
                 <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-black/10">
@@ -368,12 +359,7 @@ export default function UsersPage() {
                 <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Name</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Role</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Status</th>
-                {/* Only for Super Admin. The table itself returns nothing to
-                    anybody else, and a heading over an empty column is worse
-                    than no heading. */}
-                {seesLogins && (
-                  <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Last seen</th>
-                )}
+                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Last seen</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
@@ -386,27 +372,23 @@ export default function UsersPage() {
                     <TestChip person={u} />
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`${badge} bg-green-50 text-green-700 capitalize`}>
-                      {u.role.replace('_', ' ')}
+                    <span className={`${badge} bg-green-50 text-green-700`}>
+                      {roleLabel(u.role)}
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`${badge} ${
-                      u.is_active ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'
-                    }`}>
+                    <span className={u.is_active ? activeBadge : inactiveBadge}>
                       {u.is_active ? 'Active' : 'Inactive'}
                     </span>
                   </td>
-                  {seesLogins && (
-                    <td className="px-4 py-3">
-                      <button
-                        onClick={() => openHistory(u)}
-                        className="text-sm text-gray-600 hover:text-accent-ink transition-colors text-left"
-                      >
-                        {seenWords(u)}
-                      </button>
-                    </td>
-                  )}
+                  <td className="px-4 py-3">
+                    <button
+                      onClick={() => openHistory(u)}
+                      className="text-sm text-gray-600 hover:text-accent-ink transition-colors text-left"
+                    >
+                      {seenWords(u)}
+                    </button>
+                  </td>
                   <td className="px-4 py-3">
                     {/* Only show the button if this person can actually use it.
                         Before, it showed on every row and did nothing on most of

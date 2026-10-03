@@ -22,8 +22,8 @@
 // both. Which of the two, and which week it lands in, is the whole of
 // `creditLands` below.
 
-import { num, fmtMoney } from '@/lib/format'
-import { weekStartOf, addDays } from '@/lib/dates'
+import { num, fmtMoney, round2 } from '@/lib/format'
+import { weekStartOf, addDays, daysBetween } from '@/lib/dates'
 import { similarWords, documentTotal, lineCost } from '@/lib/invoiceImport'
 import { packItems, readPackSize } from '@/lib/invoiceSysco'
 
@@ -190,8 +190,6 @@ export function claimKind(value) {
         colour: NOT_LOGGED.colour,
     }
 }
-
-const round2 = n => Math.round(num(n) * 100) / 100
 
 // ---------------------------------------------------------------------------
 // Taking the note at the door
@@ -516,9 +514,25 @@ export function canDetach(claim) {
 // were meant. It used to mean Take it back and logging it again. Only while
 // nothing has come back on it, the same as canDetach, and only where its money
 // comes from its count: a shortage made by a fill in has money and no count.
+// Once its week's report has gone out, only its words (amountFixed).
 export function canEditClaim(claim) {
     return claim?.status === 'open' && num(claim.credited_amount) === 0 && !claim.credit_invoice_id
         && (!!claim.invoice_line_id || claim.amount == null)
+}
+
+// **Once its week's report has gone out, a claim on a line keeps its money.**
+// His answer of 3 October. That report took off what the claim was then, and
+// a change after it would land in no report at all. Its words and its note can
+// still change; what was wrong and how many are what the money comes from, so
+// they stay. `sent` is sentWeeks' list.
+export function amountFixed(claim, sent) {
+    return !!claim?.invoice_line_id && claim.amount != null && (sent || []).includes(claim.counted_week)
+}
+
+// The form as it saves for one whose money is fixed: the words and the note
+// changed, the reason and the count as they were.
+export function wordsOnly(claim, form) {
+    return { ...form, kind: claim.kind, cases: claim.cases, units: claim.units }
 }
 
 // The door form, filled in with what the claim says now.
@@ -661,7 +675,7 @@ export function otherDeliveries(claim, invoices) {
     const to = addDays(claim.raised_on, NEAR_AFTER_DAYS)
     const near = ofSupplier(claim, invoices)
         .filter(i => i.invoice_date >= from && i.invoice_date <= to)
-        .map(i => ({ invoice: i, away: Math.abs(daysBetween(claim.raised_on, i.invoice_date)) }))
+        .map(i => ({ invoice: i, away: Math.abs(daysBetweenOrZero(claim.raised_on, i.invoice_date)) }))
         .sort((a, b) => a.away - b.away || String(b.invoice.invoice_date).localeCompare(String(a.invoice.invoice_date)))
         .map(n => n.invoice)
     return near.flatMap(invoice => linesOf(claim, [invoice], false))
@@ -1051,7 +1065,7 @@ export function chasingList(claims, today) {
         .map(claim => ({
             claim,
             balance: claimBalance(claim),
-            days: daysBetween(claim.raised_on, today),
+            days: daysBetweenOrZero(claim.raised_on, today),
         }))
         .sort((a, b) => b.days - a.days)
 }
@@ -1065,10 +1079,9 @@ export function isLate(waiting) {
     return waiting.days >= LATE_AFTER_DAYS
 }
 
-function daysBetween(from, to) {
-    if (!from || !to) return 0
-    return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000)
-}
+// Not the shared daysBetween on its own: a missing date has always counted as
+// none here, so the lists still sort and add up.
+const daysBetweenOrZero = (from, to) => daysBetween(from, to) ?? 0
 
 // What the week's report says about claims.
 //
@@ -1127,7 +1140,7 @@ export function bySupplier(claims, suppliers, today) {
             row.waiting += num(claimBalance(claim))
         } else if (claim.status === 'settled') {
             row.settled += 1
-            if (claim.settled_on) row.days.push(daysBetween(claim.raised_on, claim.settled_on))
+            if (claim.settled_on) row.days.push(daysBetweenOrZero(claim.raised_on, claim.settled_on))
         }
     }
 
@@ -1159,5 +1172,5 @@ function middleOf(numbers) {
 function oldestOpen(claims, supplierId, today) {
     const mine = (claims || []).filter(c => c.supplier_id === supplierId && claimIsOpen(c))
     if (!mine.length) return null
-    return Math.max(...mine.map(c => daysBetween(c.raised_on, today)))
+    return Math.max(...mine.map(c => daysBetweenOrZero(c.raised_on, today)))
 }

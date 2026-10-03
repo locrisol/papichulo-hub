@@ -13,6 +13,7 @@
 import { supabase } from '@/lib/supabase'
 import { chartToBlob, MAIL_WIDTH } from '@/lib/reportChartImage'
 import { chartSpecs, MAIL_CHART_ORDER } from '@/lib/reportCharts'
+import { functionError } from '@/lib/errors'
 
 const BUCKET = 'report-charts'
 
@@ -26,15 +27,20 @@ const origin = typeof window === 'undefined' ? '' : window.location.origin
 //
 // The path begins with the report's id, which is what the storage rule checks:
 // a manager cannot write a picture into another restaurant's report even by
-// typing the path themselves. A test writes beside the real ones rather than
-// over them, so trying a draft cannot overwrite what a published report is
-// already pointing at.
+// typing the path themselves.
+//
+// Every call gets new files, named with the time it started, and never writes
+// over an old one. The address was the same every time before, so a correction
+// or a second test could show the chart the first mail had, kept by Gmail or
+// the phone under that address. The old files stay where they are: nothing is
+// allowed to delete in that bucket, so a remove() here would do nothing.
 //
 // A chart with nothing to draw is left out rather than uploaded blank, and the
 // mail leaves the picture out to match.
 export async function uploadCharts({ reportId, rows, onlinePlatforms, corporatePlatforms, test = false }) {
     const specs = chartSpecs({ onlinePlatforms, corporatePlatforms })
     const urls = {}
+    const stamp = Date.now()
 
     for (const key of MAIL_CHART_ORDER) {
         const spec = specs[key]
@@ -64,9 +70,9 @@ export async function uploadCharts({ reportId, rows, onlinePlatforms, corporateP
         }
         if (!blob) continue
 
-        const path = `${reportId}/${test ? 'test-' : ''}${key}.png`
+        const path = `${reportId}/${test ? 'test-' : ''}${stamp}-${key}.png`
         const { error } = await supabase.storage.from(BUCKET)
-            .upload(path, blob, { contentType: 'image/png', upsert: true })
+            .upload(path, blob, { contentType: 'image/png', upsert: false })
 
         if (error) {
             console.warn(`Could not upload the ${key} chart.`, error)
@@ -91,16 +97,9 @@ export async function sendReport({ reportId, test = false, figures, charts }) {
         body: { reportId, test, origin, figures, charts },
     })
 
-    if (error) {
-        // The function puts its reason in the body, and supabase-js throws away
-        // everything but the status unless it is asked.
-        let why = error.message
-        try {
-            const body = await error.context?.json?.()
-            if (body?.error) why = body.error
-        } catch { /* the status on its own will have to do */ }
-        throw new Error(why)
-    }
+    // The function puts its reason in the body, and supabase-js throws away
+    // everything but the status unless it is asked.
+    if (error) throw new Error(await functionError(error))
 
     return data || {}
 }

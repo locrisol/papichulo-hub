@@ -255,3 +255,69 @@ describe('the dot on the menu button', () => {
         expect(menu().querySelectorAll('span')).toHaveLength(0)
     })
 })
+
+// One item lights for the page, and a page reached from a list lights that
+// list rather than nothing.
+describe('which item on the menu is lit', () => {
+    const lit = () => screen.getAllByRole('button').filter(b => b.getAttribute('aria-current') === 'page')
+
+    it('lights Reports on one report', async () => {
+        show('/reports/abc-123')
+        await screen.findByText('page')
+
+        expect(lit()).toEqual([navButton('Reports')])
+    })
+
+    it('lights Invoices on the invoice history', async () => {
+        show('/invoices/history')
+        await screen.findByText('page')
+
+        expect(lit()).toEqual([navButton('Invoices')])
+    })
+
+    // Each starts with a path that has its own item, and only the longer one
+    // is theirs.
+    it('keeps Weekly Sales on its own item', async () => {
+        show('/sales/weekly')
+        await screen.findByText('page')
+        expect(lit()).toEqual([navButton('Weekly Sales')])
+    })
+
+    it('keeps Delivery problems on its own item', async () => {
+        show('/invoices/claims')
+        await screen.findByText('page')
+        expect(lit()).toEqual([navButton('Delivery problems')])
+    })
+
+    it('names a detail page after its list in the header', async () => {
+        show('/invoices/history')
+
+        expect(await screen.findByRole('heading', { level: 1, name: 'Invoices' })).toBeInTheDocument()
+    })
+})
+
+// Owners and super admins move between restaurants with it. For an owner with
+// one restaurant it is still the only place on screen that says which one.
+describe('the restaurant switcher', () => {
+    it('shows for an owner with one restaurant', async () => {
+        user = { ...A_MANAGER, role: 'owner' }
+        show()
+
+        expect(await screen.findByRole('combobox', { name: 'Active restaurant' })).toBeInTheDocument()
+    })
+
+    it('does not show for a store manager', async () => {
+        show()
+        await screen.findByText('page')
+
+        expect(screen.queryByRole('combobox', { name: 'Active restaurant' })).not.toBeInTheDocument()
+    })
+})
+
+describe('who is signed in', () => {
+    it('says the role the way the rest of the app does', async () => {
+        show()
+
+        expect(await screen.findByText('Store manager')).toBeInTheDocument()
+    })
+})

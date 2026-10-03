@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
+import { can, ADMIN_ONLY } from '@/lib/access'
 import { useRestaurant } from '@/context/restaurant'
 import SalesPlatformsModal from '@/components/settings/SalesPlatformsModal'
 import SalesTendersModal from '@/components/settings/SalesTendersModal'
@@ -17,8 +18,10 @@ import { friendlyError } from '@/lib/errors'
 import { DEFAULT_BREAK_RULES, BANK_HOLIDAY } from '@/lib/roster'
 import { DEFAULT_RULES } from '@/lib/workRules'
 import { numberField } from '@/lib/numberInput'
-import { card, rowButton, labelClass, pageTitle, dateField, fieldClass } from '@/lib/controlStyles'
+import { card, rowButton, labelClass, hintClass, secondaryButton, fieldClass } from '@/lib/controlStyles'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import PageHeader from '@/components/ui/PageHeader'
+import SaveState from '@/components/ui/SaveState'
 import LockedField from '@/components/ui/LockedField'
 
 // Restaurant settings.
@@ -190,17 +193,13 @@ export default function RestaurantPage() {
 
     return (
         <>
-            <div className="mb-6">
-                <h2 className={pageTitle}>Restaurant Settings</h2>
-                <p className="text-sm text-gray-500 mt-1">
-                    Cost targets and settings for {activeRestaurant?.name}
-                </p>
-                {activeRestaurant?.updated_at && (
-                    <p className="text-xs text-muted mt-1">
-                        Last updated: {stampDateTime(activeRestaurant.updated_at)}
-                    </p>
-                )}
-            </div>
+            <PageHeader
+                title="Restaurant Settings"
+                subtitle={[
+                    `Cost targets and settings for ${activeRestaurant?.name || ''}`,
+                    activeRestaurant?.updated_at && `Last updated: ${stampDateTime(activeRestaurant.updated_at)}`,
+                ].filter(Boolean).join(' · ')}
+            />
 
             {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
 
@@ -214,7 +213,7 @@ export default function RestaurantPage() {
                         so a target is only ever set in one place. */}
                     <div className={`${card} p-6 mb-4`}>
                         <h3 className="text-sm font-semibold text-gray-900">Cost targets</h3>
-                        <p className="text-xs text-gray-500 mt-1 mb-4">
+                        <p className="text-xs text-muted mt-1 mb-4">
                             What each target is for the week of {shortDate(week)}. Setting a new one starts from the week you
                             choose, so past weeks keep the target that was really in force at the time.
                         </p>
@@ -241,7 +240,7 @@ export default function RestaurantPage() {
                                             <p className="text-sm font-medium text-gray-900">{type.label}</p>
                                             <div className="flex items-center gap-3 flex-shrink-0">
                                                 <span className="font-serif text-xl font-bold text-gray-900">
-                                                    {s.value != null ? `${s.value}%` : '-'}
+                                                    {s.value != null ? `${s.value}%` : '—'}
                                                 </span>
                                                 <button
                                                     type="button"
@@ -252,7 +251,7 @@ export default function RestaurantPage() {
                                                 </button>
                                             </div>
                                         </div>
-                                        <p className="text-xs text-gray-500 mt-1">
+                                        <p className="text-xs text-muted mt-1">
                                             {s.current ? (
                                                 s.current.until
                                                     ? `Running since the week of ${shortDate(s.current.from)}, until the week of ${shortDate(s.current.until)}`
@@ -262,7 +261,7 @@ export default function RestaurantPage() {
                                             )}
                                         </p>
                                         {s.upcoming.length > 0 && (
-                                            <p className="text-xs text-blue-600 mt-0.5">
+                                            <p className="text-xs text-muted mt-0.5">
                                                 {s.upcoming.length === 1
                                                     ? `Changes to ${s.upcoming[s.upcoming.length - 1].value}% from the week of ${shortDate(s.upcoming[s.upcoming.length - 1].from)}`
                                                     : `${s.upcoming.length} more changes already set for later weeks`}
@@ -286,23 +285,25 @@ export default function RestaurantPage() {
                         <label className={labelClass} htmlFor="recipe-gap">
                             List a product when recipes are this far off what we pay (%)
                         </label>
-                        <input
-                            id="recipe-gap"
-                            {...numberField({
-                                value: formData.recipe_gap_percent,
-                                onChange: v => setFormData({ ...formData, recipe_gap_percent: v }),
-                            })}
-                            onBlur={() => {
-                                const gap = parseFloat(formData.recipe_gap_percent)
-                                if (isNaN(gap) || gap < 0 || gap > 100) return
-                                // The database hands a numeric back as text, so
-                                // "5.00" and 5 are the same answer.
-                                if (Number(activeRestaurant?.recipe_gap_percent) === gap) return
-                                save({ recipe_gap_percent: gap }, 'recipe_gap_percent')
-                            }}
-                            className="w-full sm:w-32 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-                        />
-                        <p className="text-xs text-muted mt-1">
+                        <div className="sm:w-32">
+                            <input
+                                id="recipe-gap"
+                                {...numberField({
+                                    value: formData.recipe_gap_percent,
+                                    onChange: v => setFormData({ ...formData, recipe_gap_percent: v }),
+                                })}
+                                onBlur={() => {
+                                    const gap = parseFloat(formData.recipe_gap_percent)
+                                    if (isNaN(gap) || gap < 0 || gap > 100) return
+                                    // The database hands a numeric back as text, so
+                                    // "5.00" and 5 are the same answer.
+                                    if (Number(activeRestaurant?.recipe_gap_percent) === gap) return
+                                    save({ recipe_gap_percent: gap }, 'recipe_gap_percent')
+                                }}
+                                className={fieldClass}
+                            />
+                        </div>
+                        <p className={hintClass}>
                             Either way, dearer or cheaper. A product stays on every report until what recipes
                             cost it at is closer than this to what was last paid for the one usually bought.
                         </p>
@@ -332,11 +333,11 @@ export default function RestaurantPage() {
                                             if (isNaN(rate)) return
                                             save({ hourly_rate: rate }, 'hourly_rate')
                                         }}
-                                        className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                                        className={fieldClass}
                                     />
                                     {/* Safe to change without a date, because the rate is
                                         copied onto each labour entry when it is saved. */}
-                                    <p className="text-xs text-muted mt-1">
+                                    <p className={hintClass}>
                                         The average rate used to work out labour cost. Changing it does not alter weeks already
                                         entered, since each one keeps the rate it was saved with.
                                     </p>
@@ -369,19 +370,21 @@ export default function RestaurantPage() {
                                     ? fullDate(anchorOf(activeRestaurant.pay_period_start))
                                     : ''}
                             >
-                                <input
-                                    id="pay-period-start"
-                                    type="date"
-                                    className={`${dateField} w-full sm:w-auto`}
-                                    value={formData.pay_period_start}
-                                    onChange={e => setFormData({ ...formData, pay_period_start: e.target.value })}
-                                    onBlur={() => save(
-                                        { pay_period_start: anchorOf(formData.pay_period_start) || null },
-                                        'pay_period_start',
-                                    )}
-                                />
+                                <div className="sm:w-48">
+                                    <input
+                                        id="pay-period-start"
+                                        type="date"
+                                        className={fieldClass}
+                                        value={formData.pay_period_start}
+                                        onChange={e => setFormData({ ...formData, pay_period_start: e.target.value })}
+                                        onBlur={() => save(
+                                            { pay_period_start: anchorOf(formData.pay_period_start) || null },
+                                            'pay_period_start',
+                                        )}
+                                    />
+                                </div>
                             </LockedField>
-                            <p className="text-xs text-muted mt-1">
+                            <p className={hintClass}>
                                 {formData.pay_period_start ? (
                                     <>
                                         Saved as {fullDate(anchorOf(formData.pay_period_start))}, the Sunday of
@@ -401,7 +404,7 @@ export default function RestaurantPage() {
 
                         <div className={`${card} p-6 mb-4`}>
                             <h3 className="text-sm font-semibold text-gray-900 mb-4">Email</h3>
-                            <label className={labelClass}>
+                            <label className={labelClass} htmlFor="mail-from">
                                 Sent from
                             </label>
                             {/* **What decides the lock is the row, not the box.**
@@ -427,6 +430,7 @@ export default function RestaurantPage() {
                                 label="Sending address" value={activeRestaurant?.mail_from}
                             >
                                 <input
+                                    id="mail-from"
                                     type="email"
                                     inputMode="email"
                                     autoComplete="off"
@@ -434,13 +438,13 @@ export default function RestaurantPage() {
                                     onChange={e => setFormData({ ...formData, mail_from: e.target.value })}
                                     onBlur={() => save({ mail_from: formData.mail_from.trim() || null }, 'mail_from')}
                                     placeholder="name@papichulo.ie"
-                                    className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                                    className={fieldClass}
                                 />
                             </LockedField>
                             {/* The address only. The name in front of it is this
                                 restaurant own name, so renaming it renames the sender
                                 and there is no second place to keep in step. */}
-                            <p className="text-xs text-muted mt-1">
+                            <p className={hintClass}>
                                 The address Papi Chulo Hub emails come from for this restaurant.
                                 Leave it empty and they come from the account the Hub sends with.
                                 Replies never come back here: they go to whoever sent it, with
@@ -477,7 +481,7 @@ export default function RestaurantPage() {
                                         'google_calendar_id',
                                     )}
                                     placeholder="something@group.calendar.google.com"
-                                    className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                                    className={fieldClass}
                                 />
                             </LockedField>
                             {/* The whole of what a new restaurant needs. Somebody
@@ -486,7 +490,7 @@ export default function RestaurantPage() {
                                 to verify and nothing an administrator has to set up
                                 per restaurant, which is the thing the email could
                                 never manage. */}
-                            <p className="text-xs text-muted mt-1">
+                            <p className={hintClass}>
                                 Where catering, meetings and promotions for this restaurant are
                                 written. Find it in Google Calendar under Settings, Integrate
                                 calendar. Leave it empty and they stay in the Hub, which the
@@ -527,7 +531,7 @@ export default function RestaurantPage() {
                                     className={fieldClass}
                                 />
                             </div>
-                            <p className="text-xs text-muted mt-1">
+                            <p className={hintClass}>
                                 {activeRestaurant?.allergen_sheet_printed_at
                                     ? `Last printed ${stampDate(activeRestaurant.allergen_sheet_printed_at)}. `
                                     : 'Not printed from the Hub yet. '}
@@ -547,18 +551,12 @@ export default function RestaurantPage() {
                             Save button, it writes when you leave a box, and
                             this line is what says so. **Not saved** is the
                             state that matters, so it is the loud one. */}
-                        <p
-                            className={`text-xs ${formProblem ? 'font-bold text-red-700' : 'text-muted'}`}
-                            aria-live="polite"
-                        >
-                            {formProblem
-                                ? 'Not saved'
-                                : saving
-                                    ? 'Saving'
-                                    : savedAt
-                                        ? `Saved at ${savedAt.toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}`
-                                        : 'Saves as you leave each box'}
-                        </p>
+                        <SaveState
+                            problem={!!formProblem}
+                            saving={saving}
+                            savedAt={savedAt}
+                            idle="Saves as you leave each box"
+                        />
                     </div>
                 </div>
 
@@ -573,7 +571,7 @@ export default function RestaurantPage() {
                         <div className="flex items-center justify-between gap-4 flex-wrap">
                             <div>
                                 <h3 className="text-sm font-semibold text-gray-900">Places near us</h3>
-                                <p className="text-xs text-gray-500 mt-1">
+                                <p className="text-xs text-muted mt-1">
                                     What is on around this restaurant, as a badge on the roster and
                                     the calendar. Nothing here predicts anything.
                                 </p>
@@ -581,7 +579,7 @@ export default function RestaurantPage() {
                             <button
                                 type="button"
                                 onClick={() => setShowPlacesModal(true)}
-                                className="px-4 py-2 border border-border text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
+                                className={secondaryButton}
                             >
                                 Manage places
                             </button>
@@ -597,14 +595,14 @@ export default function RestaurantPage() {
                         <div className="flex items-center justify-between gap-4 flex-wrap">
                             <div>
                                 <h3 className="text-sm font-semibold text-gray-900">Sales platforms</h3>
-                                <p className="text-xs text-gray-500 mt-1">
+                                <p className="text-xs text-muted mt-1">
                                     The delivery and catering platforms used for sales entry.
                                 </p>
                             </div>
                             <button
                                 type="button"
                                 onClick={() => setShowPlatformsModal(true)}
-                                className="px-4 py-2 border border-border text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
+                                className={secondaryButton}
                             >
                                 Manage platforms
                             </button>
@@ -622,14 +620,14 @@ export default function RestaurantPage() {
                         <div className="flex items-center justify-between gap-4 flex-wrap">
                             <div>
                                 <h3 className="text-sm font-semibold text-gray-900">Opening hours</h3>
-                                <p className="text-xs text-gray-500 mt-1">
+                                <p className="text-xs text-muted mt-1">
                                     {openingSummary}
                                 </p>
                             </div>
                             <button
                                 type="button"
                                 onClick={() => setShowHoursModal(true)}
-                                className="px-4 py-2 border border-border text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
+                                className={secondaryButton}
                             >
                                 Set hours
                             </button>
@@ -640,14 +638,14 @@ export default function RestaurantPage() {
                         <div className="flex items-center justify-between gap-4 flex-wrap">
                             <div>
                                 <h3 className="text-sm font-semibold text-gray-900">Break rules</h3>
-                                <p className="text-xs text-gray-500 mt-1">
+                                <p className="text-xs text-muted mt-1">
                                     {breakSummary}
                                 </p>
                             </div>
                             <button
                                 type="button"
                                 onClick={() => setShowBreaksModal(true)}
-                                className="px-4 py-2 border border-border text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
+                                className={secondaryButton}
                             >
                                 Set breaks
                             </button>
@@ -658,14 +656,14 @@ export default function RestaurantPage() {
                         <div className="flex items-center justify-between gap-4 flex-wrap">
                             <div>
                                 <h3 className="text-sm font-semibold text-gray-900">Roster rules</h3>
-                                <p className="text-xs text-gray-500 mt-1">
+                                <p className="text-xs text-muted mt-1">
                                     {rulesSummary}
                                 </p>
                             </div>
                             <button
                                 type="button"
                                 onClick={() => setShowRulesModal(true)}
-                                className="px-4 py-2 border border-border text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
+                                className={secondaryButton}
                             >
                                 Set rules
                             </button>
@@ -677,12 +675,12 @@ export default function RestaurantPage() {
                         Super Admin only, and the database says so too rather
                         than this just being a hidden button. Changing these
                         changes the shape of every day entered afterwards. */}
-                    {user?.role === 'super_admin' && (
+                    {can(user, ADMIN_ONLY) && (
                         <div className={`${card} p-6`}>
                             <div className="flex items-center justify-between gap-4 flex-wrap">
                                 <div>
                                     <h3 className="text-sm font-semibold text-gray-900">Till receipt rows</h3>
-                                    <p className="text-xs text-gray-500 mt-1">
+                                    <p className="text-xs text-muted mt-1">
                                         The rows on the sales screens, in the order the till prints them. Add one when
                                         the till starts taking money a new way, retire one when it stops.
                                     </p>
@@ -690,7 +688,7 @@ export default function RestaurantPage() {
                                 <button
                                     type="button"
                                     onClick={() => setShowTendersModal(true)}
-                                    className="px-4 py-2 border border-border text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
+                                    className={secondaryButton}
                                 >
                                     Manage rows
                                 </button>

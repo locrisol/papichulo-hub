@@ -39,12 +39,14 @@ import {
 // are shown and not offered, and the money is worked out and read back on the
 // row before anything is saved, which is why the button there says Next. Only
 // the words of a price query changed keep its money (keepsItsAmount), and that
-// saves straight away.
+// saves straight away. **With `fixed`** its week's report has gone out, so
+// what was wrong and how many are shown and not offered (amountFixed), and it
+// saves straight away too.
 // Greyed the way a locked field is everywhere else, at the size of the boxes
 // beside it.
 const locked = `${lockedField} w-full px-3 py-2.5 text-base`
 
-export default function DoorClaimModal({ suppliers, claim = null, onClose, onSave }) {
+export default function DoorClaimModal({ suppliers, claim = null, fixed = false, onClose, onSave }) {
     const [form, setForm] = useState(() => (claim ? claimForm(claim) : emptyDoorClaim()))
     const [problem, setProblem] = useState('')
     const [busy, setBusy] = useState(false)
@@ -54,7 +56,7 @@ export default function DoorClaimModal({ suppliers, claim = null, onClose, onSav
     const count = claimCountSaid(form.cases, form.units)
     const onLine = !!claim?.invoice_line_id
     // Next works the money out and saves nothing yet.
-    const next = onLine && !keepsItsAmount(claim, form)
+    const next = onLine && !fixed && !keepsItsAmount(claim, form)
     const supplierName = (suppliers || []).find(s => s.id === form.supplierId)?.name || ''
 
     async function go() {
@@ -113,33 +115,52 @@ export default function DoorClaimModal({ suppliers, claim = null, onClose, onSav
                 </div>
                 {onLine && <p className={hintClass}>Use Not this line to change the delivery.</p>}
 
+                {fixed && (
+                    <div className="mt-4">
+                        <label className={labelClass} htmlFor="claim-fixed">What was wrong</label>
+                        <input
+                            id="claim-fixed"
+                            value={[kind?.label, count && `${count} ${kind?.counted}`].filter(Boolean).join(', ')}
+                            disabled
+                            readOnly
+                            className={locked}
+                        />
+                        <p className={hintClass}>
+                            The report for the week this comes off has gone out, so what was wrong and how many
+                            can no longer change.
+                        </p>
+                    </div>
+                )}
+
                 {/* Names only, two to a row, so all ten fit on a phone without
                     scrolling past them to the question. The one picked says
                     what it means underneath, and has a ring in its own colour,
                     as the diary's kinds do, because a pale tint alone is hard
                     to pick out in daylight. */}
-                <div className="mt-4">
-                    <span className={labelClass}>What was wrong</span>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                        {CLAIM_KINDS.map(k => (
-                            <button
-                                key={k.value}
-                                type="button"
-                                onClick={() => set('kind', k.value)}
-                                aria-pressed={form.kind === k.value}
-                                className={`min-h-11 text-left px-3 py-2 rounded-lg border text-sm font-semibold transition-colors ${
-                                    form.kind === k.value
-                                        ? `${k.soft} ring-2 ring-inset ring-current`
-                                        : 'bg-white border-gray-300 text-gray-800 hover:bg-gray-50'
-                                }`}
-                            >
-                                {k.label}
-                            </button>
-                        ))}
+                {!fixed && (
+                    <div className="mt-4">
+                        <span className={labelClass}>What was wrong</span>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                            {CLAIM_KINDS.map(k => (
+                                <button
+                                    key={k.value}
+                                    type="button"
+                                    onClick={() => set('kind', k.value)}
+                                    aria-pressed={form.kind === k.value}
+                                    className={`min-h-11 text-left px-3 py-2 rounded-lg border text-sm font-semibold transition-colors ${
+                                        form.kind === k.value
+                                            ? `${k.soft} ring-2 ring-inset ring-current`
+                                            : 'bg-white border-gray-300 text-gray-800 hover:bg-gray-50'
+                                    }`}
+                                >
+                                    {k.label}
+                                </button>
+                            ))}
+                        </div>
                     </div>
-                </div>
+                )}
 
-                {kind && (
+                {kind && !fixed && (
                     <div className="mt-4">
                         <p className="text-xs text-muted">{kind.at_door}</p>
                         <p className="text-sm font-bold text-gray-900 mt-2">{kind.ask}</p>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { calculateMixCost, resolveUnitCost, menuItemCost, costInside, deactivatedIn, missingIn } from '@/lib/mixCost'
+import { calculateMixCost, resolveUnitCost, menuItemCost, costInside, deactivatedIn, missingIn, menuMargin, marginTone, MARGIN_GREEN, MARGIN_AMBER } from '@/lib/mixCost'
 
 // --- Test fixtures shaped like real rows ---------------------------------
 
@@ -329,5 +329,59 @@ describe('a deactivated product inside something', () => {
     expect(missingIn(['p-chicken', 'p-old-lime'], catalogue, recipe, prices)).toEqual(['p-old-lime'])
     expect(missingIn(['p-gone'], catalogue, recipe, prices)).toEqual(['p-gone'])
     expect(missingIn(['p-chicken', 'p-lime'], catalogue, recipe, prices)).toEqual([])
+  })
+})
+
+describe('menuMargin', () => {
+  // €12.30 with VAT at 23% is €10.00 before it.
+  it('takes the VAT off before working out the margin', () => {
+    const { net, margin, marginPct } = menuMargin('12.30', '23', 3.5)
+    expect(net).toBeCloseTo(10, 10)
+    expect(margin).toBeCloseTo(6.5, 10)
+    expect(marginPct).toBeCloseTo(65, 10)
+  })
+
+  it('counts a missing VAT rate as none', () => {
+    const { net, marginPct } = menuMargin(10, null, 4)
+    expect(net).toBe(10)
+    expect(marginPct).toBe(60)
+  })
+
+  it('has a net price but no margin when the dish has no cost', () => {
+    expect(menuMargin(10, 0, null)).toEqual({ net: 10, margin: null, marginPct: null })
+  })
+
+  it('has no percentage when there is no net price to divide by', () => {
+    const result = menuMargin(0, 23, 2)
+    expect(result.net).toBe(0)
+    expect(result.margin).toBe(-2)
+    expect(result.marginPct).toBeNull()
+  })
+
+  it('can be a loss', () => {
+    expect(menuMargin(10, 0, 12).marginPct).toBe(-20)
+  })
+})
+
+describe('marginTone', () => {
+  it('is green from the green line up', () => {
+    expect(marginTone(MARGIN_GREEN)).toBe('text-green-700')
+    expect(marginTone(80)).toBe('text-green-700')
+  })
+
+  // Amber at 700, which is dark enough to read as small text on white.
+  it('is amber between the two lines', () => {
+    expect(marginTone(MARGIN_AMBER)).toBe('text-amber-700')
+    expect(marginTone(64.9)).toBe('text-amber-700')
+  })
+
+  it('is red below the amber line', () => {
+    expect(marginTone(59.9)).toBe('text-red-600')
+    expect(marginTone(-20)).toBe('text-red-600')
+  })
+
+  it('is muted when there is no margin', () => {
+    expect(marginTone(null)).toBe('text-muted')
+    expect(marginTone(undefined)).toBe('text-muted')
   })
 })

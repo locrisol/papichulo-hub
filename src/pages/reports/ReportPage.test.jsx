@@ -315,7 +315,7 @@ describe('the support list kept from the claims', () => {
         renderReport()
         fireEvent.click((await screen.findAllByRole('button', { name: 'Update the support list' }))[0])
         await waitFor(() => expect(items.update).toHaveBeenCalledWith({
-            done_on: null, label: 'Chase the credit for Bowls charged 49.73 (price query) (24.75)',
+            done_on: null, label: 'Chase the credit for Bowls charged 49.73 (price query) (€24.75)',
         }))
         expect(items.eq).toHaveBeenCalledWith('id', 'a1')
         expect(items.insert).not.toHaveBeenCalled()
@@ -328,7 +328,7 @@ describe('the support list kept from the claims', () => {
         renderReport()
         fireEvent.click((await screen.findAllByRole('button', { name: 'Update the support list' }))[0])
         await waitFor(() => expect(items.update).toHaveBeenCalledWith({
-            label: 'Chase the credit for Bowls charged 49.73 (price query) (24.75)',
+            label: 'Chase the credit for Bowls charged 49.73 (price query) (€24.75)',
         }))
         expect(items.eq).toHaveBeenCalledWith('id', 'a1')
     })
@@ -352,5 +352,37 @@ describe('the allergen sheet line', () => {
         renderReport()
         expect(await screen.findByText(/The allergen information has changed since then/)).toBeInTheDocument()
         expect(screen.getByText('accounts@example.ie')).toBeInTheDocument()
+    })
+})
+
+// The line by the badge that says where the autosave is up to. It used to go
+// on saying "Saved at" with the time of the last write that worked after one
+// had failed, so a comment that never reached the database looked kept.
+describe('the save line', () => {
+    const fine = { changedAt: { data: null, error: null } }
+
+    it('says Not saved once a write fails, rather than the time of the last one', async () => {
+        answer({ ...fine, items: makeQuery({ data: null, error: null }) })
+        renderReport()
+        const box = await screen.findByPlaceholderText('Add a comment')
+        fireEvent.change(box, { target: { value: 'Two new starters on Monday' } })
+        fireEvent.blur(box)
+        expect(await screen.findByText(/^Saved at /)).toBeInTheDocument()
+
+        answer({ ...fine, items: makeQuery({ data: null, error: { message: 'No permission' } }) })
+        const again = screen.getByPlaceholderText('Add a comment')
+        fireEvent.change(again, { target: { value: 'One leaving on Friday' } })
+        fireEvent.blur(again)
+
+        expect(await screen.findByText('Not saved')).toBeInTheDocument()
+        expect(screen.queryByText(/^Saved at /)).toBeNull()
+    })
+
+    it('does not call a week that could not be read a failed save', async () => {
+        answer({ ...fine, failing: ['employees'] })
+        renderReport()
+        expect(await screen.findByText('Could not read employees')).toBeInTheDocument()
+        expect(screen.getByText('Saves as you type')).toBeInTheDocument()
+        expect(screen.queryByText('Not saved')).toBeNull()
     })
 })

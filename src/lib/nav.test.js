@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { navItems, landingChoices, landingFor, pageLabel, navTarget } from '@/lib/nav'
+import { navItems, landingChoices, landingFor, pageLabel, navTarget, activeNavPath } from '@/lib/nav'
 
 const person = (role, extra = {}) => ({ id: 'u1', role, ...extra })
 
@@ -25,6 +25,44 @@ describe('the nav itself', () => {
     it('writes every path in a shape the database will accept', () => {
         const shape = /^\/[a-z0-9/-]{0,60}$/
         expect(navItems.filter(n => !shape.test(n.path)).map(n => n.path)).toEqual([])
+    })
+
+    // Twenty items used to share eight pictures, and Delivery problems had
+    // the bin that Waste uses. The picture is how the eye finds one.
+    it('gives every item a picture of its own', () => {
+        const icons = navItems.map(n => n.icon)
+        expect(icons.every(Boolean)).toBe(true)
+        expect(icons).toEqual([...new Set(icons)])
+    })
+})
+
+describe('which item is lit for the page', () => {
+    const lit = path => activeNavPath(navItems, path)
+
+    it('lights the item for its own page', () => {
+        expect(lit('/roster')).toBe('/roster')
+    })
+
+    // Pages reached from a list are not on the menu, so the list they came
+    // from lights instead of nothing.
+    it('lights the list a detail page belongs to', () => {
+        expect(lit('/reports/abc-123')).toBe('/reports')
+        expect(lit('/invoices/history')).toBe('/invoices')
+        expect(lit('/catalogue/products/p1')).toBe('/catalogue/products')
+    })
+
+    // /sales/weekly starts with /sales too, so only the longest one counts.
+    it('keeps a page that has its own item on that item', () => {
+        expect(lit('/sales/weekly')).toBe('/sales/weekly')
+        expect(lit('/invoices/claims')).toBe('/invoices/claims')
+        expect(lit('/invoices/import')).toBe('/invoices/import')
+        expect(lit('/sales')).toBe('/sales')
+    })
+
+    // /salesman is not under /sales.
+    it('only matches a whole part of the address', () => {
+        expect(lit('/salesman')).toBe(null)
+        expect(lit('/')).toBe(null)
     })
 })
 

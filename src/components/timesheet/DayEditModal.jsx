@@ -7,7 +7,7 @@ import { numberField } from '@/lib/numberInput'
 import { BANK_HOLIDAY_INK } from '@/lib/bankHolidays'
 import Modal from '@/components/ui/Modal'
 import AutoTextarea from '@/components/ui/AutoTextarea'
-import { modalFooter, secondaryButton, labelClass, fieldClass, rowButton } from '@/lib/controlStyles'
+import { modalFooter, secondaryButton, labelClass, fieldClass, askField, hintClass, rowButton } from '@/lib/controlStyles'
 
 // One person, one day, on a phone.
 //
@@ -74,10 +74,10 @@ export default function DayEditModal({
                                     })}
                                     disabled={!canEdit}
                                     placeholder="Nobody has said yet"
-                                    className={`${fieldClass} ${cell.absence.hours == null ? 'border-accent' : ''}`}
+                                    className={cell.absence.hours == null ? askField : fieldClass}
                                 />
                                 {cell.absence.starts_on !== cell.absence.ends_on && cell.absence.hours != null && (
-                                    <p className="text-xs text-muted mt-1">
+                                    <p className={hintClass}>
                                         {fmtHours(cell.holidayHours)} of that falls on this day.
                                     </p>
                                 )}
@@ -152,7 +152,7 @@ export default function DayEditModal({
                         ))}
 
                         {canEdit && cell.entries.length > 0 && cell.entries.every(e => e.starts_at && e.ends_at) && (
-                            <button type="button" onClick={onAdd} className={`${secondaryButton} text-xs`}>
+                            <button type="button" onClick={onAdd} className={rowButton()}>
                                 Another shift this day
                             </button>
                         )}

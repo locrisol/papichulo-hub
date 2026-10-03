@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { secondaryButton } from '@/lib/controlStyles'
+import { secondaryButton, primaryButton, modalFooter } from '@/lib/controlStyles'
 import Modal from '@/components/ui/Modal'
 import { ConfirmContext } from '@/context/confirm'
 
@@ -86,15 +86,11 @@ function ConfirmDialog({ request, onClose }) {
         confirmRef.current?.focus()
     }, [])
 
-    const confirmCls = tone === 'danger'
-        ? 'px-5 py-2.5 bg-red-600 text-white text-sm font-semibold rounded-lg hover:bg-red-700 transition-colors'
-        : 'px-5 py-2.5 bg-accent text-white text-sm font-semibold rounded-lg hover:bg-orange-600 transition-colors'
-
     // Closing any other way than a button counts as no, the same as the
     // browser box it replaced.
     return (
         <Modal title={title} onClose={() => onClose(false)} width="max-w-md">
-                <div className="p-5">
+                <div className="px-6 py-5">
                     {/* pre-line so a message made of several paragraphs, like
                         the reasons a roster is held, reads as paragraphs
                         rather than running together. */}
@@ -108,7 +104,7 @@ function ConfirmDialog({ request, onClose }) {
                         <dl className="mt-4 border border-border rounded-lg divide-y divide-border">
                             {details.map(d => (
                                 <div key={d.label} className="flex items-baseline justify-between gap-4 px-3 py-2">
-                                    <dt className="text-xs text-gray-500 uppercase tracking-wider">{d.label}</dt>
+                                    <dt className="text-xs text-muted uppercase tracking-wider">{d.label}</dt>
                                     <dd className="text-sm font-semibold text-gray-900 text-right">{d.value}</dd>
                                 </div>
                             ))}
@@ -120,7 +116,7 @@ function ConfirmDialog({ request, onClose }) {
                     )}
                 </div>
 
-                <div className="px-5 py-4 border-t border-border flex justify-end gap-3">
+                <div className={modalFooter}>
                     {!isNotice && (
                         <button type="button" onClick={() => onClose(false)} className={secondaryButton}>
                             {cancelLabel}
@@ -130,7 +126,7 @@ function ConfirmDialog({ request, onClose }) {
                         ref={confirmRef}
                         type="button"
                         onClick={() => onClose(true)}
-                        className={isNotice ? secondaryButton : confirmCls}
+                        className={isNotice ? secondaryButton : primaryButton('lg', tone === 'danger' ? 'danger' : 'accent')}
                     >
                         {isNotice ? 'Close' : confirmLabel}
                     </button>

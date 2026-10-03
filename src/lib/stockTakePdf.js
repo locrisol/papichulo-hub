@@ -1,26 +1,11 @@
-import { fmtMoney, fmtQty, fmtUnitCost } from '@/lib/format'
+import { fmtMoney, fmtPct, fmtQty, fmtUnitCost } from '@/lib/format'
 import { countName } from '@/lib/products'
 import { sectionColour, MIX_COLOUR } from '@/lib/sections'
-import { bySection, summarise } from '@/lib/stockTakeSummary'
+import { breakdownParts, bySection, justLoose, summarise } from '@/lib/stockTakeSummary'
 import { slicePoints } from '@/lib/donut'
+import { stampDate } from '@/lib/dates'
+import { loadJsPdf, letterhead, footers, rgb } from '@/lib/pdfPage'
 import logo from '@/assets/PapiChuloLogoPrint.png?inline'
-
-// jsPDF is fetched when somebody asks for a PDF, not when the screen opens.
-//
-// It is 400KB with its own optional dependencies behind it, and a plain import
-// at the top of this file means every visit to the screen that can make one
-// pays for it whether or not anybody presses the button. Most never do.
-let jsPdfModule = null
-
-async function loadJsPdf() {
-    if (!jsPdfModule) jsPdfModule = (await import('jspdf')).default
-    return jsPdfModule
-}
-
-
-// The logo, in millimetres. The file is 400 by 249.
-const LOGO_WIDTH = 26
-const LOGO_HEIGHT = (LOGO_WIDTH * 249) / 400
 
 // The stock take as a piece of paper.
 //
@@ -35,11 +20,6 @@ const LOGO_HEIGHT = (LOGO_WIDTH * 249) / 400
 // cost on the day it was counted, and the sums are in stockTakeSummary, which
 // the finished stock take page reads from as well so the two cannot disagree.
 
-function rgb(hex) {
-    const n = parseInt(String(hex).slice(1), 16)
-    return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
-}
-
 // The same colour laid over white, for the band behind a summary row. Same
 // sum as tint in roster.js, which returns a hex string because the screen
 // wants one. jsPDF wants three numbers, so this one hands back the channels.
@@ -51,40 +31,12 @@ function inkOf(section) {
     return sectionColour(section).ink
 }
 
-function fmtDate(iso) {
-    if (!iso) return '—'
-    return new Date(iso).toLocaleDateString('en-IE', { day: 'numeric', month: 'short', year: 'numeric' })
-}
-
-// Build "6 Box + 15 Bag + 2.25 KG" from a line's unit_breakdown, sorted
-// biggest format first, loose last. Returns null if no breakdown.
-function breakdownString(line, product) {
-    const b = line.unit_breakdown
-    if (!b || typeof b !== 'object') return null
-    const parts = []
-    for (const [label, info] of Object.entries(b)) {
-        const qty = info?.qty
-        if (qty == null) continue
-        const factor = Number(info.factor ?? 1)
-        const isLoose = label === 'loose'
-        parts.push({
-            text: isLoose ? `${fmtQty(qty)} ${product.unit}` : `${fmtQty(qty)} ${label}`,
-            factor, isLoose,
-        })
-    }
-    if (parts.length === 0) return null
-
-    // One loose entry is its own total, so "12 Units = 12 Units" says the same
-    // number twice. The equals sign is there to show the working when somebody
-    // counted in packs, and with a single loose entry there is no working to
-    // show. The screen has done this for a while and the report never did.
-    if (parts.length === 1 && parts[0].isLoose) return null
-
-    parts.sort((a, b) => {
-        if (a.isLoose && !b.isLoose) return 1
-        if (!a.isLoose && b.isLoose) return -1
-        return b.factor - a.factor
-    })
+// "6 Box + 15 Bag + 2.25 KG", or null when there is no working to show: no
+// breakdown at all, or a single loose entry that would only repeat the total.
+// The parts are read the way the screens read them, from stockTakeSummary.
+export function breakdownString(line, product) {
+    const parts = breakdownParts(line, product)
+    if (!parts || justLoose(parts)) return null
     return parts.map(p => p.text).join(' + ')
 }
 
@@ -120,39 +72,18 @@ export async function exportStockTakePdf({ session, restaurant, products, lines,
     // the words stock take, so a page of it on its own was a list of food with
     // prices beside it and no telling what it was for.
     function drawPageTop() {
-        pdf.addImage(logo, 'PNG', marginX, 9, LOGO_WIDTH, LOGO_HEIGHT)
-        const textX = marginX + LOGO_WIDTH + 6
-
-        pdf.setFont('helvetica', 'bold')
-        pdf.setFontSize(7)
-        pdf.setTextColor(150)
-        pdf.text('STOCK TAKE', textX, 13, { charSpace: 0.7 })
-
-        pdf.setFontSize(15)
-        pdf.setTextColor(40)
-        pdf.text(restaurant.name, textX, 20.5)
-
-        pdf.setFont('helvetica', 'normal')
-        pdf.setFontSize(10)
-        pdf.setTextColor(90)
-        pdf.text(title, textX, 26)
-
-        pdf.setFontSize(8)
-        pdf.setTextColor(130)
-        const rightLines = [
-            `Started: ${fmtDate(session.started_at)}`,
-            session.completed_at ? `Closed: ${fmtDate(session.completed_at)}` : null,
-            `Generated: ${fmtDate(new Date().toISOString())} by ${generatedBy}`,
-        ].filter(Boolean)
-        rightLines.forEach((line, i) => {
-            pdf.text(line, pageWidth - marginX, 13 + i * 4, { align: 'right' })
+        y = letterhead(pdf, {
+            logo,
+            label: 'STOCK TAKE',
+            name: restaurant.name,
+            title,
+            lines: [
+                `Started: ${stampDate(session.started_at)}`,
+                session.completed_at ? `Closed: ${stampDate(session.completed_at)}` : null,
+                `Generated: ${stampDate(new Date())} by ${generatedBy}`,
+            ].filter(Boolean),
+            margin: marginX,
         })
-
-        pdf.setDrawColor(200)
-        pdf.setLineWidth(0.2)
-        pdf.line(marginX, 31, pageWidth - marginX, 31)
-
-        y = 37
     }
 
     function drawColumns() {
@@ -164,21 +95,6 @@ export async function exportStockTakePdf({ session, restaurant, products, lines,
         pdf.text('UNIT COST', colCostRight, y, { align: 'right' })
         pdf.text('VALUE', colTotalRight, y, { align: 'right' })
         y += 6
-    }
-
-    // Written at the very end, once there is a page count to say out of.
-    // A page on its own saying 4 tells you nothing about whether you are
-    // holding all of it.
-    function drawFooters() {
-        const pages = pdf.getNumberOfPages()
-        for (let page = 1; page <= pages; page++) {
-            pdf.setPage(page)
-            pdf.setFont('helvetica', 'italic')
-            pdf.setFontSize(7)
-            pdf.setTextColor(140)
-            pdf.text('Papi Chulo Hub stock take record', marginX, pageHeight - 8)
-            pdf.text(`Page ${page} of ${pages}`, pageWidth - marginX, pageHeight - 8, { align: 'right' })
-        }
     }
 
     // The coloured rail beside the rows of the section being printed.
@@ -238,7 +154,7 @@ export async function exportStockTakePdf({ session, restaurant, products, lines,
 
         pdf.setFontSize(8)
         pdf.setTextColor(120)
-        pdf.text(`${row.share.toFixed(1)}%`, colCostRight, y, { align: 'right' })
+        pdf.text(fmtPct(row.share), colCostRight, y, { align: 'right' })
 
         pdf.setFont('helvetica', 'bold')
         pdf.setFontSize(10)
@@ -293,7 +209,7 @@ export async function exportStockTakePdf({ session, restaurant, products, lines,
                 pdf.setFont('helvetica', 'normal')
                 pdf.setFontSize(8)
                 pdf.setTextColor(120)
-                pdf.text(`${food.share.toFixed(1)}%`, colCostRight, y, { align: 'right' })
+                pdf.text(fmtPct(food.share), colCostRight, y, { align: 'right' })
                 pdf.setFont('helvetica', 'bold')
                 pdf.setFontSize(10)
                 pdf.setTextColor(40)
@@ -432,7 +348,7 @@ export async function exportStockTakePdf({ session, restaurant, products, lines,
             pdf.roundedRect(trackX, barY - 0.7, Math.max((row.value / biggest) * trackWidth, 1), 3, 0.7, 0.7, 'F')
 
             pdf.setTextColor(130)
-            pdf.text(`${row.share.toFixed(1)}%`, x + width, barY + 1.5, { align: 'right' })
+            pdf.text(fmtPct(row.share), x + width, barY + 1.5, { align: 'right' })
             barY += 5.5
         }
     }
@@ -661,9 +577,9 @@ export async function exportStockTakePdf({ session, restaurant, products, lines,
         'No count was recorded this session, so nothing here is known either way.',
         summary.notCounted)
 
-    drawFooters()
+    footers(pdf, { left: 'Papi Chulo Hub stock take record', margin: marginX })
 
     const safeName = (restaurant.name || 'stocktake').toLowerCase().replace(/[^a-z0-9]+/g, '-')
-    const dateStr = fmtDate(session.completed_at || session.started_at).replace(/[^a-z0-9]+/gi, '-')
+    const dateStr = stampDate(session.completed_at || session.started_at).replace(/[^a-z0-9]+/gi, '-')
     pdf.save(`stocktake-${safeName}-${dateStr}.pdf`)
 }

@@ -61,6 +61,13 @@ describe('the small words', () => {
         expect(noticeWords(holiday({ starts_on: '2026-09-05' }), NOW)).toBe('Asked 1 day ahead')
         expect(noticeWords(holiday({ starts_on: '2026-09-04' }), NOW)).toBe('Asked for today')
     })
+
+    // Half twelve at night in Dublin is still the day before in UTC, and
+    // counted from that day it said a day more than the app does.
+    it('counts from the day it was asked in Ireland', () => {
+        const late = holiday({ created_at: '2026-09-27T23:30:00Z', starts_on: '2026-10-28' })
+        expect(noticeWords(late, NOW)).toBe('Asked 30 days ahead')
+    })
 })
 
 describe('somebody asked', () => {
@@ -567,6 +574,15 @@ describe('the mail to the person being asked', () => {
         expect(mail.html).toContain('&lt;b&gt;please&lt;/b&gt; &amp; thanks')
         expect(mail.html).not.toContain('<b>please</b>')
     })
+
+    // HTML reads a line break as a space, so a note typed over two lines
+    // arrived as one.
+    it('keeps the line breaks they typed', () => {
+        const request = ask({ message: 'Saturday? \nThanks' })
+        const mail = swapAskEmail({ ...words(), request })
+        expect(mail.html).toContain('Saturday?<br />Thanks')
+        expect(mail.text).toContain('Their note: "Saturday?\nThanks"')
+    })
 })
 
 describe('the mail back to whoever asked', () => {
@@ -624,6 +640,13 @@ describe('the mail to the managers', () => {
 
     it('carries what they said to each other', () => {
         expect(swapDeskEmail(words()).text).toContain('English class')
+    })
+
+    it('keeps the line breaks in what they said', () => {
+        const request = ask({ status: 'accepted', message: 'English class \r\non Saturdays' })
+        const mail = swapDeskEmail({ ...words(), request })
+        expect(mail.html).toContain('English class<br />on Saturdays')
+        expect(mail.text).toContain('Their note: "English class\non Saturdays"')
     })
 })
 
@@ -708,4 +731,53 @@ describe('no line ends in a space', () => {
             expect(bad).toEqual([])
         })
     }
+})
+
+// Every mail this function sends, for the checks that hold for all of them.
+const everyMail = () => [
+    requestEmail({
+        absence: holiday(), employeeName: 'Majo', restaurantName: 'Point Campus',
+        clashes: [shift('2026-10-12', '09:00', '17:00')], appUrl: 'https://hub.ie', now: NOW,
+    }),
+    answerEmail({
+        absence: holiday({ status: 'refused' }), employeeName: 'Majo',
+        restaurantName: 'Point Campus', answeredBy: 'Leandro', appUrl: 'https://hub.ie',
+    }),
+    swapAnswerEmail({
+        request: ask({ status: 'declined' }), halves: swapHalves(ask(), [SAT, THU]), nameOf,
+        restaurantName: 'Point Campus', appUrl: 'https://hub.ie',
+    }),
+    swapDeskEmail({
+        request: ask({ status: 'accepted', message: 'Thanks' }), halves: swapHalves(ask(), [SAT, THU]), nameOf,
+        restaurantName: 'Point Campus', appUrl: 'https://hub.ie',
+    }),
+]
+
+// Classic Outlook drops a see-through colour, and the line over the name on
+// the band was white at three quarters.
+describe('only solid colours', () => {
+    it('has no see-through colour in any style', () => {
+        const styles = everyMail().flatMap(mail => [...mail.html.matchAll(/style="([^"]*)"/g)].map(m => m[1]))
+        expect(styles.length).toBeGreaterThan(20)
+        expect(styles.filter(st => /#[0-9a-f]{8}\b|rgba?\(|hsla?\(/i.test(st))).toEqual([])
+    })
+
+    it('gives the line over the name a pale colour of its own band', () => {
+        const [green, , red] = everyMail()
+        expect(green.html).toContain('color:#CBDED4;font-weight:700;">PAPI CHULO')
+        expect(red.html).toContain('color:#EEC6C6;font-weight:700;">PAPI CHULO')
+    })
+})
+
+describe('the head of every mail', () => {
+    it('says its language, its characters and how wide a phone is', () => {
+        for (const { html } of everyMail()) {
+            expect(html).toContain('<html lang="en"><head>')
+            expect(html).toContain('<meta charset="utf-8" />')
+            expect(html).toContain('<meta name="viewport" content="width=device-width,initial-scale=1" />')
+            expect(html).toContain('<meta name="x-apple-disable-message-reformatting" />')
+            expect(html).toContain('<meta name="format-detection" content="telephone=no,date=no,address=no,email=no" />')
+            expect(html).toContain('</head><body ')
+        }
+    })
 })

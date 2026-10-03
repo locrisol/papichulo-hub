@@ -2,7 +2,9 @@ import { useState } from 'react'
 import { fmtMoney, fmtPct } from '@/lib/format'
 import { numberField } from '@/lib/numberInput'
 import { wasChanged, startsOpen, figureGaps } from '@/lib/weeklyReport'
-import { primaryButton, removeButton, secondaryButton } from '@/lib/controlStyles'
+import {
+    primaryButton, removeButton, secondaryButton, denseField, fieldClass, lockedField,
+} from '@/lib/controlStyles'
 import { useConfirm } from '@/context/confirm'
 import AddButton from '@/components/ui/AddButton'
 
@@ -62,8 +64,18 @@ function Row({ left, right, extra, tint }) {
 // The money box on a row. Stretches on a phone, where nothing else is competing
 // for the line and a box you have to aim at is a box you mistype into. Natural
 // width above that.
-const moneyBox = 'flex-1 sm:flex-none sm:w-28 text-right rounded-lg px-2 py-1.5 text-sm tabular-nums '
-    + 'focus:outline-none focus:ring-2 focus:ring-accent'
+//
+// The width is on a wrapper, moneyCell, because denseField already says
+// w-full and two widths on one box are settled by stylesheet order.
+const moneyCell = 'flex-1 sm:flex-none sm:w-28'
+const moneyBox = `${denseField} text-right tabular-nums`
+
+// An open line has the orange edge, swapped in for denseField's own border
+// rather than laid on top of it. The locked one is the same size, so opening
+// and shutting a line does not move the column.
+const openMoneyBox = moneyBox.replace('border-border', 'border-accent')
+const lockedMoneyBox = `${lockedField} w-full px-2 py-1.5 text-base pointer-fine:text-sm text-right `
+    + 'tabular-nums font-semibold'
 
 // One standing cost. Locked until somebody opens it, unless it has never been
 // set, in which case it is open from the start and stays open. On the first
@@ -114,18 +126,20 @@ function OverheadLine({ item, net, canEdit, onSave, onRename, onRemove }) {
     }
 
     const left = renaming ? (
-        <input
-            value={label}
-            onChange={e => setLabel(e.target.value)}
-            onBlur={commitLabel}
-            onKeyDown={e => {
-                if (e.key === 'Enter') e.currentTarget.blur()
-                if (e.key === 'Escape') { setLabel(item.label || ''); setRenaming(false) }
-            }}
-            autoFocus
-            aria-label="What this line is called"
-            className="flex-1 min-w-0 bg-white border border-accent rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-        />
+        <div className="flex-1 min-w-0">
+            <input
+                value={label}
+                onChange={e => setLabel(e.target.value)}
+                onBlur={commitLabel}
+                onKeyDown={e => {
+                    if (e.key === 'Enter') e.currentTarget.blur()
+                    if (e.key === 'Escape') { setLabel(item.label || ''); setRenaming(false) }
+                }}
+                autoFocus
+                aria-label="What this line is called"
+                className={denseField}
+            />
+        </div>
     ) : canEdit ? (
         <button
             onClick={() => { setLabel(item.label || ''); setRenaming(true) }}
@@ -140,35 +154,36 @@ function OverheadLine({ item, net, canEdit, onSave, onRename, onRemove }) {
 
     const right = (
         <>
-            {editing ? (
-                <input
-                    {...numberField({ value: draft, onChange: setDraft, decimals: 2 })}
-                    autoFocus={open}
-                    placeholder="0.00"
-                    onBlur={commit}
-                    onKeyDown={e => {
-                        if (e.key === 'Enter') e.currentTarget.blur()
-                        if (e.key === 'Escape') { setDraft(String(item.amount ?? '')); setOpen(false) }
-                    }}
-                    aria-label={item.label}
-                    className={`${moneyBox} bg-white border border-accent`}
-                />
-            ) : (
-                // The same box, disabled and greyed, rather than the figure as
-                // loose text. A field that turns into a line of writing when it
-                // is locked reads as a different thing from the one you typed
-                // into, and the eye has to find the column again every time one
-                // is opened and shut.
-                <input
-                    type="text"
-                    value={fmtMoney(amount)}
-                    disabled
-                    readOnly
-                    aria-label={item.label}
-                    className={`${moneyBox} bg-app-bg border border-border text-muted
-                        font-semibold cursor-not-allowed`}
-                />
-            )}
+            <div className={moneyCell}>
+                {editing ? (
+                    <input
+                        {...numberField({ value: draft, onChange: setDraft, decimals: 2 })}
+                        autoFocus={open}
+                        placeholder="0.00"
+                        onBlur={commit}
+                        onKeyDown={e => {
+                            if (e.key === 'Enter') e.currentTarget.blur()
+                            if (e.key === 'Escape') { setDraft(String(item.amount ?? '')); setOpen(false) }
+                        }}
+                        aria-label={item.label}
+                        className={openMoneyBox}
+                    />
+                ) : (
+                    // The same box, disabled and greyed, rather than the figure
+                    // as loose text. A field that turns into a line of writing
+                    // when it is locked reads as a different thing from the one
+                    // you typed into, and the eye has to find the column again
+                    // every time one is opened and shut.
+                    <input
+                        type="text"
+                        value={fmtMoney(amount)}
+                        disabled
+                        readOnly
+                        aria-label={item.label}
+                        className={lockedMoneyBox}
+                    />
+                )}
+            </div>
 
             <span className="w-12 text-right text-xs tabular-nums text-muted">{fmtPct(share)}</span>
 
@@ -258,16 +273,18 @@ function DeliveryLine({ row, statement, waiting, canEdit, onSave }) {
             right={
                 <>
                     {canEdit ? (
-                        <input
-                            {...numberField({ value: draft, onChange: setDraft, decimals: 2 })}
-                            onBlur={commit}
-                            onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
-                            placeholder="Statement"
-                            aria-label={`What ${platform.name}'s statement came to`}
-                            className={`${moneyBox} sm:w-24 bg-white border border-gray-300 shadow-sm focus:border-accent`}
-                        />
+                        <div className={moneyCell}>
+                            <input
+                                {...numberField({ value: draft, onChange: setDraft, decimals: 2 })}
+                                onBlur={commit}
+                                onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
+                                placeholder="Statement"
+                                aria-label={`What ${platform.name}'s statement came to`}
+                                className={moneyBox}
+                            />
+                        </div>
                     ) : (
-                        <span className="flex-1 sm:flex-none sm:w-24 text-right text-sm tabular-nums font-semibold text-gray-900">
+                        <span className="flex-1 sm:flex-none sm:w-28 text-right text-sm tabular-nums font-semibold text-gray-900">
                             {fmtMoney(row.cost)}
                         </span>
                     )}
@@ -407,13 +424,15 @@ export default function ReportProfitLoss({
                 <div className="mt-2">
                     {adding ? (
                         <div className="flex flex-wrap gap-2">
-                            <input
-                                value={name}
-                                onChange={e => setName(e.target.value)}
-                                autoFocus
-                                placeholder="What is it called"
-                                className="flex-1 min-w-[10rem] bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
-                            />
+                            <div className="flex-1 min-w-[10rem]">
+                                <input
+                                    value={name}
+                                    onChange={e => setName(e.target.value)}
+                                    autoFocus
+                                    placeholder="What is it called"
+                                    className={fieldClass}
+                                />
+                            </div>
                             <button
                                 onClick={async () => {
                                     if (!name.trim()) return

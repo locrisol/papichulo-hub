@@ -18,7 +18,7 @@
 // what the absences say, and what the clock recorded.
 
 import { weekDates, todayISO } from '@/lib/dates'
-import { num } from '@/lib/format'
+import { num, round2 } from '@/lib/format'
 import { spanHours, toSeconds } from '@/lib/clock'
 import { toMinutes, shiftMinutes } from '@/lib/roster'
 import {
@@ -238,7 +238,6 @@ export function personWeek({
     const holiday = holidayHoursInWeek(absences, person.id, days.map(d => d.date))
 
     const rate = rateFor(person, restaurantRate)
-    const round = n => Math.round(n * 100) / 100
 
     return {
         person,
@@ -247,12 +246,12 @@ export function personWeek({
         ownRate: person?.hourly_rate !== null && person?.hourly_rate !== undefined,
         // His format: normal is everything that is not a bank holiday, and the
         // bank holiday hours sit beside it rather than inside it.
-        normal: round(worked - bankHoliday),
-        bankHoliday: round(bankHoliday),
-        holiday: round(holiday),
-        worked: round(worked),
-        total: round(worked + holiday),
-        cost: round(worked * rate),
+        normal: round2(worked - bankHoliday),
+        bankHoliday: round2(bankHoliday),
+        holiday: round2(holiday),
+        worked: round2(worked),
+        total: round2(worked + holiday),
+        cost: round2(worked * rate),
     }
 }
 
@@ -262,26 +261,25 @@ export function personWeek({
 
 export function weekTotals(rows) {
     const dates = rows[0]?.days.map(d => d.date) || []
-    const round = n => Math.round(n * 100) / 100
 
     const perDay = dates.map((date, i) => {
         const hours = rows.reduce((t, row) => t + row.days[i].hours, 0)
         const cost = rows.reduce((t, row) => t + row.days[i].hours * row.rate, 0)
         return {
             date,
-            hours: round(hours),
-            cost: round(cost),
+            hours: round2(hours),
+            cost: round2(cost),
             bankHoliday: bankHolidayOn(date),
         }
     })
 
     return {
         perDay,
-        hours: round(perDay.reduce((t, d) => t + d.hours, 0)),
-        cost: round(perDay.reduce((t, d) => t + d.cost, 0)),
-        holiday: round(rows.reduce((t, r) => t + r.holiday, 0)),
-        bankHoliday: round(rows.reduce((t, r) => t + r.bankHoliday, 0)),
-        normal: round(rows.reduce((t, r) => t + r.normal, 0)),
+        hours: round2(perDay.reduce((t, d) => t + d.hours, 0)),
+        cost: round2(perDay.reduce((t, d) => t + d.cost, 0)),
+        holiday: round2(rows.reduce((t, r) => t + r.holiday, 0)),
+        bankHoliday: round2(rows.reduce((t, r) => t + r.bankHoliday, 0)),
+        normal: round2(rows.reduce((t, r) => t + r.normal, 0)),
     }
 }
 

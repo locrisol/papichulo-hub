@@ -3,7 +3,7 @@ import { useConfirm } from '@/context/confirm'
 import { supabase } from '@/lib/supabase'
 import { useRestaurant } from '@/context/restaurant'
 import { friendlyError } from '@/lib/errors'
-import { tableHeadRow, card, modalFooter, rowButton, secondaryButton, fieldClass, primaryButton } from '@/lib/controlStyles'
+import { tableHeadRow, card, modalFooter, rowButton, secondaryButton, fieldClass, denseField, inactiveBadge, hintClass, primaryButton } from '@/lib/controlStyles'
 import ArrangeList from '@/components/ui/ArrangeList'
 import { ModalSectionBar } from '@/components/ui/ModalSection'
 import Modal from '@/components/ui/Modal'
@@ -207,9 +207,9 @@ export default function SalesTendersModal({ onClose, onChange }) {
               type="text"
               value={editLabel}
               onChange={e => setEditLabel(e.target.value)}
-              className="w-full border border-border rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+              className={denseField}
             />
-            <p className="text-xs text-muted mt-1">
+            <p className={hintClass}>
               Stored as {t.key}, which does not change. Every figure already entered stays with this row.
             </p>
           </td>
@@ -234,12 +234,12 @@ export default function SalesTendersModal({ onClose, onChange }) {
           <span className="block text-xs font-normal text-muted">{t.key}</span>
         </td>
         <td className="px-3 py-2 text-xs">
-          <span className={t.is_active ? 'text-gray-700' : 'text-muted'}>
-            {t.is_active ? 'Active' : 'Retired'}
-          </span>
+          {t.is_active
+            ? <span className="text-gray-700">Active</span>
+            : <span className={inactiveBadge}>Retired</span>}
           <button
             onClick={() => toggleCounts(t)}
-            className={`block mt-1 ${t.counts_toward_gross ? 'text-gray-500' : 'text-amber-600'} hover:underline`}
+            className={`block mt-1 ${t.counts_toward_gross ? 'text-muted' : 'text-amber-700'} hover:underline`}
           >
             {t.counts_toward_gross ? 'Counts toward gross' : 'Not counted'}
           </button>
@@ -263,7 +263,7 @@ export default function SalesTendersModal({ onClose, onChange }) {
 
   return (
     <Modal title="Till receipt rows" onClose={onClose} width="max-w-3xl">
-        <p className="px-6 pt-4 text-xs text-gray-500">
+        <p className="px-6 pt-4 text-xs text-muted">
           The rows on the sales screens for {activeRestaurant?.name}, in the order the till prints them. Gross and
           net sales are always at the top and are not in this list.
         </p>
@@ -276,7 +276,7 @@ export default function SalesTendersModal({ onClose, onChange }) {
           {/* Retiring rather than deleting is the point of this screen. A row
               that is deleted takes its history with it; a retired one keeps
               showing on the weeks it was actually used. */}
-          <p className="text-xs text-gray-500 mb-4">
+          <p className="text-xs text-muted mb-4">
             Retiring a row takes it off new days but leaves it on every week that already has figures for it, so an old
             week still shows the till as it was. Renaming a row keeps everything entered under it.
           </p>
@@ -314,7 +314,7 @@ export default function SalesTendersModal({ onClose, onChange }) {
                         className={fieldClass}
                         aria-label="Row name"
                       />
-                      <p className="text-xs text-muted mt-1">
+                      <p className={hintClass}>
                         Stored as {t.key}, which does not change. Every figure already entered stays with it.
                       </p>
                       <div className="flex flex-wrap gap-3 mt-2">
@@ -328,9 +328,9 @@ export default function SalesTendersModal({ onClose, onChange }) {
                         <span className={`text-sm font-semibold ${t.is_active ? 'text-gray-900' : 'text-muted'}`}>
                           {t.label}
                         </span>
-                        <span className={`text-xs whitespace-nowrap ${t.is_active ? 'text-green-700' : 'text-muted'}`}>
-                          {t.is_active ? 'Active' : 'Retired'}
-                        </span>
+                        {t.is_active
+                          ? <span className="text-xs whitespace-nowrap text-green-700">Active</span>
+                          : <span className={inactiveBadge}>Retired</span>}
                       </div>
                       <p className="text-xs text-muted mt-0.5">{t.key}</p>
                       <div className="flex flex-wrap gap-3 mt-2 pt-2 border-t border-border">
@@ -377,7 +377,7 @@ export default function SalesTendersModal({ onClose, onChange }) {
                 value={newLabel}
                 onChange={e => setNewLabel(e.target.value)}
                 placeholder="e.g. Ordu App"
-                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+                className={fieldClass}
               />
             </div>
             <button
@@ -392,7 +392,7 @@ export default function SalesTendersModal({ onClose, onChange }) {
         <div className={modalFooter}>
           <button
             onClick={onClose}
-            className="px-4 py-2 border border-border text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+            className={secondaryButton}
           >
             Done
           </button>

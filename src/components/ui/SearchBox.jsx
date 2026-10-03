@@ -34,7 +34,9 @@ export default function SearchBox({
                 // were two of them, and the native one only appears on hover
                 // and cannot be styled to match anything. Ours stays, because
                 // it is always visible and is the same size as a thumb.
-                className="w-full h-11 bg-white border border-gray-300 rounded-lg shadow-sm pl-9 pr-9 text-sm text-gray-800 transition-colors hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent [&::-webkit-search-cancel-button]:appearance-none [&::-webkit-search-decoration]:appearance-none"
+                // 16px unless there is a mouse, or an iPhone zooms the page
+                // in on the stock take the moment the box is tapped.
+                className="w-full h-11 bg-white border border-gray-300 rounded-lg shadow-sm pl-9 pr-9 text-base pointer-fine:text-sm text-gray-800 transition-colors hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent [&::-webkit-search-cancel-button]:appearance-none [&::-webkit-search-decoration]:appearance-none"
             />
 
             {value && (

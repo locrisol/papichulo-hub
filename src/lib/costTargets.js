@@ -4,6 +4,8 @@
 // So looking back at July has to use July's target, not whatever is set today,
 // otherwise the app quietly rewrites how past weeks were judged.
 
+import { addDays } from '@/lib/dates'
+
 // The override in force for a week, as a row, or null when none is and the
 // restaurant's own figure applies.
 //
@@ -94,7 +96,7 @@ export function describeTargets(overrides, targetType, weekStart) {
         let neverApplied = false
 
         if (!until && next) {
-            const closed = dayBefore(next.effective_from)
+            const closed = addDays(next.effective_from, -1)
             if (closed < o.effective_from) {
                 // Something else started on the same day or earlier, so this one
                 // was replaced before it ever took effect.
@@ -128,14 +130,4 @@ export function describeTargets(overrides, targetType, weekStart) {
             wasTemporary: Boolean(o.effective_until),
         }
     }).reverse() // newest first, which is how you read a list like this
-}
-
-// The day before a date string, in local time.
-function dayBefore(dateStr) {
-    const d = new Date(dateStr + 'T00:00:00')
-    d.setDate(d.getDate() - 1)
-    const y = d.getFullYear()
-    const m = String(d.getMonth() + 1).padStart(2, '0')
-    const day = String(d.getDate()).padStart(2, '0')
-    return `${y}-${m}-${day}`
 }

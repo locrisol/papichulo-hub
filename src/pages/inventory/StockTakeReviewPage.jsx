@@ -8,9 +8,13 @@ import { friendlyError } from '@/lib/errors'
 import { countName } from '@/lib/products'
 import { noPrice } from '@/lib/stockTakeSummary'
 import { sectionRank, sectionColour } from '@/lib/sections'
-import { card } from '@/lib/controlStyles'
+import {
+  badge, captionClass, card, fieldClass, labelClass, modalFooter, primaryButton, rowButton, secondaryButton,
+} from '@/lib/controlStyles'
 import BackButton from '@/components/ui/BackButton'
 import Modal from '@/components/ui/Modal'
+import Notice from '@/components/ui/Notice'
+import PageHeader from '@/components/ui/PageHeader'
 import { can, MANAGERS } from '@/lib/access'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 
@@ -39,8 +43,8 @@ function valueOf(lines) {
 function ListHeading({ children, count }) {
   return (
     <div className="flex items-center gap-3 mb-3">
-      <h2 className="text-sm font-bold uppercase tracking-widest text-muted">{children}</h2>
-      <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">{count}</span>
+      <h2 className={captionClass}>{children}</h2>
+      <span className={`${badge} bg-amber-100 text-amber-800`}>{count}</span>
     </div>
   )
 }
@@ -278,7 +282,7 @@ export default function StockTakeReviewPage() {
   }
 
   if (loading) {
-    return <div><p className="text-sm text-gray-500">Loading...</p></div>
+    return <div><p className="text-sm text-muted">Loading...</p></div>
   }
 
   if (error && !session) {
@@ -293,9 +297,9 @@ export default function StockTakeReviewPage() {
   if (!isManager) {
     return (
       <div>
-        <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm px-4 py-3 rounded-lg">
+        <Notice tone="warn">
           Only managers can review and close a stock take.
-        </div>
+        </Notice>
         <BackButton to={`/inventory/stock-takes/${id}`} className="mt-4">Back to counting</BackButton>
       </div>
     )
@@ -304,10 +308,10 @@ export default function StockTakeReviewPage() {
   if (session.status !== 'in_progress') {
     return (
       <div>
-        <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm px-4 py-3 rounded-lg">
+        <Notice tone="warn">
           This stock take is already closed.
-        </div>
-        <button type="button" onClick={() => navigate(`/inventory/stock-takes/${id}/summary`)} className="mt-4 text-sm font-semibold text-accent-ink">View summary →</button>
+        </Notice>
+        <button type="button" onClick={() => navigate(`/inventory/stock-takes/${id}/summary`)} className={`${secondaryButton} mt-4`}>View summary →</button>
       </div>
     )
   }
@@ -316,36 +320,25 @@ export default function StockTakeReviewPage() {
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => navigate(`/inventory/stock-takes/${id}`)}
-        className="inline-flex items-center gap-1 text-sm font-semibold text-gray-500 hover:text-gray-700 mb-4"
-      >
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-        </svg>
-        Back to counting
-      </button>
+      <BackButton to={`/inventory/stock-takes/${id}`} className="mb-4">Back to counting</BackButton>
 
-      <header className="mb-6">
-        <h1 className="font-serif text-2xl font-bold text-gray-900">Review &amp; close</h1>
-        <p className="text-sm text-muted mt-1">
-          Check the count, then close the stock take. Once closed it becomes read-only.
-        </p>
-      </header>
+      <PageHeader
+        title="Review & close"
+        subtitle="Check the count, then close the stock take. Once closed it becomes read-only."
+      />
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
         <div className={`${card} p-4`}>
-          <p className="text-xs text-muted uppercase tracking-wide">Counted</p>
+          <p className={captionClass}>Counted</p>
           <p className="text-2xl font-bold text-gray-900 mt-1">{countedCount}<span className="text-base text-muted">/{products.length}</span></p>
         </div>
         <div className={`${card} p-4`}>
-          <p className="text-xs text-muted uppercase tracking-wide">Uncounted</p>
+          <p className={captionClass}>Uncounted</p>
           <p className="text-2xl font-bold text-amber-600 mt-1">{uncountedProducts.length}</p>
         </div>
         <div className={`${card} p-4 col-span-2 sm:col-span-1`}>
-          <p className="text-xs text-muted uppercase tracking-wide">Total value</p>
+          <p className={captionClass}>Total value</p>
           <p className="text-2xl font-bold text-gray-900 mt-1">{fmtMoney(totalValue)}</p>
         </div>
       </div>
@@ -399,7 +392,7 @@ export default function StockTakeReviewPage() {
                   {counted.map(place => (
                     <span
                       key={place}
-                      className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                      className={badge}
                       style={{
                         color: sectionColour(place).ink,
                         backgroundColor: `${sectionColour(place).ink}1a`,
@@ -411,7 +404,7 @@ export default function StockTakeReviewPage() {
                   {missing.map(place => (
                     <span
                       key={place}
-                      className="text-xs font-semibold px-2 py-0.5 rounded-full border bg-white"
+                      className={`${badge} border bg-white`}
                       style={{ color: sectionColour(place).ink, borderColor: sectionColour(place).ink }}
                     >
                       not {place}
@@ -425,7 +418,7 @@ export default function StockTakeReviewPage() {
               <button
                 type="button"
                 onClick={() => setAllPlaces(!allPlaces)}
-                className="mt-3 px-3 py-1.5 rounded-lg border border-gray-300 bg-white text-xs font-semibold text-gray-800 shadow-sm hover:bg-gray-50"
+                className={`${rowButton('plain')} mt-3`}
               >
                 {allPlaces ? 'Show fewer' : `Show the other ${partlyCounted.length - 3}`}
               </button>
@@ -436,14 +429,14 @@ export default function StockTakeReviewPage() {
 
       {/* Uncounted products */}
       <section className="mb-6">
-        <h2 className="text-sm font-bold uppercase tracking-widest text-muted mb-3">
+        <h2 className={`${captionClass} mb-3`}>
           Uncounted products ({uncountedProducts.length})
         </h2>
 
         {uncountedProducts.length === 0 ? (
-          <div className="bg-green-50 border border-green-200 text-green-800 text-sm rounded-xl p-4">
+          <Notice tone="good">
             Everything has been counted. Ready to close.
-          </div>
+          </Notice>
         ) : (
           <>
             <p className="text-xs text-muted mb-3">
@@ -486,28 +479,30 @@ export default function StockTakeReviewPage() {
                         )}
                         <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
                           <div className="flex-1">
-                            <label className="block text-xs font-medium text-muted mb-1">Quantity ({product.unit})</label>
+                            <label htmlFor="review-quantity" className={labelClass}>Quantity ({product.unit})</label>
                             <input
+                              id="review-quantity"
                               type="text" inputMode="decimal" onFocus={e => e.target.select()} value={draftQty}
                               onChange={e => setDraftQty(e.target.value.replace(/[^0-9.]/g, ''))}
                               placeholder="0"
-                              className="w-full px-3 py-2.5 border border-border rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
+                              className={fieldClass}
                             />
                           </div>
                           <div className="flex-1">
-                            <label className="block text-xs font-medium text-muted mb-1">Location <span className="font-normal">(optional)</span></label>
+                            <label htmlFor="review-location" className={labelClass}>Location (optional)</label>
                             <input
+                              id="review-location"
                               type="text" value={draftLocation}
                               onChange={e => setDraftLocation(e.target.value)}
                               placeholder="e.g. back cold room"
-                              className="w-full px-3 py-2.5 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
+                              className={fieldClass}
                             />
                           </div>
                           <button
                             type="button"
                             onClick={() => handleAddLine(product)}
                             disabled={savingLine || draftQty === '' || isNaN(parseFloat(draftQty))}
-                            className="bg-accent hover:bg-accent/90 disabled:opacity-40 text-white font-semibold px-4 py-2.5 rounded-lg transition-colors"
+                            className={primaryButton('md')}
                             style={{ minHeight: '44px' }}
                           >
                             Add
@@ -527,7 +522,7 @@ export default function StockTakeReviewPage() {
       <button
         type="button"
         onClick={openCloseConfirm}
-        className="w-full sm:w-auto bg-green-brand hover:bg-green-brand/90 text-white font-semibold px-6 py-3 rounded-lg transition-colors"
+        className={`${primaryButton('xl', 'good')} w-full sm:w-auto`}
       >
         Close stock take
       </button>
@@ -540,31 +535,27 @@ export default function StockTakeReviewPage() {
           months. */}
       {showCloseConfirm && (
         <Modal title="Close this stock take?" onClose={closeConfirm} width="max-w-md">
-          <div className="p-6">
-            <p className="text-sm text-gray-700 mb-3">
+          <div className="px-6 py-4 space-y-3">
+            <p className="text-sm text-gray-700">
               Once closed, counts become read-only. You can reopen it later if a correction is needed.
             </p>
             {uncountedProducts.length > 0 && (
-              <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-lg px-3 py-2 mb-3">
+              <Notice tone="warn">
                 {uncountedProducts.length} {uncountedProducts.length === 1 ? 'product' : 'products'} will be left uncounted for this session (no count recorded). You can reopen and add them later if needed.
-              </div>
+              </Notice>
             )}
-            <p className="text-sm text-gray-700 mb-4">
+            <p className="text-sm text-gray-700">
               Total value: <strong>{fmtMoney(totalValue)}</strong>
             </p>
-
-            {error && (
-              <ErrorBanner className="mb-4">{error}</ErrorBanner>
-            )}
-
-            <div className="flex flex-wrap gap-2 justify-end">
-              <button type="button" onClick={closeConfirm} disabled={closing} className="px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 rounded-lg disabled:opacity-50">
-                Cancel
-              </button>
-              <button type="button" onClick={handleCloseSession} disabled={closing} className="px-5 py-2 text-sm font-semibold bg-green-brand hover:bg-green-brand/90 text-white rounded-lg disabled:opacity-50">
-                {closing ? 'Closing...' : 'Close stock take'}
-              </button>
-            </div>
+            <ErrorBanner>{error}</ErrorBanner>
+          </div>
+          <div className={modalFooter}>
+            <button type="button" onClick={closeConfirm} disabled={closing} className={secondaryButton}>
+              Cancel
+            </button>
+            <button type="button" onClick={handleCloseSession} disabled={closing} className={primaryButton('lg', 'good')}>
+              {closing ? 'Closing...' : 'Close stock take'}
+            </button>
           </div>
         </Modal>
       )}

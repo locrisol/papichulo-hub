@@ -8,8 +8,8 @@ import { useAuth } from '@/context/auth'
 import { useConfirm } from '@/context/confirm'
 import { friendlyError } from '@/lib/errors'
 import {
-    modalFooter, secondaryButton, primaryButton, rowButton,
-    labelClass, fieldClass, dateField, hintClass,
+    modalFooter, secondaryButton, primaryButton, rowButton, chip,
+    labelClass, fieldClass, hintClass,
 } from '@/lib/controlStyles'
 import {
     KINDS, kindLabel, kindTag, scopeFrom, entryProblem, cleanLabels, labelsUsed, canWriteAllSites,
@@ -331,10 +331,14 @@ export default function DiaryDialog({ entry, date, restaurants, onClose, onSaved
 
                 <div>
                     <span className={labelClass}>When</span>
-                    <div className="flex flex-wrap items-center gap-2">
+                    {/* One above the other on a phone, where two date boxes
+                        side by side cannot show their dates, and in a row from
+                        sm up. The times below are the same size of box in the same
+                        columns, so the two rows line up. */}
+                    <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] sm:items-center gap-2">
                         <input
                             type="date"
-                            className={dateField}
+                            className={fieldClass}
                             value={form.starts_on}
                             onChange={e => set('starts_on', e.target.value)}
                             aria-label="The day it starts"
@@ -342,7 +346,7 @@ export default function DiaryDialog({ entry, date, restaurants, onClose, onSaved
                         <span className="text-sm text-muted font-semibold">to</span>
                         <input
                             type="date"
-                            className={dateField}
+                            className={fieldClass}
                             value={form.ends_on}
                             min={form.starts_on}
                             onChange={e => set('ends_on', e.target.value)}
@@ -350,18 +354,16 @@ export default function DiaryDialog({ entry, date, restaurants, onClose, onSaved
                         />
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2 mt-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] sm:items-center gap-2 mt-2">
                         <ClockField
                             value={form.starts_at}
                             onChange={v => set('starts_at', v)}
-                            compact
                             aria-label="The time it starts"
                         />
                         <span className="text-sm text-muted font-semibold">to</span>
                         <ClockField
                             value={form.ends_at}
                             onChange={v => set('ends_at', v)}
-                            compact
                             aria-label="The time it finishes"
                             disabled={!form.starts_at}
                         />
@@ -400,11 +402,7 @@ export default function DiaryDialog({ entry, date, restaurants, onClose, onSaved
                                 type="button"
                                 onClick={() => toggleLabel(label)}
                                 aria-pressed={has(label)}
-                                className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors ${
-                                    has(label)
-                                        ? 'bg-sidebar border-sidebar text-white'
-                                        : 'bg-white border-gray-300 text-gray-600 hover:border-gray-400'
-                                }`}
+                                className={chip(has(label))}
                             >
                                 {label}
                             </button>

@@ -833,3 +833,42 @@ describe('a product made from a line on Review', () => {
         expect(await screen.findByText('On Review')).toBeInTheDocument()
     })
 })
+
+// Editing never opens inside a list. The phone card used to grow a second copy
+// of the form under the dialog, so a phone had two forms with the same boxes.
+describe('editing a product', () => {
+    it('opens one form, in the dialog, and the card keeps its Edit button', async () => {
+        const me = userEvent.setup()
+        renderWithRouter(<ProductsPage />)
+        await me.click((await screen.findAllByRole('button', { name: 'Edit' }))[0])
+
+        expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Save changes' })).toBeInTheDocument()
+        expect(document.querySelectorAll('form')).toHaveLength(1)
+        expect(document.querySelectorAll('#piece-weight')).toHaveLength(1)
+        // The row's own button is not turned into a Cancel while the dialog is open.
+        const rowButtons = [...document.querySelectorAll('button')]
+            .filter(b => !b.closest('[role="dialog"]'))
+            .map(b => b.textContent)
+        expect(rowButtons).toContain('Edit')
+        expect(rowButtons).not.toContain('Cancel')
+    })
+})
+
+// The colour of a filter is not something a screen reader can see, so each
+// one says whether it is on.
+describe('the filters above the list', () => {
+    it('say which of them are on', async () => {
+        const me = userEvent.setup()
+        renderWithRouter(<ProductsPage />)
+        await screen.findAllByText('Green Peppers')
+
+        const all = screen.getAllByRole('button', { name: 'All' })[0]
+        const freezer = screen.getByRole('button', { name: 'Freezer' })
+        expect(all).toHaveAttribute('aria-pressed', 'true')
+        expect(freezer).toHaveAttribute('aria-pressed', 'false')
+
+        await me.click(freezer)
+        expect(freezer).toHaveAttribute('aria-pressed', 'true')
+        expect(all).toHaveAttribute('aria-pressed', 'false')
+    })
+})

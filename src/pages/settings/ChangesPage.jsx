@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { friendlyError } from '@/lib/errors'
 import { todayISO, addDays, fullDate } from '@/lib/dates'
-import { dateField, pageTitle } from '@/lib/controlStyles'
+import { dateField, labelClass } from '@/lib/controlStyles'
 import { whoWords, tableWords } from '@/lib/changeLog'
 import ChangeLog from '@/components/settings/ChangeLog'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import Notice from '@/components/ui/Notice'
+import PageHeader from '@/components/ui/PageHeader'
 
 // Everything that has changed, and who changed it.
 //
@@ -87,12 +89,10 @@ export default function ChangesPage() {
 
     return (
         <div>
-            <div className="mb-6">
-                <h2 className={pageTitle}>Changes</h2>
-                <p className="text-sm text-gray-500 mt-1">
-                    Every edit, addition and deletion, written by the database itself
-                </p>
-            </div>
+            <PageHeader
+                title="Changes"
+                subtitle="Every edit, addition and deletion, written by the database itself"
+            />
 
             {error && (
                 <ErrorBanner className="mb-4">
@@ -105,7 +105,7 @@ export default function ChangesPage() {
                 touched; the other two are for narrowing what came back. */}
             <div className="flex flex-wrap items-end gap-3 mb-5">
                 <div>
-                    <label htmlFor="from" className="block text-xs font-semibold text-muted mb-1">From</label>
+                    <label htmlFor="from" className={labelClass}>From</label>
                     <input
                         id="from" type="date" value={from} max={to}
                         onChange={e => setFrom(e.target.value)}
@@ -113,7 +113,7 @@ export default function ChangesPage() {
                     />
                 </div>
                 <div>
-                    <label htmlFor="to" className="block text-xs font-semibold text-muted mb-1">To</label>
+                    <label htmlFor="to" className={labelClass}>To</label>
                     <input
                         id="to" type="date" value={to} min={from} max={todayISO()}
                         onChange={e => setTo(e.target.value)}
@@ -121,7 +121,7 @@ export default function ChangesPage() {
                     />
                 </div>
                 <div>
-                    <label htmlFor="who" className="block text-xs font-semibold text-muted mb-1">Who</label>
+                    <label htmlFor="who" className={labelClass}>Who</label>
                     <select
                         id="who" value={who} onChange={e => setWho(e.target.value)}
                         className={dateField}
@@ -131,7 +131,7 @@ export default function ChangesPage() {
                     </select>
                 </div>
                 <div>
-                    <label htmlFor="what" className="block text-xs font-semibold text-muted mb-1">What</label>
+                    <label htmlFor="what" className={labelClass}>What</label>
                     <select
                         id="what" value={what} onChange={e => setWhat(e.target.value)}
                         className={dateField}
@@ -146,10 +146,10 @@ export default function ChangesPage() {
                 hundred. A list that has been cut off without saying so is worse
                 than no list, because it reads as the whole answer. */}
             {capped && (
-                <p className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-900">
+                <Notice tone="warn" className="mb-4">
                     More than {MOST} changes in these days, so only the most recent {MOST} are
                     here. Narrow the dates to see the rest.
-                </p>
+                </Notice>
             )}
 
             {loading ? (

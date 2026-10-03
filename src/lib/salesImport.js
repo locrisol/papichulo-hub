@@ -11,7 +11,7 @@
 // checked every day before anything is written.
 
 import { weekStartOf, addDays } from '@/lib/dates'
-import { num } from '@/lib/format'
+import { num, round2 } from '@/lib/format'
 import { longDate, sameShop } from '@/lib/timesheetImport'
 import { sameLabel, trackedCopy, tenderVariance } from '@/lib/salesTenders'
 
@@ -50,10 +50,6 @@ function textOf(node) {
 function valueOf(field) {
     const n = Number(textOf(field.querySelector('Value')))
     return Number.isFinite(n) ? n : 0
-}
-
-function round2(n) {
-    return Math.round(n * 100) / 100
 }
 
 export function readWeeklySales(text) {

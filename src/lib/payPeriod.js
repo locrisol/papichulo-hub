@@ -15,7 +15,7 @@
 // fourteens, forwards or backwards, so a reference in 2024 answers a question
 // about 2027 without anybody typing another date.
 
-import { weekStartOf, addDays, weekDates, shortDate } from '@/lib/dates'
+import { weekStartOf, addDays, weekDates, shortDate, daysBetween } from '@/lib/dates'
 
 export const PERIOD_DAYS = 14
 
@@ -25,16 +25,6 @@ export const PERIOD_DAYS = 14
 // halves of it belonging to different Hub weeks.
 export function anchorOf(reference) {
     return reference ? weekStartOf(reference) : null
-}
-
-// How many whole days lie between two dates. Both are plain dates with no time
-// on them, so this is exact rather than nearly right.
-function daysBetween(from, to) {
-    // Both read as UTC midnight, so the clocks going back in October cannot
-    // turn fourteen days into thirteen and a half.
-    const a = new Date(`${from}T00:00:00Z`)
-    const b = new Date(`${to}T00:00:00Z`)
-    return Math.round((b - a) / 86400000)
 }
 
 // The period a date falls in.

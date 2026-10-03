@@ -1,4 +1,5 @@
-import { pageTitle, primaryButton, warningNote } from '@/lib/controlStyles'
+import { primaryButton } from '@/lib/controlStyles'
+import { stampDateTime } from '@/lib/dates'
 import { declaresAllergens } from '@/lib/products'
 import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
@@ -9,6 +10,8 @@ import { allergensChanged } from '@/lib/allergensChanged'
 import AllergenPicker from '@/components/inventory/AllergenPicker'
 import BackButton from '@/components/ui/BackButton'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import Notice from '@/components/ui/Notice'
+import PageHeader from '@/components/ui/PageHeader'
 
 // Tagging the 14 allergens on one product.
 //
@@ -150,26 +153,17 @@ export default function AllergenPage() {
     setSaving(false)
   }
 
-  function formatDate(iso) {
-    if (!iso) return null
-    return new Date(iso).toLocaleString('en-IE', { dateStyle: 'medium', timeStyle: 'short' })
-  }
+  const subtitle = [
+    product?.section,
+    product?.unit,
+    existing?.updated_at && `Last updated: ${stampDateTime(existing.updated_at)}`,
+  ].filter(Boolean).join(' · ')
 
   return (
     <div>
       <BackButton to="/catalogue/products" className="mb-4">Back to products</BackButton>
 
-      <div className="mb-6">
-        <h2 className={pageTitle}>
-          Allergens: {product?.name || '...'}
-        </h2>
-        <p className="text-sm text-gray-500 mt-1">
-          {product ? `${product.section} • ${product.unit}` : ''}
-          {existing?.updated_at && (
-            <span className="ml-2">• Last updated: {formatDate(existing.updated_at)}</span>
-          )}
-        </p>
-      </div>
+      <PageHeader title={`Allergens: ${product?.name || '...'}`} subtitle={subtitle} />
 
       {error && (
         <ErrorBanner className="mb-4">{error}</ErrorBanner>
@@ -180,7 +174,7 @@ export default function AllergenPage() {
       </div>
 
       {loading ? (
-        <div className="text-sm text-gray-500">Loading allergens...</div>
+        <div className="text-sm text-muted">Loading allergens...</div>
       ) : (
         <>
           {/* The boxes open at Not Present so only the ones that apply need
@@ -188,11 +182,11 @@ export default function AllergenPage() {
               starts, not an answer. The customer sheet treats it as not
               known, so this says so rather than looking like none. */}
           {!existing && !error && declaresAllergens(product) && !hasRecipe && (
-            <p className={`${warningNote} mb-4`}>
+            <Notice tone="warn" className="mb-4">
               Nothing has been saved for {product.name} yet. Until it is, the allergen sheet asks
               customers to speak to a member of staff about any dish it goes into. Set what applies,
               or leave all fourteen at Not Present, and save.
-            </p>
+            </Notice>
           )}
           {hasRecipe && !error && (
             <p className="text-sm text-muted mb-4">

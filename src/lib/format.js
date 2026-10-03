@@ -82,6 +82,21 @@ export function num(v) {
   return isNaN(n) ? 0 : n
 }
 
+// A figure rounded to the cent, as a number to keep or add up, not to show.
+//
+// Eight lib files had a copy each, under five names, all the same sum. Kept the
+// same sum here, so nothing already worked out and saved comes out different.
+// It is the plain Math.round on the cents, so 1.005 comes out at 1, which is
+// why fmtMoney leaves its rounding to toLocaleString instead.
+export function round2(n) {
+  return Math.round(num(n) * 100) / 100
+}
+
+// The same to four places, which is what unit prices are stored at.
+export function round4(n) {
+  return Math.round(num(n) * 10000) / 10000
+}
+
 // Names the way a sentence says them: "Lime", "Lime and Salt", "Lime, Salt
 // and Cream". For a message that names what is wrong rather than counting it.
 export function namesList(names) {
