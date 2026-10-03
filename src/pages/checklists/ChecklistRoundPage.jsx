@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
 import { useConfirm } from '@/context/confirm'
+import { useRecountBadges } from '@/context/badges'
 import { can, MANAGERS } from '@/lib/access'
 import { stampDateTime } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
@@ -42,6 +43,8 @@ export default function ChecklistRoundPage() {
     const { id } = useParams()
     const navigate = useNavigate()
     const confirm = useConfirm()
+    // The sidebar counts a list running out of time until a round of it ends.
+    const recountBadges = useRecountBadges()
     const { user } = useAuth()
     const { restaurants, activeRestaurant } = useRestaurant()
     const isManager = can(user, MANAGERS)
@@ -212,7 +215,9 @@ export default function ChecklistRoundPage() {
         setNotice(theirs
             ? `${got.size} saved. ${theirs === 1 ? 'One was' : `${theirs} were`} already done by somebody else, so theirs stands.`
             : `${got.size === 1 ? '1 tick' : `${got.size} ticks`} saved.`)
-        load()
+        // After the read, which is what ends the round once everything is ticked.
+        await load()
+        recountBadges()
     }
 
     // What is left comes back on the next round as High priority. No reason is
@@ -235,6 +240,7 @@ export default function ChecklistRoundPage() {
         if (endErr) { setError(friendlyError(endErr)); return }
         keep({})
         load()
+        recountBadges()
     }
 
     function jumpTo(taskId) {
@@ -252,6 +258,7 @@ export default function ChecklistRoundPage() {
         const { error: delErr } = await supabase.from('checklist_rounds').delete().eq('id', round.id)
         if (delErr) { setError(friendlyError(delErr)); return }
         keep({})
+        recountBadges()
         navigate('/checklists')
     }
 

@@ -5,6 +5,7 @@ import { dayIsClosed, planNoteWrites, applyNoteWrites } from '@/lib/closedDays'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
 import { useConfirm } from '@/context/confirm'
+import { useRecountBadges } from '@/context/badges'
 import { fmtMoney, fmtPct, num } from '@/lib/format'
 import { todayISO, weekStartOf, weekDates, addDays, fullDate, weekMonthLabel, dayList, DAY_NAMES } from '@/lib/dates'
 import { friendlyError, isPermissionError } from '@/lib/errors'
@@ -119,6 +120,7 @@ export default function WeeklySalesPage() {
     const { user } = useAuth()
     const { activeRestaurant } = useRestaurant()
     const confirm = useConfirm()
+    const recountBadges = useRecountBadges()
 
     const [weekStart, setWeekStart] = useState(weekStartOf(todayISO()))
     // Raw value of the week picker. Kept separate from weekStart so choosing a
@@ -674,6 +676,8 @@ export default function WeeklySalesPage() {
         loadedKey.current = null
         await loadWeek(`${restaurantId}:${weekStart}`)
         setSuccess(changed === 0 ? 'Nothing to save.' : `Saved ${changed} ${changed === 1 ? 'day' : 'days'}.`)
+        // The sidebar counts a day of last week with nothing saved.
+        if (changed > 0) recountBadges()
     }
 
     // ---- keyboard -------------------------------------------------------

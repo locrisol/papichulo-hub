@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { useConfirm } from '@/context/confirm'
 import { useRestaurant } from '@/context/restaurant'
+import { useRecountBadges } from '@/context/badges'
 import { friendlyError } from '@/lib/errors'
 import { can, RESTAURANT_CONFIG } from '@/lib/access'
 import { todayISO, weekStartOf, weekDates, addDays, shortDate, fullDate, toISODate } from '@/lib/dates'
@@ -73,6 +74,9 @@ export default function TimesheetPage() {
     // the restaurant row, which an owner cannot change. An owner still gets
     // the dialog, for the PDF.
     const sends = can(user, RESTAURANT_CONFIG)
+    // The sidebar counts last week not finished and a pay period not sent,
+    // so it is asked again after every save, the till's file and a send.
+    const recountBadges = useRecountBadges()
 
     // Last week, not this one. A timesheet is filled in once the week has
     // finished and the till's report exists for it, so opening on the week that
@@ -93,6 +97,7 @@ export default function TimesheetPage() {
     // already holds is a no-op, so it cannot be used to reload: the same trap
     // the Labour page carried a note about.
     const [refresh, setRefresh] = useState(0)
+    useEffect(() => { if (refresh) recountBadges() }, [refresh, recountBadges])
 
     const [people, setPeople] = useState([])
     const [entries, setEntries] = useState([])
@@ -296,6 +301,7 @@ export default function TimesheetPage() {
         }
         setProblem('')
         setSavedAt(new Date())
+        recountBadges()
         return false
     }
 
