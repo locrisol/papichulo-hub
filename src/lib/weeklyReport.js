@@ -172,6 +172,9 @@ export function weekIsOver(weekStart, today = todayISO()) {
     return today > addDays(weekStart, 6)
 }
 
+// How many finished weeks the Reports list shows, and the badge counts.
+export const WEEKS_LISTED = 10
+
 // The weeks to offer, newest first, back as far as asked.
 //
 // Only weeks that have ended. The current one is not on the list at all, since
