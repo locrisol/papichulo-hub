@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { addExtra, removeExtra, recipientSummary } from '@/lib/reportRecipients'
-import { card, secondaryButton, removeButton } from '@/lib/controlStyles'
+import { card, secondaryButton, removeButton, fieldClass } from '@/lib/controlStyles'
 import AddButton from '@/components/ui/AddButton'
 
 // Who the report goes to.
@@ -49,7 +49,7 @@ export default function Recipients({
                     <span
                         key={owner.id}
                         className="inline-flex items-center gap-1.5 min-h-[2.25rem] px-3 rounded-lg
-                            bg-cream border border-border text-sm text-sidebar"
+                            bg-app-bg border border-border text-sm text-sidebar"
                     >
                         {owner.full_name}
                         <span className="text-xs text-muted">owner</span>
@@ -68,7 +68,7 @@ export default function Recipients({
                                 type="button"
                                 onClick={() => onChange(removeExtra(extras, address))}
                                 disabled={busy}
-                                aria-label={`Take ${address} off the list`}
+                                aria-label={`Remove ${address} from the list`}
                                 className={removeButton}
                             >
                                 ×
@@ -93,29 +93,35 @@ export default function Recipients({
                 <div className="mt-3">
                     {/* type=email so a phone gives the keyboard with the @ on it */}
                     <div className="flex flex-wrap gap-2">
-                        <input
-                            type="email"
-                            inputMode="email"
-                            autoComplete="off"
-                            value={typed}
-                            onChange={e => { setTyped(e.target.value); setProblem('') }}
-                            onKeyDown={e => {
-                                if (e.key === 'Enter') { e.preventDefault(); add() }
-                                if (e.key === 'Escape') { setTyped(''); setProblem(''); setOpen(false) }
-                            }}
-                            placeholder="accounts@somewhere.ie"
-                            autoFocus
-                            className="flex-1 min-w-[12rem] min-h-[2.5rem] px-3 rounded-lg border border-border
-                                text-sm focus:outline-none focus:ring-2 focus:ring-accent/40"
-                        />
+                        <div className="flex-1 min-w-[12rem]">
+                            <input
+                                type="email"
+                                inputMode="email"
+                                autoComplete="off"
+                                value={typed}
+                                onChange={e => { setTyped(e.target.value); setProblem('') }}
+                                onKeyDown={e => {
+                                    if (e.key === 'Enter') { e.preventDefault(); add() }
+                                    // Shuts the box only. Marked as handled, so the Send
+                                    // dialog this sits in stays open.
+                                    if (e.key === 'Escape') {
+                                        e.preventDefault()
+                                        setTyped(''); setProblem(''); setOpen(false)
+                                    }
+                                }}
+                                placeholder="accounts@somewhere.ie"
+                                autoFocus
+                                className={fieldClass}
+                            />
+                        </div>
                         <button type="button" onClick={add} disabled={busy} className={secondaryButton}>
                             Add
                         </button>
                     </div>
-                    {problem && <p className="text-xs text-accent-ink mt-2">{problem}</p>}
+                    {problem && <p role="alert" className="text-xs text-accent-ink mt-2">{problem}</p>}
                     <p className="text-xs text-muted mt-2">
                         Any address works. They do not need a Hub account, and whoever is added stays
-                        on every week from now until they are taken off.
+                        on every week from now until they are removed.
                     </p>
                 </div>
             ) : (

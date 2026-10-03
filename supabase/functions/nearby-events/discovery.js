@@ -124,6 +124,174 @@ export function sourceKeyFor(date, name) {
     return flat ? `${date}-${flat}` : ''
 }
 
+// The readings a feed's answer supersedes, by id.
+//
+// A reading of a night the feed also lists would otherwise sit beside it with
+// no time on it, asking somebody to approve what the feed already called a
+// fact. **Only one nobody has looked at.** One somebody kept may carry a name
+// they gave it and a run of days they set, and dismissing it lost both with
+// nothing said, since the feed's own row has neither. A kept reading and the
+// feed's listing of the same night can both show; that is the smaller harm.
+//
+// **Not by a night the feed has called off.** Ticketmaster keeps returning a
+// cancelled show, and the venue's page still listing it is exactly what
+// somebody needs to look at, so read-listings saves that reading again on
+// purpose (see notYetKnown there). Dismissing it here undid that on the next
+// sync, and the night dropped off the roster with nothing said.
+export function superseded(readings, fetched) {
+    const covers = new Set((fetched || [])
+        .filter(e => !OFF.includes(String(e.status || '').toLowerCase()))
+        .map(e => sourceKeyFor(e.event_date, e.name))
+        .filter(Boolean))
+    return (readings || [])
+        .filter(r => r?.review === 'found' && covers.has(sourceKeyFor(r.event_date, r.name)))
+        .map(r => r.id)
+}
+
+// Which readings are still on, as the filter the sync asks for them with.
+//
+// **On or after today, by either end.** A run of days that began before today
+// and has not finished is still on, and a page read keeps one now: read on a
+// Monday, a market that opened last Thursday is saved. Asking only for
+// readings that start today or later left those out, so the feed could never
+// retire one. The same overlap the roster asks the week with.
+export function notOverBy(today) {
+    return `event_date.gte.${today},ends_on.gte.${today}`
+}
+
+// ------------------------------------------------------------ how a feed went
+
+// Today in Ireland, as the date a listing is on.
+//
+// Not toISOString, which is UTC and an hour behind all summer: a sync at half
+// midnight would have called it yesterday.
+export function irishDate(now = new Date()) {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Europe/Dublin', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).formatToParts(now)
+    const part = type => parts.find(p => p.type === type)?.value
+    return `${part('year')}-${part('month')}-${part('day')}`
+}
+
+// Statuses that mean a night is not going ahead. Ticketmaster spells it
+// canceled; the other spelling costs nothing to accept. withdrawn is ours,
+// see goneBetween.
+const OFF = ['cancelled', 'canceled', 'withdrawn']
+
+// How many nights we hold from a feed that are still to come and still on.
+export function stillToCome(rows, today) {
+    return (rows || []).filter(r => (
+        r?.event_date > today && !OFF.includes(String(r?.status || '').toLowerCase())
+    )).length
+}
+
+// Whether an empty answer is a problem.
+//
+// Most of the time it is a quiet venue and nothing is wrong. **Unless we hold
+// nights there that Ticketmaster itself listed and that have not happened
+// yet.** Then the answer contradicts the feed's own earlier word, which is what
+// a retired venue id looks like, and it is worth somebody hearing about.
+export function emptyProblem(stillOn) {
+    const n = Number(stillOn) || 0
+    if (n === 0) return null
+    return `Ticketmaster returned no events, but ${n} ${n === 1 ? 'was' : 'were'} still coming up.`
+}
+
+// Whether an answer holds everything Ticketmaster has for the venue.
+//
+// It asks for two hundred at a time and reads one page. A busy venue with more
+// than that would be cut short, and everything after the last one returned
+// would look as if it had been taken down. An empty answer is never whole
+// either: a venue id that stopped working answers exactly like a quiet venue.
+export function wholeAnswer(payload) {
+    const got = payload?._embedded?.events?.length || 0
+    const total = Number(payload?.page?.totalElements)
+    return got > 0 && Number.isFinite(total) && total <= got
+}
+
+// The dates between which a night missing from this answer has been taken
+// down, or null when the answer cannot say.
+//
+// **Nothing used to go.** A show Ticketmaster withdrew, or moved somewhere we
+// do not watch, kept its old date and its on sale status for ever, and
+// last_seen_at was written by every sync and read by nothing. Now a night
+// still to come that a whole answer no longer lists is marked withdrawn, and
+// the roster and the calendar leave it out (see nearbyRows in lib/nearby). The
+// next answer that lists it again writes its real status back over that, so it
+// shows again and nothing is lost by being wrong.
+//
+// After today and never today, in Irish dates: the window starts at this
+// minute, so tonight's show is missing from an evening sync simply because it
+// has started. And before the last day of the window, which ends at this
+// minute six months on.
+export function goneBetween(payload, now = new Date()) {
+    if (!wholeAnswer(payload)) return null
+    const end = new Date(now)
+    end.setUTCDate(end.getUTCDate() + DAYS_AHEAD)
+    return { after: irishDate(now), before: irishDate(end) }
+}
+
+// The listings whose run of days has to move with them, and where to.
+//
+// "Runs until" can be set on any listing, a feed's included. The sync rewrites
+// the start of a show Ticketmaster has moved and never sends an end, so a
+// conference set to run 5 to 7 October and then moved to November came back
+// starting on 10 November and ending on 7 October. The database refuses a run
+// that ends before it starts, and since every listing at a venue goes in one
+// statement, nothing at that venue was saved again until the new date passed.
+//
+// Moved by the same number of days as the start, so the length somebody gave
+// it is kept, and both dates go in one update so the run never reads
+// backwards in between. Counted in UTC days, because a local date sum across
+// the end of summer time comes out an hour short of a day.
+export function endsMoved(held, fetched) {
+    const next = new Map((fetched || []).map(e => [e.ticketmaster_id, e.event_date]))
+    const day = d => Date.parse(`${d}T00:00:00Z`)
+    const out = []
+
+    for (const row of held || []) {
+        if (!row?.ends_on) continue
+        const to = next.get(row.ticketmaster_id)
+        if (!to || to === row.event_date) continue
+        const end = new Date(day(row.ends_on) + (day(to) - day(row.event_date)))
+        out.push({ id: row.id, event_date: to, ends_on: end.toISOString().slice(0, 10) })
+    }
+
+    return out
+}
+
+// A failure carrying a sentence that is safe to keep and to show.
+export function feedError(sentence) {
+    const err = new Error(sentence)
+    err.feedProblem = sentence
+    return err
+}
+
+// What Ticketmaster refusing comes to, said for whoever reads it on the
+// roster or the calendar, owners included, who cannot open the settings.
+//
+// A bare status said nothing about whether anybody had to do anything, so the
+// status goes to the log and the place says that instead. A refused key never
+// mends itself; anything else usually does by the next check.
+export function refusedWords(status) {
+    if (status === 401 || status === 403) {
+        return "Ticketmaster did not accept the Hub's key. Whoever set up the Hub needs to check it."
+    }
+    if (status === 429) return 'Ticketmaster is busy. It will try again at the next check.'
+    return 'Ticketmaster had a problem. It will try again at the next check.'
+}
+
+// What went wrong, in words that can be kept on the place.
+//
+// **Never the error itself.** A fetch that fails names the address it was
+// fetching, the address carries the key, and every manager can read a place.
+// So only a sentence this file wrote is ever kept.
+export function feedProblem(err) {
+    const said = err?.feedProblem
+    if (typeof said === 'string' && said) return said
+    return 'Something went wrong getting the events from Ticketmaster.'
+}
+
 // ---------------------------------------------------------- who is calling
 
 // What a token says it is, without checking whether it is telling the truth.
@@ -165,6 +333,30 @@ export function isServiceRole(bearer, keys = []) {
     if (!token) return false
     if (keys.filter(Boolean).includes(token)) return true
     return roleOf(token) === 'service_role'
+}
+
+const MANAGERS = ['owner', 'store_manager']
+
+// Whether a person may ask about a restaurant, and if not, what to answer.
+// Null means go ahead.
+//
+// A manager at that restaurant, or a super admin. An employee has no reason to
+// spend the quota and nobody outside the restaurant has any reason at all.
+//
+// me is their users row, and it is read with the service key, which sees **a
+// login that is switched off** as plainly as one that is not. Every rule in the
+// database asks get_my_role, which gives a switched-off login nothing, and none
+// of those rules run for a function holding the service key, so it is asked
+// here. Found by the audit of 28 September. The same rule is in read-listings,
+// and the tests check the two agree.
+export function refusalFor(me, restaurantId) {
+    if (!me) return { status: 401, error: 'Not signed in' }
+    if (me.is_active !== true) return { status: 403, error: 'Your account is deactivated' }
+    if (me.role === 'super_admin') return null
+    if (me.restaurant_id !== restaurantId || !MANAGERS.includes(me.role)) {
+        return { status: 403, error: 'Not yours' }
+    }
+    return null
 }
 
 // ------------------------------------------------- finding a venue by where it is

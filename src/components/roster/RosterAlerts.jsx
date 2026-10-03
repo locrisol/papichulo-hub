@@ -58,7 +58,7 @@ export function AlertBadge({ findings, open, onToggle }) {
             type="button"
             onClick={onToggle}
             aria-expanded={!!open}
-            aria-label={open ? 'Hide what is worth a look' : 'Show what is worth a look'}
+            aria-label={open ? 'Hide warnings' : 'Show warnings'}
             className={`inline-flex items-center gap-0.5 flex-shrink-0 rounded transition-opacity
                 hover:opacity-70 focus:outline-none focus:ring-2 focus:ring-accent ${tone}`}
         >
@@ -108,7 +108,7 @@ export function AlertStrip({ findings, open, className = '' }) {
                     }`}
                 >
                     <span className="font-semibold">
-                        {finding.level === 'block' ? 'Has to be fixed: ' : 'Worth a look: '}
+                        {finding.level === 'block' ? 'Has to be fixed: ' : 'Warning: '}
                     </span>
                     {finding.text}
                 </p>

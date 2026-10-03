@@ -4,8 +4,6 @@
 
 import { weekStartOf, dayMonth, monthLabel, addDays } from '@/lib/dates'
 
-export const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-
 // Colour by the broad type, so a glance tells you what kind of night it is.
 //
 // These are soft on purpose. A calendar cell can hold three of them at once and
@@ -24,35 +22,6 @@ export function categoryStyle(category) {
     return CATEGORY_STYLE[category] || 'bg-gray-100 text-gray-700 border-gray-200'
 }
 
-// The same categories as a solid colour, for the dots and the stripes.
-//
-// A cell on a phone is about fifty pixels wide, so there is no room for a name
-// in it and a dot is all that fits. The soft fills above are for chips with
-// words on them and would be all but invisible at five pixels across.
-const CATEGORY_DOT = {
-    Music: 'bg-purple-600',
-    Sports: 'bg-blue-600',
-    Arts: 'bg-pink-600',
-    'Arts & Theatre': 'bg-pink-600',
-    Family: 'bg-amber-600',
-    Film: 'bg-cyan-700',
-    Miscellaneous: 'bg-gray-500',
-}
-
-export function categoryDot(category) {
-    return CATEGORY_DOT[category] || 'bg-gray-500'
-}
-
-// The categories to put in the legend under the month, in a fixed order so it
-// does not reshuffle as the months change. Only the ones that turn up at this
-// venue: 3Arena has never once had a Family listing.
-export const LEGEND = ['Music', 'Arts & Theatre', 'Film', 'Sports', 'Miscellaneous']
-
-// The three letter day, for a date like 2026-08-27.
-export function dayName(dateStr) {
-    return DAY_NAMES[new Date(dateStr + 'T00:00:00').getDay()]
-}
-
 // What the sale status is worth saying out loud, or nothing.
 //
 // On sale is the ordinary case and saying so on every event would just be noise
@@ -62,37 +31,19 @@ export function dayName(dateStr) {
 export function statusNote(status) {
     switch (String(status ?? '').toLowerCase()) {
         case 'offsale':
-            return { text: 'No longer on sale, so it has probably sold out', tone: 'warn' }
+            return { text: 'No longer on sale, so it may have sold out', tone: 'warn' }
+        // Ticketmaster sends canceled, the American way. Only this one was
+        // known, so a show called off said nothing here either.
         case 'cancelled':
-            return { text: 'Cancelled, so this is an ordinary night after all', tone: 'bad' }
+        case 'canceled':
+            return { text: 'Cancelled, so expect a normal night', tone: 'bad' }
         case 'postponed':
-            return { text: 'Postponed, so the date may still move', tone: 'warn' }
+            return { text: 'Postponed, so the date may change', tone: 'warn' }
         case 'rescheduled':
-            return { text: 'Rescheduled, so check the date is still this one', tone: 'warn' }
+            return { text: 'Rescheduled, so check the date', tone: 'warn' }
         default:
             return null
     }
-}
-
-// Splits a list of events into weeks, Sunday to Saturday, the same weeks the
-// sales and cost screens use.
-//
-// The list is for planning ahead, and a run of thirty events with nothing
-// between them reads as one long block where "the next two weeks" is the thing
-// anybody actually wants out of it.
-//
-// Weeks with nothing in them are not returned. The gap between two events three
-// weeks apart is already obvious from their dates, and empty headings would
-// take up more room than the events do.
-export function groupByWeek(events) {
-    const weeks = []
-    for (const e of events || []) {
-        const start = weekStartOf(e.event_date)
-        const last = weeks[weeks.length - 1]
-        if (last && last.weekStart === start) last.events.push(e)
-        else weeks.push({ weekStart: start, events: [e] })
-    }
-    return weeks
 }
 
 // The heading over a week in the list.

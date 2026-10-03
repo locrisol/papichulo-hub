@@ -1,19 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
-    ABSENCE_KINDS,
-    kindLabel,
-    takesHours,
-    coversDate,
-    absencesOn,
-    absenceOn,
-    absencesInRange,
-    absenceDays,
-    absenceRange,
-    overlappingAbsence,
-    absenceProblem,
-    sortAbsences,
-    nextAbsence,
-    holidayHoursInWeek,
+    ABSENCE_KINDS, kindLabel, takesHours, coversDate, absencesOn, absenceOn, absenceDays,
+    absenceRange, overlappingAbsence, absenceProblem, sortAbsences, nextAbsence, holidayHoursInWeek,
 } from '@/lib/absences'
 
 const away = (extra = {}) => ({
@@ -113,19 +101,6 @@ describe('who is away on a day', () => {
         expect(absencesOn(declined, 'e1', '2026-08-25')).toEqual([])
     })
 
-    it('finds everything touching a week', () => {
-        const week = absencesInRange(list, '2026-08-23', '2026-08-29')
-        expect(week.map(a => a.id)).toEqual(['a1', 'a2'])
-    })
-
-    it('finds a stretch that only starts after the week', () => {
-        expect(absencesInRange(list, '2026-08-30', '2026-09-05').map(a => a.id)).toEqual(['a3'])
-    })
-
-    it('finds a stretch that runs right through a week', () => {
-        const long = [away({ starts_on: '2026-08-01', ends_on: '2026-09-30' })]
-        expect(absencesInRange(long, '2026-08-23', '2026-08-29')).toHaveLength(1)
-    })
 })
 
 describe('two stretches running into each other', () => {
@@ -244,6 +219,20 @@ describe('holidayHoursInWeek', () => {
 
     it('leaves out one that was turned down', () => {
         const off = [away({ hours: 20, status: 'declined' })]
+        expect(holidayHoursInWeek(off, 'e1', WEEK)).toBe(0)
+    })
+
+    // A request nobody has answered is not time off yet. The payroll mail
+    // already left these out and the PDF attached to it did not, so the two
+    // could disagree about the same holiday.
+    it('leaves out one still waiting for approval, even with hours on it', () => {
+        const off = [away({ hours: 20, status: 'requested' })]
+        expect(holidayHoursInWeek(off, 'e1', WEEK)).toBe(0)
+    })
+
+    // Only a holiday carries hours. A figure on any other kind is not holiday.
+    it('leaves out hours on anything that is not a holiday', () => {
+        const off = [away({ kind: 'unpaid', hours: 20 })]
         expect(holidayHoursInWeek(off, 'e1', WEEK)).toBe(0)
     })
 

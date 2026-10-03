@@ -8,11 +8,11 @@ import { useAuth } from '@/context/auth'
 import { useConfirm } from '@/context/confirm'
 import { friendlyError } from '@/lib/errors'
 import {
-    modalFooter, secondaryButton, primaryButton, rowButton,
-    labelClass, fieldClass, dateField, hintClass,
+    modalFooter, secondaryButton, primaryButton, rowButton, chip,
+    labelClass, fieldClass, hintClass,
 } from '@/lib/controlStyles'
 import {
-    KINDS, kindLabel, kindTag, scopeFrom, entryProblem, cleanLabels, labelsUsed,
+    KINDS, kindLabel, kindTag, scopeFrom, entryProblem, cleanLabels, labelsUsed, canWriteAllSites,
 } from '@/lib/diary'
 import { writeToGoogle } from '@/lib/diaryGoogle'
 
@@ -38,7 +38,10 @@ import { writeToGoogle } from '@/lib/diaryGoogle'
 // All sites and Just me are not shortcuts for ticking everything. All sites
 // goes to the group's own calendar and Just me goes nowhere at all, so choosing
 // either one clears the ticks rather than standing in for them.
-function GoesOn({ mode, restaurantIds, restaurants, onChange }) {
+//
+// All sites is only offered to an owner or a super admin, the database's rule:
+// a store manager was offered it and refused on Save.
+function GoesOn({ mode, restaurantIds, restaurants, allSites, onChange }) {
     const ticked = new Set(restaurantIds)
 
     function toggle(id) {
@@ -65,7 +68,7 @@ function GoesOn({ mode, restaurantIds, restaurants, onChange }) {
             <div className="border-t border-dashed border-border my-2" />
 
             {[
-                { value: 'all_sites', label: 'All sites, the whole group' },
+                ...(allSites ? [{ value: 'all_sites', label: 'All restaurants' }] : []),
                 { value: 'private', label: 'Just me. Nobody else sees it' },
             ].map(one => (
                 <label key={one.value} className="flex items-start gap-2.5 py-1.5 cursor-pointer">
@@ -164,6 +167,19 @@ export default function DiaryDialog({ entry, date, restaurants, onClose, onSaved
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState('')
 
+    // The row once it is in the database, even if Google then refused it. A
+    // new entry that did not reach Google leaves the dialog open, and Save is
+    // what anybody presses next. Without this every press inserted the job
+    // again: one more copy on the calendar, on the roster and, once Google
+    // worked, on Google too.
+    const [saved, setSaved] = useState(null)
+    const current = saved || entry
+
+    // Closing after a save still hands the row back, so the calendar behind
+    // shows it. Otherwise Cancel after the Google warning leaves a job that was
+    // saved looking like one that never was.
+    const close = () => (saved ? onSaved(saved) : onClose())
+
     // Whatever has been used before, offered as chips.
     //
     // Read off the entries themselves rather than a list somebody maintains,
@@ -218,8 +234,8 @@ export default function DiaryDialog({ entry, date, restaurants, onClose, onSaved
             labels: cleanLabels(form.labels),
         }
 
-        const { data, error: err } = entry
-            ? await supabase.from('diary_entries').update(row).eq('id', entry.id).select().single()
+        const { data, error: err } = current
+            ? await supabase.from('diary_entries').update(row).eq('id', current.id).select().single()
             : await supabase.from('diary_entries')
                 .insert({ ...row, created_by: user?.id }).select().single()
 
@@ -228,13 +244,17 @@ export default function DiaryDialog({ entry, date, restaurants, onClose, onSaved
             setSaving(false)
             return
         }
+        setSaved(data)
 
         // The row is saved either way. A calendar that refuses is reported, not
         // hidden: an entry that quietly stayed in the Hub looks exactly like one
-        // that went out, and the list says which it was.
+        // that went out, and the list says which it was. Google's own words
+        // go to the console, where whoever fixes it can read them, and not on
+        // a screen staff read. A refusal is our own sentence and says itself.
         const went = await writeToGoogle(data.id)
         if (!went.ok && went.reason) {
-            setError(`Saved, but it did not reach Google. ${went.reason}`)
+            if (!went.refused) console.error('Google calendar did not take the entry:', went.reason)
+            setError(went.refused ? went.reason : 'Saved, but it did not reach Google. Try saving it again later.')
             setSaving(false)
             return
         }
@@ -244,9 +264,9 @@ export default function DiaryDialog({ entry, date, restaurants, onClose, onSaved
 
     async function remove() {
         const yes = await confirm({
-            title: 'Take this out of the diary?',
-            message: `${form.title} will be removed from the calendar, from the roster, and from Google.`,
-            confirmLabel: 'Take it out',
+            title: 'Delete this entry?',
+            message: `${form.title} will be deleted from the Hub, and from Google calendar if it is on it.`,
+            confirmLabel: 'Delete',
             tone: 'danger',
         })
         if (!yes) return
@@ -256,14 +276,19 @@ export default function DiaryDialog({ entry, date, restaurants, onClose, onSaved
         // Off the calendars first, while the row is still here to say which ones
         // it is on. Once it is deleted nothing knows, and the events would sit
         // there forever saying something that is no longer true.
-        const cleared = await writeToGoogle(entry.id, { clear: true })
+        // A refusal is said as itself. It is not Google failing, and the entry
+        // may never have been on Google at all.
+        const cleared = await writeToGoogle(current.id, { clear: true })
         if (!cleared.ok && cleared.reason) {
-            setError(`It is still in Google and could not be taken off. ${cleared.reason}`)
+            if (!cleared.refused) console.error('Google calendar did not remove the entry:', cleared.reason)
+            setError(cleared.refused
+                ? cleared.reason
+                : 'Nothing was deleted, because it could not be removed from Google calendar. Try again later.')
             setSaving(false)
             return
         }
 
-        const { error: err } = await supabase.from('diary_entries').delete().eq('id', entry.id)
+        const { error: err } = await supabase.from('diary_entries').delete().eq('id', current.id)
         if (err) {
             setError(friendlyError(err))
             setSaving(false)
@@ -273,7 +298,7 @@ export default function DiaryDialog({ entry, date, restaurants, onClose, onSaved
     }
 
     return (
-        <Modal title={entry ? 'Edit this' : 'Add to the calendar'} onClose={onClose}>
+        <Modal title={current ? 'Edit entry' : 'Add to the calendar'} onClose={close}>
             <div className="px-6 py-4 space-y-4">
                 {error && <ErrorBanner>{error}</ErrorBanner>}
 
@@ -310,10 +335,14 @@ export default function DiaryDialog({ entry, date, restaurants, onClose, onSaved
 
                 <div>
                     <span className={labelClass}>When</span>
-                    <div className="flex flex-wrap items-center gap-2">
+                    {/* One above the other on a phone, where two date boxes
+                        side by side cannot show their dates, and in a row from
+                        sm up. The times below are the same size of box in the same
+                        columns, so the two rows line up. */}
+                    <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] sm:items-center gap-2">
                         <input
                             type="date"
-                            className={dateField}
+                            className={fieldClass}
                             value={form.starts_on}
                             onChange={e => set('starts_on', e.target.value)}
                             aria-label="The day it starts"
@@ -321,7 +350,7 @@ export default function DiaryDialog({ entry, date, restaurants, onClose, onSaved
                         <span className="text-sm text-muted font-semibold">to</span>
                         <input
                             type="date"
-                            className={dateField}
+                            className={fieldClass}
                             value={form.ends_on}
                             min={form.starts_on}
                             onChange={e => set('ends_on', e.target.value)}
@@ -329,18 +358,16 @@ export default function DiaryDialog({ entry, date, restaurants, onClose, onSaved
                         />
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2 mt-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] sm:items-center gap-2 mt-2">
                         <ClockField
                             value={form.starts_at}
                             onChange={v => set('starts_at', v)}
-                            compact
                             aria-label="The time it starts"
                         />
                         <span className="text-sm text-muted font-semibold">to</span>
                         <ClockField
                             value={form.ends_at}
                             onChange={v => set('ends_at', v)}
-                            compact
                             aria-label="The time it finishes"
                             disabled={!form.starts_at}
                         />
@@ -356,6 +383,7 @@ export default function DiaryDialog({ entry, date, restaurants, onClose, onSaved
                         mode={form.mode}
                         restaurantIds={form.restaurantIds}
                         restaurants={restaurants}
+                        allSites={canWriteAllSites(user)}
                         onChange={next => setForm(f => ({ ...f, ...next }))}
                     />
                     <p className={hintClass}>
@@ -378,11 +406,7 @@ export default function DiaryDialog({ entry, date, restaurants, onClose, onSaved
                                 type="button"
                                 onClick={() => toggleLabel(label)}
                                 aria-pressed={has(label)}
-                                className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors ${
-                                    has(label)
-                                        ? 'bg-sidebar border-sidebar text-white'
-                                        : 'bg-white border-gray-300 text-gray-600 hover:border-gray-400'
-                                }`}
+                                className={chip(has(label))}
                             >
                                 {label}
                             </button>
@@ -407,8 +431,7 @@ export default function DiaryDialog({ entry, date, restaurants, onClose, onSaved
                         </button>
                     </div>
                     <p className={hintClass}>
-                        Who or what it is for. Anything typed here is offered next time, so the
-                        same word gets used rather than four spellings of it.
+                        Who or what it is for. Labels you add are offered again next time.
                     </p>
                 </div>
 
@@ -451,7 +474,7 @@ export default function DiaryDialog({ entry, date, restaurants, onClose, onSaved
 
                 <div>
                     <label className={labelClass} htmlFor="diary-note">
-                        Anything else <span className="text-muted font-normal">optional</span>
+                        Note <span className="text-muted font-normal">optional</span>
                     </label>
                     <AutoTextarea
                         id="diary-note"
@@ -462,32 +485,31 @@ export default function DiaryDialog({ entry, date, restaurants, onClose, onSaved
                 </div>
 
                 <div>
-                    <label className={labelClass} htmlFor="diary-status">How sure is it</label>
+                    <label className={labelClass} htmlFor="diary-status">Status</label>
                     <select
                         id="diary-status"
                         className={fieldClass}
                         value={form.status}
                         onChange={e => set('status', e.target.value)}
                     >
-                        <option value="enquiry">An enquiry, not confirmed yet</option>
+                        <option value="enquiry">Enquiry, not confirmed yet</option>
                         <option value="confirmed">Confirmed</option>
                         <option value="done">Done</option>
                         <option value="cancelled">Cancelled</option>
                     </select>
                     <p className={hintClass}>
-                        A cancelled one stays here but comes off the roster, because knowing it was
-                        cancelled is not the same as it never existing.
+                        A cancelled entry stays on the Calendar but no longer shows on the roster.
                     </p>
                 </div>
             </div>
 
             <div className={modalFooter}>
-                {entry && (
+                {current && (
                     <button type="button" onClick={remove} disabled={saving} className={`${rowButton('danger')} mr-auto`}>
-                        Take it out
+                        Delete
                     </button>
                 )}
-                <button type="button" onClick={onClose} className={secondaryButton}>Cancel</button>
+                <button type="button" onClick={close} className={secondaryButton}>Cancel</button>
                 <button
                     type="button"
                     onClick={save}

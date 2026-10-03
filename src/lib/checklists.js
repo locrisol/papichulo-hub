@@ -11,11 +11,9 @@
 // from rows the page has already read, so all of it can be tested without a
 // database.
 
-import { addDays, addMonths, monthStart, shortDate, toISODate, weekStartOf } from '@/lib/dates'
-
-const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-const SHORT_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-const DAY = 86400000
+import {
+    addDays, addMonths, dayLabel, daysBetween, monthName, monthStart, shortDate, stampDay, toISODate, WEEKDAY_NAMES, weekStartOf,
+} from '@/lib/dates'
 
 // Timestamps come back from the database as text with an offset, and a
 // comparison of two strings only works when both are written the same way. So
@@ -71,13 +69,6 @@ export function repeatWords(list) {
     return list.every_weeks === 1 ? 'Every week' : `Every ${list.every_weeks} weeks`
 }
 
-// Days between two YYYY-MM-DD dates, counted on the calendar so a clock change
-// cannot make a week 6.96 days long.
-function daysBetween(from, to) {
-    const [a, b] = [from, to].map(d => Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10)))
-    return Math.round((b - a) / DAY)
-}
-
 // The stretch of days a date falls in, for how often the list repeats. Every
 // so many weeks counts from the week of starts_on, Sunday to Saturday like
 // every other week in the Hub. A month is the calendar month. A list done once
@@ -103,22 +94,18 @@ export function periodWords(list) {
     return list.every_weeks === 1 ? 'this week' : `these ${list.every_weeks} weeks`
 }
 
-// The local day a timestamp falls on, as YYYY-MM-DD.
-export const dayOf = stamp => toISODate(new Date(stamp))
-
 // A day with no time, the way last done is always written: Tue 22 Sept. His
 // word: "only day, not time".
 export function doneDay(stamp) {
     if (!stamp) return ''
-    const date = dayOf(stamp)
-    return `${SHORT_DAYS[new Date(date + 'T00:00:00').getDay()]} ${shortDate(date)}`
+    return dayLabel(stampDay(stamp))
 }
 
 // The same with the weekday written out, for a sentence: Tuesday 22 Sept.
 export function doneDayLong(stamp) {
     if (!stamp) return ''
-    const date = dayOf(stamp)
-    return `${WEEKDAYS[new Date(date + 'T00:00:00').getDay()]} ${shortDate(date)}`
+    const date = stampDay(stamp)
+    return `${WEEKDAY_NAMES[new Date(date + 'T00:00:00').getDay()]} ${shortDate(date)}`
 }
 
 // How long ago, the way Kitchtech says Last updated 7 hours ago.
@@ -128,7 +115,7 @@ export function agoWords(stamp, now = new Date()) {
     if (minutes < 60) return minutes === 1 ? '1 minute ago' : `${minutes} minutes ago`
     const hours = Math.floor(minutes / 60)
     if (hours < 24) return hours === 1 ? '1 hour ago' : `${hours} hours ago`
-    const days = daysBetween(dayOf(stamp), toISODate(now))
+    const days = daysBetween(stampDay(stamp), toISODate(now))
     return days === 1 ? 'yesterday' : `${days} days ago`
 }
 
@@ -196,7 +183,7 @@ function stateOfCard({ list, rounds, done, total, lastTick, today }) {
             : { kind: 'due', canStart: today >= list.starts_on, late: Boolean(list.finish_by && today > list.finish_by) }
     }
     const period = periodOf(list, today)
-    if (ended && dayOf(ended.ended_at) >= period.from) {
+    if (ended && stampDay(ended.ended_at) >= period.from) {
         return { kind: 'done', round: ended, when: doneDayLong(ended.ended_at), canStart: true, early: roundOutcome(ended) === 'ended' }
     }
     return { kind: 'due', canStart: true, last: ended ? doneDayLong(ended.ended_at) : null, period }
@@ -216,17 +203,17 @@ export function ticksByHour(ticks) {
     return hours
 }
 
-export const weekdayName = i => WEEKDAYS[i]
+export const weekdayName = i => WEEKDAY_NAMES[i]
 
 // The day cut into the parts a kitchen thinks in, since twenty four bars for
 // the hours is more than anybody reads.
 export const TIME_BANDS = [
-    { label: 'Before 9am', from: 0, to: 9 },
-    { label: '9am to 12pm', from: 9, to: 12 },
-    { label: '12pm to 3pm', from: 12, to: 15 },
-    { label: '3pm to 6pm', from: 15, to: 18 },
-    { label: '6pm to 9pm', from: 18, to: 21 },
-    { label: 'After 9pm', from: 21, to: 24 },
+    { label: 'Before 09:00', from: 0, to: 9 },
+    { label: '09:00 to 12:00', from: 9, to: 12 },
+    { label: '12:00 to 15:00', from: 12, to: 15 },
+    { label: '15:00 to 18:00', from: 15, to: 18 },
+    { label: '18:00 to 21:00', from: 18, to: 21 },
+    { label: 'After 21:00', from: 21, to: 24 },
 ]
 
 export function ticksByTimeOfDay(ticks) {
@@ -244,8 +231,8 @@ export function busiestWords(byDay) {
     const some = byDay.map((n, i) => [n, i]).filter(([n]) => n > 0)
     const least = some.reduce((best, x) => (x[0] < best[0] ? x : best))[1]
     const share = Math.round((byDay[most] / total) * 100)
-    if (some.length === 1) return `All of it was done on ${WEEKDAYS[most]}s.`
-    return `Most is done on ${WEEKDAYS[most]}s (${share}%), and the least on ${WEEKDAYS[least]}s.`
+    if (some.length === 1) return `All of it was done on ${WEEKDAY_NAMES[most]}s.`
+    return `Most is done on ${WEEKDAY_NAMES[most]}s (${share}%), and the least on ${WEEKDAY_NAMES[least]}s.`
 }
 
 // Each thing on a list with the day it was last done, the longest ago first,
@@ -265,7 +252,7 @@ export function periodRecord(list, rounds, from, to, today) {
     if (list.repeats === 'once') return []
     const finished = rounds
         .filter(r => r.checklist_id === list.id && r.ended_at)
-        .map(r => ({ day: dayOf(r.ended_at), outcome: roundOutcome(r) }))
+        .map(r => ({ day: stampDay(r.ended_at), outcome: roundOutcome(r) }))
     const out = []
     let period = periodOf(list, from < list.starts_on ? list.starts_on : from)
     while (period.from <= to) {
@@ -321,22 +308,25 @@ export function weekCleaning({ lists, categories, tasks, rounds, ticks, weekStar
             const again = leftLastTime(tree, before, known)
             return leaves.filter(t => !ticked.has(t.id)).map(t => ({
                 id: t.id, name: t.name, ...where.get(t.id),
-                lastDone: lastDone.get(t.id) ? dayOf(lastDone.get(t.id)) : null,
+                lastDone: lastDone.get(t.id) ? stampDay(lastDone.get(t.id)) : null,
                 lastDoneWords: lastDone.get(t.id) ? `last done ${doneDay(lastDone.get(t.id))}` : 'never done',
                 again: again.has(t.id),
             }))
         }
         const verdict = (label, period, warnWhenNotDone) => {
-            const finished = latest(mine.filter(r => r.ended_at && dayOf(r.ended_at) >= period.from
-                && (!period.to || dayOf(r.ended_at) <= period.to)), 'ended_at')
+            const finished = latest(mine.filter(r => r.ended_at && stampDay(r.ended_at) >= period.from
+                && (!period.to || stampDay(r.ended_at) <= period.to)), 'ended_at')
             if (finished && roundOutcome(finished) === 'finished') {
-                return { label, state: 'done', on: dayOf(finished.ended_at), warn: false }
+                return { label, state: 'done', on: stampDay(finished.ended_at), warn: false }
             }
-            const left = leftOf(open || finished)
-            const done = leaves.length - left.length
+            // A round ended early is spoken of by what it left, even when
+            // another has been started since. That one is said on its own.
             if (finished) {
-                return { label, state: 'ended', on: dayOf(finished.ended_at), by: finished.ended_by_name, done, total: leaves.length, left, warn: true }
+                const left = leftOf(finished)
+                return { label, state: 'ended', on: stampDay(finished.ended_at), by: finished.ended_by_name, done: leaves.length - left.length, total: leaves.length, left, warn: true }
             }
+            const left = leftOf(open)
+            const done = leaves.length - left.length
             if (!open) return { label, state: 'not_started', done: 0, total: leaves.length, left, warn: warnWhenNotDone }
             return { label, state: warnWhenNotDone ? 'not_finished' : 'in_progress', done, total: leaves.length, left, warn: warnWhenNotDone }
         }
@@ -344,7 +334,7 @@ export function weekCleaning({ lists, categories, tasks, rounds, ticks, weekStar
         const lines = []
         if (list.repeats === 'once') {
             const ended = latest(mine.filter(r => r.ended_at), 'ended_at')
-            if (ended && dayOf(ended.ended_at) < weekStart) continue
+            if (ended && stampDay(ended.ended_at) < weekStart) continue
             const late = Boolean(list.finish_by && list.finish_by <= saturday)
             lines.push(verdict(null, { from: list.starts_on, to: null }, late))
         } else {
@@ -356,6 +346,13 @@ export function weekCleaning({ lists, categories, tasks, rounds, ticks, weekStar
             } else {
                 lines.push(verdict(list.repeats === 'monthly' ? monthName(now.from) : null, now, now.to === saturday))
             }
+        }
+        // Started again after a round was ended early, which the end dialog
+        // tells staff to do. It counts in the week it finishes, so it never
+        // warns, it only says how far it has got.
+        if (open && lines.at(-1)?.state === 'ended') {
+            const left = leftOf(open)
+            lines.push({ label: null, state: 'started_again', on: stampDay(open.started_at), done: leaves.length - left.length, total: leaves.length, left, warn: false })
         }
 
         out.push({
@@ -379,10 +376,6 @@ export function weekCleaning({ lists, categories, tasks, rounds, ticks, weekStar
     return { lists: out, byDay, busiest: busiestWords(byDay) }
 }
 
-function monthName(date) {
-    return new Date(date + 'T00:00:00').toLocaleDateString('en-IE', { month: 'long' })
-}
-
 // Where each ticked thing sits, for saying it in a sentence: Kitchen, Small
 // toaster area, Clean under the toaster.
 export function placeOf(tree) {
@@ -404,5 +397,6 @@ export function cleaningWords(line) {
     if (line.state === 'ended') return `${when}Ended on ${doneDayLong(line.on + 'T12:00:00')}${line.by ? ` by ${line.by}` : ''} with ${line.left.length} not done.`
     if (line.state === 'not_started') return line.warn ? `${when}Not done. Nobody started it.` : `${when}Not started yet.`
     if (line.state === 'not_finished') return `${when}Not finished: ${line.done} of ${line.total} done, ${line.left.length} left.`
+    if (line.state === 'started_again') return `${when}Started again on ${doneDayLong(line.on + 'T12:00:00')}: ${line.done} of ${line.total} done so far.`
     return `${when}${line.done} of ${line.total} done so far.`
 }

@@ -4,7 +4,7 @@ import { numberField } from '@/lib/numberInput'
 import { brandFor } from '@/lib/platformBrand'
 import { ratingMove, reviewNeedsNote } from '@/lib/weeklyReport'
 import { useRemoveCard } from '@/components/reports/useRemoveCard'
-import { removeButton } from '@/lib/controlStyles'
+import { removeButton, denseField } from '@/lib/controlStyles'
 import AutoTextarea from '@/components/ui/AutoTextarea'
 import AddButton from '@/components/ui/AddButton'
 
@@ -20,6 +20,12 @@ import AddButton from '@/components/ui/AddButton'
 //
 // The rating carries from last week and the report only mentions one that
 // moved. A score that held is not news.
+
+// A note box still waiting on its words: a low review or a refund with
+// nothing said about it. The orange edge askField gives a full size box,
+// swapped in rather than laid on top, since two border colours on one box
+// are settled by stylesheet order.
+const askDense = `${denseField.replace('border-border', 'border-accent')} placeholder:text-accent-ink`
 
 const STAR_FULL = '★'
 const STAR_EMPTY = '☆'
@@ -138,7 +144,7 @@ function RefundAmount({ item, canEdit, onSave }) {
                 // for the line, and goes back to its own width from sm. w-20 is
                 // about four characters at this foot rule, which is not enough
                 // for a refund that runs into three figures.
-                className="flex-1 min-w-[5rem] sm:flex-none sm:w-24 text-right bg-white border border-gray-300 rounded-lg px-2 py-2 text-base sm:text-sm tabular-nums shadow-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                className="flex-1 min-w-[5rem] sm:flex-none sm:w-24 text-right bg-white border border-gray-300 rounded-lg px-2 py-2 text-base pointer-fine:text-sm tabular-nums shadow-sm focus:outline-none focus:ring-2 focus:ring-accent"
             />
             {amount > 0 && (
                 <span className="text-sm font-semibold tabular-nums text-red-700 whitespace-nowrap">
@@ -204,13 +210,15 @@ function RatingLine({ platform, item, canEdit, onSave }) {
     return (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             {canEdit ? (
-                <input
-                    {...numberField({ value: draft, onChange: setDraft, decimals: 1 })}
-                    onBlur={commit}
-                    onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
-                    placeholder="4.6"
-                    className="w-20 text-right bg-white border border-gray-300 rounded-lg px-2 py-1 text-sm tabular-nums shadow-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
-                />
+                <div className="w-20">
+                    <input
+                        {...numberField({ value: draft, onChange: setDraft, decimals: 1 })}
+                        onBlur={commit}
+                        onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
+                        placeholder="4.6"
+                        className={`${denseField} text-right tabular-nums`}
+                    />
+                </div>
             ) : (
                 <span className="text-sm font-bold tabular-nums text-gray-900">
                     {item?.amount == null ? '—' : Number(item.amount).toFixed(1)}
@@ -303,9 +311,8 @@ function PlatformBlock({
                                         const note = e.target.value.trim()
                                         if (note !== (item.note || '')) onSaveItem(item.id, { note })
                                     }}
-                                    placeholder={needs ? 'What did they say' : 'Anything worth saying'}
-                                    className={`w-full bg-white border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent ${
-                                        needs ? 'border-accent placeholder:text-accent-ink' : 'border-gray-300'}`}
+                                    placeholder={needs ? 'Enter a comment' : 'Enter a comment (optional)'}
+                                    className={needs ? askDense : denseField}
                                 />
                             ) : item.note ? (
                                 <span className="text-sm text-gray-700">{item.note}</span>
@@ -324,11 +331,13 @@ function PlatformBlock({
                     <div className="flex items-center gap-2">
                         <Stars value={stars} onChange={setStars} />
                         <span className="text-sm text-muted">&times;</span>
-                        <input
-                            {...numberField({ value: count, onChange: setCount, whole: true })}
-                            aria-label="How many of them"
-                            className="w-14 text-right bg-white border border-gray-300 rounded-lg px-2 py-1.5 text-sm tabular-nums shadow-sm focus:outline-none focus:ring-2 focus:ring-accent"
-                        />
+                        <div className="w-14">
+                            <input
+                                {...numberField({ value: count, onChange: setCount, whole: true })}
+                                aria-label="How many of them"
+                                className={`${denseField} text-right tabular-nums`}
+                            />
+                        </div>
                     </div>
                     <AddButton
                         className="mt-2 w-full sm:w-auto justify-center"
@@ -344,14 +353,13 @@ function PlatformBlock({
             )}
 
             <p className="text-xs text-muted mt-2">
-                Three stars or under needs a comment before the week can go out. Four and five do not, because a
-                good review needs no explaining.
+                Reviews of three stars or less need a comment before the report can be sent.
             </p>
 
             <SubLabel hint={refundTotal > 0
                 ? `${fmtMoney(-refundTotal)} this week`
                     + (claimedBack > 0 ? `, ${fmtMoney(claimedBack)} claimed back` : ', none claimed back')
-                : 'one card each, never a total'}>Refunds</SubLabel>
+                : 'add each refund separately'}>Refunds</SubLabel>
             <div className="space-y-2">
                 {refunds.map(item => (
                     <LineCard
@@ -376,10 +384,7 @@ function PlatformBlock({
                                     if (note !== (item.note || '')) onSaveItem(item.id, { note })
                                 }}
                                 placeholder="What it was about"
-                                className={`w-full bg-white border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent ${
-                                    String(item.note || '').trim()
-                                        ? 'border-gray-300'
-                                        : 'border-accent placeholder:text-accent-ink'}`}
+                                className={String(item.note || '').trim() ? denseField : askDense}
                             />
                         ) : item.note ? (
                             <span className="text-sm text-gray-700">{item.note}</span>
@@ -408,9 +413,8 @@ export default function ReportOnlineSales({ section, platforms, taken, canEdit, 
     return (
         <div>
             <p className="text-sm text-muted mb-4">
-                Takings come from the tracking rows on weekly sales, the ones filled by hand beside the till,
-                because that is what a platform statement is reconciled against. Everything else here is only
-                known to whoever looked at the app.
+                Takings come from the Online platforms rows on Weekly sales. Enter ratings, reviews and refunds
+                here, from each platform's own app.
             </p>
 
             <div className="rounded-lg bg-sidebar text-white px-4 py-3 mb-4 flex flex-wrap items-baseline justify-between gap-2">

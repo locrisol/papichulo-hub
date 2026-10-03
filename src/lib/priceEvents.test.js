@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
-    REASONS, acceptPrice, rejectPrice, movePreferred, typedPrice, codeRow,
-    seenAgain, ignoreCode, ownedByAnother, costFromPaid, renumberPlan, alternatePlan, newGroupId,
+    REASONS, acceptPrice, movePreferred, typedPrice, typedPriceEvent, codeRow, seenAgain,
+    ignoreCode, ownedByAnother, costFromPaid, renumberPlan, alternatePlan, newGroupId,
 } from '@/lib/priceEvents'
 
 const PRODUCT = { id: 'p1', name: 'Flour Tortilla', section: 'Dry', unit: 'KG' }
@@ -144,23 +144,6 @@ describe('accepting what an invoice charged', () => {
     })
 })
 
-describe('refusing one', () => {
-    // He paid the new price whatever the Hub costs from. Rejecting means "do
-    // not move our costing" and never "that did not happen", and the report has
-    // to be able to say both.
-    it('keeps what was charged and where the costing did not follow', () => {
-        expect(rejectPrice(row())).toEqual({
-            product_id: 'p1',
-            price_id: 'pr1',
-            supplier_code: '497870',
-            description: 'FLOUR TORTILLA 12IN',
-            was: 30.3,
-            charged: 32.1,
-            difference: 1.8,
-        })
-    })
-})
-
 describe('buying it somewhere else', () => {
     const other = { id: 'pr2', price_per_unit: 2.85, supplier_name: 'Another Supplier' }
 
@@ -192,6 +175,36 @@ describe('a price typed in', () => {
         expect(typedPrice(PRODUCT, PRICE, { ...WHO, first: true }).reason).toBe('created')
         expect(typedPrice(PRODUCT, PRICE, WHO).reason).toBe('by_hand')
     })
+
+    it('says what it was before, when it was something', () => {
+        expect(typedPrice(PRODUCT, PRICE, { ...WHO, previous: { price_per_unit: 2.85 } }).previous_per_unit).toBe(2.85)
+        expect(typedPrice(PRODUCT, PRICE, WHO).previous_per_unit).toBeNull()
+    })
+})
+
+// Saved on the Prices page or the product form.
+describe('typedPriceEvent', () => {
+    const typed = { ...PRICE, price_per_case: 32.1, price_per_unit: 3.21 }
+
+    it('records a new figure on the preferred price, with what it was', () => {
+        expect(typedPriceEvent(PRODUCT, typed, { ...WHO, before: PRICE })).toMatchObject({
+            price_id: 'pr1', reason: 'by_hand', price_per_unit: 3.21, previous_per_unit: 3.03,
+            at: WHO.at, changed_by: 'u1',
+        })
+    })
+
+    it('records the first price a product is given as its first', () => {
+        expect(typedPriceEvent(PRODUCT, PRICE, WHO)).toMatchObject({ reason: 'created', previous_per_unit: null })
+    })
+
+    // The product form saves the preferred price again on every save.
+    it('records nothing when the price did not move', () => {
+        expect(typedPriceEvent(PRODUCT, { ...PRICE }, { ...WHO, before: PRICE })).toBeNull()
+    })
+
+    it('records nothing for a price the product is not costed from', () => {
+        expect(typedPriceEvent(PRODUCT, { ...typed, is_preferred: false }, { ...WHO, before: PRICE })).toBeNull()
+    })
 })
 
 describe('what a code means', () => {
@@ -208,8 +221,6 @@ describe('what a code means', () => {
         })
     })
 
-    // first_seen_on is what says how long the Hub has known about something, so
-    // it is never touched again.
     it('only ever moves last seen forward', () => {
         const out = seenAgain(
             { last_seen_on: '2026-09-14', last_description: 'FLOUR TORTILLA' },
@@ -222,6 +233,25 @@ describe('what a code means', () => {
     it('does not move it backwards for an older document imported late', () => {
         const out = seenAgain({ last_seen_on: '2026-09-20' }, { line, date: '2026-09-14' })
         expect(out.last_seen_on).toBe('2026-09-20')
+    })
+
+    // A typed invoice filled in with its document is older than anything
+    // imported since. It says the code was bought earlier than the Hub
+    // thought, and nothing about what it is called now.
+    it('moves first seen back for an older document, and keeps the newer words', () => {
+        const out = seenAgain(
+            { first_seen_on: '2026-09-14', last_seen_on: '2026-09-20', last_description: 'FLOUR TORTILLA 12IN', pack_size: '4X2.5 KG' },
+            { line: { description: 'FLOUR TORTILLA 12 INCH', pack_size: '4X2.5KG' }, date: '2026-09-02' },
+        )
+        expect(out).toEqual({
+            first_seen_on: '2026-09-02', last_seen_on: '2026-09-20',
+            last_description: 'FLOUR TORTILLA 12IN', pack_size: '4X2.5 KG',
+        })
+    })
+
+    it('never moves first seen later', () => {
+        const out = seenAgain({ first_seen_on: '2026-09-14', last_seen_on: '2026-09-14' }, { line, date: '2026-09-20' })
+        expect(out.first_seen_on).toBe('2026-09-14')
     })
 
     // A delivery charge has a code and would turn up in the new pile every week

@@ -4,17 +4,23 @@ import { supabase } from '@/lib/supabase'
 import { dayIsClosed, planNoteWrites, applyNoteWrites } from '@/lib/closedDays'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
-import { fmtMoney, num } from '@/lib/format'
-import { tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord, sameLabel, trackedCopy } from '@/lib/salesTenders'
+import { fmtMoney, fmtPct, num } from '@/lib/format'
+import {
+    tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord, sameLabel, trackedCopy,
+    keyedPlatforms, platformsToShow, mergePlatformSales, sameStoredDay,
+} from '@/lib/salesTenders'
 import { numberField } from '@/lib/numberInput'
 import { todayISO, addDays, fullDate } from '@/lib/dates'
 import { bankHolidayOn, BANK_HOLIDAY_INK, BANK_HOLIDAY_WASH } from '@/lib/bankHolidays'
 import { friendlyError } from '@/lib/errors'
-import { secondaryButton, card, dateField, checkbox, labelClass, fieldClass, pageTitle, primaryButton } from '@/lib/controlStyles'
+import { secondaryButton, card, dateField, checkbox, labelClass, fieldClass, filledField, primaryButton } from '@/lib/controlStyles'
+import { readStored, writeStored } from '@/lib/browserStore'
 import JumpButton from '@/components/ui/JumpButton'
 import DateStepper from '@/components/ui/DateStepper'
 import { useConfirm } from '@/context/confirm'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import Notice from '@/components/ui/Notice'
+import PageHeader from '@/components/ui/PageHeader'
 
 // TWO RECORDS, DELIBERATELY SEPARATE
 // The till receipt block (gross, net, and a row for every way the till takes
@@ -49,10 +55,10 @@ export default function SalesPage() {
     useEffect(() => {
         const requested = searchParams.get('view')
         if (requested) {
-            localStorage.setItem('salesView', requested)
+            writeStored('local', 'salesView', requested)
             return
         }
-        const remembered = localStorage.getItem('salesView')
+        const remembered = readStored('local', 'salesView')
         const preferWeek = remembered ? remembered === 'week' : window.innerWidth >= 1024
         if (preferWeek) navigate('/sales/weekly', { replace: true })
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -70,18 +76,21 @@ export default function SalesPage() {
     const [formProblem, setFormProblem] = useState('')
     const [success, setSuccess] = useState('')
 
-    // Id of the existing record for this date, if any. Drives insert vs update.
+    // Id of the existing record for this date, if any. Drives the words on the
+    // save button.
     const [recordId, setRecordId] = useState(null)
+    // The record as it was read, to tell on save whether it has been saved
+    // somewhere else since.
+    const [loadedRecord, setLoadedRecord] = useState(null)
 
     // Marks a non-trading day. Closed days are excluded from per-day averages.
     const [isClosed, setIsClosed] = useState(false)
     // The roster's word on this day, which decides the box above.
     const [dayNote, setDayNote] = useState(null)
 
+    // Every platform and every tender for this restaurant, retired ones
+    // included, so an old day can still show the rows it was entered with.
     const [platforms, setPlatforms] = useState([])
-
-    // Every tender for this restaurant, retired ones included, so an old day can
-    // still show the rows it was entered with.
     const [tenders, setTenders] = useState([])
 
     // Gross and net only. Every other row on the receipt is a tender now.
@@ -94,8 +103,10 @@ export default function SalesPage() {
     const [storedTenders, setStoredTenders] = useState({})
     const [staffFood, setStaffFood] = useState('')
 
-    // Per-platform amounts, keyed by platform name: { Deliveroo: "120.50" }
+    // Per-platform amounts, keyed by the platform's key: { Deliveroo: "120.50" }.
+    // And what the database holds, for the same reason as the tenders.
     const [platformSales, setPlatformSales] = useState({})
+    const [storedPlatforms, setStoredPlatforms] = useState({})
 
     const restaurantId = activeRestaurant?.id
 
@@ -104,23 +115,24 @@ export default function SalesPage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [restaurantId, saleDate])
 
-    async function loadDay() {
+    // `said` is what to show once it is read. Clearing it here on every read
+    // meant the line a save had just set was gone before it was ever drawn.
+    async function loadDay(said = '') {
         setLoading(true)
         setError('')
-        setSuccess('')
+        setSuccess(said)
 
+        // Neither is filtered by is_active: a day from March has to be able to
+        // show Outside Catering, which it can only do if the retired row is here.
         const { data: plats, error: pErr } = await supabase
             .from('sales_platforms')
             .select('*')
             .eq('restaurant_id', restaurantId)
-            .eq('is_active', true)
             .order('sort_order')
             .order('name')
 
         if (pErr) { setError(friendlyError(pErr)); setLoading(false); return }
 
-        // Not filtered by is_active: a day from March has to be able to show
-        // Outside Catering, which it can only do if the retired row is here.
         const { data: tends, error: tErr } = await supabase
             .from('sales_tenders')
             .select('*')
@@ -130,12 +142,8 @@ export default function SalesPage() {
 
         if (tErr) { setError(friendlyError(tErr)); setLoading(false); return }
         setTenders(tends || [])
-
-        // Sort by the manager-defined order, falling back to alphabetical.
-        const sortedPlats = (plats || []).sort(
-            (a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name)
-        )
-        setPlatforms(sortedPlats)
+        // Put in order by platformsToShow.
+        setPlatforms(keyedPlatforms(plats))
 
         const { data: note } = await supabase
             .from('day_notes')
@@ -155,6 +163,7 @@ export default function SalesPage() {
 
         if (rErr) { setError(friendlyError(rErr)); setLoading(false); return }
 
+        setLoadedRecord(rec || null)
         if (rec) {
             setRecordId(rec.id)
             setIsClosed(dayIsClosed(note, rec))
@@ -171,6 +180,7 @@ export default function SalesPage() {
                 for (const [k, v] of Object.entries(rec.platform_sales)) ps[k] = String(v)
             }
             setPlatformSales(ps)
+            setStoredPlatforms(rec.platform_sales ?? {})
         } else {
             setIsClosed(dayIsClosed(note, null))
             setRecordId(null)
@@ -180,6 +190,7 @@ export default function SalesPage() {
             setStoredTenders({})
             setStaffFood('')
             setPlatformSales({})
+            setStoredPlatforms({})
         }
 
         setLoading(false)
@@ -191,6 +202,7 @@ export default function SalesPage() {
 
     // Same as the weekly grid: a till figure fills the Corporate tracking row
     // of the same name, and stops as soon as that row is given its own figure.
+    // Found by name, kept under the platform's key.
     function setTenderValue(key, value) {
         const tender = tenders.find(t => t.key === key)
         const tracking = tender && cateringPlatforms.find(p => sameLabel(p.name, tender.label))
@@ -198,17 +210,17 @@ export default function SalesPage() {
             const copy = trackedCopy({
                 typed: value,
                 previousTillValue: tenderValues[key],
-                trackedValue: platformSales[tracking.name],
+                trackedValue: platformSales[tracking.key],
             })
             if (copy != null) {
-                setPlatformSales(prev => ({ ...prev, [tracking.name]: copy }))
+                setPlatformSales(prev => ({ ...prev, [tracking.key]: copy }))
             }
         }
         setTenderValues(prev => ({ ...prev, [key]: value }))
     }
 
-    function setPlatformAmount(name, value) {
-        setPlatformSales(prev => ({ ...prev, [name]: value }))
+    function setPlatformAmount(key, value) {
+        setPlatformSales(prev => ({ ...prev, [key]: value }))
     }
 
     function shiftDate(days) {
@@ -217,18 +229,19 @@ export default function SalesPage() {
 
     // ---- derived values -------------------------------------------------
 
-    const onlinePlatforms = platforms.filter(p => p.bucket === 'online_platform')
-    const cateringPlatforms = platforms.filter(p => p.bucket === 'catering')
+    // The rows this day draws: the active ones, plus any retired row this day
+    // still holds a figure for.
+    const shownTenders = tendersToShow(tenders, [storedTenders])
+    const shownPlatforms = platformsToShow(platforms, [storedPlatforms])
+
+    const onlinePlatforms = shownPlatforms.filter(p => p.bucket === 'online_platform')
+    const cateringPlatforms = shownPlatforms.filter(p => p.bucket === 'catering')
 
     // Sum of the tracking rows for a bucket, compared against the receipt figure
     // for information only.
     function platformSum(bucketPlatforms) {
-        return bucketPlatforms.reduce((sum, p) => sum + num(platformSales[p.name]), 0)
+        return bucketPlatforms.reduce((sum, p) => sum + num(platformSales[p.key]), 0)
     }
-
-    // The rows this day draws: the active ones, plus any retired row this day
-    // still holds a figure for.
-    const shownTenders = tendersToShow(tenders, [storedTenders])
 
     // Reconciliation uses only the till receipt block.
     const variance = tenderVariance(values.gross, tenderValues, shownTenders)
@@ -246,27 +259,44 @@ export default function SalesPage() {
 
     async function handleSave() {
         setFormProblem(''); setSuccess('')
-
-        // One record per date per restaurant, so confirm before replacing one.
-        if (recordId) {
-            const ok = await confirm({
-                title: 'Overwrite this day?',
-                message: 'There is already a record for this day. Saving replaces it with what is on screen now.',
-                details: [{ label: 'Day', value: fullDate(saleDate) }],
-                confirmLabel: 'Overwrite',
-                tone: 'danger',
-            })
-            if (!ok) return
-        }
-
         setSaving(true)
 
-        // Only store platforms that actually have a value, to keep the JSONB tidy.
-        const ps = {}
-        for (const p of platforms) {
-            const v = num(platformSales[p.name])
-            if (v !== 0) ps[p.name] = v
+        // What is stored for this day now. A phone, the week grid or another
+        // tab may have saved it since this screen opened it, and "Replace
+        // this day?" used to be asked the same either way, so a correction
+        // made there was written over without anybody knowing it existed.
+        const { data: now, error: e0 } = await supabase
+            .from('sales_records')
+            .select('*')
+            .eq('restaurant_id', restaurantId)
+            .eq('sale_date', saleDate)
+            .maybeSingle()
+        setSaving(false)
+        if (e0) { setFormProblem(friendlyError(e0)); return }
+
+        // One record per date per restaurant, so confirm before replacing one.
+        let ok = true
+        if (!sameStoredDay(now, loadedRecord)) {
+            ok = await confirm({
+                title: 'Changed somewhere else',
+                message: 'This day was saved on another screen after you opened it. Saving now replaces it with what is on this screen.',
+                details: [{ label: 'Day', value: fullDate(saleDate) }],
+                confirmLabel: 'Save anyway',
+                tone: 'danger',
+                dangerNote: 'The other changes to this day will be lost.',
+            })
+        } else if (now) {
+            ok = await confirm({
+                title: 'Replace this day?',
+                message: 'This day is already saved. Saving again replaces it with what is on screen now.',
+                details: [{ label: 'Day', value: fullDate(saleDate) }],
+                confirmLabel: 'Replace',
+                tone: 'danger',
+            })
         }
+        if (!ok) return
+
+        setSaving(true)
 
         const base = {
             restaurant_id: restaurantId,
@@ -293,15 +323,19 @@ export default function SalesPage() {
                 // stored rather than replacing it, so a figure belonging to no
                 // row on screen is left where it is.
                 tender_sales: mergeTenderSales(storedTenders, tenderValues, shownTenders),
-                // Tracking detail, not required to match the receipt.
-                platform_sales: ps,
+                // Tracking detail, not required to match the receipt. Written
+                // over what was stored the same way, so a platform retired
+                // since keeps its figure.
+                platform_sales: mergePlatformSales(storedPlatforms, platformSales, shownPlatforms),
                 staff_food: num(staffFood),
                 instore_variance: variance,
             }
 
+        // The row as it is now, so a day added somewhere else since is written
+        // over rather than added a second time and turned down.
         let resErr
-        if (recordId) {
-            const { error: e1 } = await supabase.from('sales_records').update(payload).eq('id', recordId)
+        if (now) {
+            const { error: e1 } = await supabase.from('sales_records').update(payload).eq('id', now.id)
             resErr = e1
         } else {
             const { error: e1 } = await supabase.from('sales_records').insert(payload)
@@ -318,8 +352,7 @@ export default function SalesPage() {
         })
         if (noteErr) { setFormProblem(friendlyError(noteErr)); return }
 
-        setSuccess(isClosed ? `${saleDate} marked as closed.` : `Sales for ${saleDate} saved.`)
-        loadDay()
+        loadDay(isClosed ? `${fullDate(saleDate)} marked as closed.` : `Sales for ${fullDate(saleDate)} saved.`)
     }
 
     // A filled box is faintly green, an empty one is white, the same as the
@@ -328,7 +361,7 @@ export default function SalesPage() {
     // filled it in, a typed 0 means the till took nothing, and the day has to
     // be able to say which.
     function fieldWith(value) {
-        return `${fieldClass} ${value === '' || value == null ? '' : 'bg-green-50'}`
+        return value === '' || value == null ? fieldClass : filledField
     }
 
     // One bucket of tracking platforms, with the gap against the receipt figure.
@@ -350,7 +383,7 @@ export default function SalesPage() {
                     <h3 className="text-xs font-bold text-white uppercase tracking-wider">
                         {title}
                         <span className="text-xs font-normal normal-case tracking-normal text-white/60 ml-2">
-                            tracking only, outside the reconciliation
+                            for reference only, not part of the reconciliation
                         </span>
                     </h3>
                 </div>
@@ -363,26 +396,31 @@ export default function SalesPage() {
                     <span className="text-sm font-semibold text-gray-800">{title} tracked</span>
                     <span className="text-sm text-gray-600">
                         <span className="font-semibold text-gray-900">{fmtMoney(sum)}</span>
-                        <span className="ml-2 text-gray-500">({pctOfGross(sum).toFixed(1)}% of sales)</span>
+                        <span className="ml-2 text-muted">({fmtPct(pctOfGross(sum))} of sales)</span>
                     </span>
                 </div>
 
                 {comparable && Math.abs(gap) >= 0.01 && (
-                    <p className="text-xs text-amber-600 px-5 pt-3">
-                        {gap > 0 ? '+' : ''}{fmtMoney(gap)} against the receipt figure. Expected: platforms report
-                        commission and VAT differently.
+                    <p className="text-xs text-amber-700 px-5 pt-3">
+                        {gap > 0 ? '+' : ''}{fmtMoney(gap)} against the till receipt. This is normal, because platforms
+                        report commission and VAT differently.
                     </p>
                 )}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-5">
                     {bucketPlatforms.map(p => (
                         <div key={p.id}>
-                            <label className={labelClass}>{p.name}</label>
+                            <label className={labelClass}>
+                                {p.name}
+                                {!p.is_active && (
+                                    <span className="ml-2 text-muted">retired</span>
+                                )}
+                            </label>
                             <input
                                 {...numberField({
-                                    value: platformSales[p.name],
-                                    onChange: v => setPlatformAmount(p.name, v),
+                                    value: platformSales[p.key],
+                                    onChange: v => setPlatformAmount(p.key, v),
                                 })}
-                                className={fieldWith(platformSales[p.name])}
+                                className={fieldWith(platformSales[p.key])}
                             />
                         </div>
                     ))}
@@ -397,25 +435,24 @@ export default function SalesPage() {
 
     return (
         <>
-            <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
-                <div>
-                    <h2 className={pageTitle}>Daily sales</h2>
-                    <p className="text-sm text-gray-500 mt-1">{activeRestaurant?.name} · one record per day</p>
-                </div>
+            <PageHeader
+                title="Daily sales"
+                subtitle={activeRestaurant?.name}
+            >
                 {/* Switch to the whole-week grid, better suited to a laptop */}
                 <button
                     onClick={() => {
-                        localStorage.setItem('salesView', 'week')
+                        writeStored('local', 'salesView', 'week')
                         navigate('/sales/weekly')
                     }}
                     className={secondaryButton}
                 >
                     Week view
                 </button>
-            </div>
+            </PageHeader>
 
-            {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
-            {success && <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{success}</div>}
+            <ErrorBanner className="mb-4">{error}</ErrorBanner>
+            <Notice tone="good" className="mb-4">{success}</Notice>
 
             {/* Two columns once there is room for them. The left is the day
                 and the money off the till, finishing with the reconciliation,
@@ -456,7 +493,7 @@ export default function SalesPage() {
                             phone it was being pushed onto a line of its own and
                             reading like a stray label. */}
                         {recordId && (
-                            <p className="text-xs text-amber-600 font-medium mt-2">Existing record</p>
+                            <p className="text-xs text-amber-700 font-medium mt-2">Already saved</p>
                         )}
                         {/* Which one it is, not just that it is one. A day
                             taking bank holiday money is a day to compare with
@@ -482,8 +519,8 @@ export default function SalesPage() {
                                 className={checkbox}
                             />
                             <div>
-                                <span className="text-sm font-medium text-gray-900">Store was closed this day</span>
-                                <p className="text-xs text-gray-500 mt-0.5">
+                                <span className="text-sm font-medium text-gray-900">Closed all day</span>
+                                <p className="text-xs text-muted mt-0.5">
                                     Marks the day as not trading. Closed days are excluded from daily averages.
                                 </p>
                             </div>
@@ -558,8 +595,8 @@ export default function SalesPage() {
                                 <div className={`text-xl font-semibold ${varianceWarn ? 'text-red-700' : 'text-green-700'}`}>{fmtMoney(variance)}</div>
                                 <div className={`text-xs mt-1 ${varianceWarn ? 'text-red-600' : 'text-green-700'}`}>
                                     {varianceWarn
-                                        ? 'Does not add up to gross sales, check the figures'
-                                        : 'everything the till took, against gross sales'}
+                                        ? 'Does not add up to gross sales. Check the figures.'
+                                        : 'Matches gross sales'}
                                 </div>
                             </div>
                         </>
@@ -571,9 +608,9 @@ export default function SalesPage() {
                 {!isClosed && (
                     <div>
                         {/* Platform detail, outside the reconciliation */}
-                        {trackingBucket('Online Platform', onlinePlatforms, 'online_sales')}
+                        {trackingBucket('Online platforms', onlinePlatforms, 'online_sales')}
                         {trackingBucket('Corporate', cateringPlatforms, 'outside_catering',
-                            'These start as whatever you typed on the till rows above, since the till now itemises them itself. Change one if the platform pays something different after commission, and it will stop following.')}
+                            'These copy the till figures of the same name above. If a platform pays a different amount after commission, change it here and it stops copying.')}
 
                         <div className={`${card} p-5 mb-3`}>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

@@ -31,11 +31,6 @@ export function dayIsClosed(dayNote, salesRow) {
     return !!salesRow?.is_closed
 }
 
-// The dates in a set of day notes that are closed.
-export function closedDates(dayNotes) {
-    return new Set((dayNotes || []).filter(n => n?.is_closed).map(n => n.note_date))
-}
-
 // Is there anything left on a day note besides the fact it exists?
 //
 // A normal day has no row at all, which is what keeps this from becoming three

@@ -1,6 +1,7 @@
 import logo from '@/assets/PapiChuloLogoPrint.png?inline'
 import { doneDayLong, repeatWords, tickable } from '@/lib/checklists'
-import { stampDate, stampDateTime } from '@/lib/dates'
+import { stampDate, stampDateTime, WEEKDAY_NAMES } from '@/lib/dates'
+import { loadJsPdf, letterhead, footers } from '@/lib/pdfPage'
 
 // Checklists on paper: a blank list to print and pin up, and the record of a
 // round that has been done.
@@ -18,17 +19,10 @@ import { stampDate, stampDateTime } from '@/lib/dates'
 // page starts the next one. A category heading never sits alone at the bottom
 // of a page either: it goes over with the first row under it.
 //
-// The header is the stock take's, same logo, same size and place, so the
-// papers the Hub prints look like one family.
+// The top and the foot of each page are the stock take's, the same letterhead
+// and the same logo at the same size, so the papers the Hub prints look like
+// one family.
 
-let jsPdfModule = null
-async function loadJsPdf() {
-    if (!jsPdfModule) jsPdfModule = (await import('jspdf')).default
-    return jsPdfModule
-}
-
-const LOGO_WIDTH = 26
-const LOGO_HEIGHT = (LOGO_WIDTH * 249) / 400
 const GREEN = [24, 47, 36]
 const INK = 40
 const MARGIN = 15
@@ -87,38 +81,7 @@ async function paper({ label, restaurant, title, lines, fileName }) {
     let y = 0
 
     function top() {
-        pdf.addImage(logo, 'PNG', MARGIN, 9, LOGO_WIDTH, LOGO_HEIGHT)
-        const textX = MARGIN + LOGO_WIDTH + 6
-        pdf.setFont('helvetica', 'bold')
-        pdf.setFontSize(7)
-        pdf.setTextColor(150)
-        pdf.text(label, textX, 13, { charSpace: 0.7 })
-        pdf.setFontSize(15)
-        pdf.setTextColor(INK)
-        pdf.text(restaurant.name, textX, 20.5)
-        pdf.setFont('helvetica', 'normal')
-        pdf.setFontSize(10)
-        pdf.setTextColor(90)
-        pdf.text(pdf.splitTextToSize(title, width - textX - 60)[0], textX, 26)
-        pdf.setFontSize(8)
-        pdf.setTextColor(130)
-        lines.forEach((line, i) => pdf.text(line, width - MARGIN, 13 + i * 4, { align: 'right' }))
-        pdf.setDrawColor(200)
-        pdf.setLineWidth(0.2)
-        pdf.line(MARGIN, 31, width - MARGIN, 31)
-        y = 37
-    }
-
-    function footers(words) {
-        const pages = pdf.getNumberOfPages()
-        for (let page = 1; page <= pages; page++) {
-            pdf.setPage(page)
-            pdf.setFont('helvetica', 'italic')
-            pdf.setFontSize(7)
-            pdf.setTextColor(140)
-            pdf.text(words, MARGIN, height - 8)
-            pdf.text(`Page ${page} of ${pages}`, width - MARGIN, height - 8, { align: 'right' })
-        }
+        y = letterhead(pdf, { logo, label, name: restaurant.name, title, lines, margin: MARGIN })
     }
 
     top()
@@ -130,7 +93,7 @@ async function paper({ label, restaurant, title, lines, fileName }) {
         newPage() { pdf.addPage(); top() },
         // The tests ask for the document back rather than a download.
         finish(words, save) {
-            footers(words)
+            footers(pdf, { left: words, margin: MARGIN })
             if (save) pdf.save(fileName)
             return pdf
         },
@@ -352,7 +315,7 @@ export async function roundPdf({ restaurant, list, tree, round, ticks, pictures 
         ? round.ended_by
             ? `Ended ${stampDateTime(round.ended_at)} by ${round.ended_by_name || 'a manager'}`
             : `Finished ${stampDateTime(round.ended_at)}`
-        : 'Still in progress'
+        : 'In progress'
 
     const sheet = await paper({
         label: 'CHECKLIST RECORD',
@@ -428,7 +391,6 @@ export async function reportPdf({ restaurant, fromLabel, toLabel, byDay, byTime,
         fileName: `Cleaning report ${fromLabel} to ${toLabel}.pdf`,
     })
     const { pdf, width } = sheet
-    const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
     // Bars for a count per label, drawn in one block that never splits.
     function bars(title, rows) {
@@ -458,10 +420,10 @@ export async function reportPdf({ restaurant, fromLabel, toLabel, byDay, byTime,
         sheet.y += 3
     }
 
-    bars('Ticks by day of the week', byDay.map((count, i) => ({ label: DAYS[i], count })))
+    bars('Ticks by day of the week', byDay.map((count, i) => ({ label: WEEKDAY_NAMES[i], count })))
     bars('Ticks by time of day', byTime)
 
-    const OUTCOME = { done: 'Done', missed: 'Not done', ended: 'Ended early', current: 'Still going' }
+    const OUTCOME = { done: 'Done', missed: 'Not done', ended: 'Ended early', current: 'In progress' }
     for (const l of lists) {
         const rows = []
         if (l.record.length) {

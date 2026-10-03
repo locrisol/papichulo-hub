@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import Modal from '@/components/ui/Modal'
-import { shortDate } from '@/lib/dates'
-import { dayName } from '@/lib/events'
+import { dayLabel } from '@/lib/dates'
 import { shortTime, endLabel } from '@/lib/roster'
 import { absenceRange } from '@/lib/absences'
 import { requestLabel, partWords, shiftsHit, noticeProblem, noticeDays } from '@/lib/timeOff'
-import { modalFooter, secondaryButton, badge } from '@/lib/controlStyles'
+import { modalFooter, primaryButton, secondaryButton, badge } from '@/lib/controlStyles'
+import Notice from '@/components/ui/Notice'
 
 // Answering a request for time off.
 //
@@ -30,60 +30,59 @@ export default function TimeOffDeskModal({
     const hours = partWords(request)
     const name = employee?.full_name || 'Somebody'
 
-    const when = d => `${dayName(d)} ${shortDate(d)}`
     const shiftLine = s =>
-        `${when(s.shift_date)}, ${shortTime(s.starts_at)} to ${endLabel(s, hoursOn?.(s.shift_date))}`
+        `${dayLabel(s.shift_date)}, ${shortTime(s.starts_at)} to ${endLabel(s, hoursOn?.(s.shift_date))}`
 
     return (
         <Modal title={`${requestLabel(request)} request from ${name}`} onClose={onClose} width="max-w-xl">
             <div className="px-6 py-4">
                 <div className="flex items-center gap-2 flex-wrap">
                     <p className="text-sm font-semibold text-gray-900">
-                        {absenceRange(request, when)}
+                        {absenceRange(request, dayLabel)}
                         {hours ? `, ${hours}` : ''}
                     </p>
-                    <span className={`${badge} bg-amber-100 text-amber-800`}>Waiting</span>
+                    <span className={`${badge} bg-amber-100 text-amber-800`}>Waiting for approval</span>
                 </div>
                 {request.note && <p className="text-sm text-muted italic mt-1">"{request.note}"</p>}
 
                 {/* The whole reason this screen exists. */}
                 {hit.length > 0 ? (
-                    <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2.5 mt-3">
-                        <p className="text-sm font-semibold text-red-800">
-                            {name} is rostered on {hit.length} of these {hit.length === 1 ? 'days' : 'days'}
+                    <Notice tone="urgent" className="mt-3">
+                        <p className="font-semibold">
+                            {name} has {hit.length} {hit.length === 1 ? 'shift' : 'shifts'} on these days
                         </p>
                         <ul className="text-xs text-red-700 mt-1 space-y-0.5">
                             {hit.map(s => <li key={s.id}>{shiftLine(s)}</li>)}
                         </ul>
-                    </div>
+                    </Notice>
                 ) : (
-                    <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 mt-3">
-                        <p className="text-sm text-green-800">{name} is not rostered on any of these days.</p>
-                    </div>
+                    <Notice tone="good" className="mt-3">
+                        {name} is not rostered on any of these days.
+                    </Notice>
                 )}
 
                 {notice && (
-                    <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-2">
-                        <p className="text-xs text-amber-800">
+                    <Notice tone="warn" className="mt-2">
+                        <p className="text-xs">
                             Requested {notice.actual} {notice.actual === 1 ? 'day' : 'days'} in advance.
-                            You ask for {noticeDays(rules)}.
+                            Holidays need {noticeDays(rules)} {noticeDays(rules) === 1 ? "day's" : "days'"} notice.
                         </p>
-                    </div>
+                    </Notice>
                 )}
 
                 {/* Freeing days takes shifts off a published week, so it says
                     what it will do and waits. Turning it down later would not
                     put them back. */}
                 {confirming === 'free' && (
-                    <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 mt-3">
-                        <p className="text-sm font-semibold text-amber-900">
-                            This takes {hit.length} {hit.length === 1 ? 'shift' : 'shifts'} off the roster
+                    <Notice tone="warn" className="mt-3">
+                        <p className="font-semibold">
+                            This removes {hit.length} {hit.length === 1 ? 'shift' : 'shifts'} from the roster
                         </p>
                         <p className="text-xs text-amber-800 mt-0.5">
                             The week will keep saying those hours need covering until somebody is on them.
                             Changing your mind later will not put them back.
                         </p>
-                    </div>
+                    </Notice>
                 )}
             </div>
 
@@ -101,9 +100,9 @@ export default function TimeOffDeskModal({
                             type="button"
                             onClick={() => onApprove(request, hit)}
                             disabled={saving}
-                            className="px-5 py-2 text-sm font-semibold bg-green-brand hover:bg-green-brand/90 disabled:opacity-50 text-white rounded-lg"
+                            className={primaryButton('md', 'good')}
                         >
-                            {saving ? 'Saving...' : 'Yes, free those days'}
+                            {saving ? 'Saving...' : hit.length === 1 ? 'Yes, remove the shift' : 'Yes, remove the shifts'}
                         </button>
                     </>
                 ) : (
@@ -115,18 +114,18 @@ export default function TimeOffDeskModal({
                             type="button"
                             onClick={() => onApprove(request, [])}
                             disabled={saving}
-                            className="px-4 py-2 text-sm font-semibold text-gray-800 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-50"
+                            className={hit.length > 0 ? secondaryButton : primaryButton('md', 'good')}
                         >
-                            {hit.length > 0 ? 'Approve, leave the shifts' : 'Approve'}
+                            {hit.length > 0 ? 'Approve and keep shifts' : 'Approve'}
                         </button>
                         {hit.length > 0 && (
                             <button
                                 type="button"
                                 onClick={() => setConfirming('free')}
                                 disabled={saving}
-                                className="px-5 py-2 text-sm font-semibold bg-green-brand hover:bg-green-brand/90 disabled:opacity-50 text-white rounded-lg"
+                                className={primaryButton('md', 'good')}
                             >
-                                Approve and free {hit.length === 1 ? 'that day' : `those ${hit.length} days`}
+                                Approve and remove {hit.length === 1 ? '1 shift' : `${hit.length} shifts`}
                             </button>
                         )}
                     </>

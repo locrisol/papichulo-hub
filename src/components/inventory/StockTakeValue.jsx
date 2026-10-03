@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { fmtMoney } from '@/lib/format'
+import { fmtMoney, fmtPct } from '@/lib/format'
 import { slicePath } from '@/lib/donut'
+import { segmentButton, segmentTrack } from '@/lib/controlStyles'
 
 // What a finished stock take came to, by where it was counted.
 //
@@ -27,7 +28,7 @@ export default function StockTakeValue({ summary }) {
     if (sections.length === 0) {
         return (
             <p className="text-sm text-muted italic">
-                Nothing was counted, so there is nothing to draw.
+                Nothing was counted in this stock take.
             </p>
         )
     }
@@ -46,9 +47,7 @@ export default function StockTakeValue({ summary }) {
             type="button"
             onClick={() => setView(value)}
             aria-pressed={view === value}
-            className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors ${
-                view === value ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
-            }`}
+            className={segmentButton(view === value, true)}
         >
             {label}
         </button>
@@ -58,7 +57,7 @@ export default function StockTakeValue({ summary }) {
         <div>
             <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
                 <h2 className="font-serif text-lg font-bold text-gray-900">Where the value is</h2>
-                <div className="inline-flex bg-gray-100 rounded-lg p-1 gap-1" role="group" aria-label="How to show this">
+                <div className={segmentTrack} role="group" aria-label="How to show this">
                     {toggle('bars', 'Bars')}
                     {toggle('pie', 'Pie')}
                 </div>
@@ -164,7 +163,7 @@ function Row({ section, biggest, stripe, strong }) {
                     {fmtMoney(section.value)}
                 </span>
                 <span className="order-3 sm:order-4 w-12 flex-shrink-0 text-right text-xs text-muted tabular-nums whitespace-nowrap">
-                    {section.share.toFixed(1)}%
+                    {fmtPct(section.share)}
                 </span>
 
                 {/* Square where it starts and rounded where it ends, so the eye
@@ -239,13 +238,13 @@ function Pie({ sections, food, total }) {
             >
                 {drawn.map(s => (
                     <path key={s.section} d={s.path} fill={s.ink} stroke="#ffffff" strokeWidth="1">
-                        <title>{`${s.section}: ${fmtMoney(s.value)}, ${s.share.toFixed(1)}%`}</title>
+                        <title>{`${s.section}: ${fmtMoney(s.value)}, ${fmtPct(s.share)}`}</title>
                     </path>
                 ))}
 
                 {food && (
                     <path d={slicePath(0, angle(food.value), 49, 46.5)} fill="#57524A">
-                        <title>{`Food: ${fmtMoney(food.value)}, ${food.share.toFixed(1)}%`}</title>
+                        <title>{`Food: ${fmtMoney(food.value)}, ${fmtPct(food.share)}`}</title>
                     </path>
                 )}
 
@@ -273,7 +272,7 @@ function Pie({ sections, food, total }) {
                                 {fmtMoney(s.value)}
                             </span>
                             <span className="w-12 text-right text-xs text-muted tabular-nums whitespace-nowrap">
-                                {s.share.toFixed(1)}%
+                                {fmtPct(s.share)}
                             </span>
                         </div>
                         {s.parties && <Parties section={s} />}
@@ -292,7 +291,7 @@ function Pie({ sections, food, total }) {
                                 {fmtMoney(food.value)}
                             </span>
                             <span className="w-12 text-right text-xs text-muted tabular-nums whitespace-nowrap">
-                                {food.share.toFixed(1)}%
+                                {fmtPct(food.share)}
                             </span>
                         </div>
                     </li>

@@ -5,7 +5,7 @@ import { friendlyError } from '@/lib/errors'
 import { fullDate, shortDate } from '@/lib/dates'
 import { fmtHours } from '@/lib/roster'
 import { shortClock } from '@/lib/clock'
-import { readTimesheet, fileFits, insideWeek } from '@/lib/timesheetImport'
+import { readTimesheet, fileFits, insideWeek, sameTimeWho } from '@/lib/timesheetImport'
 import { planImport } from '@/lib/timesheet'
 import Modal from '@/components/ui/Modal'
 import ErrorBanner from '@/components/ui/ErrorBanner'
@@ -174,6 +174,7 @@ export default function ImportDialog({
             hours: read.shifts.reduce((t, s) => t + (Number(s.hours) || 0), 0),
             breaks: read.breaks.length,
             breakHours: read.breakHours,
+            sameTime: read.sameTime,
             filled: plan.filled,
             rosterReplaced: plan.rosterReplaced,
             nudged: plan.nudged,
@@ -263,7 +264,7 @@ export default function ImportDialog({
                             onClick={apply}
                             className={primaryButton('md', 'good')}
                         >
-                            {busy ? 'Reading in...' : 'Read it in'}
+                            {busy ? 'Importing...' : 'Import'}
                         </button>
                     </>
                 )}
@@ -299,8 +300,8 @@ function Names({ names, people, answers, onAnswer }) {
     return (
         <div>
             <p className="text-sm text-muted mb-4">
-                The till spells names its own way and some of them are not people at all. Answered
-                once and remembered, except the last one.
+                Some names from the till do not match anyone on the team, and some are not people.
+                Your answers are remembered, except Ignore this time.
             </p>
 
             {names.map(name => (
@@ -313,7 +314,7 @@ function Names({ names, people, answers, onAnswer }) {
                             ? answers[name] : ''}
                         onChange={e => onAnswer(name, e.target.value || null)}
                     >
-                        <option value="">This is...</option>
+                        <option value="">Pick a person</option>
                         {people.map(p => (
                             <option key={p.id} value={p.id}>{p.full_name}</option>
                         ))}
@@ -338,8 +339,8 @@ function Names({ names, people, answers, onAnswer }) {
 
                     {answers[name] === 'once' && (
                         <p className="text-xs text-muted mt-2">
-                            Dropped from this file only. It will ask again next week, which is right
-                            if somebody typed the wrong employee number.
+                            Skipped for this file only. You will be asked again the next time this name
+                            appears.
                         </p>
                     )}
                 </div>
@@ -381,6 +382,10 @@ function otherWeeks(read) {
     return `the weeks of ${weeks.slice(0, -1).join(', ')} and ${weeks[weeks.length - 1]}`
 }
 
+function sameTimeWords(count) {
+    return `${count} ${count === 1 ? 'line' : 'lines'} dropped with the same clock in and clock out time`
+}
+
 function Ready({ plan, read }) {
     return (
         <div>
@@ -398,6 +403,12 @@ function Ready({ plan, read }) {
                         Breaks are paid here.
                     </Line>
                 )}
+                {/* No work at all, and kept they came to 24 hours each. Said
+                    rather than dropped quietly, and named, because one may be
+                    somebody whose real shift the till never caught. */}
+                {read.sameTime.length > 0 && (
+                    <Line>{sameTimeWords(read.sameTime.length)}: {sameTimeWho(read.sameTime)}.</Line>
+                )}
                 {/* A file often covers more than one week: his real export ran
                     the 6th to the 19th. Only the week on screen is written to,
                     so the rest are named rather than dropped quietly, and the
@@ -405,7 +416,7 @@ function Ready({ plan, read }) {
                 {read.outside > 0 && (
                     <Line>
                         {read.outside} for {otherWeeks(read)}. Open that week and upload
-                        the same file to read them in.
+                        the same file to import them.
                     </Line>
                 )}
             </ul>
@@ -425,7 +436,7 @@ function Done({ result, people }) {
     return (
         <div>
             <p className="text-base font-bold text-gray-900 mb-3">
-                {result.shifts} shift{result.shifts === 1 ? '' : 's'} read in
+                {result.shifts} shift{result.shifts === 1 ? '' : 's'} imported
             </p>
 
             <ul className="text-sm text-gray-900 space-y-1.5 mb-4">
@@ -437,13 +448,16 @@ function Done({ result, people }) {
                         {result.breaks} break lines dropped, worth {fmtHours(result.breakHours)} hours
                     </Line>
                 )}
+                {result.sameTime.length > 0 && (
+                    <Line tick>{sameTimeWords(result.sameTime.length)}: {sameTimeWho(result.sameTime)}</Line>
+                )}
                 {result.ignored > 0 && <Line quiet>{result.ignored} lines skipped, not people</Line>}
             </ul>
 
             {result.asks.length > 0 && (
                 <div className="border-t border-border pt-3">
                     <p className="text-sm font-bold text-accent-ink mb-2">
-                        {result.asks.length} need{result.asks.length === 1 ? 's' : ''} you. Nothing was overwritten.
+                        {result.asks.length} need{result.asks.length === 1 ? 's' : ''} checking. Nothing was overwritten.
                     </p>
                     <ul className="text-xs text-muted space-y-1 tabular-nums">
                         {result.asks.map((ask, i) => (
@@ -466,7 +480,7 @@ function Done({ result, people }) {
 
 const Line = ({ children, tick, quiet }) => (
     <li className="flex gap-2">
-        <span className={quiet ? 'text-muted' : 'text-green-700'}>{tick || quiet ? (quiet ? '–' : '✓') : '•'}</span>
+        <span className={quiet ? 'text-muted' : 'text-green-700'}>{tick || quiet ? (quiet ? '—' : '✓') : '•'}</span>
         <span className={quiet ? 'text-muted' : ''}>{children}</span>
     </li>
 )

@@ -19,6 +19,8 @@
 // the allergens of each component product separately and merge. See
 // deriveMenuItemAllergens below.
 
+import { declaresAllergens, heldFor } from '@/lib/products'
+
 // The fourteen, fixed by EU 1169. They cannot be added to or renamed, which is
 // why the list is here rather than in a settings screen.
 //
@@ -105,8 +107,8 @@ export const ALLERGENS = [
 ]
 
 export const ALLERGEN_STATES = [
-  { value: 'none', label: 'Not Present', activeClass: 'bg-gray-200 text-gray-700 border-gray-300' },
-  { value: 'may_contain', label: 'May Contain', activeClass: 'bg-amber-100 text-amber-800 border-amber-300' },
+  { value: 'none', label: 'Not present', activeClass: 'bg-gray-200 text-gray-700 border-gray-300' },
+  { value: 'may_contain', label: 'May contain', activeClass: 'bg-amber-100 text-amber-800 border-amber-300' },
   { value: 'contains', label: 'Contains', activeClass: 'bg-red-100 text-red-800 border-red-300' },
 ]
 
@@ -143,20 +145,27 @@ export const ALLERGEN_SHORT = {
 // How a state looks wherever it is shown. Here rather than in a component so
 // the customer page and anything printed cannot colour the same word
 // differently.
+//
+// mark is what tells may contain apart without the colour. Red and amber were
+// the only difference on a chip, which a colour blind customer cannot see. It
+// is the same ~ the printed sheet uses, so the two read the same way.
+export const MAY_CONTAIN_MARK = '~'
+
 export function allergenLook(state) {
   if (state === 'contains') {
-    return { label: 'Contains', dot: 'bg-red-500', text: 'text-red-700', bg: 'bg-red-50' }
+    return { label: 'Contains', mark: '', dot: 'bg-red-500', text: 'text-red-700', bg: 'bg-red-50' }
   }
   if (state === 'may_contain') {
-    return { label: 'May contain', dot: 'bg-amber-500', text: 'text-amber-700', bg: 'bg-amber-50' }
+    return { label: 'May contain', mark: MAY_CONTAIN_MARK, dot: 'bg-amber-500', text: 'text-amber-700', bg: 'bg-amber-50' }
   }
   return null
 }
 
 const SEVERITY = { contains: 2, may_contain: 1, none: 0 }
 
-// A product with no record yet is Not Present for all fourteen, which is why
-// the form opens filled in rather than empty.
+// All fourteen at Not present, which is where the form starts so only the ones
+// that apply need changing. It is a starting point and not an answer: a product
+// nobody ever saved allergens for is a gap, see neverEntered below.
 export function emptyAllergens() {
   const obj = {}
   for (const key of ALLERGEN_KEYS) obj[key] = 'none'
@@ -254,6 +263,107 @@ export function deriveMenuItemAllergens(menuItemComponents, allProducts, allReci
   return result
 }
 
+// What a product's answer rests on that nobody ever entered.
+//
+// The derivations above read a product with no allergen row as none of the
+// fourteen, because they have to say something. But nobody gave that answer,
+// and the sheet used to show it as No declared allergens. This is how every
+// screen tells the two apart, the customer's included.
+//
+// Not entered means:
+//   food with no allergen row        rice saved in a hurry mid stock take
+//   a MIX with no recipe and no row  a house sauce saved before what is in it
+//   anything either of those is in   however deep in the recipes
+//
+// Packaging and cleaning have nothing to declare, so nothing is missing from
+// them. A MIX given allergens of its own and no recipe has been answered.
+//
+// The products themselves, each once, so a screen can name them.
+export function neverEntered(product, allProducts, allRecipeLines, allAllergens, visited = new Set()) {
+  if (!product || !declaresAllergens(product) || visited.has(product.id)) return []
+
+  const hasRow = allAllergens.some(a => a.product_id === product.id)
+  const lines = product.is_mix
+    ? allRecipeLines.filter(l => l.mix_product_id === product.id)
+    : []
+
+  if (lines.length === 0) return hasRow ? [] : [product]
+
+  // A copy per branch, the same as the derivation, so a MIX used twice is not
+  // mistaken for a loop.
+  const nextVisited = new Set(visited).add(product.id)
+  const found = new Map()
+  for (const line of lines) {
+    const ingredient = allProducts.find(p => p.id === line.ingredient_product_id)
+    for (const p of neverEntered(ingredient, allProducts, allRecipeLines, allAllergens, nextVisited)) {
+      found.set(p.id, p)
+    }
+  }
+  return [...found.values()]
+}
+
+// The same for a dish, for its own line. The choices are left out for the
+// same reason they are left out of its allergens: they are answered for on
+// rows of their own.
+export function neverEnteredInDish(menuItemComponents, allProducts, allRecipeLines, allAllergens) {
+  const found = new Map()
+  for (const component of menuItemComponents) {
+    if (component.choice_group) continue
+    const product = allProducts.find(p => p.id === component.product_id)
+    for (const p of neverEntered(product, allProducts, allRecipeLines, allAllergens)) {
+      found.set(p.id, p)
+    }
+  }
+  return [...found.values()]
+}
+
+// Every product with no allergens declared: what the red count on Products in
+// the sidebar counts, and what the Products page marks.
+//
+// What counts as missing is neverEntered's rule and nobody else's, so the
+// badge, the Products page and the customer sheet cannot disagree about one
+// product. That means food with no allergen row, and a MIX with no recipe and
+// no row of its own. A MIX with a recipe is worked out from what goes into it,
+// so it is not missing anything itself; whatever inside it is missing is
+// counted on its own instead.
+//
+// What this adds is which products are asked about. Everything switched on,
+// and a switched off product the sheet still reads: one in a dish on sale, or
+// in the recipe of something that is used, however deep. A product switched
+// off and in nothing is nobody's problem any more.
+//
+// Food held for somebody else is not asked about just for being switched on.
+// It sits on our shelf but never goes into anything we make or sell (the
+// pickers keep it out, see canBeIngredient and canBeMenuComponent), so the
+// sheet never reads it. That is this list's own choice, not the sheet's rule,
+// which stays as it is: if one ever did end up in a dish on sale, it is reached
+// through the dish and counted like anything else.
+//
+// Products are shared by both restaurants, so the answer is the same for each.
+// allergens only has to carry product_id, since all that matters here is
+// whether a product has a row. In the order the products came in.
+export function noAllergensDeclared({ products, allergens, recipeLines, menuItems, components } = {}) {
+  const all = products || []
+  const byId = new Map(all.map(p => [p.id, p]))
+
+  const onSale = new Set((menuItems || []).filter(m => m.is_active).map(m => m.id))
+  const asked = new Set(all.filter(p => p.is_active && !heldFor(p)).map(p => p.id))
+  for (const c of components || []) {
+    if (onSale.has(c.menu_item_id)) asked.add(c.product_id)
+  }
+
+  // neverEntered goes down through the recipes itself, which is how a
+  // switched off ingredient of something in use is reached without a second
+  // walk of its own.
+  const missing = new Set()
+  for (const id of asked) {
+    for (const p of neverEntered(byId.get(id), all, recipeLines || [], allergens || [])) {
+      missing.add(p.id)
+    }
+  }
+  return all.filter(p => missing.has(p.id))
+}
+
 // Convenience: count how many allergens are 'contains' vs 'may_contain' in
 // a derived result. Useful for a compact UI summary like "3 contains,
 // 2 may contain" on a menu items list row.
@@ -268,7 +378,7 @@ export function summariseAllergens(allergens) {
 
 export { ALLERGEN_KEYS }
 
-// How many of the fourteen are set to anything other than Not Present. It is
+// How many of the fourteen are set to anything other than Not present. It is
 // what a collapsed section says about itself, and what tells a save whether
 // somebody has answered the question or skipped it.
 export function declaredCount(values) {

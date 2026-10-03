@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import {
-    PRODUCT_LINE, SUPPLIER_COLOURS, MOST_SUPPLIERS, PRICE_RANGES, daysBetween,
+    PRODUCT_LINE, SUPPLIER_COLOURS, MOST_SUPPLIERS, PRICE_RANGES,
     pointsFromLines, pointsFromEvents, seriesFor, rangesFor, defaultRange,
     stepCorners, withinWindow, priceScale,
 } from '@/lib/priceHistory'
+import { daysBetween } from '@/lib/dates'
 
 function line(date, perUnit, over = {}) {
     return {
@@ -94,6 +95,19 @@ describe('what the Hub costs from', () => {
             { at: '2026-09-01T10:00:00Z', price_per_unit: 3.21, reason: 'invoice' },
         ])
         expect(points.map(p => p.real)).toEqual([false, true])
+    })
+
+    // Half past midnight here is still the evening before in UTC, and cutting
+    // the date off the stored time drew the price a day early.
+    it('puts a price on the day it was typed here', () => {
+        const points = pointsFromEvents([
+            { at: new Date(2026, 8, 1, 0, 30).toISOString(), price_per_unit: 3.21, reason: 'by_hand' },
+        ])
+        expect(points.map(p => p.date)).toEqual(['2026-09-01'])
+    })
+
+    it('skips an event with no time on it', () => {
+        expect(pointsFromEvents([{ at: null, price_per_unit: 3.21, reason: 'by_hand' }])).toEqual([])
     })
 })
 

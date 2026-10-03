@@ -1,23 +1,26 @@
 import { useState, useEffect, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '@/lib/supabase'
+import { supabase, everyRow } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
-import { fmtMoney, num } from '@/lib/format'
+import { fmtMoney, num, namesList } from '@/lib/format'
 import { todayISO, weekStartOf, shortDate, addDays, fullDate } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
-import { secondaryButton, card, cardEdge, cardHeader, rowButton, pageTitle } from '@/lib/controlStyles'
+import { secondaryButton, card, cardEdge, cardHeader, rowButton } from '@/lib/controlStyles'
 import JumpButton from '@/components/ui/JumpButton'
 import DateStepper from '@/components/ui/DateStepper'
 import InvoiceForm from '@/components/invoices/InvoiceForm'
 import { useConfirm } from '@/context/confirm'
 import Modal from '@/components/ui/Modal'
 import {
-    INVOICE_SUMMARY_CARDS, invoiceCategory, groupByDay, invoiceSplit, mainCategory, spentIn,
+    INVOICE_SUMMARY_CARDS, invoiceCategory, groupByDay, invoiceSplit, mainCategory, spentIn, costedByLine,
 } from '@/lib/invoiceCategories'
 import CategoryBadges from '@/components/invoices/CategoryBadges'
 import { orderByUse, USE_WINDOW_DAYS } from '@/lib/supplierOrder'
+import { creditTakenBack, claimTakesOff } from '@/lib/invoiceClaims'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import Notice from '@/components/ui/Notice'
+import PageHeader from '@/components/ui/PageHeader'
 
 
 // Nothing chosen to start with. The category used to default to food, which is
@@ -36,12 +39,44 @@ function emptyForm() {
 
 // One set of rules for both, so an invoice cannot be edited into a state it
 // could never have been created in.
-function validate(f) {
+//
+// Fixed is a document read in line by line, whose total and category are not
+// on the form to check (see costedByLine). A credit note is one of those, and
+// its total is below zero, so checking it refused every correction to one.
+function validate(f, { fixed = false } = {}) {
     if (!f.supplierId) return 'Pick a supplier'
+    if (fixed) return null
     if (!f.category) return 'Pick a category'
     const amount = parseFloat(f.totalAmount)
-    if (isNaN(amount) || amount <= 0) return 'The total has to be a number above zero'
+    if (isNaN(amount) || amount <= 0) return 'Enter a total above 0'
     return null
+}
+
+// What the delete dialog says, which is only true if it counts the delivery
+// problems, because they are not deleted with the document. A credit note that
+// settled some leaves them waiting again and still coming off the delivery's
+// week, since its own money was only ever counted through them.
+//
+// `weeks` are the weeks the kept ones come off, when any is not the
+// invoice's own: a delivery whose report had already gone out has its claims
+// come off the first week still open (claimWeek), and "that week" would be
+// the wrong one.
+function deleteWords(waiting, kept, weeks = []) {
+    if (waiting === 1) {
+        return 'It settled one delivery problem. It goes back to Still waiting on Delivery problems '
+            + 'until this credit note is imported again.'
+    }
+    if (waiting) {
+        return `It settled ${waiting} delivery problems. They go back to Still waiting on Delivery problems `
+            + 'until this credit note is imported again.'
+    }
+    const gone = 'It will be taken off the week straight away and off the cost dashboard with it.'
+    if (!kept) return gone
+    const where = weeks.length
+        ? `the week${weeks.length === 1 ? '' : 's'} of ${namesList(weeks.map(shortDate))}`
+        : 'that week'
+    return `${gone} ${kept === 1 ? 'The delivery problem logged against it is' : `The ${kept} delivery problems logged against it are`} `
+        + `kept, and still ${kept === 1 ? 'comes' : 'come'} off ${where}.`
 }
 
 // Is this the same invoice somebody already entered?
@@ -58,12 +93,15 @@ function validate(f) {
 // week_start is worked back out from the date every time rather than kept as it
 // was, so moving an invoice to a different day moves it into the right week too
 // instead of leaving it filed under the old one and wrong on the cost dashboard.
-function invoicePayload(f) {
+//
+// A document read in keeps the total and category it was read with, because
+// the money is costed from its lines and a figure typed over the top would
+// only change this list.
+function invoicePayload(f, { fixed = false } = {}) {
     return {
         supplier_id: f.supplierId,
         invoice_date: f.invoiceDate,
-        total_amount: parseFloat(f.totalAmount),
-        category: f.category,
+        ...(fixed ? {} : { total_amount: parseFloat(f.totalAmount), category: f.category }),
         week_start: weekStartOf(f.invoiceDate),
         notes: f.notes.trim() || null,
     }
@@ -149,18 +187,20 @@ export default function InvoicesPage() {
 
             // Who we actually buy from, so the dropdown can lead with them
             // rather than with whoever the alphabet favours. One column and a
-            // year of it, which is a few hundred rows at the volume this runs
-            // at, and it is re-read whenever the list reloads so saving an
-            // invoice moves that supplier up straight away.
+            // year of it, and it is re-read whenever the list reloads so saving
+            // an invoice moves that supplier up straight away. A year is more
+            // than a thousand invoices at twenty odd a week, which is as many
+            // as one read hands back, so it is read a page at a time.
             //
             // Ordered here rather than in the query because Postgres cannot
             // sort one table by a count taken from another without a view or an
             // RPC, and neither is worth it for a list this size.
-            const { data: history } = await supabase
+            const { data: history } = await everyRow(() => supabase
                 .from('invoices')
                 .select('supplier_id')
                 .eq('restaurant_id', restaurantId)
                 .gte('invoice_date', addDays(todayISO(), -USE_WINDOW_DAYS))
+                .order('id'))
 
             setSuppliers(orderByUse(sup || [], history || []))
 
@@ -256,7 +296,7 @@ export default function InvoicesPage() {
                 + `${supplier?.name || 'that supplier'} dated ${fullDate(payload.invoice_date)}`
                 + `${match.notes ? ` ("${match.notes}")` : ''}. `
                 + 'Two on one day does happen, so this is only a check.',
-            confirmLabel: 'Save it anyway',
+            confirmLabel: 'Save anyway',
         })
     }
 
@@ -311,18 +351,20 @@ export default function InvoicesPage() {
         e.preventDefault()
         setEditProblem(""); setSuccess("")
 
-        const problem = validate(editForm)
+        const fixed = costedByLine(editingInvoice)
+        const problem = validate(editForm, { fixed })
         if (problem) { setEditProblem(problem); return }
 
         // The same check on the way through. Correcting a date or an amount can
         // land an invoice exactly on top of another one, and itself does not
-        // count, which is what editingId is for.
-        if (!await pastDuplicate(editForm, editingId)) return
+        // count, which is what editingId is for. Not for a document read in:
+        // its number already keeps it from going in twice.
+        if (!fixed && !await pastDuplicate(editForm, editingId)) return
 
         setSaving(true)
         const { error: e1 } = await supabase
             .from('invoices')
-            .update(invoicePayload(editForm))
+            .update(invoicePayload(editForm, { fixed }))
             .eq('id', editingId)
         setSaving(false)
 
@@ -334,6 +376,22 @@ export default function InvoicesPage() {
     }
 
     async function handleDelete(inv) {
+        // The delivery problems that point at it. Deleting leaves them in
+        // place, still coming off the week they come off, so the dialog says
+        // so. A credit note that settled some opens them again first, or
+        // importing it again would take the same money off twice. See
+        // creditTakenBack.
+        const { data: claims, error: e0 } = await supabase.from('invoice_line_claims')
+            .select('id, kind, status, amount, credited_amount, counted_week, raised_on, invoice_id, credit_invoice_id')
+            .or(`invoice_id.eq.${inv.id},credit_invoice_id.eq.${inv.id}`)
+        if (e0) { setError(friendlyError(e0)); return }
+        const back = creditTakenBack(inv, claims)
+        const keeping = (claims || []).filter(c => c.invoice_id === inv.id && claimTakesOff(c) > 0)
+        const kept = keeping.length
+        // Named only when one comes off a week other than the invoice's own.
+        const weeks = [...new Set(keeping.map(c => c.counted_week))].sort()
+        const elsewhere = weeks.some(w => w !== weekStartOf(inv.invoice_date)) ? weeks : []
+
         // Read back what is about to go, laid out rather than squeezed into one
         // sentence. Several invoices from the same supplier on the same day are
         // normal here, so the supplier's name on its own does not tell you which
@@ -341,7 +399,7 @@ export default function InvoicesPage() {
         const cat = invoiceCategory(mainCategory(invoiceSplit(inv), inv.category))
         const ok = await confirm({
             title: 'Delete this invoice?',
-            message: 'It will be taken off the week straight away and off the cost dashboard with it.',
+            message: deleteWords(back.waiting, kept, elsewhere),
             details: [
                 { label: 'Supplier', value: inv.suppliers?.name || 'Unknown supplier' },
                 { label: 'Category', value: cat.label },
@@ -353,6 +411,21 @@ export default function InvoicesPage() {
             tone: 'danger',
         })
         if (!ok) return
+
+        // The claims first, so a delete that fails leaves the credit note on
+        // screen to try again rather than claims pointing at nothing. It is not
+        // all in one go: if the delete fails, the credit note counts nowhere
+        // and its problems wait until it is deleted again, which then finds
+        // nothing left to open and only deletes it.
+        for (const { id, patch } of back.change) {
+            const { error: e2 } = await supabase.from('invoice_line_claims').update(patch).eq('id', id)
+            if (e2) { setError(friendlyError(e2)); return }
+        }
+        if (back.remove.length) {
+            const { error: e3 } = await supabase.from('invoice_line_claims').delete().in('id', back.remove)
+            if (e3) { setError(friendlyError(e3)); return }
+        }
+
         const { error: e1 } = await supabase.from('invoices').delete().eq('id', inv.id)
         if (e1) setError(friendlyError(e1))
         else setRefresh(n => n + 1)
@@ -368,34 +441,28 @@ export default function InvoicesPage() {
 
     return (
         <>
-            <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
-                <div>
-                    <h2 className={pageTitle}>Invoices</h2>
-                    <p className="text-sm text-gray-500 mt-1">{activeRestaurant?.name}</p>
-                </div>
-                {/* This screen only shows the week you are working on. The history
-                    is where you go when you are looking for something older. */}
-                <div className="flex flex-wrap gap-2">
-                    {/* Reading the documents instead of typing a total off
-                        them. This screen is still where an invoice from
-                        somebody who sends a photograph of a docket goes in. */}
-                    <button
-                        onClick={() => navigate('/invoices/import')}
-                        className={secondaryButton}
-                    >
-                        Import from PDF
-                    </button>
-                    <button
-                        onClick={() => navigate('/invoices/history')}
-                        className={secondaryButton}
-                    >
-                        History
-                    </button>
-                </div>
-            </div>
+            {/* This screen only shows the week you are working on. The history
+                is where you go when you are looking for something older. */}
+            <PageHeader title="Invoices" subtitle={activeRestaurant?.name}>
+                {/* Reading the documents instead of typing a total off
+                    them. This screen is still where an invoice from
+                    somebody who sends a photograph of a docket goes in. */}
+                <button
+                    onClick={() => navigate('/invoices/import')}
+                    className={secondaryButton}
+                >
+                    Import from PDF
+                </button>
+                <button
+                    onClick={() => navigate('/invoices/history')}
+                    className={secondaryButton}
+                >
+                    History
+                </button>
+            </PageHeader>
 
-            {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
-            {success && <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{success}</div>}
+            <ErrorBanner className="mb-4">{error}</ErrorBanner>
+            <Notice tone="good" className="mb-4">{success}</Notice>
 
             {/* The week, the same control the other eight screens use. */}
             <div className={`${card} p-4 mb-4`}>
@@ -404,17 +471,14 @@ export default function InvoicesPage() {
                     onNext={() => goToWeek(addDays(weekStart, 7))}
                     backLabel="Previous week"
                     nextLabel="Next week"
+                    weekStart={weekStart}
                     jump={(
                         <JumpButton
                             isCurrent={weekStart === weekStartOf(todayISO())}
                             onClick={() => goToWeek(weekStartOf(todayISO()))}
                         />
                     )}
-                >
-                    <span className="text-sm font-medium text-gray-900 text-center whitespace-nowrap">
-                        {shortDate(weekStart)} - {shortDate(addDays(weekStart, 6))}
-                    </span>
-                </DateStepper>
+                />
             </div>
 
             {/* Entry form */}
@@ -609,6 +673,7 @@ export default function InvoicesPage() {
                             suppliers={suppliers}
                             problem={editProblem}
                             weekStart={weekStartOf(editForm.invoiceDate)}
+                            readIn={costedByLine(editingInvoice) ? editingInvoice : null}
                         />
                     </div>
                 </Modal>

@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import TimeField from '@/components/ui/TimeField'
 import Modal from '@/components/ui/Modal'
-import { shortDate } from '@/lib/dates'
-import { dayName } from '@/lib/events'
+import { dayLabel } from '@/lib/dates'
 import { shortTime, endLabel, fmtHours, hoursForDate } from '@/lib/roster'
-import { modalFooter, secondaryButton, rowButton, badge, labelClass, fieldClass } from '@/lib/controlStyles'
+import { modalFooter, primaryButton, secondaryButton, rowButton, badge, labelClass, fieldClass } from '@/lib/controlStyles'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 import { NO_COLOUR } from '@/lib/team'
-import { windowOf, shortlist, hoursChange } from '@/lib/shiftRequests'
+import { windowOf, windowProblem, shortlist, hoursChange } from '@/lib/shiftRequests'
 
 // Asking somebody to take a shift, or asking for one of theirs.
 //
@@ -20,7 +20,7 @@ import { windowOf, shortlist, hoursChange } from '@/lib/shiftRequests'
 // point of the give and take shape is that you can see both halves at once.
 export default function ShiftRequestDialog({
     mine, theirs, meId, weekShifts, employees, absences, dayNotes, openingHours,
-    breakRules, onSend, onClose, saving,
+    breakRules, onSend, onClose, saving, error,
 }) {
     // Which end this was opened from. Giving is your shift going out; asking is
     // theirs coming in.
@@ -46,9 +46,6 @@ export default function ShiftRequestDialog({
 
     const giveWindow = giveShift
         ? windowOf(giveShift, givePart ? giveFrom : null, givePart ? giveTo : null)
-        : null
-    const takeWindow = takeShift
-        ? windowOf(takeShift, takePart ? takeFrom : null, takePart ? takeTo : null)
         : null
 
     // Who to ask, worked out from the hours actually being handed over rather
@@ -90,6 +87,17 @@ export default function ShiftRequestDialog({
             .filter(s => s.employee_id === meId)
             .sort((a, b) => a.shift_date.localeCompare(b.shift_date))
 
+    // A shift already picked to take back belongs to whoever was being asked,
+    // so it goes when they change. Kept, the request named one person's shift
+    // and asked somebody else, and the database refuses that.
+    const pickWho = id => {
+        setToEmployeeId(id)
+        if (takeShift && takeShift.employee_id !== id) {
+            setTakeShift(null)
+            setTakePart(false)
+        }
+    }
+
     const draft = {
         from_employee_id: meId,
         to_employee_id: toEmployeeId,
@@ -102,15 +110,27 @@ export default function ShiftRequestDialog({
         message: message.trim() || null,
     }
 
+    // Both halves, measured against their own shift. Hours outside it are
+    // hours approving would invent, and the database refuses them as well.
+    const windowSays = (on, shift, from, to, words) => {
+        if (!on || !shift) return ''
+        const wrong = windowProblem(shift, from, to)
+        if (wrong === 'order') return `The hours you are ${words} finish before they start.`
+        if (wrong) return `The hours you are ${words} must be within the shift.`
+        return ''
+    }
+
+    // Only they can answer, and without an account they never will. Opened off
+    // their shift the shortlist is never shown, so it is said here instead.
+    const askingNobody = employees.find(e => e.id === toEmployeeId)?.has_login === false
+
     const problem = (() => {
         if (!toEmployeeId) return 'Pick who you are asking.'
-        if (givePart && giveWindow && giveWindow.from >= giveWindow.to) {
-            return 'The hours you are giving finish before they start.'
+        if (askingNobody) {
+            return `${nameOf(toEmployeeId)} does not have an account, so they cannot answer. Ask a manager instead.`
         }
-        if (takePart && takeWindow && takeWindow.from >= takeWindow.to) {
-            return 'The hours you are asking for finish before they start.'
-        }
-        return ''
+        return windowSays(givePart, giveShift, giveFrom, giveTo, 'giving')
+            || windowSays(takePart, takeShift, takeFrom, takeTo, 'asking for')
     })()
 
     const change = toEmployeeId ? hoursChange(draft, weekShifts, breakRules) : []
@@ -129,12 +149,12 @@ export default function ShiftRequestDialog({
     )
 
     const shiftLine = shift =>
-        `${dayName(shift.shift_date)} ${shortDate(shift.shift_date)}, `
+        `${dayLabel(shift.shift_date)}, `
         + `${shortTime(shift.starts_at)} to ${endLabel(shift, hoursOn(shift.shift_date))}`
 
     return (
         <Modal
-            title={mine ? 'Ask somebody to take this' : 'Ask for this shift'}
+            title={mine ? 'Ask somebody to take this shift' : 'Ask for this shift'}
             onClose={onClose}
             width="max-w-xl"
         >
@@ -178,29 +198,29 @@ export default function ShiftRequestDialog({
                     <>
                         <p className={`${headCls} mt-5`}>Who to ask</p>
                         <Group
-                            title="Would finish their day"
-                            hint="Already in that day and free for these hours. The likeliest yes."
+                            title="Already working that day"
+                            hint="Free for these hours, so the most likely to say yes."
                             entries={list.finishing}
                             chosen={toEmployeeId}
-                            onPick={setToEmployeeId}
+                            onPick={pickWho}
                             hoursOn={hoursOn}
                             colourOf={colourOf}
                         />
                         <Group
-                            title="Free that day"
-                            hint="Nothing on at all, so it is a day off you are asking for."
+                            title="Not working that day"
+                            hint="You would be asking them to come in on a day off."
                             entries={list.free}
                             chosen={toEmployeeId}
-                            onPick={setToEmployeeId}
+                            onPick={pickWho}
                             hoursOn={hoursOn}
                             colourOf={colourOf}
                         />
                         <Group
-                            title="Cannot"
-                            hint="Already on those hours, or down as away."
+                            title="Not available"
+                            hint="Already working those hours, away, or without an account."
                             entries={list.cannot}
                             chosen={toEmployeeId}
-                            onPick={setToEmployeeId}
+                            onPick={pickWho}
                             hoursOn={hoursOn}
                             colourOf={colourOf}
                             shut
@@ -232,7 +252,7 @@ export default function ShiftRequestDialog({
                             >
                                 <span className="font-semibold">Nothing</span>
                                 <span className="text-muted">
-                                    {mine ? ' just cover me' : ' I am only asking'}
+                                    {mine ? ', just cover my shift' : ', I am only asking for this shift'}
                                 </span>
                             </button>
 
@@ -310,16 +330,17 @@ export default function ShiftRequestDialog({
                     </div>
                 )}
 
-                <label className={`${labelClass} mt-5`}>Anything to say</label>
+                <label className={`${labelClass} mt-5`}>Add a note (optional)</label>
                 <textarea
                     value={message}
                     onChange={e => setMessage(e.target.value)}
                     rows={2}
-                    placeholder="Optional"
+                    placeholder="Optional note"
                     className={fieldClass}
                 />
 
                 {problem && <p className="text-sm text-amber-700 mt-3">{problem}</p>}
+                <ErrorBanner className="mt-3">{error}</ErrorBanner>
             </div>
 
             <div className={modalFooter}>
@@ -328,9 +349,9 @@ export default function ShiftRequestDialog({
                     type="button"
                     disabled={!!problem || saving}
                     onClick={() => onSend(draft)}
-                    className="px-4 py-2 bg-accent text-white rounded-lg text-sm font-semibold shadow-sm hover:brightness-95 disabled:opacity-50"
+                    className={primaryButton()}
                 >
-                    {saving ? 'Sending...' : 'Send the ask'}
+                    {saving ? 'Sending...' : 'Send request'}
                 </button>
             </div>
         </Modal>
@@ -372,8 +393,10 @@ function Group({ title, hint, entries, chosen, onPick, hoursOn, colourOf, shut =
                         <span className="ml-auto text-xs text-muted text-right">
                             {entry.why === 'away'
                                 ? <span className={`${badge} bg-gray-200 text-gray-700`}>Not available</span>
+                                : entry.why === 'no_login'
+                                ? <span className={`${badge} bg-gray-200 text-gray-700`}>No account</span>
                                 : entry.shifts.length === 0
-                                    ? 'Nothing on'
+                                    ? 'Not working'
                                     : entry.shifts.map(s => (
                                         <span key={s.id} className="block">
                                             {shortTime(s.starts_at)} to {endLabel(s, hoursOn(s.shift_date))}

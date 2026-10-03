@@ -9,6 +9,15 @@ import { createContext, useContext } from 'react'
 
 export const RestaurantContext = createContext(null)
 
+// What `error` says for an account that has no restaurant of its own yet.
+//
+// Every new account starts as an employee with no restaurant, until a super
+// admin sets one. Asking the database for the restaurant called null came back
+// as a raw error about uuids, under a screen saying signing in again usually
+// fixes it, which it does not. It gets a screen of its own, the same as a
+// login that is switched off.
+export const NO_RESTAURANT = 'no restaurant'
+
 export function useRestaurant() {
     return useContext(RestaurantContext)
 }

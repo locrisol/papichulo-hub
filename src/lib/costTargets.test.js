@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolveTarget, describeTargets, statusFor } from '@/lib/costTargets'
+import { resolveTarget, describeTargets, statusFor, targetInForce } from '@/lib/costTargets'
 
 describe('resolveTarget', () => {
     it('falls back to the restaurant default when there are no overrides', () => {
@@ -173,5 +173,28 @@ describe('statusFor', () => {
     // Zero is a real figure, not a missing one.
     it('treats a cost of zero as green rather than missing', () => {
         expect(statusFor(0, 25)).toBe('green')
+    })
+})
+
+describe('targetInForce', () => {
+    // A temporary 25% to the end of September, then a permanent 28% set later
+    // from 6 September. The 28% is the one in force, and it is not temporary.
+    const o = [
+        { id: 't1', target_type: 'food', override_value: 25, effective_from: '2026-08-02', effective_until: '2026-09-27', created_at: '2026-08-01T10:00:00Z' },
+        { id: 't2', target_type: 'food', override_value: 28, effective_from: '2026-09-06', effective_until: null, created_at: '2026-09-05T10:00:00Z' },
+    ]
+
+    it('is the row whose figure resolveTarget gives', () => {
+        expect(targetInForce(o, 'food', '2026-09-13').id).toBe('t2')
+        expect(resolveTarget(o, 'food', '2026-09-13', 30)).toBe(28)
+    })
+
+    it('is the temporary one where nothing newer covers the week', () => {
+        expect(targetInForce(o, 'food', '2026-08-16')).toMatchObject({ id: 't1', effective_until: '2026-09-27' })
+    })
+
+    it('is nothing where no override covers the week', () => {
+        expect(targetInForce(o, 'food', '2026-07-19')).toBeNull()
+        expect(targetInForce(o, 'labour', '2026-09-13')).toBeNull()
     })
 })

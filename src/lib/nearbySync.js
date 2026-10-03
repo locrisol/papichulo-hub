@@ -18,6 +18,7 @@
 // varchar, so a restaurant near three places could watch one of them.
 
 import { functionError } from '@/lib/errors'
+import { readStored, writeStored } from '@/lib/browserStore'
 
 // How long to leave it before fetching again. The spec asks for at least once a
 // day. Twelve hours means a normal day gets two goes at it without every page
@@ -27,7 +28,11 @@ import { functionError } from '@/lib/errors'
 // braces: a page opened at nine on a morning the cron has not run yet still
 // shows tonight.
 const SYNC_EVERY_HOURS = 12
-const SYNC_KEY = 'eventsLastSync'
+
+// One stamp for each restaurant. It was one for the whole browser, so a super
+// admin who opened Point Campus's calendar and then switched to Dun Laoghaire
+// gave Dun Laoghaire no check from here for twelve hours.
+const syncKey = restaurantId => `eventsLastSync:${restaurantId || ''}`
 
 // Bring the table up to date, and say what that added.
 //
@@ -55,25 +60,20 @@ export async function syncEvents(supabase, restaurantId) {
     return { added: data?.added || 0, total: data?.total || 0 }
 }
 
-// Whether it is worth fetching. Kept per browser, which is fine: the point is
-// to avoid pointless calls, and with the free tier allowing 5,000 a day even a
-// busy team is nowhere near it.
-export function syncIsDue() {
-    try {
-        const last = localStorage.getItem(SYNC_KEY)
-        if (!last) return true
-        const hours = (Date.now() - Number(last)) / 1000 / 60 / 60
-        return hours >= SYNC_EVERY_HOURS
-    } catch {
-        // No storage, so just fetch. Better a wasted call than no events.
-        return true
-    }
+// Whether it is worth fetching for this restaurant. Kept per browser, which is
+// fine: the point is to avoid pointless calls, and with the free tier allowing
+// 5,000 a day even a busy team is nowhere near it.
+//
+// A browser with no storage reads as never fetched, so it just fetches. Better a
+// wasted call than no events.
+export function syncIsDue(restaurantId) {
+    const last = readStored('local', syncKey(restaurantId))
+    if (!last) return true
+    const hours = (Date.now() - Number(last)) / 1000 / 60 / 60
+    return hours >= SYNC_EVERY_HOURS
 }
 
-export function markSynced() {
-    try {
-        localStorage.setItem(SYNC_KEY, String(Date.now()))
-    } catch {
-        // Not being able to remember is harmless, it only means we fetch again.
-    }
+// Not being able to remember is harmless, it only means we fetch again.
+export function markSynced(restaurantId) {
+    writeStored('local', syncKey(restaurantId), Date.now())
 }

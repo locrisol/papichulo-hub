@@ -4,16 +4,17 @@ import ClockField from '@/components/ui/ClockField'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
-import { shortDate, weekDates, weekStartOf, addDays, weekMonthLabel, todayISO } from '@/lib/dates'
-import { DAY_NAMES } from '@/lib/events'
+import { shortDate, weekDates, weekStartOf, addDays, weekMonthLabel, todayISO, DAY_NAMES } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
 import {
     weekGrid, sortExtras, addExtra, setNthTime, removeNth, extrasFor,
 } from '@/lib/dayExtras'
 import {
-    modalFooter, secondaryButton, primaryButton, fieldClass, labelClass, hintClass,
+    modalFooter, secondaryButton, primaryButton, fieldClass, labelClass, chip, removeButton, tableHeadRow,
 } from '@/lib/controlStyles'
 import JumpButton from '@/components/ui/JumpButton'
+import DateStepper from '@/components/ui/DateStepper'
+import AddButton from '@/components/ui/AddButton'
 
 // The Feedr schedule, in one go.
 //
@@ -47,15 +48,13 @@ function PhoneShape({ rows, dates, picked, onPick, onAdd, onTime, onRemove }) {
                         type="button"
                         onClick={() => onPick(r.name)}
                         aria-pressed={r.name === row?.name}
-                        className={`flex-none inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold border whitespace-nowrap transition-colors ${
-                            r.name === row?.name
-                                ? 'bg-sidebar border-sidebar text-white'
-                                : 'bg-white border-gray-300 text-gray-700'
-                        }`}
+                        className={`${chip(r.name === row?.name)} flex-none inline-flex items-center gap-1.5`}
                     >
                         {r.name}
+                        {/* A white disc on the picked one. A see through
+                            wash over the orange left the number too faint. */}
                         <span className={`text-xs font-bold rounded-full px-1.5 ${
-                            r.name === row?.name ? 'bg-white/25' : 'bg-gray-200 text-gray-700'
+                            r.name === row?.name ? 'bg-white text-accent-ink' : 'bg-gray-200 text-gray-700'
                         }`}>
                             {r.count}
                         </span>
@@ -95,34 +94,28 @@ function PhoneShape({ rows, dates, picked, onPick, onAdd, onTime, onRemove }) {
                                                     compact
                                                     aria-label={`${row.name} time on ${date}`}
                                                 />
-                                                <button
-                                                    type="button"
-                                                    onClick={() => onRemove(date, row.name, n)}
-                                                    aria-label={`Take this ${row.name} off ${date}`}
-                                                    className="ml-auto text-muted text-lg leading-none px-2"
-                                                >
-                                                    &times;
-                                                </button>
+                                                <span className="ml-auto">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => onRemove(date, row.name, n)}
+                                                        aria-label={`Remove ${row.name} from ${date}`}
+                                                        className={removeButton}
+                                                    >
+                                                        &times;
+                                                    </button>
+                                                </span>
                                             </div>
                                         ))}
                                         {/* A second order the same day, at its
                                             own time. */}
-                                        <button
-                                            type="button"
-                                            onClick={() => onAdd(date, row.name, '')}
-                                            className="text-xs font-semibold text-muted border border-dashed border-gray-300 rounded-lg px-2.5 py-1"
-                                        >
-                                            + another
-                                        </button>
+                                        <AddButton onClick={() => onAdd(date, row.name, '')}>
+                                            another
+                                        </AddButton>
                                     </div>
                                 ) : (
-                                    <button
-                                        type="button"
-                                        onClick={() => onAdd(date, row.name, row.usualTime || '')}
-                                        className="text-sm font-semibold text-muted border border-dashed border-gray-300 rounded-lg px-3 py-1"
-                                    >
-                                        + put it on
-                                    </button>
+                                    <AddButton onClick={() => onAdd(date, row.name, row.usualTime || '')}>
+                                        put it on
+                                    </AddButton>
                                 )}
                             </div>
                         )
@@ -140,7 +133,7 @@ function GridShape({ rows, dates, onAdd, onTime, onRemove }) {
         <div className="hidden sm:block overflow-x-auto">
             <table className="w-full border-collapse text-sm">
                 <thead>
-                    <tr className="bg-sidebar">
+                    <tr className={tableHeadRow}>
                         <th className="text-left px-2 py-1.5 text-xs font-bold uppercase tracking-wider text-white">
                             &nbsp;
                         </th>
@@ -168,8 +161,12 @@ function GridShape({ rows, dates, onAdd, onTime, onRemove }) {
                                     <td key={date} className="px-1 py-1 text-center align-top border-r border-border last:border-r-0">
                                         {on ? (
                                             <div className="flex flex-col items-center gap-1">
+                                                {/* The × goes under the time, not
+                                                    beside it: a day column has
+                                                    about 95px, and the time box
+                                                    needs nearly all of it. */}
                                                 {times.map((at, n) => (
-                                                    <span key={n} className="inline-flex items-center gap-1">
+                                                    <span key={n} className="flex w-full flex-col items-center gap-1">
                                                         <ClockField
                                                             value={at}
                                                             onChange={v => onTime(date, row.name, n, v)}
@@ -179,8 +176,8 @@ function GridShape({ rows, dates, onAdd, onTime, onRemove }) {
                                                         <button
                                                             type="button"
                                                             onClick={() => onRemove(date, row.name, n)}
-                                                            aria-label={`Take this ${row.name} off ${date}`}
-                                                            className="text-muted text-base leading-none px-0.5"
+                                                            aria-label={`Remove ${row.name} from ${date}`}
+                                                            className={removeButton}
                                                         >
                                                             &times;
                                                         </button>
@@ -348,7 +345,7 @@ export default function WeekExtrasModal({
     }
 
     return (
-        <Modal title="Corporate orders, the whole week" onClose={onClose} width="max-w-4xl">
+        <Modal title="Corporate orders for the week" onClose={onClose} width="max-w-4xl">
             <div className="px-6 py-4">
                 {error && <ErrorBanner className="mb-3">{error}</ErrorBanner>}
 
@@ -367,28 +364,25 @@ export default function WeekExtrasModal({
                         month and list views have none at all, so the stepper is
                         the only way to say which one you mean. */}
                     {canStepWeeks && (
-                        <div className="flex items-center gap-2">
-                            <button type="button" onClick={() => setWeek(w => addDays(w, -7))}
-                                className={secondaryButton} aria-label="The week before">&#8249;</button>
-                            {/* Not a button that says This week wherever you
-                                are. Standing on week 31 and being offered
-                                "This week" says nothing about what pressing it
-                                does, and the colour alone is something you have
-                                to already know the meaning of. */}
-                            <JumpButton
-                                isCurrent={week === weekStartOf(todayISO())}
-                                onClick={() => setWeek(weekStartOf(todayISO()))}
-                            />
-                            <button type="button" onClick={() => setWeek(w => addDays(w, 7))}
-                                className={secondaryButton} aria-label="The week after">&#8250;</button>
-                        </div>
+                        <DateStepper
+                            onBack={() => setWeek(w => addDays(w, -7))}
+                            onNext={() => setWeek(w => addDays(w, 7))}
+                            backLabel="The week before"
+                            nextLabel="The week after"
+                            weekStart={week}
+                            jump={(
+                                <JumpButton
+                                    isCurrent={week === weekStartOf(todayISO())}
+                                    onClick={() => setWeek(weekStartOf(todayISO()))}
+                                />
+                            )}
+                        />
                     )}
                 </div>
 
-                <p className={`${hintClass} mb-3 mt-0`}>
-                    The schedule arrives as a week, so it goes in as a week. Tap a day to put
-                    something on it, and tap the time to change it. Two or three of the same on one
-                    day: add another under the first.
+                <p className="text-xs text-muted mb-3">
+                    Press a day to add one, and press the time to change it. For two or three of the
+                    same on one day, add another under the first.
                 </p>
 
                 {/* Anything typed and not saved is lost on a week step, which

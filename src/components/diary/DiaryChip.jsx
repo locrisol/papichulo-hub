@@ -1,4 +1,5 @@
 import { kindChip, kindDash } from '@/lib/diary'
+import { offWords } from '@/lib/nearby'
 
 // One thing on a day, wherever it is drawn.
 //
@@ -14,6 +15,14 @@ export default function DiaryChip({ item, onOpen, canEdit = true, compact = fals
     const look = `block w-full text-left rounded-md border-l-[3px] ${kindChip(item.kind)} `
         + `${compact ? 'px-1 py-0.5 text-[0.6875rem]' : 'px-1.5 py-1 text-xs'} `
         + 'leading-tight font-semibold truncate'
+
+    // Struck through when it is called off, with the reason in the tooltip and
+    // in the listing when it is opened. A night called off stays on the
+    // calendar so whoever looks learns it is off, rather than wondering where
+    // it went. One the feed stopped listing never reaches here. See nearbyRows.
+    const off = offWords(item.off)
+    const struck = item.off === 'cancelled' ? 'line-through' : ''
+    const title = off ? `${item.title} (${off})` : item.title
 
     const inside = (
         <>
@@ -34,15 +43,15 @@ export default function DiaryChip({ item, onOpen, canEdit = true, compact = fals
     // here. Pressing it would have to take you somewhere else to change it, and
     // a chip that navigates away from a month you were reading is a surprise.
     if (item.source === 'delivery' || !onOpen || (item.source === 'diary' && !canEdit)) {
-        return <span className={`${look} ${edge}`} title={item.title}>{inside}</span>
+        return <span className={`${look} ${edge} ${struck}`} title={title}>{inside}</span>
     }
 
     return (
         <button
             type="button"
             onClick={() => onOpen(item.entry)}
-            className={`${look} ${edge} transition-opacity hover:opacity-80`}
-            title={item.title}
+            className={`${look} ${edge} ${struck} transition-opacity hover:opacity-80`}
+            title={title}
         >
             {inside}
         </button>

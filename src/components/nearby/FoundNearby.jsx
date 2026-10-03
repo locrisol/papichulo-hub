@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { card, secondaryButton } from '@/lib/controlStyles'
+import { card, rowButton, primaryButton } from '@/lib/controlStyles'
 import { foundWords, eventName } from '@/lib/nearby'
 
 // What a read off a page turned up, waiting for somebody to settle it.
@@ -39,7 +39,7 @@ export default function FoundNearby({ rows, today, restaurantName, onDecide, bus
     if (!rows?.length) return null
 
     const count = rows.length
-    const what = count === 1 ? 'thing' : 'things'
+    const what = count === 1 ? 'event' : 'events'
 
     return (
         <div className="mb-3">
@@ -49,26 +49,26 @@ export default function FoundNearby({ rows, today, restaurantName, onDecide, bus
                     is drawn on the calendar the same as a kept one. What it
                     actually is, is a decision waiting on somebody. */}
                 <p className="text-sm font-semibold text-accent-ink">
-                    {count} {what} near {restaurantName || 'us'}{' '}
-                    {count === 1 ? 'is' : 'are'} waiting on you
+                    {count} {what} near {restaurantName || 'the restaurant'}{' '}
+                    {count === 1 ? 'needs' : 'need'} checking
                 </p>
                 <button
                     type="button"
                     onClick={() => setOpen(v => !v)}
-                    className={`${secondaryButton} py-1 px-3 text-xs`}
+                    className={rowButton()}
                 >
-                    {open ? 'Not now' : 'Show me'}
+                    {open ? 'Hide' : 'Show'}
                 </button>
             </div>
 
             {open && (
                 <div className={`${card} mt-2 overflow-hidden`}>
                     <p className="px-4 py-2 bg-sidebar text-white text-sm font-semibold">
-                        Found since you last looked
+                        Waiting to be checked
                     </p>
                     <p className="px-4 py-2 text-xs text-muted border-b border-border">
-                        Correct a name before you keep it if the page got it short. What you type
-                        is what the roster says.
+                        You can correct a name before you keep it. The roster shows the name as you
+                        type it here.
                     </p>
                     {rows.map(row => (
                         <div
@@ -99,7 +99,7 @@ export default function FoundNearby({ rows, today, restaurantName, onDecide, bus
                                     type="button"
                                     disabled={busy}
                                     onClick={() => onDecide(row.event, 'kept', names[row.event.id])}
-                                    className="px-3 py-1.5 rounded-lg bg-green-brand hover:bg-green-brand/90 disabled:opacity-50 text-white text-xs font-semibold transition-colors"
+                                    className={primaryButton('sm', 'good')}
                                 >
                                     Keep
                                 </button>
@@ -107,7 +107,7 @@ export default function FoundNearby({ rows, today, restaurantName, onDecide, bus
                                     type="button"
                                     disabled={busy}
                                     onClick={() => onDecide(row.event, 'dismissed')}
-                                    className={`${secondaryButton} py-1.5 px-3 text-xs`}
+                                    className={`${rowButton()} disabled:opacity-50`}
                                 >
                                     Not for us
                                 </button>

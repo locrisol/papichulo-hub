@@ -1,21 +1,27 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { supabase } from '@/lib/supabase'
+import { supabase, everyRow } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { useConfirm } from '@/context/confirm'
+import { useRecountBadges } from '@/context/badges'
 import { useRestaurant } from '@/context/restaurant'
 import { fmtMoney, num, fmtPct } from '@/lib/format'
 import { addDays, weekNumber, weekRange, todayISO, shortDate } from '@/lib/dates'
 import { bankHolidaysBetween, BANK_HOLIDAY_INK } from '@/lib/bankHolidays'
 import { resolveTarget, statusFor } from '@/lib/costTargets'
 import { friendlyError } from '@/lib/errors'
-import { card, cardHeader, badge, secondaryButton } from '@/lib/controlStyles'
+import {
+    card, cardHeader, badge, secondaryButton, primaryButton, fieldClass, pageTitle, pageSubtitle,
+} from '@/lib/controlStyles'
 import { useState as useLocalState } from 'react'
 import {
     reportFigures, sectionKey, publishCheck, figuresToStore, platformShare,
-    deliveryRows, deliveryBlockers, deliveryCost, platformTaken, statementWeek, statementWords,
+    deliveryRows, deliveryBlockers, deliveryCost, platformTaken, statementWeek, statementWords, platformWeeks,
+    isCorrection, mailMissing,
 } from '@/lib/weeklyReport'
+import { keyedPlatforms, platformsToShow } from '@/lib/salesTenders'
 import { paperworkFor } from '@/lib/reportPeople'
+import { reprintDue } from '@/lib/allergenSheet'
 import { weeksBack, byWeek } from '@/lib/reportChart'
 import { FOOD, PACKAGING } from '@/lib/invoiceCategories'
 import { chartSpecs } from '@/lib/reportCharts'
@@ -34,6 +40,7 @@ import ReportCleaning from '@/components/reports/ReportCleaning'
 import { claimActions } from '@/lib/invoiceReport'
 import { costFromPaid, movePreferred, renumberPlan, alternatePlan, newGroupId } from '@/lib/priceEvents'
 import { claimKind } from '@/lib/invoiceClaims'
+import { readToDecide } from '@/lib/invoiceReview'
 import ReportSectionHead from '@/components/reports/ReportSectionHead'
 import Recipients from '@/components/reports/Recipients'
 import PublishBar from '@/components/reports/PublishBar'
@@ -42,6 +49,7 @@ import BackButton from '@/components/ui/BackButton'
 import AddButton from '@/components/ui/AddButton'
 import { can, RESTAURANT_CONFIG } from '@/lib/access'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import SaveState from '@/components/ui/SaveState'
 
 // One week's report.
 //
@@ -64,9 +72,12 @@ import ErrorBanner from '@/components/ui/ErrorBanner'
 // change on a week's turnover and gets argued about.
 const pct2 = v => fmtPct(v, 2)
 
+// What stands in the way of Publish while part of the week could not be read.
+const UNREAD = 'Part of this week could not be loaded, so it cannot be sent yet. Reload the page to try again.'
+
 const TONE = {
     green: 'text-green-700',
-    amber: 'text-amber-600',
+    amber: 'text-amber-700',
     red: 'text-red-600',
     none: 'text-muted',
 }
@@ -100,6 +111,25 @@ export default function ReportPage() {
     const confirm = useConfirm()
 
     const [report, setReport] = useState(null)
+    const recountBadges = useRecountBadges()
+
+    // Opening a published report is the one badge that looking clears: an
+    // owner's Reports count is the reports they have not opened. Saved for
+    // every role, and for this send of it, so a correction counts again.
+    // Nothing is said if it fails: it is a note of having looked, nothing
+    // more, and an older database has no table for it.
+    const readId = report?.status === 'published' ? report.id : null
+    const readSend = report?.send_count || 1
+    useEffect(() => {
+        if (!readId) return
+        // read_at is left to its default, so it stays the first time it was
+        // opened: an owner's count starts from their first read, and a second
+        // look must not move that on.
+        supabase.from('report_reads')
+            .upsert({ report_id: readId, send_count: readSend }, { onConflict: 'report_id,user_id' })
+            .then(({ error }) => { if (!error) recountBadges() })
+    }, [readId, readSend, recountBadges])
+
     const [sections, setSections] = useState([])
     const [figures, setFigures] = useState(null)
     const [targets, setTargets] = useState({})
@@ -117,6 +147,15 @@ export default function ReportPage() {
     const [history, setHistory] = useState([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
+    // Why the last read of the week stopped short, or empty when it did not.
+    //
+    // Every read used to fall back to nothing when it failed. No platforms
+    // meant no delivery costs, so the week's earnings went up by all of them;
+    // no team meant the paperwork said there was nobody to check. Publish then
+    // froze that and mailed it. So a read that fails stops the load, says so,
+    // and holds Publish until a read of the whole week works. It is kept apart
+    // from `error`, which any write also sets and clears.
+    const [readFailed, setReadFailed] = useState('')
     // Bumped after every write. The page reloads rather than each section
     // keeping its own copy of the truth, which is how two parts of a screen
     // end up disagreeing about what was just saved.
@@ -126,6 +165,9 @@ export default function ReportPage() {
     // autosave asks somebody to take it on trust, and nobody does with figures.
     const [saving, setSaving] = useState(false)
     const [savedAt, setSavedAt] = useState(null)
+    // Whether the last write failed, kept apart from error. A week that could
+    // not be read also fills error, and that is not a save going wrong.
+    const [writeFailed, setWriteFailed] = useState(false)
 
     const isStoreManager = can(user, RESTAURANT_CONFIG)
     const canEdit = isStoreManager && report?.status === 'draft'
@@ -157,7 +199,7 @@ export default function ReportPage() {
     // Up here rather than beside the charts, because publishing needs them to
     // draw the pictures and publishing is defined before the page is.
     const onlinePlatforms = platforms.filter(p => p.bucket === 'online_platform')
-    // Called catering in the database since 015, corporate everywhere a person
+    // Called catering in the database since 26 September, corporate everywhere a person
     // reads it.
     const corporatePlatforms = platforms.filter(p => p.bucket === 'catering')
 
@@ -198,6 +240,21 @@ export default function ReportPage() {
     const deliveryHeld = report?.status === 'draft'
         ? deliveryBlockers({ weekStart: report.week_start, rows: delivery, days: around })
         : []
+
+    // Invoice lines from this week or before that nobody has decided on
+    // Review. His answer of 30 September: the report cannot go out while any
+    // are waiting. Only up to its own week, so a delivery on the Monday after
+    // does not hold last week's report.
+    const [toDecide, setToDecide] = useState(0)
+    const reviewHeld = report?.status === 'draft' && toDecide > 0
+        ? [{
+            text: `${toDecide} invoice ${toDecide === 1 ? 'line' : 'lines'} from this week or earlier `
+                + `${toDecide === 1 ? 'is' : 'are'} still waiting in Review.`,
+            to: '/invoices/review',
+            link: 'Open Review',
+        }]
+        : []
+    const held = [...deliveryHeld, ...reviewHeld]
     const specs = chartSpecs({ onlinePlatforms, corporatePlatforms })
 
     // How the last send went, so somebody who presses publish is told whether
@@ -209,12 +266,32 @@ export default function ReportPage() {
     // list, the same one every week until somebody changes it.
     const [owners, setOwners] = useState([])
     const [extras, setExtras] = useState([])
+    // Whether the standing list was read. Read as empty when it was not, and
+    // adding one address then saved a list of one over the whole of it, which
+    // dropped the accountant from every week after without a word.
+    const [extrasRead, setExtrasRead] = useState(false)
+    // reprintDue's answer for this restaurant's allergen sheet: null while a
+    // new one is not due, and undefined until it could be worked out.
+    const [allergenSheet, setAllergenSheet] = useState(undefined)
 
     useEffect(() => {
         if (!id) return
 
         async function load() {
             setError('')
+            // readFailed is not cleared here but at the very end, once every
+            // read has come back. Cleared here, a reload after a write lifted
+            // the hold the moment it started, and for the seconds the year of
+            // history takes, Publish froze what the failed read had left.
+
+            // A read that failed. Said, and Publish held, rather than the
+            // week drawn and frozen with that part missing.
+            const stop = err => {
+                const said = friendlyError(err)
+                setError(said)
+                setReadFailed(said)
+                setLoading(false)
+            }
 
             const { data: head, error: hErr } = await supabase
                 .from('weekly_reports')
@@ -222,7 +299,9 @@ export default function ReportPage() {
                 .eq('id', id)
                 .single()
 
-            if (hErr) { setError(friendlyError(hErr)); setLoading(false); return }
+            // Held too: on a reload the page still has the last read's week,
+            // and that is not what was just saved.
+            if (hErr) return stop(hErr)
 
             // Switching restaurant while a report is open leaves the page
             // for the list rather than staying put.
@@ -253,28 +332,35 @@ export default function ReportPage() {
             const weekStart = head.week_start
             const end = addDays(weekStart, 6)
 
-            // Every active platform, both buckets, and what each took.
-            // platform_sales is keyed by platform name rather than id, which is
-            // a known weakness of that table, so the name is what has to be
-            // matched on. Everything the report itself stores is keyed by id.
+            // Every platform, both buckets, and what each took. platform_sales
+            // is kept under each platform's key, which never changes, so that
+            // is what is matched on. Everything the report itself stores is
+            // keyed by id.
             //
             // Read to the Sunday after the week, not to its Saturday, because
             // that Sunday is the last day of the delivery platforms' statements
             // and what each one kept is worked out over their week.
+            // Every column rather than a list naming key, so the report still
+            // draws its platforms on a database from before platforms had keys, where
+            // naming a column that is not there fails the whole read.
             const [plats, days2] = await Promise.all([
                 supabase.from('sales_platforms')
-                    .select('id, name, bucket, is_active, sort_order')
+                    .select('*')
                     .eq('restaurant_id', head.restaurant_id)
-                    .eq('is_active', true)
                     .order('sort_order'),
                 supabase.from('sales_records')
                     .select('sale_date, platform_sales, is_closed')
                     .eq('restaurant_id', head.restaurant_id)
                     .gte('sale_date', weekStart).lte('sale_date', addDays(end, 1)),
             ])
+            if (plats.error || days2.error) return stop(plats.error || days2.error)
 
-            const activePlatforms = plats.data || []
-            setPlatforms(activePlatforms)
+            // The active ones, and any retired since that took money in these
+            // days, the same as the week grid shows. Retiring one mid week
+            // must not take what it took out of that week's report.
+            const allPlatforms = keyedPlatforms(plats.data)
+            const shownPlatforms = platformsToShow(allPlatforms, (days2.data || []).map(d => d.platform_sales))
+            setPlatforms(shownPlatforms)
             setAround(days2.data || [])
 
             // A published report reads the figures frozen into it. A draft
@@ -303,14 +389,14 @@ export default function ReportPage() {
                 ])
 
                 const failed = days.error || spend.error || labour.error
-                if (failed) { setError(friendlyError(failed)); setLoading(false); return }
+                if (failed) return stop(failed)
 
                 const all = (head.report_sections || []).flatMap(s => s.report_items || [])
                 // What each platform cost in our week, from its statement and
                 // the share it kept over its own. The same rows the section
                 // draws, so the total there and the one here are one sum.
                 const rows = deliveryRows({
-                    platforms: activePlatforms.filter(p => p.bucket === 'online_platform'),
+                    platforms: shownPlatforms.filter(p => p.bucket === 'online_platform'),
                     items: all,
                     days: days2.data || [],
                     weekStart,
@@ -322,9 +408,16 @@ export default function ReportPage() {
                     overheads: all.filter(i => i.kind === 'overhead'),
                     delivery: rows.map(r => ({ amount: r.cost })),
                 }))
+
+                // After the figures, so a read that fails still draws the
+                // week, says so and holds Publish like any other: a count of
+                // nothing would let it out with lines undecided.
+                const waiting = await readToDecide(head.restaurant_id, { upTo: end })
+                if (waiting.error) return stop(waiting.error)
+                setToDecide(waiting.lines.length)
             }
 
-            const [ownerRows, place] = await Promise.all([
+            const [ownerRows, place, changedRes] = await Promise.all([
                 supabase.from('users')
                     .select('id, full_name')
                     .eq('restaurant_id', head.restaurant_id)
@@ -337,14 +430,37 @@ export default function ReportPage() {
                 supabase.from('restaurants')
                     .select('report_recipients')
                     .eq('id', head.restaurant_id).maybeSingle(),
+                // When anything on the allergen sheet last changed, for the
+                // line in the paperwork saying a new one is due.
+                supabase.rpc('allergens_changed_at'),
             ])
+            setExtrasRead(!place.error)
+            if (ownerRows.error || place.error) return stop(ownerRows.error || place.error)
             setOwners(ownerRows.data || [])
             setExtras(place.data?.report_recipients || [])
 
+            // The printed allergen sheet, checked as things stand today like
+            // the rest of the paperwork, and said only while a new one is due.
+            //
+            // When it was printed comes from the restaurant already loaded,
+            // checked above to be this report's, and not from the read of the
+            // recipients. Asked there, a database without the two columns
+            // failed that read and the card showed nobody, and adding one
+            // person back would have saved a list of one over the whole list.
+            //
+            // Left unanswered when the date would not come back, rather than
+            // null, which is what a sheet that is not due gets. A reminder
+            // worked out from half of what it needs would be a guess.
+            setAllergenSheet(changedRes.error || !activeRestaurant ? undefined : reprintDue({
+                printedAt: activeRestaurant.allergen_sheet_printed_at,
+                everyMonths: activeRestaurant.allergen_sheet_every_months,
+                changedAt: changedRes.data,
+            }))
+
             // Our week only. The days read above run a day past it.
             const totals = {}
-            for (const p of activePlatforms) {
-                totals[p.id] = platformTaken(days2.data, p.name, weekStart, end)
+            for (const p of shownPlatforms) {
+                totals[p.id] = platformTaken(days2.data, p.key, weekStart, end)
             }
             setTaken(totals)
 
@@ -364,10 +480,17 @@ export default function ReportPage() {
                     .select('sale_date, net_sales, gross_sales, platform_sales, is_closed')
                     .eq('restaurant_id', head.restaurant_id)
                     .gte('sale_date', yearFrom).lte('sale_date', addDays(end, 1)),
-                supabase.from('invoice_cost_by_category')
+                // Not like the rest: one row per typed invoice and per claim,
+                // so a year of it can pass a thousand rows, and a single read
+                // stops there. Paged, and ordered by every column it returns
+                // because the view has no id. Two rows tied on all three are
+                // the same figures, so whichever page each lands on, nothing
+                // is counted twice or missed.
+                everyRow(() => supabase.from('invoice_cost_by_category')
                     .select('cost_date, category, amount')
                     .eq('restaurant_id', head.restaurant_id)
-                    .gte('cost_date', yearFrom).lte('cost_date', end),
+                    .gte('cost_date', yearFrom).lte('cost_date', end)
+                    .order('cost_date').order('category').order('amount')),
                 supabase.from('labour_by_day')
                     .select('entry_date, labour_cost')
                     .eq('restaurant_id', head.restaurant_id)
@@ -379,6 +502,10 @@ export default function ReportPage() {
                     .eq('restaurant_id', head.restaurant_id)
                     .gte('week_start', yearFrom).lte('week_start', weekStart),
             ])
+            // The charts go out as pictures, so a year that did not come back
+            // would be mailed as a line along the bottom.
+            const lost = hDays.error || hSpend.error || hLabour.error || hReports.error
+            if (lost) return stop(lost)
 
             const trading = (hDays.data || []).filter(d => !d.is_closed)
             const netWeeks = byWeek(trading, 'sale_date', d => d.net_sales)
@@ -391,12 +518,6 @@ export default function ReportPage() {
                 'cost_date', r => r.amount)
             const labourWeeks = byWeek(hLabour.data || [], 'entry_date', l => l.labour_cost)
 
-            // Each platform's own weekly line, and the two totals.
-            //
-            // Keyed by name, because that is what platform_sales stores. The
-            // chart keys are prefixed rather than used raw: a platform called
-            // "net" or "food" would otherwise collide with a column on the same
-            // row and quietly draw the wrong line.
             // What each past report typed into its profit and loss.
             const reported = new Map()
             for (const r of hReports.data || []) {
@@ -413,11 +534,15 @@ export default function ReportPage() {
                 let deliveryTotal = 0
                 const { from, to } = statementWeek(r.week_start)
                 for (const i of items.filter(i => i.kind === 'delivery')) {
-                    const name = activePlatforms.find(p => p.id === i.key)?.name || i.label
+                    // Every platform, retired or not, since a past week's
+                    // statement can belong to one retired since. A line
+                    // from a platform deleted outright only has the name it
+                    // was written with.
+                    const key = allPlatforms.find(p => p.id === i.key)?.key ?? i.label
                     const { cost } = deliveryCost({
                         statement: i.amount,
-                        statementTaken: platformTaken(hDays.data, name, from, to),
-                        weekTaken: platformTaken(hDays.data, name, r.week_start, addDays(r.week_start, 6)),
+                        statementTaken: platformTaken(hDays.data, key, from, to),
+                        weekTaken: platformTaken(hDays.data, key, r.week_start, addDays(r.week_start, 6)),
                     })
                     delivery[i.key] = cost
                     deliveryTotal += cost
@@ -425,11 +550,14 @@ export default function ReportPage() {
                 reported.set(r.week_start, { standing, delivery, deliveryTotal })
             }
 
-            const platWeeks = {}
-            for (const p of activePlatforms) {
-                platWeeks[p.id] = byWeek(hDays.data || [], 'sale_date',
-                    d => d.platform_sales?.[p.name])
-            }
+            // Each platform's own weekly line, and the two totals. Over every
+            // platform that took money this year, not only the ones this week
+            // shows, so retiring one does not take it out of past weeks.
+            //
+            // The chart keys are prefixed rather than used raw: a platform
+            // called "net" or "food" would otherwise collide with a column on
+            // the same row and quietly draw the wrong line.
+            const platformRows = platformWeeks({ platforms: allPlatforms, days: hDays.data || [], weeks: weekStarts })
 
             setHistory(weekStarts.map(week => {
                 const row = {
@@ -439,15 +567,7 @@ export default function ReportPage() {
                     food: foodWeeks.get(week) || 0,
                     packaging: packWeeks.get(week) || 0,
                     labour: labourWeeks.get(week) || 0,
-                    onlineTotal: 0,
-                    corporateTotal: 0,
-                }
-
-                for (const p of activePlatforms) {
-                    const amount = platWeeks[p.id].get(week) || 0
-                    row[`p_${p.id}`] = amount
-                    if (p.bucket === 'online_platform') row.onlineTotal += amount
-                    else row.corporateTotal += amount
+                    ...platformRows.get(week),
                 }
 
                 // Null, not nought, for a week nobody wrote up. The chart
@@ -455,11 +575,11 @@ export default function ReportPage() {
                 const pl = reported.get(week)
                 row.earnings = null
                 row.deliveryTotal = null
-                for (const p of activePlatforms) row[`d_${p.id}`] = null
+                for (const p of shownPlatforms) row[`d_${p.id}`] = null
 
                 if (pl) {
                     row.deliveryTotal = pl.deliveryTotal
-                    for (const p of activePlatforms) {
+                    for (const p of shownPlatforms) {
                         if (p.id in pl.delivery) row[`d_${p.id}`] = pl.delivery[p.id]
                     }
                     row.earnings = row.net - row.food - row.packaging - row.labour
@@ -472,19 +592,21 @@ export default function ReportPage() {
             // The team, for the paperwork lines. Only the fields the
             // section reads, so a mail built from this cannot carry anything
             // else about anybody.
-            const { data: team } = await supabase
+            const { data: team, error: teamError } = await supabase
                 .from('employees')
                 .select('id, full_name, started_on, ended_on, on_trial, food_safety_expires, work_permission, work_permission_expires, permission_renewal_applied')
                 .eq('restaurant_id', head.restaurant_id)
+            if (teamError) return stop(teamError)
             setEmployees(team || [])
 
             // Targets are looked up for the week being reported on rather than
             // taken from today's settings, so a target changed in September
             // does not change how an August week is judged.
-            const { data: overrides } = await supabase
+            const { data: overrides, error: targetError } = await supabase
                 .from('cost_target_overrides')
                 .select('*')
                 .eq('restaurant_id', head.restaurant_id)
+            if (targetError) return stop(targetError)
 
             setTargets({
                 food: resolveTarget(overrides || [], 'food', weekStart, num(activeRestaurant?.food_cost_target)),
@@ -492,6 +614,7 @@ export default function ReportPage() {
                 packaging: resolveTarget(overrides || [], 'packaging', weekStart, num(activeRestaurant?.packaging_cost_target)),
             })
 
+            setReadFailed('')
             setLoading(false)
         }
 
@@ -510,8 +633,9 @@ export default function ReportPage() {
         const { error: err } = await run()
         setSaving(false)
 
-        if (err) { setError(friendlyError(err)); return false }
+        if (err) { setError(friendlyError(err)); setWriteFailed(true); return false }
         setError('')
+        setWriteFailed(false)
         setSavedAt(new Date())
         setRefresh(n => n + 1)
         return true
@@ -571,7 +695,7 @@ export default function ReportPage() {
     //
     // A rating, a review and a refund all hang off a platform by its id rather
     // than its name, so renaming a platform in settings does not orphan a
-    // week's notes the way platform_sales does.
+    // week's notes, the way it used to orphan its takings.
     const online = () => sections.find(s => s.key === 'online_sales')
 
     async function saveRating(platform, value) {
@@ -682,6 +806,12 @@ export default function ReportPage() {
                 // that is the difference between somebody who cannot legally be
                 // on next week's roster and somebody who is waiting on the post.
                 permits,
+                // Only while a new allergen sheet is due, in the words the
+                // Public Allergens page uses. Null says it was checked and
+                // was not. Undefined, when it could not be checked, is left
+                // out of the stored copy, the same as a report frozen before
+                // version 3.
+                allergenSheet,
             },
         })
     }
@@ -692,31 +822,32 @@ export default function ReportPage() {
     function stillReading() {
         if (sections.some(s => s.key === 'cleaning') && !liveCleaning.ready) {
             setError(liveCleaning.error
-                ? `The checklists could not be read, so this cannot go out yet: ${liveCleaning.error}`
-                : 'The checklists are still being read. Give it a moment and press it again.')
+                ? `The checklists could not be loaded, so this cannot be sent yet: ${liveCleaning.error}`
+                : 'The checklists are still loading. Wait a moment and try again.')
             return true
         }
         if (!sections.some(s => s.key === 'prices_suppliers')) return false
         if (livePrices.ready) return false
         setError(livePrices.error
-            ? `The prices could not be read, so this cannot go out yet: ${livePrices.error}`
-            : 'The prices are still being read. Give it a moment and press it again.')
+            ? `The prices could not be loaded, so this cannot be sent yet: ${livePrices.error}`
+            : 'The prices are still loading. Wait a moment and try again.')
         return true
     }
 
     async function publish() {
-        const check = publishCheck(sections, figures, deliveryHeld)
-        if (check.blockers.length > 0) return
+        const check = publishCheck(sections, figures, held)
+        if (readFailed || check.blockers.length > 0) return
         if (stillReading()) return
 
-        const first = (report.send_count || 0) === 0
+        // First unless an earlier send reached somebody. See isCorrection.
+        const first = !isCorrection(report)
         const ok = await confirm({
             title: first ? 'Send this report?' : 'Send a correction?',
             message: first
-                ? 'The figures are frozen as they stand and the report goes out. You can re-open it afterwards '
+                ? 'The figures are frozen as they stand and the report goes out. You can reopen it afterwards '
                     + 'if something needs changing.'
                 : 'Everyone who got the first one gets this, marked as a correction saying what changed.',
-            confirmLabel: first ? 'Send it' : 'Send the correction',
+            confirmLabel: first ? 'Send' : 'Send the correction',
         })
         if (!ok) return
 
@@ -733,7 +864,7 @@ export default function ReportPage() {
             // What the last mail said, kept so the next one can say what
             // changed. Only from the second send on: the first has nothing to
             // be a correction of.
-            const previous = (report.send_count || 0) > 0 ? report.figures : null
+            const previous = first ? null : report.figures
 
             const { error: saveError } = await supabase.from('weekly_reports').update({
                 status: 'published',
@@ -742,13 +873,15 @@ export default function ReportPage() {
                 charts,
                 published_at: new Date().toISOString(),
                 published_by: user.id,
-                send_count: (report.send_count || 0) + 1,
+                // One again when nobody got the last one, because the mail
+                // calls anything past one a correction.
+                send_count: first ? 1 : (report.send_count || 0) + 1,
             }).eq('id', report.id)
             if (saveError) throw saveError
 
             // Frozen first, sent second, and deliberately in that order. A
-            // report that was frozen but not mailed can be sent again by
-            // re-opening it. One that was mailed off figures nothing kept is a
+            // report that was frozen but not mailed says so and can be sent
+            // from the bar. One that was mailed off figures nothing kept is a
             // week nobody can ever look up again.
             try {
                 const result = await sendReport({ reportId: report.id })
@@ -772,13 +905,14 @@ export default function ReportPage() {
     // confirmed, since it is silent otherwise: nothing happens until Monday,
     // and by Monday nobody remembers doing it.
     async function changeRecipients(list) {
+        if (!extrasRead) return
         const gone = extras.filter(a => !list.includes(a))
         if (gone.length > 0) {
             const ok = await confirm({
-                title: 'Take them off the list?',
+                title: 'Remove from the list?',
                 message: `${gone.join(', ')} will stop getting the weekly report, this week and `
                     + 'every week after, until somebody adds them back.',
-                confirmLabel: 'Take them off',
+                confirmLabel: 'Remove',
             })
             if (!ok) return
         }
@@ -805,6 +939,9 @@ export default function ReportPage() {
     // sends a test to whoever is logged in, which is a rule a browser cannot
     // talk it out of.
     async function testSend() {
+        // A test goes to the list too, so one built from half a week is not
+        // sent either.
+        if (readFailed) { setError(UNREAD); return }
         if (stillReading()) return
         setMailed(null)
         setSaving(true)
@@ -823,14 +960,48 @@ export default function ReportPage() {
         }
     }
 
-    // Re-opening does not clear published_at or send_count. What went out went
-    // out, and the next mail has to know it is the second.
+    // Sending one that was published and never went.
+    //
+    // The report as it was frozen, mailed for the first time. Nothing is
+    // written to it here: the figures and charts are the ones already on it,
+    // and the count stays where it is, so the mail is not a correction. The
+    // function writes who it went to once it has gone, which is what turns
+    // this bar back into Sent.
+    async function sendUnsent() {
+        const ok = await confirm({
+            title: 'Send this report?',
+            message: 'It goes to everyone on the list below, with the figures as they were frozen.',
+            confirmLabel: 'Send',
+        })
+        if (!ok) return
+
+        setMailed(null)
+        setSaving(true)
+        try {
+            const result = await sendReport({ reportId: report.id })
+            setMailed(sendWords(result))
+            setRefresh(n => n + 1)
+        } catch (err) {
+            setMailed(`The mail did not go out: ${err.message}`)
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    // Re-opening does not clear published_at, send_count or sent_to. What went
+    // out went out, and the next mail has to know whether it is a correction,
+    // which it is only when the last one reached somebody. A report whose mail
+    // never went can be re-opened too, and publishing that one again sends it
+    // for the first time, so it is not told otherwise. See isCorrection.
     async function reopen() {
         const ok = await confirm({
-            title: 'Re-open this report?',
-            message: 'It goes back to a draft and the figures go live again. Nothing is unsent: publishing it '
-                + 'a second time mails a correction to everyone who got the first.',
-            confirmLabel: 'Re-open it',
+            title: 'Reopen this report?',
+            message: isCorrection(report)
+                ? 'It goes back to a draft and the figures are no longer frozen. The mail already sent stays '
+                    + 'sent. Publishing again sends a correction to everyone who got the first one.'
+                : 'It goes back to a draft and the figures are no longer frozen. Nobody got it the first time, '
+                    + 'so publishing sends it as the first mail, not a correction.',
+            confirmLabel: 'Reopen',
         })
         if (!ok) return
 
@@ -914,6 +1085,13 @@ export default function ReportPage() {
             if (e2) return friendlyError(e2)
         }
 
+        // Back on for a claim asked again, and words brought up to date. One
+        // write each, because each has words of its own.
+        for (const { id, patch } of [...jobs.reopen, ...jobs.relabel]) {
+            const { error: e3 } = await supabase.from('report_items').update(patch).eq('id', id)
+            if (e3) return friendlyError(e3)
+        }
+
         setRefresh(n => n + 1)
         return null
     }
@@ -988,7 +1166,7 @@ export default function ReportPage() {
     function renumber(item, key) {
         const plan = renumberPlan(item)
         return decidePrice(key, {
-            title: 'The same thing under a new number?',
+            title: 'Is this a code update?',
             message: `${item.bought} (code ${item.code}) and the ${item.name} usually bought`
                 + `${item.usualCode ? ` (code ${item.usualCode})` : ''} become one, with one price and one price `
                 + 'history. What recipes cost it at does not change here: if the price moved, it shows as a price '
@@ -1076,7 +1254,9 @@ export default function ReportPage() {
         const failed = await putClaimsOnList(jobs)
         setPriceBusy('')
         if (failed) { setError(failed); return }
-        setPriceSaid('The support list has them now, and they stay on it until they are ticked.')
+        setPriceSaid(jobs.add.length
+            ? 'The support list has them now, and they stay on it until they are ticked.'
+            : 'The support list is up to date.')
     }
 
     async function addRefund(platform) {
@@ -1100,10 +1280,15 @@ export default function ReportPage() {
         return <p className="text-sm text-muted">Loading the week.</p>
     }
 
-    if (!report) {
+    // No figures means the first read of the week failed before they came
+    // back, and there is no week to draw. It used to try, and fell over on
+    // the first figure.
+    if (!report || !figures) {
         return (
             <div className="space-y-3">
-                <p className="text-sm text-red-700">{error || 'That report could not be found.'}</p>
+                <p className="text-sm text-red-700">
+                    {error || (report ? 'This week could not be loaded.' : 'That report could not be found.')}
+                </p>
                 <BackButton to="/reports">Back to reports</BackButton>
             </div>
         )
@@ -1111,7 +1296,8 @@ export default function ReportPage() {
 
     const week = report.week_start
     const salesCosts = sections.find(s => s.key === 'sales_costs')
-    const check = publishCheck(sections, figures, deliveryHeld)
+    const check = publishCheck(sections, figures, held)
+    const blockers = readFailed ? [UNREAD, ...check.blockers] : check.blockers
 
     return (
         <div className="space-y-4">
@@ -1120,10 +1306,8 @@ export default function ReportPage() {
             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                 <div className="min-w-0">
                     <BackButton to="/reports" className="mb-2">All reports</BackButton>
-                    <h1 className="font-serif text-2xl font-bold text-sidebar leading-tight">
-                        Week {weekNumber(week)}
-                    </h1>
-                    <p className="text-sm text-muted mt-1">
+                    <h2 className={pageTitle}>Week {weekNumber(week)}</h2>
+                    <p className={pageSubtitle}>
                         {weekRange(week)} &middot; {activeRestaurant?.name}
                     </p>
                     {/* A week with a bank holiday in it is not comparable with
@@ -1142,21 +1326,13 @@ export default function ReportPage() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3 flex-shrink-0 self-start">
-                    {canEdit && (
-                        <span className="text-xs text-muted" aria-live="polite">
-                            {saving
-                                ? 'Saving'
-                                : savedAt
-                                    ? `Saved at ${savedAt.toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}`
-                                    : 'Saves as you type'}
-                        </span>
-                    )}
-                    <span className={`${badge} ${report.status === 'draft'
+                    {canEdit && <SaveState problem={writeFailed} saving={saving} savedAt={savedAt} />}
+                    <span className={`${badge} ${report.status === 'draft' || mailMissing(report)
                         ? 'bg-accent-light text-accent-ink'
                         : 'bg-green-50 text-green-700'}`}>
                         {report.status === 'draft'
-                            ? (report.send_count > 0 ? 'Re-opened' : 'Draft')
-                            : 'Sent'}
+                            ? (report.send_count > 0 ? 'Reopened' : 'Draft')
+                            : mailMissing(report) ? 'Not sent' : 'Sent'}
                     </span>
                 </div>
             </div>
@@ -1169,7 +1345,7 @@ export default function ReportPage() {
 
             <PublishBar
                 report={report}
-                blockers={check.blockers}
+                blockers={blockers}
                 warnings={check.warnings}
                 canWrite={isStoreManager}
                 busy={saving}
@@ -1177,12 +1353,13 @@ export default function ReportPage() {
                 onPublish={publish}
                 onReopen={reopen}
                 onTest={testSend}
+                onSend={sendUnsent}
             />
 
             <Recipients
                 owners={owners}
                 extras={extras}
-                canEdit={isStoreManager}
+                canEdit={isStoreManager && extrasRead}
                 busy={saving}
                 onChange={changeRecipients}
             />
@@ -1248,9 +1425,8 @@ export default function ReportPage() {
                     </div>
 
                     <p className="text-xs text-muted mt-4 mb-4">
-                        Food and packaging come from the invoices dated in this week, labour from the hours
-                        entered against it. Nothing here is typed twice, so it cannot disagree with the cost
-                        dashboard.
+                        Food and packaging come from the invoices dated in this week, and labour from the hours
+                        entered for it. These are the same figures as on the Cost dashboard.
                     </p>
 
                     <WeekChart rows={history} {...specs.sales} />
@@ -1329,6 +1505,7 @@ export default function ReportPage() {
                                             paperwork={paperworkFor(employees, week, todayISO())}
                                             weekStart={week}
                                             asOf={todayISO()}
+                                            allergenSheet={allergenSheet}
                                         />
                                     )}
                                     {section.key === 'cleaning' && (
@@ -1488,14 +1665,16 @@ function AddSection({ onAdd }) {
         <div className={`${card} p-4`}>
             <p className="text-xs font-bold text-muted uppercase tracking-wider mb-2">A section of your own</p>
             <div className="flex flex-wrap gap-2">
-                <input
-                    value={title}
-                    onChange={e => setTitle(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Escape') { setTitle(''); setOpen(false) } }}
-                    autoFocus
-                    placeholder="What is it called"
-                    className="flex-1 min-w-[12rem] bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
-                />
+                <div className="flex-1 min-w-[12rem]">
+                    <input
+                        value={title}
+                        onChange={e => setTitle(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Escape') { setTitle(''); setOpen(false) } }}
+                        autoFocus
+                        placeholder="What is it called"
+                        className={fieldClass}
+                    />
+                </div>
                 <button
                     onClick={async () => {
                         if (!title.trim()) return
@@ -1503,7 +1682,7 @@ function AddSection({ onAdd }) {
                         setTitle('')
                         setOpen(false)
                     }}
-                    className="px-4 py-2 bg-accent text-white rounded-lg text-sm font-semibold shadow-sm hover:bg-accent-ink transition-colors"
+                    className={primaryButton()}
                 >
                     Add
                 </button>
@@ -1515,7 +1694,7 @@ function AddSection({ onAdd }) {
                 </button>
             </div>
             <p className="text-xs text-muted mt-2">
-                It appears on every week from now on, and can be dropped again whenever you like.
+                It appears on every week from now on, and can be removed at any time.
             </p>
         </div>
     )

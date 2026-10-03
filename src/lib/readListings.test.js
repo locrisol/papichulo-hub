@@ -1,10 +1,16 @@
+import { readFileSync } from 'node:fs'
 import { describe, it, expect } from 'vitest'
 import {
     textFrom, promptFor, answerFrom, eventsFrom, cleanName, sourceKeyFor,
-    endpoint, MOST_TEXT, MOST_NAME, MOST_ROWS, LONGEST_RUN_DAYS,
+    endpoint, SCHEMA, MOST_TEXT, MOST_NAME, MOST_ROWS, LONGEST_RUN_DAYS,
     dropRepeats, readable, MOST_REPEATS, urlsFor, monthsBetween, joinPages, MOST_ALL_TEXT,
-    isServiceRole, roleOf,
+    isServiceRole, roleOf, refusalFor, watchedAlongside, notYetKnown, geminiRequest, failedWords,
+    readError, readProblem, geminiWords,
 } from '../../supabase/functions/read-listings/reading'
+import { refusalFor as nearbyRefusalFor } from '../../supabase/functions/nearby-events/discovery'
+import {
+    addressProblem, privateAddress, readPage, readPages, MOST_REDIRECTS,
+} from '../../supabase/functions/read-listings/fetching'
 import { sourceKeyFor as browserSourceKeyFor } from '@/lib/nearby'
 
 // The function deploys on its own, so its reading lives in its own folder along
@@ -341,6 +347,25 @@ describe('what survives the check', () => {
         expect(rows.map(r => r.name)).toEqual(['In range'])
     })
 
+    // Read on the Monday, a festival that began on the Friday is still on. The
+    // model is asked for a run's first day and gives it, and the check used to
+    // throw the row away for starting before the window. What matters is
+    // whether it is still on.
+    it('keeps a run that began before the read day and is still on', () => {
+        const { rows } = eventsFrom(answer([
+            { name: 'Festival', date: '2026-10-25', ends: '2026-11-05' },
+            { name: 'Ends today', date: '2026-10-28', ends: '2026-11-01' },
+            { name: 'Over already', date: '2026-10-19', ends: '2026-10-30' },
+            // Too long to be one event, so the end is dropped and it falls back
+            // to its first day, which is before the window.
+            { name: 'A whole season', date: '2026-10-19', ends: '2027-01-30' },
+        ]), WHEN)
+        expect(rows.map(r => [r.name, r.event_date, r.ends_on])).toEqual([
+            ['Festival', '2026-10-25', '2026-11-05'],
+            ['Ends today', '2026-10-28', '2026-11-01'],
+        ])
+    })
+
     it('drops one with no name at all', () => {
         const { rows } = eventsFrom(answer([{ name: '   ', date: '2026-11-19' }]), WHEN)
         expect(rows).toEqual([])
@@ -375,6 +400,36 @@ describe('what survives the check', () => {
         expect(rows.map(r => r.event_time)).toEqual([null, null, '09:30'])
     })
 
+    // Irish listings pages write 7:30pm. A model that copied that across rather
+    // than turning it into 19:30 had it filed as half past seven in the morning.
+    // Anything that is not one whole time is dropped, the same as a bad end
+    // date: in "7:30 - 10pm" the pm belongs to the end, not the start.
+    //
+    // A dot with no am or pm is the page copied rather than a 24 hour time, and
+    // 7.30 on its own on an Irish page is an evening show. Only an hour that
+    // can only be the evening is taken.
+    it.each([
+        ['7:30 PM', '19:30'],
+        ['7:30pm', '19:30'],
+        ['7.30pm', '19:30'],
+        ['7pm', '19:00'],
+        ['7:30 p.m.', '19:30'],
+        ['12:30 AM', '00:30'],
+        ['12:00pm', '12:00'],
+        ['19:30:00', '19:30'],
+        ['19.30', '19:30'],
+        ['7.30', null],
+        ['8.00', null],
+        ['13:30pm', null],
+        ['0:30am', null],
+        ['19', null],
+        ['7:30 - 10pm', null],
+        ['7:30pm doors', null],
+    ])('reads %s as %s', (time, want) => {
+        const { rows } = eventsFrom(answer([{ name: 'Gig', date: '2026-11-19', time }]), WHEN)
+        expect(rows[0].event_time).toBe(want)
+    })
+
     // The same page read twice in one answer, which happens whenever a site
     // lists a thing in a carousel and again in a table.
     it('keeps one row for the same thing said twice', () => {
@@ -386,12 +441,27 @@ describe('what survives the check', () => {
     })
 
     // A page that suddenly offers four hundred events has become something
-    // else, and the right answer to that is to stop rather than fill the table.
-    it('never writes more than the cap from one page', () => {
-        const many = Array.from({ length: MOST_ROWS + 20 }, (_, i) => ({
-            name: `Gig ${i}`,
-            date: '2026-11-19',
-        }))
+    // else, and the right answer to that is to write nothing and be noticed.
+    // Filing the first forty looked like an ordinary week and said nothing.
+    const gigs = (count, date = '2026-11-19', called = 'Gig') =>
+        Array.from({ length: count }, (_, i) => ({ name: `${called} ${i}`, date }))
+
+    it('writes nothing from a page offering more than the cap, and says why', () => {
+        const out = eventsFrom(answer(gigs(MOST_ROWS + 1)), WHEN)
+        expect(out.rows).toEqual([])
+        expect(out.refused).toContain(String(MOST_ROWS + 1))
+    })
+
+    it('still writes a page of exactly the cap', () => {
+        const out = eventsFrom(answer(gigs(MOST_ROWS)), WHEN)
+        expect(out.rows).toHaveLength(MOST_ROWS)
+        expect(out.refused).toBe('')
+    })
+
+    // Counted after the checks, so rows that were never going to be written,
+    // outside the window or the same thing twice, do not get a page refused.
+    it('counts only what would be written', () => {
+        const many = [...gigs(MOST_ROWS), ...gigs(20, '2026-10-01', 'Old')]
         expect(eventsFrom(answer(many), WHEN).rows).toHaveLength(MOST_ROWS)
     })
 
@@ -403,6 +473,146 @@ describe('what survives the check', () => {
 
     it('copes with an answer that found nothing', () => {
         expect(eventsFrom(answer([]), WHEN).rows).toEqual([])
+    })
+})
+
+// A page still showing last year's "Sat 4th Oct", read in a year when the 4th
+// is a Sunday, comes back as a real date inside the window. The day of the week
+// the page wrote is the one thing that can catch it, and it catches the model's
+// own sums going wrong on "Fri" or "tomorrow" as well.
+describe('the day of the week the page gave', () => {
+    it('drops a row whose day disagrees with its date', () => {
+        const { rows } = eventsFrom(answer([
+            { name: 'Wrong day', date: '2026-11-21', weekday: 'Fri' },
+            { name: 'Right day', date: '2026-11-21', weekday: 'Sat' },
+            { name: 'Written out', date: '2026-11-20', weekday: 'Friday' },
+            { name: 'Shouted', date: '2026-11-19', weekday: 'THURS.' },
+            { name: 'No day given', date: '2026-11-22' },
+        ]), WHEN)
+        expect(rows.map(r => r.name)).toEqual(['Right day', 'Written out', 'Shouted', 'No day given'])
+    })
+
+    // Dropped, and counted so the log can say so. A model that started working
+    // the day out for itself would otherwise lose true rows with nothing said.
+    it('counts what it dropped for the day', () => {
+        const out = eventsFrom(answer([
+            { name: 'Wrong day', date: '2026-11-21', weekday: 'Fri' },
+            { name: 'Also wrong', date: '2026-11-22', weekday: 'Mon' },
+            { name: 'Right day', date: '2026-11-21', weekday: 'Sat' },
+        ]), WHEN)
+        expect(out.wrongDay).toBe(2)
+        expect(eventsFrom(answer([{ name: 'Right day', date: '2026-11-21', weekday: 'Sat' }]), WHEN).wrongDay).toBe(0)
+    })
+
+    // One day it can read is a day it can check. "Tomorrow" names none, and
+    // "Fri to Sun" names the last day as well as the first.
+    it('leaves alone a day it cannot read for certain', () => {
+        const { rows } = eventsFrom(answer([
+            { name: 'Tomorrow', date: '2026-11-21', weekday: 'Tomorrow' },
+            { name: 'Weekend', date: '2026-11-20', ends: '2026-11-22', weekday: 'Fri to Sun' },
+        ]), WHEN)
+        expect(rows).toHaveLength(2)
+    })
+
+    // Copied off the page and never worked out. A day the model worked out
+    // for itself would only ever agree with its own date, right or wrong.
+    it('asks for the day as the page wrote it', () => {
+        expect(SCHEMA.properties.events.items.properties.weekday).toBeTruthy()
+        for (const key of ['date', 'title']) {
+            const prompt = promptFor('x', { from: '2026-11-01', to: '2026-12-06', today: '2026-11-01', key })
+            expect(prompt).toContain('day of the week')
+            expect(prompt).toContain('Never work it out')
+        }
+    })
+})
+
+// Dun Laoghaire watches the council's listings and the Pavilion's own. When
+// both list the same night it was saved twice, offered twice and drawn twice,
+// because the check for what was already there only looked at one place.
+describe('the same show read from two pages', () => {
+    const PAIRINGS = [
+        { restaurant_id: 'dl', place_id: 'council' },
+        { restaurant_id: 'dl', place_id: 'pavilion' },
+        { restaurant_id: 'pc', place_id: 'arena' },
+        { restaurant_id: 'pc', place_id: 'odeon' },
+    ]
+
+    it('knows which places are watched alongside one', () => {
+        expect(watchedAlongside(PAIRINGS, 'pavilion')).toEqual(['council'])
+        expect(watchedAlongside(PAIRINGS, 'arena')).toEqual(['odeon'])
+        expect(watchedAlongside(PAIRINGS, 'nowhere')).toEqual([])
+        expect(watchedAlongside(null, 'council')).toEqual([])
+    })
+
+    // A place two restaurants watch. A night skipped because a page next door
+    // has it is only safe when every restaurant watching this place can see
+    // that page too. Otherwise the one that cannot never sees the night at all.
+    it('only counts a page next door that every restaurant watching this one can see', () => {
+        const shared = [
+            { restaurant_id: 'a', place_id: 'x' },
+            { restaurant_id: 'b', place_id: 'x' },
+            { restaurant_id: 'b', place_id: 'y' },
+        ]
+        expect(watchedAlongside(shared, 'x')).toEqual([])
+        expect(watchedAlongside(shared, 'y')).toEqual(['x'])
+        expect(watchedAlongside([...shared, { restaurant_id: 'a', place_id: 'y' }], 'x')).toEqual(['y'])
+
+        const both = [...PAIRINGS, { restaurant_id: 'pc', place_id: 'council' }]
+        expect(watchedAlongside(both, 'council')).toEqual([])
+    })
+
+    const PAVILION = { ...WHEN, placeId: 'pavilion' }
+
+    it('saves a night once when a page next door already has it', () => {
+        const { rows } = eventsFrom(answer([
+            { name: 'Pentangle', date: '2026-11-19' },
+            { name: 'Lankum', date: '2026-11-20' },
+        ]), PAVILION)
+        const already = [{ place_id: 'council', name: 'PENTANGLE', event_date: '2026-11-19' }]
+        expect(notYetKnown(rows, already, { placeId: 'pavilion' }).map(r => r.name)).toEqual(['Lankum'])
+    })
+
+    it('still saves the same name on another night', () => {
+        const { rows } = eventsFrom(answer([{ name: 'Pentangle', date: '2026-11-19' }]), PAVILION)
+        const already = [{ place_id: 'council', name: 'Pentangle', event_date: '2026-11-26' }]
+        expect(notYetKnown(rows, already, { placeId: 'pavilion' })).toHaveLength(1)
+    })
+
+    // A cinema keeps a film under its title alone. Next door that would be any
+    // night with the same name on it, so next door is matched by the night.
+    const ODEON = { ...WHEN, placeId: 'odeon', key: 'title' }
+    const film = () => eventsFrom(answer([{ name: 'Wicked', date: '2026-11-19' }]), ODEON).rows
+
+    it('matches a page next door by the night even for a cinema', () => {
+        const another = [{ place_id: 'arena', name: 'Wicked', event_date: '2026-11-25' }]
+        expect(notYetKnown(film(), another, { placeId: 'odeon', key: 'title' })).toHaveLength(1)
+        const same = [{ place_id: 'arena', name: 'Wicked', event_date: '2026-11-19' }]
+        expect(notYetKnown(film(), same, { placeId: 'odeon', key: 'title' })).toEqual([])
+    })
+
+    it('still skips what this place already has, the way this place keys it', () => {
+        const seen = [{ place_id: 'odeon', name: 'Wicked', event_date: '2026-11-05' }]
+        expect(notYetKnown(film(), seen, { placeId: 'odeon', key: 'title' })).toEqual([])
+    })
+
+    it('keeps everything when nothing is there yet', () => {
+        expect(notYetKnown(film(), null, { placeId: 'odeon', key: 'title' })).toHaveLength(1)
+    })
+
+    // A show Ticketmaster has called off or stopped listing, still on the
+    // venue's own page, is news. Counted as known, it never came back at all.
+    it('does not count a feed night that is called off or no longer listed', () => {
+        const { rows } = eventsFrom(answer([{ name: 'Pentangle', date: '2026-11-19' }]), PAVILION)
+        for (const status of ['cancelled', 'canceled', 'Canceled', 'withdrawn']) {
+            const here = [{ place_id: 'pavilion', name: 'Pentangle', event_date: '2026-11-19', status }]
+            const nextDoor = [{ place_id: 'council', name: 'Pentangle', event_date: '2026-11-19', status }]
+            expect(notYetKnown(rows, here, { placeId: 'pavilion' })).toHaveLength(1)
+            expect(notYetKnown(rows, nextDoor, { placeId: 'pavilion' })).toHaveLength(1)
+        }
+        for (const status of ['onsale', 'offsale', 'postponed', null]) {
+            const here = [{ place_id: 'pavilion', name: 'Pentangle', event_date: '2026-11-19', status }]
+            expect(notYetKnown(rows, here, { placeId: 'pavilion' })).toEqual([])
+        }
     })
 })
 
@@ -445,6 +655,98 @@ describe('endpoint', () => {
     })
 })
 
+// The key used to travel in the address, and a fetch that fails on the network
+// names the whole address in its message. So a dropped connection carried the
+// key into the function's log.
+describe('asking Gemini', () => {
+    it('sends the key in a header and never in the address', () => {
+        const { url, init } = geminiRequest('sekret-key', 'the page')
+        expect(url).toBe(endpoint())
+        expect(url).not.toContain('sekret-key')
+        expect(init.headers['x-goog-api-key']).toBe('sekret-key')
+        expect(init.body).not.toContain('sekret-key')
+    })
+
+    it('asks for JSON held to the shape, with nothing creative about it', () => {
+        const body = JSON.parse(geminiRequest('k', 'the page').init.body)
+        expect(body.contents[0].parts[0].text).toBe('the page')
+        expect(body.generationConfig).toMatchObject({
+            responseMimeType: 'application/json',
+            responseSchema: SCHEMA,
+            temperature: 0,
+        })
+    })
+
+    it('says what failed and where, and never the address or the key', () => {
+        const err = new TypeError(
+            'error sending request for url (https://generativelanguage.googleapis.com/v1beta/models/x:generateContent?key=sekret-key): connection reset',
+        )
+        const words = failedWords('Asking Gemini', err, endpoint())
+        expect(words).toBe('Asking Gemini failed (TypeError at generativelanguage.googleapis.com)')
+        expect(words).not.toContain('sekret-key')
+    })
+
+    it('copes with something thrown that is not an error, and an address that is not one', () => {
+        expect(failedWords('Asking Gemini', 'nope', 'not an address')).toBe('Asking Gemini failed (Error)')
+    })
+})
+
+// A page that kept failing only ever said so in the log, and the settings row
+// went on showing the last good read. What went wrong is kept on the place
+// now, and every manager can read a place, so what is kept is only
+// ever a sentence the function wrote.
+describe('what went wrong, kept on the place', () => {
+    it('keeps the sentence the function wrote, and leaves the detail for the log', () => {
+        const err = readError('The page could not be read.', 'https://www.dlrcoco.ie/dlr-events?page=2: answered 404')
+        expect(readProblem(err)).toBe('The page could not be read.')
+        expect(err.message).toContain('answered 404')
+    })
+
+    // On the settings row for a manager, who cannot act on an error kind, a
+    // host or a status. Those go to the log, and the place says whether
+    // anybody has to do anything.
+    it('keeps a plain sentence on the place and the detail for the log', () => {
+        const detail = failedWords('Asking Gemini', new TypeError('x?key=sekret-key'), endpoint())
+        const err = readError('Could not reach Gemini. It will try again at the next read.', detail)
+        expect(readProblem(err)).toBe('Could not reach Gemini. It will try again at the next read.')
+        expect(err.message).toBe(detail)
+    })
+
+    it('says a refused key needs somebody, and a busy Gemini will be tried again', () => {
+        for (const status of [401, 403]) {
+            expect(geminiWords(status)).toBe("Gemini did not accept the Hub's key. Whoever set up the Hub needs to check it.")
+        }
+        for (const status of [429, 503]) {
+            expect(geminiWords(status)).toBe('Gemini was busy. It will try again at the next read.')
+        }
+        expect(geminiWords(500)).toBe('Gemini had a problem. It will try again at the next read.')
+    })
+
+    it('keeps no error kind, host or status on the place', () => {
+        const source = readFileSync('supabase/functions/read-listings/index.ts', 'utf8')
+        expect(source).not.toMatch(/readError\(failedWords\(/)
+        expect(source).not.toMatch(/readError\(`Gemini said no/)
+    })
+
+    // A failed fetch names its address, and a status or a connection error for
+    // an address somebody typed is how you find out what answers inside a
+    // network. None of it is kept.
+    it('never keeps the error itself', () => {
+        const raw = new TypeError('error sending request for url (http://10.0.0.1/admin?key=sekret-key): connection refused')
+        for (const err of [raw, 'a string', null, undefined, {}]) {
+            const words = readProblem(err)
+            expect(words).toBeTruthy()
+            expect(words).not.toMatch(/sekret|10\.0\.0\.1|http|refused/)
+        }
+    })
+
+    it('says a refusal as a sentence that can be kept', () => {
+        const many = Array.from({ length: MOST_ROWS + 1 }, (_, i) => ({ name: `Gig ${i}`, date: '2026-11-19' }))
+        expect(eventsFrom(answer(many), WHEN).refused).toMatch(/^[A-Z].*\.$/)
+        expect(eventsFrom('not json', WHEN).refused).toMatch(/^[A-Z].*\.$/)
+    })
+})
+
 // The same pair nearby-events carries, for the same reason and with the same
 // history: comparing a token to one particular key does not work, because a
 // project carries more than one valid service credential.
@@ -464,5 +766,253 @@ describe('who is calling', () => {
     it('is not, for nothing at all', () => {
         expect(isServiceRole('')).toBe(false)
         expect(roleOf('not a token')).toBe(null)
+    })
+})
+
+// A person asking for a restaurant's pages to be read now. The row is read with
+// the service key, which sees a switched-off account as plainly as a working
+// one, so the function has to ask. Found by the audit of 28 September.
+const CALLERS = [
+    ['a manager there', { role: 'store_manager', restaurant_id: 'pc', is_active: true }, null],
+    ['the owner there', { role: 'owner', restaurant_id: 'pc', is_active: true }, null],
+    ['a super admin', { role: 'super_admin', restaurant_id: null, is_active: true }, null],
+    ['a manager somewhere else', { role: 'store_manager', restaurant_id: 'dl', is_active: true }, 403],
+    ['an employee there', { role: 'employee', restaurant_id: 'pc', is_active: true }, 403],
+    ['a manager switched off', { role: 'store_manager', restaurant_id: 'pc', is_active: false }, 403],
+    ['an owner switched off', { role: 'owner', restaurant_id: 'pc', is_active: false }, 403],
+    ['a super admin switched off', { role: 'super_admin', restaurant_id: null, is_active: false }, 403],
+    ['nobody', null, 401],
+]
+
+describe('who may ask for a read', () => {
+    it.each(CALLERS)('%s', (_, me, status) => {
+        expect(refusalFor(me, 'pc')?.status ?? null).toBe(status)
+    })
+
+    it('says a switched-off login is switched off, whatever its role', () => {
+        for (const role of ['super_admin', 'owner', 'store_manager']) {
+            expect(refusalFor({ role, restaurant_id: 'pc', is_active: false }, 'pc'))
+                .toEqual({ status: 403, error: 'Your account is deactivated' })
+        }
+    })
+
+    // A row that does not say is not taken as a yes.
+    it('refuses a row that does not say whether it is switched on', () => {
+        expect(refusalFor({ role: 'super_admin', restaurant_id: null }, 'pc')?.status).toBe(403)
+    })
+
+    // nearby-events carries the same rule, written out again because each
+    // function deploys on its own.
+    it.each(CALLERS)('nearby-events agrees about %s', (_, me) => {
+        expect(nearbyRefusalFor(me, 'pc')).toEqual(refusalFor(me, 'pc'))
+    })
+})
+
+// A page address is typed by a manager and fetched from inside Supabase's own
+// network, with the service key beside it. An address pointing inward was a way
+// to knock on doors that are not ours. Found by the audit of 28 September.
+describe('which addresses may be read', () => {
+    it.each([
+        'https://paviliontheatre.ie/events',
+        'https://www.dlrcoco.ie/dlr-events?page=2',
+        'http://rsgyc.ie/events/month/2026-09/?ical=1',
+        'https://cruisemapper.com/ports/dublin-port-555?month=2026-10',
+    ])('reads %s', address => {
+        expect(addressProblem(address)).toBe('')
+    })
+
+    it.each([
+        ['ftp://x.ie/events', 'another kind of address'],
+        ['file:///etc/passwd', 'a file on the server'],
+        ['javascript:alert(1)', 'a script'],
+        ['http://10.0.0.1:8080/', 'a private network'],
+        ['http://169.254.169.254/latest/meta-data/', 'the cloud metadata address'],
+        ['http://127.0.0.1/', 'the machine itself'],
+        ['http://2130706433/', 'the machine itself, spelt as one number'],
+        ['http://0x7f.1/', 'the machine itself, spelt in hex'],
+        ['http://[::1]/', 'the machine itself, in IPv6'],
+        ['http://[fd00:ec2::254]/', 'a private IPv6 address'],
+        ['http://8.8.8.8/', 'a public address with no name'],
+        ['http://localhost:54321/', 'localhost'],
+        ['http://LOCALHOST./', 'localhost, shouted, with a dot on the end'],
+        ['http://kong:8000/', 'a name with no dot, which only a private network answers'],
+        ['http://metadata.google.internal/', 'a name ending .internal'],
+        ['http://printer.local/', 'a name ending .local'],
+        ['https://user:secret@x.ie/events', 'an address with a login in it'],
+        ['not an address', 'something that is not an address'],
+        ['', 'nothing at all'],
+    ])('refuses %s, which is %s', address => {
+        expect(addressProblem(address)).not.toBe('')
+    })
+
+    it('copes with nothing at all', () => {
+        expect(addressProblem(null)).not.toBe('')
+    })
+})
+
+// What a name points at, when the platform can say.
+describe('which addresses are private', () => {
+    it.each([
+        '10.1.2.3', '172.16.0.1', '172.31.255.255', '192.168.1.1', '127.0.0.1',
+        '169.254.169.254', '100.64.0.1', '0.0.0.0', '224.0.0.1', '255.255.255.255',
+        '::1', '::', 'fd00:ec2::254', 'fe80::1', 'fe80::1%eth0', 'ff02::1',
+        '::ffff:10.0.0.1', '::ffff:7f00:1', '64:ff9b::a9fe:a9fe', '2002:a00:1::1',
+        'not an address',
+    ])('%s is private', address => {
+        expect(privateAddress(address)).toBe(true)
+    })
+
+    it.each([
+        '93.184.216.34', '8.8.8.8', '172.32.0.1', '100.128.0.1', '192.169.0.1',
+        '2a00:1450:4009:81f::200e', '2606:4700::6810:84e5', '::ffff:8.8.8.8',
+    ])('%s is public', address => {
+        expect(privateAddress(address)).toBe(false)
+    })
+})
+
+describe('reading a page', () => {
+    // A pretend fetch that answers from a list, one answer per request, and
+    // remembers what it was asked.
+    function answering(...answers) {
+        const asked = []
+        const get = (url, init) => {
+            asked.push({ url, init })
+            const next = answers.shift()
+            return Promise.resolve(typeof next === 'function' ? next(url, init) : next)
+        }
+        return { get, asked }
+    }
+
+    const moved = to => new Response(null, { status: 302, headers: { location: to } })
+
+    it('reads an ordinary page', async () => {
+        const { get, asked } = answering(new Response('Pentangle, Fri 19 Nov'))
+        expect(await readPage('https://paviliontheatre.ie/events', { get })).toBe('Pentangle, Fri 19 Nov')
+        expect(asked).toHaveLength(1)
+    })
+
+    it('never fetches an address it refuses', async () => {
+        const { get, asked } = answering(new Response('secret'))
+        await expect(readPage('http://169.254.169.254/latest/meta-data/', { get })).rejects.toThrow()
+        expect(asked).toHaveLength(0)
+    })
+
+    // Every request carries a time limit and follows no redirect on its own.
+    it('asks with a time limit and follows redirects itself', async () => {
+        const { get, asked } = answering(new Response('ok'))
+        await readPage('https://x.ie/events', { get })
+        expect(asked[0].init.signal).toBeInstanceOf(AbortSignal)
+        expect(asked[0].init.redirect).toBe('manual')
+    })
+
+    it('follows a redirect to another public page', async () => {
+        const { get, asked } = answering(moved('/events/'), new Response('the page'))
+        expect(await readPage('http://x.ie/events', { get })).toBe('the page')
+        expect(asked.map(a => a.url)).toEqual(['http://x.ie/events', 'http://x.ie/events/'])
+    })
+
+    // The reason redirects are followed by hand. A check that only looked at
+    // the first address would let a public page send the request anywhere.
+    it('refuses a redirect to a private address', async () => {
+        const { get, asked } = answering(moved('http://169.254.169.254/latest/meta-data/'), new Response('secret'))
+        await expect(readPage('https://x.ie/events', { get })).rejects.toThrow()
+        expect(asked).toHaveLength(1)
+    })
+
+    it('gives up on a page that keeps redirecting', async () => {
+        const { get, asked } = answering(...Array(10).fill(0).map(() => () => moved('https://x.ie/again')))
+        await expect(readPage('https://x.ie/events', { get })).rejects.toThrow(/redirect/)
+        expect(asked).toHaveLength(MOST_REDIRECTS + 1)
+    })
+
+    it('says so when a page refuses', async () => {
+        const { get } = answering(new Response('gone', { status: 404 }))
+        await expect(readPage('https://x.ie/events', { get })).rejects.toThrow(/404/)
+    })
+
+    // A name can point at a private address as easily as a number can be one.
+    it('refuses a name that points at a private address', async () => {
+        const { get, asked } = answering(new Response('secret'))
+        const resolve = () => ['10.0.0.5']
+        await expect(readPage('https://inside.example.ie/', { get, resolve })).rejects.toThrow(/private/)
+        expect(asked).toHaveLength(0)
+    })
+
+    it('reads a name that points at a public address, or that nothing could look up', async () => {
+        for (const points of [['93.184.216.34'], [], null]) {
+            const { get } = answering(new Response('ok'))
+            expect(await readPage('https://x.ie/events', { get, resolve: () => points })).toBe('ok')
+        }
+    })
+
+    // One slow page used to hold the whole Monday run until the platform
+    // stopped it, and every place after it went unread that week.
+    it('gives up on a page that never answers', async () => {
+        const get = () => new Promise(() => {})
+        await expect(readPage('https://x.ie/events', { get, wait: 50 })).rejects.toThrow(/longer than/)
+    })
+
+    it('gives up on a page that answers and then never finishes', async () => {
+        const dripping = new ReadableStream({
+            start(c) { c.enqueue(new TextEncoder().encode('a start')) },
+            pull() { return new Promise(() => {}) },
+        })
+        const { get } = answering(new Response(dripping))
+        await expect(readPage('https://x.ie/events', { get, wait: 50 })).rejects.toThrow(/longer than/)
+    })
+
+    it('says a page that ran out of time ran out of time', async () => {
+        const get = () => new Promise(() => {})
+        await expect(readPage('https://x.ie/events', { get, wait: 20 })).rejects.toMatchObject({ name: 'TimeoutError' })
+    })
+
+    // A page with no end would otherwise be read into memory until the
+    // function fell over.
+    it('stops reading at the cap and keeps what came before it', async () => {
+        let pulls = 0
+        const endless = new ReadableStream({
+            pull(c) { pulls += 1; c.enqueue(new TextEncoder().encode('x'.repeat(1000))) },
+        })
+        const { get } = answering(new Response(endless))
+        const text = await readPage('https://x.ie/events', { get, most: 5500 })
+        expect(text).toBe('x'.repeat(5500))
+        expect(pulls).toBeLessThan(10)
+    })
+})
+
+// The council is read five pages deep. A site that has stopped answering costs
+// the whole wait on every page, which was over a minute of a run the platform
+// stops at two and a half.
+describe('every page of one place', () => {
+    const PAGES = ['https://x.ie/e?page=1', 'https://x.ie/e?page=2', 'https://x.ie/e?page=3']
+
+    it('reads each page in turn, past one that refuses', async () => {
+        const read = async address => {
+            if (address.endsWith('2')) throw new Error(`${address} answered 404`)
+            return `text of ${address}`
+        }
+        const { texts, missed } = await readPages(PAGES, read)
+        expect(texts).toEqual(['text of https://x.ie/e?page=1', 'text of https://x.ie/e?page=3'])
+        expect(missed).toEqual(['https://x.ie/e?page=2: https://x.ie/e?page=2 answered 404'])
+    })
+
+    it('stops at the first page that runs out of time, and says which were not tried', async () => {
+        const asked = []
+        const get = url => { asked.push(url); return new Promise(() => {}) }
+        const { texts, missed } = await readPages(PAGES, address => readPage(address, { get, wait: 20 }))
+        expect(asked).toEqual([PAGES[0]])
+        expect(texts).toEqual([])
+        expect(missed).toHaveLength(3)
+        expect(missed[2]).toContain('not tried')
+    })
+
+    it('keeps what it read before the site stopped answering', async () => {
+        const read = async address => {
+            if (address.endsWith('2')) throw Object.assign(new Error('took too long'), { name: 'TimeoutError' })
+            return 'page one'
+        }
+        const { texts, missed } = await readPages(PAGES, read)
+        expect(texts).toEqual(['page one'])
+        expect(missed).toHaveLength(2)
     })
 })

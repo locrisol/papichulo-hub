@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import Modal from '@/components/ui/Modal'
 import ModalSection from '@/components/ui/ModalSection'
-import { modalFooter, secondaryButton, checkbox, labelClass, primaryButton } from '@/lib/controlStyles'
+import {
+    modalFooter, secondaryButton, checkbox, labelClass, fieldClass, rowButton, primaryButton,
+} from '@/lib/controlStyles'
 import QuantityInUnit from '@/components/ui/QuantityInUnit'
 import { offerable } from '@/lib/menuChoices'
 import { canBeMenuComponent } from '@/lib/products'
@@ -34,7 +36,14 @@ export default function AddOptions({
     const [group, setGroup] = useState(existingGroups?.[0] || '')
     const [categoryId, setCategoryId] = useState('')
     const [search, setSearch] = useState('')
-    const [listSeparately, setListSeparately] = useState(false)
+    // Whether the options get rows of their own on the allergen sheet.
+    //
+    // An option is kept off the dish's own row, so its allergens reach the
+    // sheet only through a row of its own. Something out of All products is
+    // not sold on its own and has no row anywhere else, so for those the box
+    // starts ticked; a menu category's items already have rows, so for those
+    // it starts off. Once somebody changes it, it stays the way they set it.
+    const [listChoice, setListChoice] = useState(null)
     const [everyQuantity, setEveryQuantity] = useState('')
     // Ticked, and how much of each. Kept apart from the list itself so ticking
     // something, filtering it away and filtering it back does not lose it.
@@ -48,6 +57,7 @@ export default function AddOptions({
     // product, and a recipe made in house is only ever a product too. Without
     // this there was no way to offer either of them at all.
     const fromProducts = categoryId === PRODUCTS
+    const listSeparately = listChoice ?? fromProducts
 
     const inCategory = fromProducts || !categoryId
         ? []
@@ -152,7 +162,7 @@ export default function AddOptions({
             <ModalSection title="Choice settings">
                 <div className="flex flex-wrap gap-4">
                     <div className="flex-1 min-w-[12rem]">
-                        <label htmlFor="several-group" className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                        <label htmlFor="several-group" className={labelClass}>
                             What the choice is called
                         </label>
                         <input
@@ -162,7 +172,7 @@ export default function AddOptions({
                             value={group}
                             onChange={e => setGroup(e.target.value)}
                             placeholder="e.g. Free drink"
-                            className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+                            className={fieldClass}
                         />
                         <datalist id="several-groups">
                             {(existingGroups || []).map(g => <option key={g} value={g} />)}
@@ -171,7 +181,7 @@ export default function AddOptions({
 
                 </div>
 
-                <p className="text-xs text-gray-500 mt-2">
+                <p className="text-xs text-muted mt-2">
                     The customer gets one of these, so only the most expensive is counted in
                     the cost. Everything added here becomes an option, so the choice needs a
                     name.
@@ -181,13 +191,15 @@ export default function AddOptions({
                     <input
                         type="checkbox"
                         checked={listSeparately}
-                        onChange={e => setListSeparately(e.target.checked)}
+                        onChange={e => setListChoice(e.target.checked)}
                         className={`${checkbox} mt-0.5`}
                     />
                     <span className="text-sm text-gray-700">
                         List them separately on the allergen sheet
                         <span className="block text-xs text-muted">
-                            Leave this off if they already appear in their own category.
+                            Leave this off only if they already appear in their own category.
+                            Otherwise, if they have any allergens, the allergen sheet asks customers
+                            to speak to a member of staff about this dish.
                         </span>
                     </span>
                 </label>
@@ -199,9 +211,9 @@ export default function AddOptions({
                         value={categoryId}
                         onChange={e => setCategoryId(e.target.value)}
                         aria-label="Fill the list from"
-                        className="flex-1 min-w-[10rem] border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+                        className={`${fieldClass} flex-1 min-w-[10rem]`}
                     >
-                        <option value="">Choose a category...</option>
+                        <option value="">Pick a category</option>
                         <optgroup label="Menu categories">
                             {menuCategories.map(c => (
                                 <option key={c.id} value={c.id}>{c.name}</option>
@@ -218,7 +230,7 @@ export default function AddOptions({
                         onChange={e => setSearch(e.target.value)}
                         placeholder="Search"
                         aria-label="Search"
-                        className="flex-1 min-w-[9rem] border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+                        className={`${fieldClass} flex-1 min-w-[9rem]`}
                     />
                 </div>
 
@@ -252,7 +264,7 @@ export default function AddOptions({
                                 />
                             </div>
                         ) : (
-                            <p className="text-xs text-gray-500 max-w-xs">
+                            <p className="text-xs text-muted max-w-xs">
                                 These are measured in different units, so set the quantity on
                                 each one.
                             </p>
@@ -288,7 +300,7 @@ export default function AddOptions({
                                         type="button"
                                         onClick={() => toggle(product.id)}
                                         aria-label={`Remove ${product.name}`}
-                                        className="px-2 py-1 rounded-lg border border-border bg-white text-xs text-gray-600 hover:border-gray-400 transition-colors"
+                                        className={rowButton('plain')}
                                     >
                                         Remove
                                     </button>
@@ -300,7 +312,7 @@ export default function AddOptions({
 
                 {!categoryId ? (
                     <p className="text-sm text-muted py-6 text-center">
-                        Choose a category to see what is in it, or All products for something
+                        Pick a category to see what is in it, or All products for something
                         that is not sold on its own.
                     </p>
                 ) : rest.length === 0 ? (
@@ -362,15 +374,15 @@ export default function AddOptions({
                     list. Offering eight of eleven quietly is how a group ends
                     up missing three options with no reason to go looking. */}
                 {fromProducts && shown.length > 0 && (
-                    <p className="text-xs text-gray-500 mt-3">
-                        Every product, so search is the quick way through it. A recipe made
-                        in house is here the same as anything bought in.
+                    <p className="text-xs text-muted mt-3">
+                        This is every product, including recipes made in house. Use search
+                        to find one.
                     </p>
                 )}
                 {packagingLeftOut > 0 && (
-                    <p className="text-xs text-gray-500 mt-3">
-                        Packaging is not included. A salsa sold on its own comes in a dip pot,
-                        but going into a dish it does not, so only the salsa is added.
+                    <p className="text-xs text-muted mt-3">
+                        Packaging is left out. Only the food is added, not the container it
+                        is sold in.
                     </p>
                 )}
                 {skipped > 0 && (

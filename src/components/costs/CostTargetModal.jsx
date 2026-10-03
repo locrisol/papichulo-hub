@@ -8,7 +8,10 @@ import { useConfirm } from '@/context/confirm'
 import { numberField } from '@/lib/numberInput'
 import Modal from '@/components/ui/Modal'
 import { ModalSectionBar } from '@/components/ui/ModalSection'
-import { modalFooter, removeButton, checkbox, labelClass, fieldClass } from '@/lib/controlStyles'
+import {
+    modalFooter, removeButton, checkbox, labelClass, fieldClass, hintClass, badge,
+    primaryButton, secondaryButton,
+} from '@/lib/controlStyles'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // Setting a cost target, and seeing what has been set before.
@@ -62,7 +65,7 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
 
         const pct = parseFloat(value)
         if (isNaN(pct) || pct <= 0 || pct > 100) {
-            setError('The target has to be a percentage between 0 and 100')
+            setError('Enter a target above 0 and up to 100')
             return
         }
 
@@ -72,7 +75,7 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
         const effectiveUntil = isTemporary && until ? weekStartOf(until) : null
 
         if (isTemporary) {
-            if (!until) { setError('A target that only runs for a while needs an end week'); return }
+            if (!until) { setError('Pick an end week for a temporary target'); return }
             if (effectiveUntil < effectiveFrom) { setError('The end week cannot be before the start week'); return }
         }
 
@@ -120,11 +123,10 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
 
     const timeline = describeTargets(history, targetType, week)
 
-
-    const badge = {
+    const status = {
         current: { text: 'In force this week', cls: 'bg-green-100 text-green-800' },
         upcoming: { text: 'Starts later', cls: 'bg-blue-50 text-blue-700' },
-        finished: { text: 'Finished', cls: 'bg-gray-100 text-gray-500' },
+        finished: { text: 'Finished', cls: 'bg-gray-100 text-muted' },
         never: { text: 'Never applied', cls: 'bg-amber-50 text-amber-700' },
     }
 
@@ -158,9 +160,9 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
                                 onChange={e => setIsTemporary(e.target.checked)}
                                 className={checkbox} />
                             <div>
-                                <span className="text-sm font-medium text-gray-900">Only for a while</span>
-                                <p className="text-xs text-gray-500 mt-0.5">
-                                    When it ends, whatever was running before comes back on its own.
+                                <span className="text-sm font-medium text-gray-900">Temporary</span>
+                                <p className={hintClass}>
+                                    When it ends, the previous target applies again.
                                 </p>
                             </div>
                         </label>
@@ -169,20 +171,19 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
                             <div>
                                 <label className={labelClass}>From the week of</label>
                                 <input type="date" value={from} onChange={e => setFrom(e.target.value)} className={fieldClass} />
-                                <p className="text-xs text-muted mt-1">{shortDate(weekStartOf(from))}</p>
+                                <p className={hintClass}>{shortDate(weekStartOf(from))}</p>
                             </div>
                             {isTemporary && (
                                 <div>
                                     <label className={labelClass}>Until the week of</label>
                                     <input type="date" value={until} onChange={e => setUntil(e.target.value)} className={fieldClass} />
-                                    {until && <p className="text-xs text-muted mt-1">{shortDate(weekStartOf(until))}</p>}
+                                    {until && <p className={hintClass}>{shortDate(weekStartOf(until))}</p>}
                                 </div>
                             )}
                         </div>
 
                         <div className="flex justify-end mb-6">
-                            <button type="submit" disabled={saving}
-                                className="px-5 py-2.5 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-50">
+                            <button type="submit" disabled={saving} className={primaryButton('lg')}>
                                 {saving ? 'Saving...' : 'Set target'}
                             </button>
                         </div>
@@ -205,8 +206,8 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
                                             {t.value}%
                                         </span>
                                         <div className="flex items-center gap-2">
-                                            <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${badge[t.status].cls}`}>
-                                                {badge[t.status].text}
+                                            <span className={`${badge} ${status[t.status].cls}`}>
+                                                {status[t.status].text}
                                             </span>
                                             <button
                                                 type="button"
@@ -218,7 +219,7 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
                                             </button>
                                         </div>
                                     </div>
-                                    <p className="text-xs text-gray-500 mt-0.5">{describeDates(t)}</p>
+                                    <p className={hintClass}>{describeDates(t)}</p>
                                 </div>
                             ))}
                         </div>
@@ -226,8 +227,7 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
                 </div>
 
                 <div className={modalFooter}>
-                    <button onClick={onClose}
-                        className="px-4 py-2 border border-border text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50">
+                    <button type="button" onClick={onClose} className={secondaryButton}>
                         Done
                     </button>
                 </div>

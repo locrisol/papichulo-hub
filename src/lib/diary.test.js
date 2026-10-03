@@ -1,12 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import {
-    KINDS, kindLabel, kindChip, kindDot, kindRing, kindGoogleColour,
-    scopeLabel, scopeFrom,
-    lastDay, coversDate, isAllDay, runsMoreThanADay, timeLabel,
-    sortEntries, onDate, datesBetween, entriesByDate, bandsForWeek,
-    showsOnRoster, entryProblem,
-    LAYERS, layerOf, calendarItems, itemsByDate,
-    cleanLabels, labelsUsed, labelsOf, atRestaurant,
+    KINDS, kindLabel, kindChip, kindDot, kindRing, kindGoogleColour, scopeLabel, scopeFrom, lastDay,
+    coversDate, isAllDay, runsMoreThanADay, timeLabel, sortEntries, onDate, datesBetween,
+    bandsForWeek, showsOnRoster, entryProblem, LAYERS, layerOf, calendarItems, itemsByDate,
+    cleanLabels, labelsUsed, labelsOf, atRestaurant, canChangeEntry, canWriteAllSites,
 } from './diary'
 
 const RESTAURANTS = [
@@ -72,8 +69,8 @@ describe('who it is for', () => {
         expect(scopeLabel(meeting, RESTAURANTS)).toBe('Point Campus, Dun Laoghaire')
     })
 
-    it('says All sites for the group', () => {
-        expect(scopeLabel({ scope: 'all_sites' }, RESTAURANTS)).toBe('All sites')
+    it('says All restaurants for the group', () => {
+        expect(scopeLabel({ scope: 'all_sites' }, RESTAURANTS)).toBe('All restaurants')
     })
 
     it('says Just me for a private one', () => {
@@ -208,14 +205,6 @@ describe('spreading one entry over the days it covers', () => {
         expect(datesBetween(null, '2026-10-14')).toEqual([])
     })
 
-    it('puts a promotion under every day it runs', () => {
-        const map = entriesByDate([promotion, catering])
-        expect(Object.keys(map).sort()).toEqual([
-            '2026-10-12', '2026-10-13', '2026-10-14', '2026-10-15', '2026-10-16',
-        ])
-        expect(map['2026-10-16'].map(e => e.id)).toEqual(['p1', 'c1'])
-        expect(map['2026-10-13'].map(e => e.id)).toEqual(['p1'])
-    })
 })
 
 describe('a band across a week', () => {
@@ -322,11 +311,11 @@ describe('what is wrong with it before it is saved', () => {
     })
 
     it('wants a name', () => {
-        expect(entryProblem({ ...good, title: '   ' })).toBe('It needs a name.')
+        expect(entryProblem({ ...good, title: '   ' })).toBe('Enter a name.')
     })
 
     it('wants a date', () => {
-        expect(entryProblem({ ...good, starts_on: '' })).toBe('It needs a date.')
+        expect(entryProblem({ ...good, starts_on: '' })).toBe('Pick a date.')
     })
 
     it('wants a kind it knows', () => {
@@ -355,7 +344,7 @@ describe('what is wrong with it before it is saved', () => {
     })
 
     it('wants to know which restaurant, when that is the answer given', () => {
-        expect(entryProblem({ ...good, restaurantIds: [] })).toContain('which restaurant')
+        expect(entryProblem({ ...good, restaurantIds: [] })).toBe('Pick a restaurant.')
     })
 
     // All sites and Just me do not need one, which is the whole point of them
@@ -366,7 +355,7 @@ describe('what is wrong with it before it is saved', () => {
     })
 
     it('does not throw on nothing at all', () => {
-        expect(entryProblem(undefined)).toBe('It needs a name.')
+        expect(entryProblem(undefined)).toBe('Enter a name.')
     })
 })
 
@@ -424,6 +413,16 @@ describe('one screen out of three sources', () => {
             nearby: [{ kind: 'nearby', checked: false, event: { id: 'f1', name: 'Quiz', event_date: '2026-10-16' } }],
         })
         expect(found[0].checked).toBe(false)
+    })
+
+    // A night called off stays on the calendar, struck through, so whoever
+    // opens it can see it is off rather than wonder where it went.
+    it('carries a night that is off', () => {
+        const off = calendarItems({
+            nearby: [{ kind: 'arena', off: 'cancelled', event: { id: 'c1', name: 'Westlife', event_date: '2026-10-16' } }],
+        })
+        expect(off[0].off).toBe('cancelled')
+        expect(items().find(i => i.source === 'nearby').off).toBe('')
     })
 
     // The whole reason this exists. A screen built to answer what is coming up
@@ -635,5 +634,57 @@ describe('whether an entry belongs to the restaurant you are looking at', () => 
         expect(atRestaurant({ ...catering, restaurant_ids: [] }, 'pc')).toBe(false)
         expect(atRestaurant({ ...catering, restaurant_ids: null }, 'pc')).toBe(false)
         expect(atRestaurant(null, 'pc')).toBe(false)
+    })
+})
+
+// The same lines diary_entries_write draws in the database, so the screen only
+// offers what will be let through. Found by the audit: a store manager was
+// offered All sites and Edit on an owner's group entry, and both were refused.
+describe('who may change an entry', () => {
+    const SUPER = { id: 'u0', role: 'super_admin', restaurant_id: null }
+    const OWNER = { id: 'u1', role: 'owner', restaurant_id: 'pc' }
+    const MANAGER = { id: 'u2', role: 'store_manager', restaurant_id: 'pc' }
+    const EMPLOYEE = { id: 'u3', role: 'employee', restaurant_id: 'pc' }
+
+    const group = { scope: 'all_sites', restaurant_ids: [], created_by: 'u0' }
+    const here = { scope: 'sites', restaurant_ids: ['pc'], created_by: 'u0' }
+    const both = { scope: 'sites', restaurant_ids: ['pc', 'dl'], created_by: 'u0' }
+    const mine = { scope: 'private', restaurant_ids: [], created_by: 'u2' }
+
+    it('lets only an owner or a super admin speak for the whole group', () => {
+        expect(canWriteAllSites(OWNER)).toBe(true)
+        expect(canWriteAllSites(SUPER)).toBe(true)
+        expect(canWriteAllSites(MANAGER)).toBe(false)
+        expect(canWriteAllSites(null)).toBe(false)
+        expect(canChangeEntry(MANAGER, group)).toBe(false)
+        expect(canChangeEntry(OWNER, group)).toBe(true)
+    })
+
+    it('lets a manager change what is only at their own restaurant', () => {
+        expect(canChangeEntry(MANAGER, here)).toBe(true)
+        expect(canChangeEntry(OWNER, here)).toBe(true)
+        expect(canChangeEntry({ ...MANAGER, restaurant_id: 'dl' }, here)).toBe(false)
+    })
+
+    // A super admin's entry for both restaurants shows at each, and neither
+    // restaurant's own people can change it.
+    it('keeps an entry for two restaurants to a super admin', () => {
+        expect(canChangeEntry(MANAGER, both)).toBe(false)
+        expect(canChangeEntry(OWNER, both)).toBe(false)
+        expect(canChangeEntry(SUPER, both)).toBe(true)
+    })
+
+    // Private means private, from a super admin too.
+    it('keeps a private one to whoever wrote it', () => {
+        expect(canChangeEntry(MANAGER, mine)).toBe(true)
+        expect(canChangeEntry(OWNER, mine)).toBe(false)
+        expect(canChangeEntry(SUPER, mine)).toBe(false)
+    })
+
+    it('gives an employee nothing, and copes with nothing at all', () => {
+        expect(canChangeEntry(EMPLOYEE, here)).toBe(false)
+        expect(canChangeEntry(EMPLOYEE, { ...mine, created_by: 'u3' })).toBe(false)
+        expect(canChangeEntry(null, here)).toBe(false)
+        expect(canChangeEntry(MANAGER, null)).toBe(false)
     })
 })

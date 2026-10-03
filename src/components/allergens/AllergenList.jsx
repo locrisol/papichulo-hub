@@ -34,6 +34,7 @@ export default function AllergenList({ groups, expandedId, onToggle }) {
                         <button
                           type="button"
                           onClick={() => onToggle(isExpanded ? null : row.key)}
+                          aria-expanded={isExpanded}
                           className="w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors"
                         >
                           <div className="flex items-start justify-between gap-3">
@@ -56,6 +57,11 @@ export default function AllergenList({ groups, expandedId, onToggle }) {
                                         className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${s.bg} ${s.text}`}
                                       >
                                         <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`}></span>
+                                        {/* The ~ is for the eye, and the
+                                            words are for a screen reader,
+                                            which would only say tilde. */}
+                                        {s.mark && <span aria-hidden="true">{s.mark}</span>}
+                                        <span className="sr-only">{s.label}: </span>
                                         {ALLERGEN_LABELS[key]}
                                       </span>
                                     )
@@ -63,7 +69,7 @@ export default function AllergenList({ groups, expandedId, onToggle }) {
                                 )}
                               </div>
                             </div>
-                            <span className="text-muted text-lg leading-none mt-1">
+                            <span aria-hidden="true" className="text-muted text-lg leading-none mt-1">
                               {isExpanded ? '−' : '+'}
                             </span>
                           </div>
@@ -71,41 +77,44 @@ export default function AllergenList({ groups, expandedId, onToggle }) {
 
                         {isExpanded && (
                           <div className="px-4 pb-4 bg-gray-50">
-                            {/* The breakdown below is worked out from the
-                                ingredients, so if one of them could not be read
-                                it is incomplete and saying nothing about that
-                                would be worse than saying nothing at all. */}
-                            {!complete && (
+                            {/* The breakdown is worked out from the
+                                ingredients, so a row that could not be worked
+                                out whole gets the warning and no breakdown.
+                                Fourteen lines of Not present under it would
+                                be the same claim the warning takes back, and
+                                a dish with nothing in it yet is all none. */}
+                            {!complete ? (
                               <div className="bg-amber-100 border border-amber-300 text-amber-900 text-xs rounded-lg p-3 mt-2">
                                 We cannot confirm the full allergen list for this dish right now. Please ask a member of staff before ordering it.
                               </div>
+                            ) : (
+                              <div className="grid grid-cols-2 gap-2 mt-2">
+                                {ALLERGEN_KEYS.map(key => {
+                                  const state = itemAllergens[key]
+                                  const s = allergenLook(state)
+                                  const colour = s ? `${s.bg} ${s.text} border border-current/20` : 'bg-white text-muted border border-gray-200'
+                                  const label = s ? s.label : 'Not present'
+                                  return (
+                                    // Stacked on a phone, side by side from the
+                                    // small breakpoint up. Two of these fit across
+                                    // a phone, and at that width a long name like
+                                    // Crustaceans and a long state like Not
+                                    // present were pushed into each other with
+                                    // nothing between them. This is an allergen
+                                    // list, so a customer being unsure which word
+                                    // goes with which allergen is the one thing it
+                                    // must never do.
+                                    <div
+                                      key={key}
+                                      className={`flex flex-col items-start gap-0.5 sm:flex-row sm:items-center sm:justify-between sm:gap-2 text-xs px-3 py-2 rounded-lg ${colour}`}
+                                    >
+                                      <span className="font-medium">{ALLERGEN_LABELS[key]}</span>
+                                      <span>{label}</span>
+                                    </div>
+                                  )
+                                })}
+                              </div>
                             )}
-                            <div className="grid grid-cols-2 gap-2 mt-2">
-                              {ALLERGEN_KEYS.map(key => {
-                                const state = itemAllergens[key]
-                                const s = allergenLook(state)
-                                const colour = s ? `${s.bg} ${s.text} border border-current/20` : 'bg-white text-muted border border-gray-200'
-                                const label = s ? s.label : 'Not present'
-                                return (
-                                  // Stacked on a phone, side by side from the
-                                  // small breakpoint up. Two of these fit across
-                                  // a phone, and at that width a long name like
-                                  // Crustaceans and a long state like Not
-                                  // present were pushed into each other with
-                                  // nothing between them. This is an allergen
-                                  // list, so a customer being unsure which word
-                                  // goes with which allergen is the one thing it
-                                  // must never do.
-                                  <div
-                                    key={key}
-                                    className={`flex flex-col items-start gap-0.5 sm:flex-row sm:items-center sm:justify-between sm:gap-2 text-xs px-3 py-2 rounded-lg ${colour}`}
-                                  >
-                                    <span className="font-medium">{ALLERGEN_LABELS[key]}</span>
-                                    <span>{label}</span>
-                                  </div>
-                                )
-                              })}
-                            </div>
                           </div>
                         )}
                       </div>

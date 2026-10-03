@@ -6,14 +6,19 @@ import { useRestaurant } from '@/context/restaurant'
 import { fmtMoney, num } from '@/lib/format'
 import { shortDate, addDays, weekNumber, weekRange } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
-import { tableCard, tableHeadRow, tableHeadCell, badge, secondaryButton } from '@/lib/controlStyles'
+import {
+    tableCard, tableHeadRow, tableHeadCell, badge, secondaryButton, primaryButton, cardEdge, pageTitle,
+    pageSubtitle,
+} from '@/lib/controlStyles'
 import {
     reportableWeeks,
+    WEEKS_LISTED,
     weekReadiness,
     blockedBy,
     carriedItems,
     sectionsFor,
     DEFAULT_OVERHEADS,
+    mailMissing,
 } from '@/lib/weeklyReport'
 import { personWeek, unanswered } from '@/lib/timesheet'
 import { can, RESTAURANT_CONFIG } from '@/lib/access'
@@ -41,7 +46,7 @@ import ErrorBanner from '@/components/ui/ErrorBanner'
 // uses for anything a store runs itself. That is enforced in the database, not
 // here. Hiding the button is only about not offering a screen that will refuse.
 
-const WEEKS_SHOWN = 10
+const WEEKS_SHOWN = WEEKS_LISTED
 
 
 // The days nobody has entered, named rather than counted. "Thursday and
@@ -70,15 +75,22 @@ function unansweredWords(waiting) {
     // carries a wage bill, and a figure the accountant's own copy disagrees
     // with is the one thing nobody reading it can see.
     const changed = waiting.filter(w => w.changed?.length)
+    // A clock in with no clock out. It comes to no hours, so the report's wage
+    // bill would be short by that shift with nothing on the page to say so.
+    const open = waiting.filter(w => w.open?.length)
 
     const said = []
     if (missing.length) {
         said.push(`${who(missing)} ${missing.length === 1 ? 'has a rostered shift' : 'have rostered shifts'} `
-            + 'with nothing said on the timesheet.')
+            + 'with no times, time off or comment on the timesheet.')
     }
     if (changed.length) {
         said.push(`${who(changed)} ${changed.length === 1 ? 'has hours' : 'have hours'} `
-            + "the till's report does not have, with nothing said about them.")
+            + "the till's report does not have, and no comment to explain them.")
+    }
+    if (open.length) {
+        said.push(`${who(open)} ${open.length === 1 ? 'has' : 'have'} a clock in with no clock out `
+            + 'on the timesheet.')
     }
     return said.join(' ')
 }
@@ -123,7 +135,7 @@ function WeekAction({ week, blocked, canWrite, starting, onOpen, onStart, onSale
     if (week.report) {
         return (
             <button onClick={onOpen} className={`${width}${secondaryButton}`}>
-                {week.report.status === 'draft' ? 'Carry on' : 'Read'}
+                {week.report.status === 'draft' ? 'Continue' : 'Open'}
             </button>
         )
     }
@@ -135,7 +147,7 @@ function WeekAction({ week, blocked, canWrite, starting, onOpen, onStart, onSale
                 onClick={toSales ? onSales : onTimesheet}
                 className={`${width}${secondaryButton}`}
             >
-                {toSales ? 'Open weekly sales' : 'Open the timesheet'}
+                {toSales ? 'Open Weekly sales' : 'Open the timesheet'}
             </button>
         )
     }
@@ -146,28 +158,54 @@ function WeekAction({ week, blocked, canWrite, starting, onOpen, onStart, onSale
         <button
             onClick={onStart}
             disabled={starting}
-            className={`${wide ? 'w-full ' : ''}px-4 py-2 bg-accent text-white rounded-lg text-sm font-semibold shadow-sm hover:bg-accent-ink transition-colors disabled:opacity-50`}
+            className={`${wide ? 'w-full ' : ''}${primaryButton()}`}
         >
-            {starting ? 'Starting' : 'Start'}
+            {starting ? 'Starting...' : 'Start'}
         </button>
     )
 }
 
-function StateBadge({ report }) {
+// A published report an owner has not opened in the Hub, or not since it was
+// corrected: what their Reports badge counts (my_badges), on the row it
+// counts, by the same rule. Only once they have opened one in the Hub at all,
+// only ones published after that, and only the last four weeks, so an owner
+// who reads the mail is never shown a list of New.
+function unopened(report, reads) {
+    if (!reads?.length || report?.status !== 'published' || !report.published_at) return false
+    const first = reads.map(r => r.read_at).sort()[0]
+    const published = new Date(report.published_at)
+    if (published <= new Date(first) || Date.now() - published > 28 * 86400000) return false
+    const read = reads.find(r => r.report_id === report.id)
+    return !(read && read.send_count >= report.send_count)
+}
+
+function NewPill() {
+    return <span className={`${badge} bg-amber-100 text-amber-800 mr-1`}>New</span>
+}
+
+function StateBadge({ report, isNew = false }) {
     if (!report) {
         return <span className={`${badge} bg-gray-100 text-gray-600`}>Not started</span>
     }
     if (report.status === 'draft') {
         return (
             <span className={`${badge} bg-accent-light text-accent-ink`}>
-                {report.send_count > 0 ? 'Re-opened' : 'Draft'}
+                {report.send_count > 0 ? 'Reopened' : 'Draft'}
             </span>
         )
     }
+    // Published, and the mail never went. It said Sent like any other, so the
+    // one place that knew was the page it was published from, until a reload.
+    if (mailMissing(report)) {
+        return <span className={`${badge} bg-accent-light text-accent-ink`}>Not sent</span>
+    }
     return (
-        <span className={`${badge} bg-green-50 text-green-700`}>
-            {report.send_count > 1 ? `Sent ${report.send_count} times` : 'Sent'}
-        </span>
+        <>
+            {isNew && <NewPill />}
+            <span className={`${badge} bg-green-50 text-green-700`}>
+                {report.send_count > 1 ? `Sent ${report.send_count} times` : 'Sent'}
+            </span>
+        </>
     )
 }
 
@@ -184,6 +222,22 @@ export default function ReportsListPage() {
     const [starting, setStarting] = useState(null)
 
     const restaurantId = activeRestaurant?.id
+
+    // Which reports an owner has opened, and which send, for the New pill.
+    // Only owners: theirs is the badge that counts them. Nothing is said if
+    // it cannot be read; the rows simply carry no pill.
+    const owner = user?.role === 'owner'
+    const [seen, setSeen] = useState(null)
+    useEffect(() => {
+        if (!owner) return undefined
+        let alive = true
+        supabase.from('report_reads').select('report_id, send_count, read_at')
+            .then(({ data, error }) => {
+                if (alive && !error) setSeen(data || [])
+            })
+        return () => { alive = false }
+    }, [owner, restaurantId])
+    const isNew = report => unopened(report, seen)
 
     useEffect(() => {
         if (!restaurantId) return
@@ -207,7 +261,7 @@ export default function ReportsListPage() {
         const [reports, sales, tenders, team, entries, absences, shifts, labour, weekRows] = await Promise.all([
             supabase
                 .from('weekly_reports')
-                .select('id, week_start, status, published_at, send_count')
+                .select('id, week_start, status, published_at, send_count, sent_to')
                 .eq('restaurant_id', restaurantId)
                 .gte('week_start', from),
             supabase
@@ -232,7 +286,9 @@ export default function ReportsListPage() {
                 // by hand is the one thing on a week that has to say why, and
                 // without these two columns that rule was never checked on this
                 // page at all: it read every row as typed and unremarkable.
-                .select('employee_id, work_date, starts_at, ends_at, kind, source, note')
+                // The id is what tells a saved clock in from a draft, so
+                // without it a clock in with no clock out never held the week.
+                .select('id, employee_id, work_date, starts_at, ends_at, kind, source, note')
                 .eq('restaurant_id', restaurantId)
                 .gte('work_date', from).lte('work_date', to),
             supabase
@@ -309,8 +365,13 @@ export default function ReportsListPage() {
     }
 
     // The week before this one, with its sections and everything on them.
+    //
+    // The error comes back with it. A failed read used to look the same as no
+    // week before at all, so the week started as the restaurant's first: no
+    // overheads, no open actions, and the week after carrying on from this
+    // one, so they were gone for good.
     async function previousReport(weekStart) {
-        const { data } = await supabase
+        const { data, error: readError } = await supabase
             .from('weekly_reports')
             .select('id, week_start, report_sections(id, key, title, sort_order, report_items(*))')
             .eq('restaurant_id', restaurantId)
@@ -319,10 +380,13 @@ export default function ReportsListPage() {
             .limit(1)
             .maybeSingle()
 
-        if (!data) return null
+        if (readError) return { error: readError }
+        if (!data) return { data: null }
         return {
-            ...data,
-            sections: (data.report_sections || []).slice().sort((a, b) => a.sort_order - b.sort_order),
+            data: {
+                ...data,
+                sections: (data.report_sections || []).slice().sort((a, b) => a.sort_order - b.sort_order),
+            },
         }
     }
 
@@ -333,7 +397,9 @@ export default function ReportsListPage() {
         setStarting(weekStart)
         setError('')
 
-        const previous = await previousReport(weekStart)
+        // Nothing has been written yet, so giving up here leaves nothing behind.
+        const { data: previous, error: pErr } = await previousReport(weekStart)
+        if (pErr) { setError(friendlyError(pErr)); setStarting(null); return }
 
         const { data: report, error: rErr } = await supabase
             .from('weekly_reports')
@@ -379,13 +445,13 @@ export default function ReportsListPage() {
         <div className="space-y-4">
             <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div>
-                    <h1 className="font-serif text-2xl font-bold text-sidebar">Reports</h1>
-                    <p className="text-sm text-muted mt-1">
+                    <h2 className={pageTitle}>Reports</h2>
+                    <p className={pageSubtitle}>
                         One report a week, written from the figures already in the Hub.
                     </p>
                 </div>
                 <button onClick={load} className={secondaryButton} disabled={loading}>
-                    {loading ? 'Loading' : 'Refresh'}
+                    {loading ? 'Loading...' : 'Refresh'}
                 </button>
             </div>
 
@@ -409,9 +475,7 @@ export default function ReportsListPage() {
                     return (
                         <div
                             key={week.weekStart}
-                            className={`rounded-xl border p-4 ${blocked
-                                ? 'bg-accent-light/50 border-accent/30'
-                                : 'bg-white border-border'}`}
+                            className={`${cardEdge} p-4 ${blocked ? 'bg-accent-light/50' : 'bg-white'}`}
                         >
                             <div className="flex items-start justify-between gap-2">
                                 <div className="min-w-0">
@@ -425,7 +489,7 @@ export default function ReportsListPage() {
                                 <div className="flex-shrink-0">
                                     {blocked
                                         ? <BlockedBadge readiness={week.readiness} />
-                                        : <StateBadge report={week.report} />}
+                                        : <StateBadge report={week.report} isNew={isNew(week.report)} />}
                                 </div>
                             </div>
 
@@ -500,7 +564,7 @@ export default function ReportsListPage() {
                                         <td className="px-5 py-3">
                                             {blocked
                                                 ? <BlockedBadge readiness={week.readiness} />
-                                                : <StateBadge report={week.report} />}
+                                                : <StateBadge report={week.report} isNew={isNew(week.report)} />}
                                         </td>
                                         <td className="px-5 py-3 text-right whitespace-nowrap">
                                             <WeekAction
@@ -544,8 +608,8 @@ export default function ReportsListPage() {
 
             <p className="text-sm text-muted px-1">
                 {canWrite
-                    ? 'A week can be started once every one of its days has been entered or marked closed, and every rostered shift has something said on the timesheet. A day that does not add up against the till is noted, not enforced.'
-                    : 'Reports are written by the store manager. This is the same list they see, so any week can be read here without going back through a mailbox.'}
+                    ? 'A week can be started once every day has been entered or marked closed, and every rostered shift has times, time off or a comment on the timesheet. A day that does not match the till is shown, but does not stop the week being started.'
+                    : 'Reports are written by the store manager. This is the same list they see, so you can open any week here instead of searching your email.'}
             </p>
         </div>
     )

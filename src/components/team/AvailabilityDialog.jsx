@@ -4,13 +4,17 @@ import Modal from '@/components/ui/Modal'
 import ModalSection from '@/components/ui/ModalSection'
 import { supabase } from '@/lib/supabase'
 import { friendlyError } from '@/lib/errors'
-import { modalFooter, removeButton, secondaryButton, captionClass, compactField, primaryButton } from '@/lib/controlStyles'
+import {
+    modalFooter, removeButton, secondaryButton, captionClass, compactField, primaryButton, labelClass, rowButton,
+    segmentTrack, segmentButton,
+} from '@/lib/controlStyles'
 import {
     toRows, fromRows, availabilityProblem, windowShape, copyDay, DAY_GROUPS,
     DAY_START, DAY_END, patternOn,
 } from '@/lib/availability'
 import { todayISO, fullDate, addDays } from '@/lib/dates'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import AddButton from '@/components/ui/AddButton'
 
 // When somebody can work.
 //
@@ -136,11 +140,6 @@ export default function AvailabilityDialog({ employee, onClose, onChanged }) {
     const nowRows = helpersFor(rows, setRows)
     const laterRows = helpersFor(nextRows, setNextRows)
 
-    // The pills above the grid, and the ones inside it, are the same control.
-    const tabCls = on => `px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
-        on ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
-    }`
-
     async function save() {
         if (problem) return
         setSaving(true)
@@ -174,12 +173,12 @@ export default function AvailabilityDialog({ employee, onClose, onChanged }) {
                 nothing but a heading telling them apart, which is a good way
                 to set the wrong one. */}
             <ModalSection title="When they can work">
-                <div className="inline-flex bg-gray-100 rounded-lg p-1 gap-1 mb-4" role="group" aria-label="Which week">
+                <div className={`${segmentTrack} mb-4`} role="group" aria-label="Which week">
                     <button
                         type="button"
                         onClick={() => setMode('now')}
                         aria-pressed={mode === 'now'}
-                        className={tabCls(mode === 'now')}
+                        className={segmentButton(mode === 'now', true)}
                     >
                         From now on
                     </button>
@@ -187,7 +186,7 @@ export default function AvailabilityDialog({ employee, onClose, onChanged }) {
                         type="button"
                         onClick={() => setMode('later')}
                         aria-pressed={mode === 'later'}
-                        className={tabCls(mode === 'later')}
+                        className={segmentButton(mode === 'later', true)}
                     >
                         From a date
                     </button>
@@ -196,17 +195,16 @@ export default function AvailabilityDialog({ employee, onClose, onChanged }) {
                 {mode === 'now' ? (
                     <>
                         <p className="text-xs text-muted mb-3">
-                            Only the days you set say anything. A day left on any time is one the roster
-                            will never question, so there is no need to fill in a whole week to record
-                            one afternoon off.
+                            The roster only checks the days you set. Days left on Any time are never
+                            checked, so you only need to set the days that are different.
                         </p>
                         <DayRows rows={rows} on={nowRows} />
                     </>
                 ) : !changing ? (
                     <div className="text-center py-6">
                         <p className="text-sm text-muted mb-3 max-w-sm mx-auto">
-                            For somebody who has told you their hours change on a day still to come.
-                            The week above keeps applying right up to it.
+                            Use this when someone's hours change from a future date. Until then, the
+                            hours under From now on still apply.
                         </p>
                         <button
                             type="button"
@@ -220,7 +218,7 @@ export default function AvailabilityDialog({ employee, onClose, onChanged }) {
                     <>
                         <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
                             <div>
-                                <label htmlFor="availability-from" className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                                <label htmlFor="availability-from" className={labelClass}>
                                     Starting on
                                 </label>
                                 {/* The same box as every other box in this
@@ -270,8 +268,8 @@ export default function AvailabilityDialog({ employee, onClose, onChanged }) {
             <ModalSection title="What the roster does with it">
                 <ul className="text-sm text-muted space-y-1.5">
                     <li>The hours they cannot work are shaded on the day timeline, before you put anything in.</li>
-                    <li>A shift outside them is said in the warnings at the top of the week.</li>
-                    <li>It never stops a week going out. If you know something the roster does not, roster it.</li>
+                    <li>A shift outside them shows as a warning at the top of the week.</li>
+                    <li>It never stops the week being published.</li>
                 </ul>
             </ModalSection>
 
@@ -314,18 +312,14 @@ function DayRows({ rows, on }) {
                                 <span className="w-24 text-sm font-medium text-gray-900 flex-shrink-0">
                                     {row.name}
                                 </span>
-                                <div className="inline-flex bg-gray-100 rounded-lg p-1 gap-1" role="group" aria-label={row.name}>
+                                <div className={segmentTrack} role="group" aria-label={row.name}>
                                     {STATES.map(state => (
                                         <button
                                             key={state.value}
                                             type="button"
                                             onClick={() => patch(row.key, { state: state.value })}
                                             aria-pressed={row.state === state.value}
-                                            className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors ${
-                                                row.state === state.value
-                                                    ? 'bg-white text-gray-900 shadow-sm'
-                                                    : 'text-gray-600 hover:text-gray-900'
-                                            }`}
+                                            className={segmentButton(row.state === state.value, true)}
                                         >
                                             {state.label}
                                         </button>
@@ -350,7 +344,7 @@ function DayRows({ rows, on }) {
                                     "Fri". Given the width it needs nothing
                                     breaks at all. */}
                                 {row.state !== 'any' && (
-                                    <span className="w-full sm:w-auto flex items-center gap-1 sm:ml-auto">
+                                    <span className="w-full sm:w-auto flex flex-wrap items-center gap-1 sm:ml-auto">
                                         <span className="text-[0.625rem] text-muted uppercase tracking-wider">
                                             Copy to
                                         </span>
@@ -359,7 +353,7 @@ function DayRows({ rows, on }) {
                                                 key={group.label}
                                                 type="button"
                                                 onClick={() => copyRow(row.key, group.keys)}
-                                                className="px-2 py-1 text-[0.6875rem] font-semibold text-blue-600 rounded-md hover:bg-blue-50"
+                                                className={rowButton('plain')}
                                             >
                                                 {group.label}
                                             </button>
@@ -472,7 +466,7 @@ function DayRows({ rows, on }) {
                                                         />
                                                     </div>
                                                 )}
-                                                {shape === 'between' && <span className="text-sm text-gray-500">to</span>}
+                                                {shape === 'between' && <span className="text-sm text-muted">to</span>}
                                                 {/* endOfDay so 24:00 is a thing
                                                     the list can hold. It should
                                                     never arrive here, because a
@@ -506,13 +500,9 @@ function DayRows({ rows, on }) {
                                         window across the whole day would say
                                         they can work through it. */}
                                     {row.windows.length < 3 && (
-                                        <button
-                                            type="button"
-                                            onClick={() => addWindow(row.key)}
-                                            className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-                                        >
+                                        <AddButton onClick={() => addWindow(row.key)}>
                                             Add another stretch
-                                        </button>
+                                        </AddButton>
                                     )}
                                 </div>
                             )}

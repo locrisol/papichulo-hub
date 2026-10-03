@@ -1,23 +1,6 @@
 import { sheetLayout, shareName, wrapLines, AWAY } from '@/lib/rosterShare'
 import { kindColours } from '@/lib/diary'
-
-// The PDF works in three numbers rather than a string of six letters. One
-// place that knows how to turn one into the other, so a colour written down
-// once in lib/diary reaches both sheets and the screen unchanged.
-const rgbOf = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16))
-
-// jsPDF is fetched when somebody asks for a PDF, not when the screen opens.
-//
-// It is 400KB with its own optional dependencies behind it, and a plain import
-// at the top of this file means every visit to the screen that can make one
-// pays for it whether or not anybody presses the button. Most never do.
-let jsPdfModule = null
-
-async function loadJsPdf() {
-    if (!jsPdfModule) jsPdfModule = (await import('jspdf')).default
-    return jsPdfModule
-}
-
+import { loadJsPdf, rgb } from '@/lib/pdfPage'
 
 // The week as a PDF, for printing and putting on the wall.
 //
@@ -180,14 +163,14 @@ export async function weekPdf(table, restaurantName, weekStart, { save = true } 
 
     let y = l.pad
 
-    const box = (x, yy, w, hh, rgb) => {
-        pdf.setFillColor(...rgb)
+    const box = (x, yy, w, hh, colour) => {
+        pdf.setFillColor(...colour)
         pdf.rect(x, yy, w, hh, 'F')
     }
-    const at = (value, x, yy, { align = 'left', size = 9, style = 'normal', rgb = [17, 24, 39], max = null } = {}) => {
+    const at = (value, x, yy, { align = 'left', size = 9, style = 'normal', rgb: colour = [17, 24, 39], max = null } = {}) => {
         pdf.setFont('helvetica', style)
         pdf.setFontSize(size)
-        pdf.setTextColor(...rgb)
+        pdf.setTextColor(...colour)
         let out = String(value ?? '')
         if (max) {
             while (out && pdf.getTextWidth(out) > max) out = out.slice(0, -1)
@@ -235,7 +218,7 @@ export async function weekPdf(table, restaurantName, weekStart, { save = true } 
     pdf.setDrawColor(...YELLOW_EDGE)
     pdf.setLineWidth(0.4)
     pdf.rect(pageWidth - l.pad - 130, y + h(8), 9, 9, 'FD')
-    at('opens or closes the store', pageWidth - l.pad - 117, y + h(15), {
+    at('opening or closing shift', pageWidth - l.pad - 117, y + h(15), {
         size: 7, rgb: [107, 114, 128],
     })
     at(table.subtitle, l.pad, y + h(36), { size: 9, rgb: [107, 114, 128] })
@@ -270,7 +253,7 @@ export async function weekPdf(table, restaurantName, weekStart, { save = true } 
 
     // ---- the rows about the day
     box(l.pad, y, pageWidth - l.pad * 2, h(l.metaH), SLATE)
-    at('STORE HOURS', l.pad + 8, y + h(l.metaH) / 2 + 3, { size: 7, style: 'bold', rgb: [51, 65, 85] })
+    at('OPENING HOURS', l.pad + 8, y + h(l.metaH) / 2 + 3, { size: 7, style: 'bold', rgb: [51, 65, 85] })
     table.storeHours.forEach((v, i) => {
         // The whole column, a row at a time, because rows paint their own
         // backgrounds after this point and would cover one tall rectangle.
@@ -312,8 +295,8 @@ export async function weekPdf(table, restaurantName, weekStart, { save = true } 
 
         cards.forEach((card, n) => {
             const own = card.colours
-            pdf.setFillColor(...(own ? rgbOf(own.fill) : [255, 255, 255]))
-            pdf.setDrawColor(...(own ? rgbOf(own.edge) : edge))
+            pdf.setFillColor(...(own ? rgb(own.fill) : [255, 255, 255]))
+            pdf.setDrawColor(...(own ? rgb(own.edge) : edge))
             pdf.setLineWidth(0.4)
             // Dashed means nobody has checked it: a model read it off a page
             // and no person has looked at it yet. The same mark the screen
@@ -323,7 +306,7 @@ export async function weekPdf(table, restaurantName, weekStart, { save = true } 
             pdf.setLineDashPattern([], 0)
             // The solid tick down the left, the same as a band wears, so the
             // colour survives a black and white printer badly.
-            if (own) box(x, top + 0.4, 1.2, heights[n] - 0.8, rgbOf(own.bar))
+            if (own) box(x, top + 0.4, 1.2, heights[n] - 0.8, rgb(own.bar))
 
             let ty = top + padY + lineH * 0.75
             // How much of the picked out half is already behind us. A long
@@ -374,14 +357,14 @@ export async function weekPdf(table, restaurantName, weekStart, { save = true } 
             // Filled, then a line round it, then the solid tick down the left.
             // Without the outline a pale fill on a white sheet gave no answer
             // to the one thing the band is for, which is when it stops.
-            pdf.setFillColor(...rgbOf(colours.fill))
-            pdf.setDrawColor(...rgbOf(colours.edge))
+            pdf.setFillColor(...rgb(colours.fill))
+            pdf.setDrawColor(...rgb(colours.edge))
             pdf.setLineWidth(0.4)
             pdf.roundedRect(x + 2, bandY, w - 4, height - h(4), h(3), h(3), 'FD')
-            box(x + 2, bandY, 3, height - h(4), rgbOf(colours.bar))
+            box(x + 2, bandY, 3, height - h(4), rgb(colours.bar))
             bandLines[i].forEach((line, n) => {
                 at(line, x + 9, bandY + h(10) + n * h(14), {
-                    size: 7, style: 'bold', rgb: rgbOf(colours.ink),
+                    size: 7, style: 'bold', rgb: rgb(colours.ink),
                 })
             })
             bandY += height
@@ -396,12 +379,12 @@ export async function weekPdf(table, restaurantName, weekStart, { save = true } 
         const bandH = l.headlineHeights[i]
         if (!bandH) return
         const colours = kindColours(one.kind)
-        box(l.pad, y, pageWidth - l.pad * 2, h(bandH), rgbOf(colours.fill))
+        box(l.pad, y, pageWidth - l.pad * 2, h(bandH), rgb(colours.fill))
         at(one.name.toUpperCase(), l.pad + 8, y + h(bandH) / 2 + 3, {
-            size: 7, style: 'bold', rgb: rgbOf(colours.ink),
+            size: 7, style: 'bold', rgb: rgb(colours.ink),
         })
         headlineCards[i].forEach((cards, d) =>
-            drawCards(cards, d, y, bandH, rgbOf(colours.ink), rgbOf(colours.edge)))
+            drawCards(cards, d, y, bandH, rgb(colours.ink), rgb(colours.edge)))
         y += h(bandH)
         bandRule()
     })

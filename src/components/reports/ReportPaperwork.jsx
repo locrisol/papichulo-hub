@@ -36,7 +36,7 @@ function Renewal({ person }) {
     const late = person.on && person.applied > person.on
     return (
         <span className="block text-xs text-muted">
-            Renewal applied for {shortDate(person.applied)}{late ? ', after it ran out' : ''}
+            Applied to renew on {shortDate(person.applied)}{late ? ', after it expired' : ''}
         </span>
     )
 }
@@ -80,25 +80,42 @@ function Summary({ title, state, asOf, noun }) {
             <b className="text-gray-900">
                 {title}: {state.fine} of {state.total} in date.
             </b>
-            <Who label="Out of date:" people={state.expired} />
-            <Who label="Runs out soon:" people={state.expiring} />
+            <Who label="Expired:" people={state.expired} />
+            <Who label="Expires soon:" people={state.expiring} />
             <Who label="Nothing on file:" people={state.missing} />
             {next && (
                 <p className="text-muted mt-1.5">
-                    The next {noun} runs out on {shortDate(next.on)}, in {days} {days === 1 ? 'day' : 'days'}.
+                    The next {noun} expires on {shortDate(next.on)}, in {days} {days === 1 ? 'day' : 'days'}.
                 </p>
             )}
         </Line>
     )
 }
 
+// The printed allergen sheet, only while a new one is due. His ask of 29
+// September. The words are reprintDue's, the same the Public Allergens page
+// shows, so the report and the page cannot say it two different ways.
+function AllergenSheet({ due }) {
+    if (!due) return null
+    return (
+        <Line>
+            <b className="text-gray-900">Allergen sheet:</b>
+            <p className="text-gray-900 mt-0.5">{due.words}</p>
+        </Line>
+    )
+}
+
 // `paperwork` is paperworkFor's: the people checked, and both kinds summed up.
-export default function ReportPaperwork({ paperwork, weekStart, asOf }) {
+// `allergenSheet` is reprintDue's answer, null while the sheet is not due.
+export default function ReportPaperwork({ paperwork, weekStart, asOf, allergenSheet = null }) {
     if (paperwork.people === 0) {
         return (
-            <p className="text-sm text-muted">
-                Nobody was on the books this week, so there is no paperwork to check.
-            </p>
+            <div className="space-y-2">
+                <p className="text-sm text-muted">
+                    Nobody was on the team this week, so there is no paperwork to check.
+                </p>
+                <AllergenSheet due={allergenSheet} />
+            </div>
         )
     }
 
@@ -111,12 +128,13 @@ export default function ReportPaperwork({ paperwork, weekStart, asOf }) {
             <div className="space-y-2">
                 <Summary title="Food safety" state={paperwork.food} asOf={asOf} noun="certificate" />
                 <Summary title="Right to work" state={paperwork.permits} asOf={asOf} noun="permission" />
+                <AllergenSheet due={allergenSheet} />
             </div>
 
             <p className="text-xs text-muted mt-2">
-                {paperwork.people} on the books in the week of {shortDate(weekStart)}, checked as things stand
-                today, leaving out anybody who has left since. Anything inside {WARN_DAYS} days counts as running
-                out, and anybody with no permit to expire counts as in date.
+                {paperwork.people} on the team in the week of {shortDate(weekStart)}, checked as of today,
+                leaving out anybody who has left since. Anything that expires within {WARN_DAYS} days counts as
+                expiring soon, and anybody with no permit to expire counts as in date.
             </p>
         </div>
     )

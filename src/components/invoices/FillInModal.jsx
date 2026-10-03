@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import Modal from '@/components/ui/Modal'
+import Notice from '@/components/ui/Notice'
 import { fmtMoney } from '@/lib/format'
 import { fullDate } from '@/lib/dates'
 import { fillInPlan, documentTotal } from '@/lib/invoiceImport'
@@ -30,7 +31,7 @@ export default function FillInModal({ doc, invoice, lines, onClose, onFillIn }) 
     }
 
     return (
-        <Modal title="Fill in what is behind it" onClose={onClose} width="max-w-lg">
+        <Modal title="Fill in an invoice typed by hand" onClose={onClose} width="max-w-lg">
             <div className="px-6 py-4">
                 <p className={captionClass}>Already in the Hub</p>
                 <p className="text-sm text-gray-900 mt-1 mb-4">
@@ -45,31 +46,31 @@ export default function FillInModal({ doc, invoice, lines, onClose, onFillIn }) 
                 </p>
 
                 {plan.same && (
-                    <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-sm text-green-800">
+                    <Notice tone="good">
                         The two agree to the cent. The lines go on and nothing about the week moves.
-                    </div>
+                    </Notice>
                 )}
 
                 {plan.deducted > 0 && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-sm text-blue-900">
+                    <Notice tone="info">
                         <p className="font-bold">
                             {fmtMoney(plan.deducted)} was taken off before it was typed in.
                         </p>
                         <p className="mt-1">
                             The invoice goes up to {fmtMoney(plan.gross)}, which is what they
-                            charged, and that {fmtMoney(plan.deducted)} becomes a claim against this
-                            delivery. The week stays on {fmtMoney(plan.net)}, exactly where it is
-                            now.
+                            charged, and that {fmtMoney(plan.deducted)} becomes a delivery problem
+                            on this invoice. The week stays on {fmtMoney(plan.net)}, exactly where
+                            it is now.
                         </p>
                         <p className="mt-1">
-                            The claim starts open, because nobody knows whether the credit ever
-                            came. It goes on the list until somebody says.
+                            It starts open, because nobody knows yet whether the credit came. It
+                            stays on Delivery problems until it is credited, refused or cancelled.
                         </p>
-                    </div>
+                    </Notice>
                 )}
 
                 {plan.over > 0 && (
-                    <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-sm text-amber-900">
+                    <Notice tone="warn">
                         <p className="font-bold">
                             {fmtMoney(plan.over)} more was typed in than the document says.
                         </p>
@@ -79,7 +80,7 @@ export default function FillInModal({ doc, invoice, lines, onClose, onFillIn }) 
                             It is worth knowing why before you press this: either the typing was
                             wrong, or this is not the same delivery.
                         </p>
-                    </div>
+                    </Notice>
                 )}
 
                 <p className={hintClass}>
@@ -96,7 +97,7 @@ export default function FillInModal({ doc, invoice, lines, onClose, onFillIn }) 
                     onClick={go}
                     className={primaryButton('md', plan.over > 0 ? 'accent' : 'good')}
                 >
-                    {busy ? 'Filling in...' : 'Fill it in'}
+                    {busy ? 'Filling in...' : 'Fill in invoice'}
                 </button>
             </div>
         </Modal>

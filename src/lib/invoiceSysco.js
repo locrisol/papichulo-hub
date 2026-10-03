@@ -37,7 +37,7 @@
 //   - There are two more columns, WEIGHT and VAT CODE, and the VAT code sits
 //     close enough to the value to be read as part of it.
 
-import { num } from '@/lib/format'
+import { num, round2 } from '@/lib/format'
 
 // Two rows of eight point lettering sit about ten points apart, so anything
 // within two and a bit of the same baseline is the same line.
@@ -346,6 +346,21 @@ export function readPackSize(text) {
         total: Math.round(count * size * 10000) / 10000,
         printed: tidy(text),
     }
+}
+
+// How many single items are in a case: what one in the UNIT column on their
+// paper is. Four for "4X500 GM", a bag each, whatever the product is counted
+// in, because the docket counts bags. Ten for "1X10 EA", where the case is one
+// pack of ten eaches. One for "1X5 KG", where the case is the item.
+//
+// Nothing for "6X4": with no unit it could be six of four or four of six, and
+// a wrong guess is the wrong money on a claim.
+export function packItems(text) {
+    const pack = readPackSize(text)
+    if (!pack) return null
+    if (!pack.unit) return /X/.test(shout(text)) ? null : pack.count
+    if (pack.count > 1) return pack.count
+    return pack.unit === 'Units' ? pack.total : 1
 }
 
 // Does this look like a pack size at all?
@@ -732,10 +747,6 @@ export function readSyscoInvoice(items) {
         checks,
         problems,
     }
-}
-
-function round2(n) {
-    return Math.round(num(n) * 100) / 100
 }
 
 // A sum of money shared out in proportion, to the cent.

@@ -5,6 +5,7 @@ import { friendlyError } from '@/lib/errors'
 import { listTree } from '@/lib/checklists'
 import { signer } from '@/components/checklists/signPhotos'
 import Modal from '@/components/ui/Modal'
+import PdfButton from '@/components/ui/PdfButton'
 
 // A blank copy of a list to print and pin up, with a space on every line for
 // who did it and when.
@@ -14,7 +15,8 @@ import Modal from '@/components/ui/Modal'
 // of the ink, so it is the person at the printer's call.
 export default function PrintListButton({ list, restaurant, onError, className = '' }) {
     const [asking, setAsking] = useState(null)
-    const [busy, setBusy] = useState(false)
+
+    const failed = err => onError?.(friendlyError(err))
 
     async function read() {
         const [cats, tasks] = await Promise.all([
@@ -26,53 +28,47 @@ export default function PrintListButton({ list, restaurant, onError, className =
     }
 
     async function print(tree, withPictures) {
-        setBusy(true)
-        try {
-            const { blankListPdf, loadPictures } = await import('@/lib/checklistPdf')
-            const paths = withPictures
-                ? tree.flatMap(g => g.elements.flatMap(e => [...(e.task.guide_photos || []), ...e.subs.flatMap(s => s.guide_photos || [])]))
-                : []
-            const pictures = await loadPictures(paths, signer)
-            await blankListPdf({ restaurant, list, tree, pictures })
-        } catch (err) {
-            onError?.(friendlyError(err))
-        } finally {
-            setBusy(false)
-            setAsking(null)
-        }
+        const { blankListPdf, loadPictures } = await import('@/lib/checklistPdf')
+        const paths = withPictures
+            ? tree.flatMap(g => g.elements.flatMap(e => [...(e.task.guide_photos || []), ...e.subs.flatMap(s => s.guide_photos || [])]))
+            : []
+        const pictures = await loadPictures(paths, signer)
+        await blankListPdf({ restaurant, list, tree, pictures })
     }
 
     async function start() {
-        setBusy(true)
+        const tree = await read()
+        const pictured = tree.some(g => g.elements.some(e => e.task.guide_photos?.length || e.subs.some(s => s.guide_photos?.length)))
+        if (pictured) setAsking(tree)
+        else await print(tree, false)
+    }
+
+    // The question goes away once the PDF is made, or once it could not be.
+    async function answer(withPictures) {
         try {
-            const tree = await read()
-            const pictured = tree.some(g => g.elements.some(e => e.task.guide_photos?.length || e.subs.some(s => s.guide_photos?.length)))
-            setBusy(false)
-            if (pictured) setAsking(tree)
-            else await print(tree, false)
-        } catch (err) {
-            setBusy(false)
-            onError?.(friendlyError(err))
+            await print(asking, withPictures)
+        } finally {
+            setAsking(null)
         }
     }
 
     return (
         <>
-            <button type="button" onClick={start} disabled={busy} className={`${rowButton('plain')} ${className}`}>
-                {busy ? 'Making PDF...' : 'Print'}
-            </button>
+            <PdfButton make={start} onError={failed} className={`${rowButton('plain')} ${className}`}>
+                Print
+            </PdfButton>
             {asking && (
                 <Modal title="Print the list" onClose={() => setAsking(null)} width="max-w-md">
                     <p className="px-6 py-5 text-sm text-gray-700">
                         Some things on this list have a picture showing what is meant. Print them too?
                     </p>
                     <div className={modalFooter}>
-                        <button type="button" onClick={() => print(asking, false)} disabled={busy} className={secondaryButton}>
+                        <PdfButton make={() => answer(false)} onError={failed} className={secondaryButton}>
                             Without pictures
-                        </button>
-                        <button type="button" onClick={() => print(asking, true)} disabled={busy} className={primaryButton()}>
-                            {busy ? 'Making PDF...' : 'With pictures'}
-                        </button>
+                        </PdfButton>
+                        <PdfButton make={() => answer(true)} onError={failed} className={primaryButton()}>
+                            With pictures
+                        </PdfButton>
                     </div>
                 </Modal>
             )}

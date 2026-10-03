@@ -10,7 +10,7 @@
 // The category list is not free text. suppliers has a check constraint on it, so
 // anything outside these four is refused by the database rather than saved as a
 // typo. Adding one means a migration first.
-import { labelClass, fieldClass, primaryButton } from '@/lib/controlStyles'
+import { labelClass, fieldClass, primaryButton, secondaryButton } from '@/lib/controlStyles'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 
 const CATEGORIES = [
@@ -20,7 +20,7 @@ const CATEGORIES = [
     { value: 'other', label: 'Other' },
 ]
 
-export default function SupplierForm({ problem, formData, onChange, onSubmit, onCancel, submitLabel }) {
+export default function SupplierForm({ problem, formData, onChange, onSubmit, onCancel, submitLabel, saving = false }) {
 
     return (
         <form onSubmit={onSubmit}>
@@ -48,7 +48,7 @@ export default function SupplierForm({ problem, formData, onChange, onSubmit, on
                     </select>
                 </div>
                 <div>
-                    <label className={labelClass}>Contact Email</label>
+                    <label className={labelClass}>Email</label>
                     <input
                         type="email"
                         value={formData.contact_email}
@@ -57,7 +57,7 @@ export default function SupplierForm({ problem, formData, onChange, onSubmit, on
                     />
                 </div>
                 <div>
-                    <label className={labelClass}>Contact Phone</label>
+                    <label className={labelClass}>Phone</label>
                     <input
                         type="text"
                         value={formData.contact_phone}
@@ -85,19 +85,20 @@ export default function SupplierForm({ problem, formData, onChange, onSubmit, on
               <ErrorBanner className="mb-3">{problem}</ErrorBanner>
             )}
 
-            <div className="flex justify-end gap-3">
+            <div className="flex flex-wrap justify-end gap-3">
                 <button
                     type="button"
                     onClick={onCancel}
-                    className="px-4 py-2 border border-border text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 bg-white transition-colors"
+                    className={secondaryButton}
                 >
                     Cancel
                 </button>
                 <button
                     type="submit"
+                    disabled={saving}
                     className={primaryButton()}
                 >
-                    {submitLabel}
+                    {saving ? 'Saving...' : submitLabel}
                 </button>
             </div>
         </form>

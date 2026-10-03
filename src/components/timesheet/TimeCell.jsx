@@ -38,7 +38,7 @@ const NOT_IN_THE_WAY = -1
 
 const box = 'block w-full font-sans text-xs tabular-nums tracking-tight text-center '
     + 'border border-gray-300 rounded px-1 py-0.5 bg-white text-gray-900 '
-    + 'focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/25 '
+    + 'focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent '
     + 'placeholder:text-gray-300 disabled:bg-gray-50 disabled:text-gray-400'
 
 export default function TimeCell({
@@ -213,13 +213,17 @@ function UnderLine({ cell, unplanned, canEdit, onOpen }) {
     const bits = []
     const first = cell.entries[0]
 
-    if (first?.starts_at) {
+    // A clock in with no clock out, said in place of the roster line rather
+    // than beside it: until there is an end, how it compares with the plan is
+    // not a question yet, and one short line keeps the row from growing.
+    if (cell.open) bits.push('no clock out')
+    else if (first?.starts_at) {
         if (unplanned) bits.push('not rostered')
         else {
             const plan = cell.rostered[0]
             const differs = plan && (shortClock(plan.starts_at) !== shortClock(first.starts_at)
                 || shortClock(plan.ends_at) !== shortClock(first.ends_at))
-            if (differs) bits.push(`for ${shortClock(plan.starts_at)}–${shortClock(plan.ends_at)}`)
+            if (differs) bits.push(`for ${shortClock(plan.starts_at)} to ${shortClock(plan.ends_at)}`)
         }
     }
 
@@ -277,7 +281,7 @@ function UnderLine({ cell, unplanned, canEdit, onOpen }) {
             {bits.length > 0 && (
                 <span
                     className={`block text-[0.62rem] tabular-nums break-words leading-snug mt-0.5 ${
-                        unplanned || cell.unexplained ? 'text-accent-ink font-semibold' : 'text-gray-400'
+                        unplanned || cell.unexplained || cell.open ? 'text-accent-ink font-semibold' : 'text-gray-400'
                     }`}
                 >
                     {bits.join(' · ')}

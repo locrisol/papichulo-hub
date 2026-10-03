@@ -7,7 +7,8 @@
 //
 // The one thing it does take from the browser is the figures and chart links
 // for a **test** send, and only for a test, because a draft has no frozen
-// figures to read. A test only ever goes to the person who asked for it.
+// figures to read. A send that is not a test, of a report that is not
+// published, is refused. A test never goes to the owners.
 //
 // Deploy it the ordinary way:
 //
@@ -42,8 +43,9 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { reportEmail } from './email.js'
 import { changesSince } from './changes.js'
-import { senderFor, heldNotice, deliverable, isJustTheGoodbye, replyToFor } from './email.js'
-import { timesheetEmail, personPeriod, addDays } from './timesheet.js'
+import { senderFor, heldNotice, deliverable, isJustTheGoodbye, replyToFor, switchedOff, whatToSend, correctionSend } from './email.js'
+import { timesheetEmail, personPeriod, addDays, hoursPdfPath } from './timesheet.js'
+import { base64, mimeParts, headersFor } from './mime.js'
 
 function serviceKey() {
     for (const name of ['SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SECRET_KEY', 'SB_SECRET_KEY']) {
@@ -112,20 +114,6 @@ globalThis.addEventListener('unhandledrejection', (event) => {
 })
 
 
-// Bytes to base64, in chunks.
-//
-// String.fromCharCode(...bytes) on a whole PDF blows the argument limit and
-// throws RangeError, which arrives as "failed to send a request to the edge
-// function" and says nothing at all. Eight thousand at a time is well inside it.
-function base64(bytes: Uint8Array) {
-    let binary = ''
-    const step = 8192
-    for (let i = 0; i < bytes.length; i += step) {
-        binary += String.fromCharCode(...bytes.subarray(i, i + step))
-    }
-    return btoa(binary)
-}
-
 async function byGmail(mail: Mail, user: string, password: string) {
     const { SMTPClient } = await import('https://deno.land/x/denomailer@1.6.0/mod.ts')
 
@@ -169,16 +157,28 @@ async function byGmail(mail: Mail, user: string, password: string) {
                 tls: smtpPort === 465,
                 auth: { username: user, password },
             },
+            // The subject, the sender's name and the To line, put right
+            // after denomailer has worked them out and before any of it is
+            // written, because it gets all three wrong once there is an
+            // accent or more than one recipient. See headersFor in mime.js.
+            client: { preprocessors: [headersFor(mail)] },
         })
+
+        // Left out when there is none rather than passed as undefined. A key
+        // passed as undefined is what broke the time off mail on this same
+        // account. See roster-email.
+        const replyTo = replyToFor(mail.replyTo, Deno.env.get('MAIL_REPLY_TO'))
 
         try {
             await client.send({
                 from: mail.from,
                 to: mail.to,
-                replyTo: replyToFor(mail.replyTo, Deno.env.get('MAIL_REPLY_TO')),
+                ...(replyTo ? { replyTo } : {}),
                 subject: mail.subject,
-                content: mail.text,
-                html: mail.html,
+                // Finished base64 parts rather than content and html, which
+                // denomailer would write as quoted printable and lose a full
+                // stop wherever one starts a line. See mime.js.
+                mimeContent: mimeParts(mail),
                 // Left out entirely when there are none. denomailer walks
                 // whatever it is given, and an empty array still turns a plain
                 // mail into a multipart one for no reason.
@@ -236,18 +236,26 @@ async function byGmail(mail: Mail, user: string, password: string) {
     }
 }
 
+// The same mail as byGmail sends, the hours PDF included. Resend takes an
+// attachment's content as base64, which is what the timesheet path builds.
 async function byResend(mail: Mail, key: string) {
+    const body: Record<string, unknown> = {
+        from: mail.from,
+        to: mail.to,
+        subject: mail.subject,
+        html: mail.html,
+        text: mail.text,
+    }
+    const replyTo = replyToFor(mail.replyTo, Deno.env.get('MAIL_REPLY_TO'))
+    if (replyTo) body.reply_to = replyTo
+    if (mail.attachments?.length) {
+        body.attachments = mail.attachments.map(a => ({ filename: a.filename, content: a.content }))
+    }
+
     const res = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            from: mail.from,
-            to: mail.to,
-            reply_to: replyToFor(mail.replyTo, Deno.env.get('MAIL_REPLY_TO')),
-            subject: mail.subject,
-            html: mail.html,
-            text: mail.text,
-        }),
+        body: JSON.stringify(body),
     })
     if (!res.ok) throw new Error(`Resend said ${res.status}: ${await res.text()}`)
 }
@@ -287,11 +295,16 @@ Deno.serve(async (req) => {
         const token = (req.headers.get('Authorization') || '').replace('Bearer ', '')
         const { data: whoami } = await admin.auth.getUser(token)
         const caller = whoami?.user
-        if (!caller) return json({ error: 'Not logged in.' }, 401)
+        if (!caller) return json({ error: 'Not signed in.' }, 401)
 
         const { data: account } = await admin
-            .from('users').select('id, full_name, role, restaurant_id')
+            .from('users').select('id, full_name, role, restaurant_id, is_active')
             .eq('id', caller.id).maybeSingle()
+
+        // Before the role, because a manager who has left is still a manager
+        // on their row. Without this a leaver could still have every
+        // colleague's hours mailed to them. See switchedOff in email.js.
+        if (account && switchedOff(account)) return json({ error: 'Your account is deactivated.' }, 403)
 
         if (!account || !['store_manager', 'super_admin'].includes(account.role)) {
             return json({ error: 'Only a manager can send a report.' }, 403)
@@ -313,7 +326,7 @@ Deno.serve(async (req) => {
         // ---- the report ----
         const { data: report, error: reportError } = await admin
             .from('weekly_reports')
-            .select('id, restaurant_id, week_start, status, figures, previous_figures, charts, send_count, published_by')
+            .select('id, restaurant_id, week_start, status, figures, previous_figures, charts, send_count, sent_to, published_by')
             .eq('id', reportId).maybeSingle()
 
         if (reportError) throw reportError
@@ -323,8 +336,8 @@ Deno.serve(async (req) => {
             return json({ error: 'That report belongs to another restaurant.' }, 403)
         }
 
-        // mail_from arrived in migration 051, and a function can be deployed
-        // before a migration is run. Asking for a column that is not there
+        // mail_from came later than the table, and a function can be deployed
+        // before the database has it. Asking for a column that is not there
         // does not throw, it returns an error and a null row, and an
         // unchecked null here would have quietly sent a report headed "The
         // restaurant" to every owner. So the error IS checked, and it falls
@@ -334,7 +347,7 @@ Deno.serve(async (req) => {
             .eq('id', report.restaurant_id).maybeSingle()
 
         if (restaurantError) {
-            console.warn('restaurants.mail_from is missing, run migration 051', restaurantError)
+            console.warn('restaurants.mail_from is missing on this database', restaurantError)
             const again = await admin
                 .from('restaurants').select('id, name, report_recipients')
                 .eq('id', report.restaurant_id).maybeSingle()
@@ -358,9 +371,11 @@ Deno.serve(async (req) => {
         //
         // A published report reads what was frozen onto it. A draft has nothing
         // frozen, so a test reads what the browser was showing, which is the
-        // point of a test: it is the report as it stands right now.
-        const figures = report.status === 'published' ? (report.figures || {}) : (posted || {})
-        const charts = report.status === 'published' ? (report.charts || {}) : (postedCharts || {})
+        // point of a test: it is the report as it stands right now. A real send
+        // of a draft is refused. See whatToSend in email.js.
+        const chosen = whatToSend(report, { test, figures: posted, charts: postedCharts })
+        if (chosen.refused) return json({ error: chosen.refused }, 409)
+        const { figures, charts } = chosen
 
         if (!figures.net && figures.net !== 0) {
             return json({ error: 'This report has no figures on it yet.' }, 400)
@@ -370,7 +385,7 @@ Deno.serve(async (req) => {
         //
         // Worked out here rather than taken from the browser, off the copy of
         // the last mail's figures the report keeps for exactly this.
-        const changes = (!test && (report.send_count || 0) > 1)
+        const changes = correctionSend(report, test)
             ? changesSince(report.previous_figures, figures)
             : []
 
@@ -562,7 +577,9 @@ async function sendTimesheet({
     restaurantId?: string,
     comment?: string,
     test?: boolean,
-    attachment?: string,
+    // Only whether there is a PDF. The app still posts the path it uploaded
+    // to, and any value at all means yes: the path itself is never used.
+    attachment?: unknown,
 }) {
     const period = String(periodStart || '').slice(0, 10)
     if (!/^\d{4}-\d{2}-\d{2}$/.test(period)) return json({ error: 'Which pay period?' }, 400)
@@ -572,6 +589,13 @@ async function sendTimesheet({
     if (account.role !== 'super_admin' && forRestaurant !== account.restaurant_id) {
         return json({ error: 'That pay period belongs to another restaurant.' }, 403)
     }
+
+    // Where the PDF is, if there is one, built from the two things just
+    // checked. A super admin's restaurant is not compared with their own, so
+    // this is also what makes sure it is an id before it goes anywhere near
+    // a path.
+    const pdfPath = hoursPdfPath(forRestaurant, period)
+    if (!pdfPath) return json({ error: 'Which restaurant?' }, 400)
 
     // **A pay period is always a fortnight.** His, 23 September 2026, and the
     // reason the hours leave the building two weeks at a time rather than one:
@@ -583,8 +607,8 @@ async function sendTimesheet({
     // a week at a time, and these are what it is handed.
     const weeks = [period, addDays(period, 7)]
 
-    // timesheet_recipients arrived in migration 007 and a function can be
-    // deployed before a migration is run. Asking for a column that is not
+    // timesheet_recipients came later than the table, and a function can be
+    // deployed before the database has it. Asking for a column that is not
     // there does not throw, it comes back as an error and a null row, and an
     // unchecked null would have sent a week headed "The restaurant" to nobody.
     let { data: restaurant, error: missing } = await admin
@@ -592,7 +616,7 @@ async function sendTimesheet({
         .eq('id', forRestaurant).maybeSingle()
 
     if (missing) {
-        console.warn('restaurants.timesheet_recipients is missing, run migration 007', missing)
+        console.warn('restaurants.timesheet_recipients is missing on this database', missing)
         const again = await admin
             .from('restaurants').select('id, name, mail_from')
             .eq('id', forRestaurant).maybeSingle()
@@ -608,8 +632,10 @@ async function sendTimesheet({
             .select('employee_id, work_date, starts_at, ends_at, hours, kind, note')
             .eq('restaurant_id', forRestaurant)
             .gte('work_date', period).lte('work_date', periodEnd),
+        // The two part day times as well, or somebody who worked until three
+        // and went home sick reads as a whole day off sick.
         admin.from('absences')
-            .select('employee_id, kind, status, starts_on, ends_on, hours')
+            .select('employee_id, kind, status, starts_on, ends_on, hours, can_work_from, can_work_to')
             .eq('restaurant_id', forRestaurant)
             .lte('starts_on', periodEnd).gte('ends_on', period),
     ])
@@ -657,17 +683,15 @@ async function sendTimesheet({
     // **The paper the browser drew, fetched with the service role.**
     //
     // The bucket is private and nothing ever fetches this by url: the bytes go
-    // inside the mail. The path always starts with the restaurant's id, and it
-    // is checked here as well as by the bucket's own policy, because this read
-    // goes round that policy.
+    // inside the mail. This read goes round the bucket's own policy, so the
+    // path is the one built above from the restaurant and the period, never
+    // the one in the request. That used to be checked only for starting with
+    // the restaurant's id, and '<id>/../' passes that check and then walks out
+    // of the folder once it is part of a url.
     const attachments: Attachment[] = []
     if (attachment) {
-        if (!String(attachment).startsWith(`${forRestaurant}/`)) {
-            return json({ error: 'That file belongs to another restaurant.' }, 403)
-        }
-
         const { data: file, error: missing } = await admin.storage
-            .from('timesheet-hours').download(attachment)
+            .from('timesheet-hours').download(pdfPath)
 
         // He asked for the hours and the paper together, so a mail without it
         // is not the thing he asked to send.

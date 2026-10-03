@@ -57,14 +57,18 @@
 //                    laptop running the dev server
 //
 // email.js sits in this folder because only what is inside a function's own
-// folder gets deployed with it, the same as ics.js next door.
+// folder gets deployed with it, the same as ics.js next door. hours.js is this
+// folder's copy of the store's hours and the closing rule, for the same reason.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
     requestEmail, answerEmail, isPartDay,
     swapHalves, swapAskEmail, swapAnswerEmail, swapDeskEmail, swapDecisionEmail,
-    senderFor, heldNotice, deliverable, isJustTheGoodbye, replyToFor,
+    senderFor, heldNotice, deliverable, isJustTheGoodbye, replyToFor, recordName, switchedOff,
+    tooLate,
 } from './email.js'
+import { mimeParts, headersFor, base64Pdf } from './mime.js'
+import { hoursForDate } from './hours.js'
 
 const MANAGERS = ['owner', 'store_manager']
 
@@ -182,6 +186,11 @@ async function byGmail(mail: Mail, user: string, password: string) {
                 tls: smtpPort === 465,
                 auth: { username: user, password },
             },
+            // The subject, the sender's name and the To line, put right
+            // after denomailer has worked them out and before any of it is
+            // written, because it gets all three wrong once there is an
+            // accent or more than one recipient. See headersFor in mime.js.
+            client: { preprocessors: [headersFor(mail)] },
         })
 
         try {
@@ -199,8 +208,10 @@ async function byGmail(mail: Mail, user: string, password: string) {
                 from: mail.from,
                 to: mail.to,
                 subject: mail.subject,
-                content: mail.text,
-                html: mail.html,
+                // Finished base64 parts rather than content and html, which
+                // denomailer would write as quoted printable and lose a full
+                // stop wherever one starts a line. See mime.js.
+                mimeContent: mimeParts(mail),
                 // Optional keys are left out when empty rather than passed as
                 // undefined, which is how the weekly report's call is shaped
                 // and it is the one that works. This one always passed
@@ -343,9 +354,14 @@ Deno.serve(async (request) => {
     if (!user) return json({ error: 'Not signed in' }, 401)
 
     const { data: me } = await admin
-        .from('users').select('id, full_name, role, restaurant_id')
+        .from('users').select('id, full_name, role, restaurant_id, is_active')
         .eq('id', user.id).maybeSingle()
     if (!me) return json({ error: 'Not signed in' }, 401)
+
+    // Whatever the role. A switched off login still signs in, and this reads
+    // users with the service key, so the database's own refusal never
+    // happens here. See switchedOff in email.js.
+    if (switchedOff(me)) return json({ error: 'Your account is deactivated' }, 403)
 
     // ---------- what happened ----------
     let payload: {
@@ -353,12 +369,14 @@ Deno.serve(async (request) => {
         requestId?: string
         event?: string
         pdf?: string
+        // Still sent by the app and not used: the name is made here, see
+        // recordName.
         pdfName?: string
         origin?: string
     }
     try { payload = await request.json() } catch { return json({ error: 'Bad request' }, 400) }
 
-    const { absenceId, requestId, event, pdf, pdfName, origin } = payload
+    const { absenceId, requestId, event, pdf, origin } = payload
 
     // Somebody who could answer one of these. Three of the five events are only
     // ever set off by a manager.
@@ -403,8 +421,8 @@ Deno.serve(async (request) => {
 
     // The restaurant a mail is about: what it is called, and what it sends as.
     //
-    // mail_from arrived in migration 051, and a function can be deployed before
-    // a migration is run. Asking for a column that is not there does not throw,
+    // mail_from came later than the table, and a function can be deployed
+    // before the database has it. Asking for a column that is not there does not throw,
     // it returns an error and a null row, and an unchecked null here would have
     // quietly sent a report headed "The restaurant" to every owner. So the
     // error IS checked, and it falls back to the columns that have always
@@ -414,7 +432,7 @@ Deno.serve(async (request) => {
             .from('restaurants').select('name, mail_from').eq('id', restaurantId).maybeSingle()
 
         if (error) {
-            console.warn('restaurants.mail_from is missing, run migration 051', error)
+            console.warn('restaurants.mail_from is missing on this database', error)
             const again = await admin
                 .from('restaurants').select('name').eq('id', restaurantId).maybeSingle()
             data = again.data
@@ -456,7 +474,8 @@ Deno.serve(async (request) => {
             const { data: ask } = await admin
                 .from('shift_requests')
                 .select('id, restaurant_id, from_employee_id, to_employee_id, give_shift_id,'
-                    + ' give_from, give_to, take_shift_id, take_from, take_to, message, status, decided_by')
+                    + ' give_from, give_to, take_shift_id, take_from, take_to, message, status, decided_by,'
+                    + ' created_at, answered_at')
                 .eq('id', requestId).maybeSingle()
             // Gone rather than never there, sometimes. Both shift columns are ON
             // DELETE CASCADE, so a roster row deleted while a week is rebuilt
@@ -486,9 +505,10 @@ Deno.serve(async (request) => {
             }
             if (event === 'swap-decided' && !isManager) return json({ error: 'Not yours' }, 403)
 
-            // The status has to agree with the event. Posting the same id twice
-            // then sends nothing the second time, instead of mailing somebody an
-            // answer that has already been overtaken by the next one.
+            // The status has to agree with the event, so nobody is mailed an
+            // answer that has already been overtaken by the next one. That does
+            // not stop the same one twice while the status stands still, and
+            // a no stands still for good; tooLate below is what does.
             const expected: Record<string, string[]> = {
                 'swap-asked': ['asked'],
                 'swap-answered': ['accepted', 'declined'],
@@ -497,12 +517,31 @@ Deno.serve(async (request) => {
             if (!expected[event].includes(ask.status)) {
                 return json({ sent: 0, why: `it is ${ask.status}` })
             }
+            if (tooLate(event, ask, new Date().toISOString())) {
+                return json({ sent: 0, why: 'too long after it happened' })
+            }
 
             const { data: rows } = await admin
                 .from('roster_shifts').select('id, employee_id, shift_date, starts_at, ends_at')
                 .in('id', [ask.give_shift_id, ask.take_shift_id].filter(Boolean))
 
-            const halves = swapHalves(ask, rows || [])
+            // The store's hours on those days, so a closing shift says Closing
+            // in the mail the same as it does on the roster. Without them the
+            // mail prints the time, which is the fallback rather than a fault.
+            const days = [...new Set((rows || []).map(r => r.shift_date))]
+            const [houseHours, dayNotes] = await Promise.all([
+                admin.from('restaurants').select('opening_hours').eq('id', ask.restaurant_id).maybeSingle(),
+                days.length > 0
+                    ? admin.from('day_notes')
+                        .select('note_date, opens_at, closes_at, is_closed, is_bank_holiday')
+                        .eq('restaurant_id', ask.restaurant_id)
+                        .in('note_date', days)
+                    : Promise.resolve({ data: [] }),
+            ])
+            const noteOn = (date: string) => (dayNotes.data || []).find(n => n.note_date === date) || null
+            const hoursOn = (date: string) => hoursForDate(houseHours.data?.opening_hours, noteOn(date), date)
+
+            const halves = swapHalves(ask, rows || [], hoursOn)
             if (halves.length === 0) return json({ sent: 0, why: 'the shifts are gone' })
 
             const names: Record<string, string> = {}
@@ -600,6 +639,14 @@ Deno.serve(async (request) => {
         const house = await houseOf(absence.restaurant_id)
 
         if (event === 'asked') {
+            // Only while it is waiting, and only right after it was asked. It
+            // used to go again for every post of the same id, answered or not.
+            // See tooLate in email.js.
+            if (absence.status !== 'requested') return json({ sent: 0, why: `it is ${absence.status}` })
+            if (tooLate(event, absence, new Date().toISOString())) {
+                return json({ sent: 0, why: 'too long after it happened' })
+            }
+
             // Who hears about it depends on who asked.
             //
             // Staff ask the managers, whatever it is they are asking for. A
@@ -625,11 +672,15 @@ Deno.serve(async (request) => {
 
             // The one thing the request itself does not say: they are already
             // rostered for some of it.
+            //
+            // Published, or changed since the week went out. A change takes a
+            // shift back to a draft, and moving somebody's Saturday an hour
+            // used to tell the managers they were not on that day at all.
             const { data: clashes } = await admin
                 .from('roster_shifts')
                 .select('shift_date, starts_at, ends_at')
                 .eq('employee_id', employee.id)
-                .not('published_at', 'is', null)
+                .or('published_at.not.is.null,published_as.not.is.null')
                 .gte('shift_date', absence.starts_on)
                 .lte('shift_date', absence.ends_on || absence.starts_on)
                 .order('shift_date')
@@ -688,6 +739,14 @@ Deno.serve(async (request) => {
             appUrl,
         })
 
+        // The record is drawn in the browser and arrives as base64, and it is
+        // written into the mail as it is. So it goes only when it is a PDF in
+        // base64 and nothing else, and its name is made here. Without it the
+        // answer still goes: the answer is the point and the record is the
+        // receipt.
+        const record = base64Pdf(pdf)
+        if (pdf && !record) console.warn('the time off record was not a PDF in base64, so it was left off')
+
         await send({
             to: [to],
             from: from(house.name, house.address),
@@ -697,7 +756,9 @@ Deno.serve(async (request) => {
             subject: mail.subject,
             html: mail.html,
             text: mail.text,
-            attachment: pdf ? { filename: `${pdfName || 'time-off-record'}.pdf`, content: pdf } : undefined,
+            attachment: record
+                ? { filename: `${recordName(absence, employee.full_name)}.pdf`, content: record }
+                : undefined,
         })
         return json({ sent: 1 })
     } catch (err) {

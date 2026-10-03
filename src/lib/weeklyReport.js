@@ -3,8 +3,10 @@
 // Everything in here is arithmetic and rules, kept out of the pages so it can
 // be tested without a database or a browser. The pages fetch, this decides.
 
-import { weekDates, weekStartOf, todayISO, addDays, dayMonth } from '@/lib/dates'
-import { tendersToShow, tenderVariance, num } from '@/lib/salesTenders'
+import { weekDates, weekStartOf, todayISO, addDays, dayMonth, WEEKDAY_NAMES } from '@/lib/dates'
+import { tendersToShow, tenderVariance, platformsToShow, num } from '@/lib/salesTenders'
+import { byWeek } from '@/lib/reportChart'
+import { round2 } from '@/lib/format'
 import { spendOn, FOOD, PACKAGING } from '@/lib/invoiceCategories'
 
 // The sections every report starts with, in the order they are read.
@@ -164,11 +166,8 @@ export function blockedBy(readiness) {
     return null
 }
 
-// Has the week finished? A week is written up after it has ended, never while
-// it is running, so the earliest a report can be started is the Sunday after.
-export function weekIsOver(weekStart, today = todayISO()) {
-    return today > addDays(weekStart, 6)
-}
+// How many finished weeks the Reports list shows, and the badge counts.
+export const WEEKS_LISTED = 10
 
 // The weeks to offer, newest first, back as far as asked.
 //
@@ -281,8 +280,8 @@ export function figureGaps(figures) {
     const days = figures.tradingDays
 
     if (figures.labourDays === 0) {
-        out.push('No hours have been entered for this week, so labour is counting as nothing '
-            + 'and the profit below is far higher than it really is.')
+        out.push('No hours have been entered for this week, so labour is counted as zero '
+            + 'and net earnings are far higher than they really are.')
     } else if (days > 0 && figures.labourDays < days) {
         out.push(`Hours are entered for ${figures.labourDays} of the ${days} days traded, `
             + 'so labour is lower than it really was.')
@@ -337,11 +336,9 @@ export function statementWeek(weekStart) {
     }
 }
 
-const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-
 // "Monday 28 September".
 export function dayWords(date) {
-    return `${WEEKDAYS[new Date(date + 'T00:00:00').getDay()]} ${dayMonth(date)}`
+    return `${WEEKDAY_NAMES[new Date(date + 'T00:00:00').getDay()]} ${dayMonth(date)}`
 }
 
 // "Monday 21 to Sunday 27 September", or across a month end "Monday 28
@@ -349,20 +346,41 @@ export function dayWords(date) {
 export function statementWords(weekStart) {
     const { from, to } = statementWeek(weekStart)
     const first = from.slice(0, 7) === to.slice(0, 7)
-        ? `${WEEKDAYS[new Date(from + 'T00:00:00').getDay()]} ${Number(from.slice(8))}`
+        ? `${WEEKDAY_NAMES[new Date(from + 'T00:00:00').getDay()]} ${Number(from.slice(8))}`
         : dayWords(from)
     return `${first} to ${dayWords(to)}`
 }
 
 // What a platform took between two dates, off the tracking rows beside the
-// till. Keyed by name, because that is how platform_sales stores it.
-export function platformTaken(days, name, from, to) {
+// till. By the platform's key, which is what platform_sales is kept under, so
+// a platform renamed since is still found.
+export function platformTaken(days, key, from, to) {
     return (days || [])
         .filter(d => d.sale_date >= from && d.sale_date <= to)
-        .reduce((t, d) => t + num(d.platform_sales?.[name]), 0)
+        .reduce((t, d) => t + num(d.platform_sales?.[key]), 0)
 }
 
-const r2 = n => Math.round(num(n) * 100) / 100
+// What each platform took, week by week, with the online and Corporate totals,
+// for the report's charts. A map from each week's Sunday to its row.
+//
+// Every platform that took money on one of these days counts, retired ones
+// included. Only the platforms this week shows used to count, so retiring one
+// took everything it had ever taken out of every past week's total.
+export function platformWeeks({ platforms = [], days = [], weeks = [] }) {
+    const counted = platformsToShow(platforms, days.map(d => d.platform_sales))
+    const taken = counted.map(p => [p, byWeek(days, 'sale_date', d => d.platform_sales?.[p.key])])
+
+    return new Map(weeks.map(week => {
+        const row = { onlineTotal: 0, corporateTotal: 0 }
+        for (const [p, inWeek] of taken) {
+            const amount = inWeek.get(week) || 0
+            row[`p_${p.id}`] = amount
+            if (p.bucket === 'online_platform') row.onlineTotal += amount
+            else row.corporateTotal += amount
+        }
+        return [week, row]
+    }))
+}
 
 // What one platform cost in our week.
 //
@@ -373,11 +391,11 @@ export function deliveryCost({ statement, statementTaken, weekTaken }) {
     if (statement == null || statement === '') return { typed: false, rate: null, cost: 0 }
     const bill = num(statement)
     const over = num(statementTaken)
-    if (over <= 0) return { typed: true, rate: null, cost: r2(bill) }
+    if (over <= 0) return { typed: true, rate: null, cost: round2(bill) }
     return {
         typed: true,
         rate: (bill / over) * 100,
-        cost: r2((bill * num(weekTaken)) / over),
+        cost: round2((bill * num(weekTaken)) / over),
     }
 }
 
@@ -394,8 +412,8 @@ export function deliveryRows({ platforms = [], items = [], days = [], weekStart 
 
     return platforms.map(platform => {
         const item = typed.get(platform.id)
-        const statementTaken = platformTaken(days, platform.name, from, to)
-        const weekTaken = platformTaken(days, platform.name, weekStart, weekEnd)
+        const statementTaken = platformTaken(days, platform.key, from, to)
+        const weekTaken = platformTaken(days, platform.key, weekStart, weekEnd)
         return {
             platform,
             statement: item ? num(item.amount) : null,
@@ -417,7 +435,7 @@ export function statementSundayIn(days, platforms, weekStart) {
     const day = (days || []).find(d => d.sale_date === to)
     if (!day) return false
     if (day.is_closed) return true
-    return (platforms || []).some(p => num(day.platform_sales?.[p.name]) !== 0)
+    return (platforms || []).some(p => num(day.platform_sales?.[p.key]) !== 0)
 }
 
 // What stands between this report and being sent, because of the platforms.
@@ -432,7 +450,7 @@ export function deliveryBlockers({ weekStart, today = todayISO(), rows = [], day
     const said = []
 
     if (today < out) {
-        said.push(`The delivery platforms bill Monday to Sunday, so their statements for ${span} `
+        said.push(`The online platforms bill Monday to Sunday, so their statements for ${span} `
             + `come out on ${dayWords(out)}. The report can be sent from then.`)
     }
 
@@ -582,10 +600,15 @@ export function blockers(items = []) {
 // entered, no invoices. Those are said and not enforced, the same rule the list
 // page uses for a day out against the till. Somebody who knows the week was
 // genuinely like that should not be argued with.
-export function publishCheck(sections = [], figures = null, delivery = []) {
+//
+// `held` is what the page knows stands in the way besides the report itself:
+// the delivery statements not in yet, and invoice lines still on Review. A
+// sentence, or { text, to, link } when the place to sort it out is another
+// screen.
+export function publishCheck(sections = [], figures = null, held = []) {
     const items = sections.flatMap(s => s.items || [])
     return {
-        blockers: [...blockers(items), ...delivery],
+        blockers: [...blockers(items), ...held],
         warnings: figures ? figureGaps(figures) : [],
     }
 }
@@ -599,15 +622,36 @@ export function publishCheck(sections = [], figures = null, delivery = []) {
 // 2, 27 September 2026: each online platform carries its statement, what it
 // took over the statement's week and over ours, the share it kept and the
 // cost, and deliveryTotal is those costs added up rather than the statements.
-export const FIGURES_VERSION = 2
+// 3, 30 September 2026: paperwork.allergenSheet, reprintDue's answer for the
+// printed allergen sheet. Null means it was checked and a new one was not
+// due. It is missing when it could not be checked, and on a report frozen
+// before 3, because nobody asked.
+export const FIGURES_VERSION = 3
 
 export function figuresToStore(figures, at = new Date()) {
     return { ...figures, version: FIGURES_VERSION, frozen_at: at.toISOString() }
 }
 
 // Is this report the first time it has gone out, or a correction?
+//
+// A correction only once an earlier send reached somebody. send_count goes up
+// when the report is frozen, before the mail goes, and sent_to is written only
+// once a mail has gone, so a first send that failed (Gmail dropped the
+// connection twice in September) left the count at one with nobody having it.
+// Counting that as sent turned the next try into "Corrected:" for owners who
+// never got the first. Sent to nobody because nobody was on the list is the
+// same: there is nothing to correct. The mail function asks the same thing in
+// correctionSend, in its email.js, and the two have to agree.
 export function isCorrection(report) {
-    return (report?.send_count || 0) > 0
+    return (report?.send_count || 0) > 0 && report?.sent_to?.length > 0
+}
+
+// A published report whose mail never went out. sent_to is written only after
+// a send, so null on a published report is a send that failed. An empty list
+// is a send that went to nobody because nobody was on the list, which the
+// page says already, and is not this.
+export function mailMissing(report) {
+    return report?.status === 'published' && report.sent_to == null
 }
 
 // Only a rating that moved is worth a sentence. One that held is noise.

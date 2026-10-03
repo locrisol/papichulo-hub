@@ -22,9 +22,10 @@
 // both. Which of the two, and which week it lands in, is the whole of
 // `creditLands` below.
 
-import { num } from '@/lib/format'
-import { weekStartOf } from '@/lib/dates'
+import { num, fmtMoney, round2 } from '@/lib/format'
+import { weekStartOf, addDays, daysBetween } from '@/lib/dates'
 import { similarWords, documentTotal, lineCost } from '@/lib/invoiceImport'
+import { packItems, readPackSize } from '@/lib/invoiceSysco'
 
 // What can be wrong with a delivery.
 //
@@ -40,11 +41,21 @@ import { similarWords, documentTotal, lineCost } from '@/lib/invoiceImport'
 //
 // `colour` is the same colour as the dot, as a figure, for the report's bar and
 // for the mail, neither of which can read a class name.
+//
+// **`ask` is what the number means for that reason**, because it means
+// something different for each: everything on the docket, the part that did
+// not come, the ones damaged. With one pair of boxes for all ten, the owner
+// could not tell on 2 October whether to count what was missing or what came.
+// `example` is a worked line under the question, and `counted` is how the
+// claim is read back ("3 single items missing").
 export const CLAIM_KINDS = [
     {
         value: 'not_delivered',
         label: 'Not delivered',
         at_door: 'It was on the docket and never came',
+        ask: 'How many were on the docket?',
+        example: 'Everything that should have come. 2 cases on the docket and none came: 2 full cases.',
+        counted: 'not delivered',
         soft: 'bg-slate-100 text-slate-800 border-slate-300',
         dot: 'bg-slate-500',
         colour: '#64748B',
@@ -53,6 +64,9 @@ export const CLAIM_KINDS = [
         value: 'short',
         label: 'Short',
         at_door: 'It did not all turn up',
+        ask: 'How many are missing?',
+        example: 'Count what did not come, not what did. 1 case of 4 bags ordered and 1 bag came: 3 single items.',
+        counted: 'missing',
         soft: 'bg-amber-50 text-amber-800 border-amber-200',
         dot: 'bg-amber-500',
         colour: '#F59E0B',
@@ -61,6 +75,9 @@ export const CLAIM_KINDS = [
         value: 'damaged',
         label: 'Damaged',
         at_door: 'It arrived broken, split or leaking',
+        ask: 'How many are damaged?',
+        example: 'Only the broken or leaking ones. Two tins of a case of six: 2 single items.',
+        counted: 'damaged',
         soft: 'bg-orange-50 text-orange-800 border-orange-200',
         dot: 'bg-orange-500',
         colour: '#F97316',
@@ -69,6 +86,9 @@ export const CLAIM_KINDS = [
         value: 'quality',
         label: 'Bad quality',
         at_door: 'It was not good enough and went back',
+        ask: 'How many went back?',
+        example: 'Only the ones that went back, not the whole delivery.',
+        counted: 'sent back',
         soft: 'bg-red-50 text-red-800 border-red-200',
         dot: 'bg-red-500',
         colour: '#EF4444',
@@ -77,6 +97,9 @@ export const CLAIM_KINDS = [
         value: 'out_of_date',
         label: 'Out of date',
         at_door: 'Past its date, or too close to it to use',
+        ask: 'How many are out of date, or too close to their date?',
+        example: 'Only those ones, not the whole delivery.',
+        counted: 'out of date',
         soft: 'bg-pink-50 text-pink-800 border-pink-200',
         dot: 'bg-pink-500',
         colour: '#EC4899',
@@ -85,6 +108,9 @@ export const CLAIM_KINDS = [
         value: 'warm',
         label: 'Arrived warm',
         at_door: 'Chilled or frozen and not cold enough',
+        ask: 'How many arrived warm?',
+        example: 'Only the ones that were not cold enough.',
+        counted: 'arrived warm',
         soft: 'bg-cyan-50 text-cyan-800 border-cyan-200',
         dot: 'bg-cyan-500',
         colour: '#06B6D4',
@@ -93,6 +119,9 @@ export const CLAIM_KINDS = [
         value: 'wrong_item',
         label: 'Wrong item',
         at_door: 'They sent something we did not order',
+        ask: 'How many of the wrong thing came?',
+        example: 'Add a note saying what we should have received.',
+        counted: 'sent in error',
         soft: 'bg-purple-50 text-purple-800 border-purple-200',
         dot: 'bg-purple-500',
         colour: '#A855F7',
@@ -101,6 +130,9 @@ export const CLAIM_KINDS = [
         value: 'price',
         label: 'Price query',
         at_door: 'The price on the docket looks wrong',
+        ask: 'How many were charged the wrong price?',
+        example: 'Usually everything on that line. The manager puts in the right price later.',
+        counted: 'charged the wrong price',
         soft: 'bg-blue-50 text-blue-800 border-blue-200',
         dot: 'bg-blue-500',
         colour: '#3B82F6',
@@ -109,6 +141,9 @@ export const CLAIM_KINDS = [
         value: 'mistake',
         label: 'Ordered by mistake',
         at_door: 'Our mistake: too much, or the wrong thing',
+        ask: 'How many are going back?',
+        example: 'Only what is going back to them.',
+        counted: 'going back',
         soft: 'bg-teal-50 text-teal-800 border-teal-200',
         dot: 'bg-teal-500',
         colour: '#14B8A6',
@@ -116,7 +151,10 @@ export const CLAIM_KINDS = [
     {
         value: 'something_else',
         label: 'Something else',
-        at_door: 'Say what under Anything else',
+        at_door: 'Describe it in the note',
+        ask: 'How many were affected?',
+        example: 'Add a note saying what was wrong.',
+        counted: 'affected',
         soft: 'bg-stone-100 text-stone-800 border-stone-300',
         dot: 'bg-stone-500',
         colour: '#78716C',
@@ -129,6 +167,9 @@ export const NOT_LOGGED = {
     value: 'other',
     label: 'No reason logged',
     at_door: '',
+    ask: '',
+    example: '',
+    counted: '',
     soft: 'bg-gray-100 text-gray-700 border-gray-300',
     dot: 'bg-gray-500',
     colour: '#9CA3AF',
@@ -141,13 +182,14 @@ export function claimKind(value) {
         value,
         label: value,
         at_door: '',
+        ask: '',
+        example: '',
+        counted: '',
         soft: 'bg-gray-100 text-gray-700 border-gray-300',
         dot: 'bg-gray-500',
         colour: NOT_LOGGED.colour,
     }
 }
-
-const round2 = n => Math.round(num(n) * 100) / 100
 
 // ---------------------------------------------------------------------------
 // Taking the note at the door
@@ -166,16 +208,47 @@ export function emptyDoorClaim() {
 // and it is still not required: a note with no number is worth far more than no
 // note.
 export function doorClaimProblem(form) {
-    if (!form?.supplierId) return 'Say who delivered it.'
-    if (!form?.kind) return 'Say what was wrong.'
-    if (!String(form?.what || '').trim()) return 'Say what it was, in your own words.'
-    if (num(form.cases) <= 0 && num(form.units) <= 0) return 'Say how many.'
-    // The one reason that means nothing without words, so the words are the
-    // reason.
-    if (form.kind === 'something_else' && !String(form?.note || '').trim()) {
-        return 'Say what was wrong, under Anything else.'
+    if (!form?.supplierId) return 'Pick a supplier.'
+    if (!form?.kind) return 'Pick what was wrong.'
+    if (!String(form?.what || '').trim()) return 'Enter what it was, in your own words.'
+    // In the reason's own words: "Enter how many are missing."
+    if (num(form.cases) <= 0 && num(form.units) <= 0) {
+        const ask = claimKind(form.kind).ask
+        return ask ? ask.replace(/^How many/, 'Enter how many').replace(/\?$/, '.') : 'Enter how many.'
     }
+    // Things counted, so a dot is a mistake: 1.5 meant as one and a half, or
+    // as kilos. Refused rather than dropped, which made it 15.
+    if (!Number.isInteger(num(form.cases)) || !Number.isInteger(num(form.units))) {
+        return 'Enter whole numbers only. For part of a case, enter the bags or tins under Single items.'
+    }
+    // The one reason that means nothing without words, so the words are the
+    // reason. And the wrong item, which says what came but not what should
+    // have.
+    const note = String(form?.note || '').trim()
+    if (form.kind === 'something_else' && !note) return 'Add a note saying what was wrong.'
+    if (form.kind === 'wrong_item' && !note) return 'Add a note saying what we should have received.'
     return null
+}
+
+// A count read back: "1 case and 3 single items". Never "units", which said
+// nothing about bag or kilo, and never "1 cases".
+export function claimCountSaid(cases, units) {
+    const c = num(cases)
+    const u = num(units)
+    return [
+        c ? `${c} ${c === 1 ? 'case' : 'cases'}` : null,
+        u ? `${u} single ${u === 1 ? 'item' : 'items'}` : null,
+    ].filter(Boolean).join(' and ')
+}
+
+// A claim read back on its row, in the words of its reason: "3 single items
+// missing", "1 case damaged". So whoever logged it can spot their own mistake,
+// and so can the manager choosing its line.
+export function claimSaid(claim) {
+    const count = claimCountSaid(claim?.cases, claim?.units)
+    if (!count) return ''
+    const counted = claimKind(claim.kind).counted
+    return counted ? `${count} ${counted}` : count
 }
 
 // The row, as the database wants it.
@@ -197,8 +270,9 @@ export function doorClaimPayload(form, { restaurantId, raisedBy, today }) {
         raised_on: today,
         raised_by: raisedBy,
         status: 'open',
-        // The week it happened in. It stays put even if the credit arrives in
-        // the next one, because a week is open until its report is published.
+        // The week it was written down in, for now. With no money on it, it
+        // takes nothing off any week. Putting it against its line, or the
+        // credit that settles it, gives it its real week. See claimWeek.
         counted_week: weekStartOf(today),
     }
 }
@@ -209,10 +283,10 @@ export function doorClaimPayload(form, { restaurantId, raisedBy, today }) {
 
 // Claims are quantities, not amounts.
 //
-// One case ordered and one unit delivered, four trays with one returned, three
-// boxes with one back: three different shapes and all of them counts, so a
-// claim carries cases and units the way the document does and the money is
-// worked out from the line's own price.
+// A whole case missing, three bags short out of a case of four, one tray sent
+// back: three different shapes and all of them counts of what is being claimed
+// for, never of what arrived. So a claim carries cases and single items the way
+// the document does and the money is worked out from the line's own price.
 //
 // **A price query is the exception, and it is worth the difference.** The goods
 // arrived and were kept; what is coming back is what they were overcharged. A
@@ -226,12 +300,20 @@ export function doorClaimPayload(form, { restaurantId, raisedBy, today }) {
 // back has to take off its VAT and its deposit too, or the week keeps them. A
 // price query takes the VAT on the overcharge and no deposit, because the
 // containers were kept.
+//
+// **A single item is one item of the pack**, a bag of a "4X500 GM" case, the
+// way the docket's UNIT column counts it. It used to be units_per_case, which
+// is the product's own unit, so for Chorizo counted in kilos three bags were
+// priced as three kilos: 41.99 for what Sysco credits at 7.00 a bag. Each item
+// is the case price split and rounded to the cent, the way they credit it, and
+// a whole case of them is the case. Only a pack that cannot be read (a typed
+// line) still goes by units_per_case.
 export function claimAmount(claim, line, { agreedPerCase = null } = {}) {
     if (!line) return null
     const perCase = num(line.price_per_case)
     const perPack = num(line.units_per_case)
-    const cases = Math.abs(num(claim?.cases))
-    const units = Math.abs(num(claim?.units))
+    const { cases, units, items } = claimCount(claim, line)
+    const share = money => (items ? round2(money / items) : perPack > 0 ? money / perPack : null)
 
     const printed = num(line.line_total)
     const vatShare = printed ? num(line.vat_amount) / printed : 0
@@ -239,14 +321,294 @@ export function claimAmount(claim, line, { agreedPerCase = null } = {}) {
 
     if (claim?.kind === 'price') {
         if (agreedPerCase == null || agreedPerCase === '') return null
-        const over = perCase - num(agreedPerCase)
+        const over = round2(perCase - num(agreedPerCase))
         if (over <= 0) return null
-        const asked = cases * over + units * (perPack > 0 ? over / perPack : 0)
-        return round2(asked * (1 + vatShare))
+        // The overcharge is not a price they print per item, so it is split
+        // and multiplied before any rounding, or ten cents over on a case of
+        // 24 cans comes to nothing.
+        const perItem = items ? over / items : perPack > 0 ? over / perPack : 0
+        return round2((cases * over + units * perItem) * (1 + vatShare))
     }
 
-    const perUnit = perPack > 0 ? perCase / perPack : num(line.unit_price)
+    const perUnit = share(perCase) ?? num(line.unit_price)
     return round2((cases * perCase + units * perUnit) * (1 + vatShare + depositShare))
+}
+
+// The claim as whole cases and single items of this line's pack, a whole case
+// of single items counted as the case. `items` is null where the pack cannot
+// be read. A one item pack is left as single items, the way Sysco prints a
+// loose sale under UNIT, and an item of it is the case price all the same.
+function claimCount(claim, line) {
+    const items = packItems(line?.pack_size)
+    let cases = Math.abs(num(claim?.cases))
+    let units = Math.abs(num(claim?.units))
+    if (items > 1) {
+        cases += Math.floor(units / items)
+        units %= items
+    }
+    return { cases, units, items }
+}
+
+// What putting a claim on a line comes to, in words, shown before anything is
+// written: "3 of the 4 x 500 g in a case at €27.99 a case: €21.00". On the
+// Chorizo of 2 October the money and the delivery were only seen after the
+// tap, in the message saying they had already moved. Said in the pack's own
+// words, a bag read as a kilo, or a claim for more than the line billed, is
+// seen before it costs anything.
+//
+// `problem` is why it cannot go on this line at all. `changing` is a claim
+// already on this line having its count changed (claimOverLine).
+export function claimWorking(claim, line, priced = {}, { changing = false } = {}) {
+    const amount = claimAmount(claim, line, priced)
+    if (amount == null || amount <= 0) {
+        // A few cents a case split over a case of cans can come to nothing,
+        // and that is not the price typed being wrong.
+        const tiny = claim?.kind === 'price' && amount === 0
+        return {
+            amount: null,
+            words: '',
+            problem: tiny ? 'That difference comes to less than a cent.'
+                : claim?.kind === 'price'
+                    ? 'Enter what the supplier should have charged per case. It must be less than the price on the invoice.'
+                    : 'That line has no price to work the amount out from.',
+        }
+    }
+
+    const { cases, units, items } = claimCount(claim, line)
+    const count = countWords(cases, units, items, line)
+
+    const tooMany = claimOverLine(claim, line, { changing })
+    if (tooMany) return { amount: null, words: '', problem: tooMany }
+
+    const vat = num(line.vat_amount) > 0
+    const deposit = num(line.deposit_amount) > 0
+    // On a one item pack the price of a case is the price of each.
+    const rate = items === 1 && !cases ? 'each' : 'a case'
+    if (claim?.kind === 'price') {
+        const over = round2(num(line.price_per_case) - num(priced.agreedPerCase))
+        return {
+            amount,
+            words: `${count.replace(/,$/, '')}, ${fmtMoney(over)} ${rate} over the agreed price${vat ? ', with its VAT' : ''}: ${fmtMoney(amount)}`,
+            problem: null,
+        }
+    }
+    const extras = vat && deposit ? ', with its VAT and deposit' : vat ? ', with its VAT' : deposit ? ', with its deposit' : ''
+    return {
+        amount,
+        words: `${count} at ${fmtMoney(line.price_per_case)} ${rate}${extras}: ${fmtMoney(amount)}`,
+        problem: null,
+    }
+}
+
+// A claim for more than the line billed, said the way the working says it, or
+// null. A line billed with no count on it, a typed one, has nothing to check
+// against. On its own so a price query being changed can be checked before
+// its price is asked, and the numbers fixed in the form.
+//
+// `changing` is a claim already on this line. There is no list of lines to
+// pick another from there, only Not this line, so it says that instead.
+export function claimOverLine(claim, line, { changing = false } = {}) {
+    const { cases, units, items } = claimCount(claim, line)
+    const perPack = num(line?.units_per_case)
+    const had = claimCount({ cases: line?.cases, units: line?.units }, line)
+    const per = items || (perPack > 0 ? perPack : null)
+    const billed = per ? had.cases * per + had.units : null
+    if (!billed || cases * per + units <= billed + 0.0001) return null
+    return `That line only billed ${countWords(had.cases, had.units, null, { units_per_case: 0 }, false)}, `
+        + 'less than the count on this problem. '
+        + (changing
+            ? 'Check the count, or press Not this line if it is on the wrong line.'
+            : 'Pick another line, or check the count that was logged.')
+}
+
+// Where the box asking what they should have charged a case starts: what the
+// Hub costs the product at, which is the price agreed unless somebody says
+// otherwise.
+//
+// **Only as it is when the Hub costs the same pack.** A line is matched to its
+// price row even when the packs differ, so cabbage costed at 1.43 for one met
+// a case of ten at 14.33, the box started at 1.43, and pressing it as it was
+// claimed 12.90 a case on cabbages priced right. With another pack the case is
+// worked out from the price of one, and `from` says so; with nothing to work
+// it out from, the box starts empty.
+//
+// **A price query on this line having its count changed starts at the price
+// it was worked out on**, worked back from its amount and count, because that
+// price is not kept and the Hub's can be another. It can be a cent out, which
+// is fine for where a box starts.
+//
+// `from.start` is where the box started, kept apart from what is typed in it.
+export function priceQueryStart(line, claim = null) {
+    const before = claimedPrice(claim, line)
+    if (before) return { agreed: before, from: { start: before, claimed: true } }
+    const row = line?.product_supplier_prices
+    const pack = num(line?.units_per_case)
+    if (row?.price_per_case != null && row.units_per_case != null && line?.units_per_case != null
+        && Math.abs(num(row.units_per_case) - pack) < 0.0005) {
+        return { agreed: num(row.price_per_case).toFixed(2), from: null }
+    }
+    if (row?.price_per_unit != null && pack > 0) {
+        const agreed = round2(num(row.price_per_unit) * pack).toFixed(2)
+        return { agreed, from: { start: agreed, perUnit: num(row.price_per_unit), unit: row.products?.unit || null } }
+    }
+    return { agreed: '', from: null }
+}
+
+// claimAmount for a price query, the other way round: the amount is the
+// overcharge on the cases and their share of a case for the single items,
+// with its VAT.
+function claimedPrice(claim, line) {
+    if (claim?.kind !== 'price' || claim.amount == null || !line) return null
+    const { cases, units, items } = claimCount(claim, line)
+    const perPack = num(line.units_per_case)
+    const share = cases + (items ? units / items : perPack > 0 ? units / perPack : 0)
+    const printed = num(line.line_total)
+    const vatShare = printed ? num(line.vat_amount) / printed : 0
+    if (share <= 0) return null
+    const agreed = round2(num(line.price_per_case) - num(claim.amount) / (1 + vatShare) / share)
+    return agreed > 0 ? agreed.toFixed(2) : null
+}
+
+// "1 case and 3 of the 4 x 500 g in a case". Plain single items where the
+// pack cannot be read, saying what a case was taken as when it is asked to.
+function countWords(cases, units, items, line, taking = true) {
+    const parts = []
+    if (cases) parts.push(`${cases} ${cases === 1 ? 'case' : 'cases'}`)
+    if (units) {
+        const perPack = num(line?.units_per_case)
+        const single = `${units} single ${units === 1 ? 'item' : 'items'}`
+        parts.push(items > 1
+            ? `${units} of the ${itemsInCase(line.pack_size, items)} in a case`
+            : !items && taking && perPack > 0 ? `${single}, taking a case as ${perPack} of them,` : single)
+    }
+    return parts.join(' and ')
+}
+
+// "4 x 500 g", "24 x 330 ml", "10 packs of 10", or just the count.
+function itemsInCase(packSize, items) {
+    const pack = readPackSize(packSize)
+    if (!pack?.unit || (pack.unit === 'Units' && pack.count === 1)) return String(items)
+    if (pack.unit === 'Units') return `${pack.count} packs of ${pack.size}`
+    const small = pack.size < 1
+    const size = Math.round((small ? pack.size * 1000 : pack.size) * 1000) / 1000
+    const word = pack.unit === 'KG' ? (small ? 'g' : 'kg') : (small ? 'ml' : 'l')
+    return `${pack.count} x ${size} ${word}`
+}
+
+// Taking a claim off the line it was put on, back to how it was logged at the
+// door: no line, no money, and the week it was written down in, the same as
+// doorClaimPayload gives. It then waits for the right invoice again, and a
+// credit for its docket still finds it.
+export function claimDetached(claim) {
+    return { invoice_id: null, invoice_line_id: null, amount: null, counted_week: weekStartOf(claim.raised_on) }
+}
+
+// Only while nothing has come back on it. Once a credit has touched a claim,
+// the money on it belongs to that credit, and clearing it would lose it.
+export function canDetach(claim) {
+    return claim?.status === 'open' && !!claim.invoice_line_id
+        && num(claim.credited_amount) === 0 && !claim.credit_invoice_id
+}
+
+// Changing what was logged, for three full cases typed when three single items
+// were meant. It used to mean Take it back and logging it again. Only while
+// nothing has come back on it, the same as canDetach, and only where its money
+// comes from its count: a shortage made by a fill in has money and no count.
+// Once its week's report has gone out, only its words (amountFixed).
+export function canEditClaim(claim) {
+    return claim?.status === 'open' && num(claim.credited_amount) === 0 && !claim.credit_invoice_id
+        && (!!claim.invoice_line_id || claim.amount == null)
+}
+
+// **Once its week's report has gone out, a claim on a line keeps its money.**
+// His answer of 3 October. That report took off what the claim was then, and
+// a change after it would land in no report at all. Its words and its note can
+// still change; what was wrong and how many are what the money comes from, so
+// they stay. `sent` is sentWeeks' list.
+export function amountFixed(claim, sent) {
+    return !!claim?.invoice_line_id && claim.amount != null && (sent || []).includes(claim.counted_week)
+}
+
+// The form as it saves for one whose money is fixed: the words and the note
+// changed, the reason and the count as they were.
+export function wordsOnly(claim, form) {
+    return { ...form, kind: claim.kind, cases: claim.cases, units: claim.units }
+}
+
+// The door form, filled in with what the claim says now.
+export function claimForm(claim) {
+    const count = n => (num(n) ? String(num(n)) : '')
+    return {
+        supplierId: claim.supplier_id || '',
+        kind: claim.kind || '',
+        what: claim.what || '',
+        cases: count(claim.cases),
+        units: count(claim.units),
+        docket: claim.docket_number || '',
+        note: claim.note || '',
+    }
+}
+
+// What changes on the row. On a line the supplier and the docket are that
+// delivery's, and Not this line is how they change, so they stay; the money is
+// worked out again from the new count (claimWorking) and handed in.
+export function claimChanged(claim, form, { amount = null } = {}) {
+    const said = {
+        kind: form.kind,
+        what: String(form.what || '').trim(),
+        cases: num(form.cases),
+        units: num(form.units),
+        note: String(form.note || '').trim() || null,
+    }
+    if (claim.invoice_line_id) return { ...said, amount }
+    return {
+        supplier_id: form.supplierId,
+        ...said,
+        docket_number: String(form.docket || '').trim() || null,
+    }
+}
+
+// A price query on a line with only its words or its note changed keeps the
+// amount it has. The price agreed is not kept on the claim, so working the
+// money out again means asking that price again, and fixing a note would
+// change what is claimed whenever it was typed differently.
+export function keepsItsAmount(claim, form) {
+    return !!claim?.invoice_line_id && claim.kind === 'price' && form?.kind === 'price'
+        && num(form.cases) === num(claim.cases) && num(form.units) === num(claim.units)
+}
+
+// Reopening after "Mark as refused" or "Cancel problem", both pressed by mistake
+// at least once. Open again with no end date. What it had been credited stays,
+// because a part credit is still part of it.
+//
+// **Its money comes back on its week**, unless that week's report went out
+// while it was closed. That report never had it, and no later one would, so
+// it comes off the first week still open (claimWeek). One still open when the
+// report went out stays put: that report already took the whole of it off,
+// and moving it would take it off a second one too. Closed the same day the
+// report went out, there is no telling which came first, so it stays put
+// then as well, and never counts twice.
+//
+// `deliveredOn` is the day of the invoice it is on, and `sent` and
+// `publishedOn` are sentWeeks'. `week`, `delivered` and `moved` are
+// claimWeek's, for saying where the money now comes off.
+export function claimReopened(claim, { deliveredOn = null, sent = [], publishedOn = {} } = {}) {
+    const day = deliveredOn || claim.raised_on
+    const patch = { status: 'open', settled_on: null }
+    let week = claim.counted_week
+    const out = publishedOn?.[claim.counted_week]
+    const closedFirst = !!claim.settled_on && !!out && claim.settled_on < out
+    if (claim.amount != null && (sent || []).includes(claim.counted_week) && closedFirst) {
+        week = claimWeek(day, sent).week
+        patch.counted_week = week
+    }
+    const delivered = weekStartOf(day)
+    return { patch, week, delivered, moved: week !== delivered }
+}
+
+// The invoice a claim is going on is not the docket written on the note.
+export function notTheDocket(claim, invoice) {
+    return !!claim?.docket_number && String(invoice?.invoice_number) !== String(claim.docket_number)
 }
 
 // What is still being chased.
@@ -263,6 +625,16 @@ export function claimIsOpen(claim) {
     return claim?.status === 'open' && (claimBalance(claim) == null || claimBalance(claim) > 0)
 }
 
+// What a claim takes off the week of its delivery, by the same rule as
+// invoice_cost_by_category: the whole ask while it is open, what came back once
+// it is settled or refused. Nothing once it is taken back, and nothing for a
+// note from the door that has no amount yet.
+export function claimTakesOff(claim) {
+    if (!['open', 'settled', 'refused'].includes(claim?.status)) return 0
+    if (!claim.counted_week || claim.amount == null) return 0
+    return Math.max(0, round2(claim.status === 'open' ? claim.amount : claim.credited_amount))
+}
+
 // ---------------------------------------------------------------------------
 // Matching a note at the door to a line on the paper
 // ---------------------------------------------------------------------------
@@ -270,27 +642,66 @@ export function claimIsOpen(claim) {
 // Which line this note was about.
 //
 // The docket number is exact, so when somebody wrote it down this is a lookup
-// and not a guess. Without it there is still the supplier and the day, and the
-// words they used, which is enough to offer a short list rather than the whole
-// delivery.
+// and not a guess, and only that document's lines are offered. **When that
+// document is not in the Hub yet, nothing is offered: it is waiting.** It used
+// to fall back to every invoice from the supplier in the last sixty days, and
+// the Chorizo of 2 October went on the Chorizo of a delivery three weeks
+// before, which moved its money to the wrong week.
+//
+// Without a docket there is still the supplier and the day: the deliveries
+// around it (otherDeliveries), nearest first, and the words they used.
 export function claimCandidates(claim, invoices) {
-    const mine = (invoices || []).filter(i => (
+    if (!claim?.docket_number) {
+        return { waiting: false, exact: false, lines: otherDeliveries(claim, invoices) }
+    }
+    const docket = ofSupplier(claim, invoices)
+        .filter(i => String(i.invoice_number) === String(claim.docket_number))
+    if (!docket.length) return { waiting: true, exact: false, lines: [] }
+    return { waiting: false, exact: true, lines: linesOf(claim, docket, true) }
+}
+
+// A delivery is offered for a note from a week before it was written down,
+// because a note is often a day or two late, to two days after, because an
+// invoice can be dated after the day it came.
+export const NEAR_BEFORE_DAYS = 7
+export const NEAR_AFTER_DAYS = 2
+
+// The supplier's deliveries around the day the note was written, nearest day
+// first and the closest words first within each. For a note with no docket,
+// and for one whose docket somebody says was not that delivery after all,
+// because a number written down wrong would otherwise wait for ever.
+export function otherDeliveries(claim, invoices) {
+    const from = addDays(claim.raised_on, -NEAR_BEFORE_DAYS)
+    const to = addDays(claim.raised_on, NEAR_AFTER_DAYS)
+    const near = ofSupplier(claim, invoices)
+        .filter(i => i.invoice_date >= from && i.invoice_date <= to)
+        .map(i => ({ invoice: i, away: Math.abs(daysBetweenOrZero(claim.raised_on, i.invoice_date)) }))
+        .sort((a, b) => a.away - b.away || String(b.invoice.invoice_date).localeCompare(String(a.invoice.invoice_date)))
+        .map(n => n.invoice)
+    return near.flatMap(invoice => linesOf(claim, [invoice], false))
+}
+
+// Lines in the order given, under the invoice each is on, for a heading per
+// delivery.
+export function byInvoice(lines) {
+    const groups = new Map()
+    for (const c of lines || []) {
+        if (!groups.has(c.invoice.id)) groups.set(c.invoice.id, { invoice: c.invoice, lines: [] })
+        groups.get(c.invoice.id).lines.push(c)
+    }
+    return [...groups.values()]
+}
+
+function ofSupplier(claim, invoices) {
+    return (invoices || []).filter(i => (
         i.supplier_id === claim.supplier_id && i.document_type !== 'credit'
     ))
+}
 
-    const bydocket = claim.docket_number
-        ? mine.filter(i => String(i.invoice_number) === String(claim.docket_number))
-        : []
-    const pool = bydocket.length ? bydocket : mine
-
-    return pool
-        .flatMap(invoice => (invoice.invoice_lines || []).map(line => ({
-            invoice,
-            line,
-            exact: bydocket.length > 0,
-            score: similarWords(claim.what, line.raw_description),
-        })))
-        .sort((a, b) => b.score - a.score)
+function linesOf(claim, invoices, exact) {
+    return invoices.flatMap(invoice => (invoice.invoice_lines || [])
+        .map(line => ({ invoice, line, exact, score: similarWords(claim.what, line.raw_description) }))
+        .sort((a, b) => b.score - a.score))
 }
 
 // The one the Hub is willing to pick on its own.
@@ -303,11 +714,85 @@ export const CLAIM_MATCH = 0.7
 
 export function claimMatch(claim, invoices) {
     if (claim?.invoice_line_id) return null
-    const ranked = claimCandidates(claim, invoices)
+    const ranked = [...claimCandidates(claim, invoices).lines].sort((a, b) => b.score - a.score)
     const best = ranked[0]
     if (!best?.exact || best.score < CLAIM_MATCH) return null
     if (ranked[1]?.score >= best.score) return null
     return best
+}
+
+// Which week a claim's money comes off. Every place that gives a claim its
+// week asks this: putting a note against its line on Delivery problems, and a
+// credit note settling one on the import.
+//
+// The week the delivery landed in. A note is dated by the day it was written
+// down, so a Saturday delivery noted on the Sunday came off the week after,
+// and the report for the delivery's own week went out with the whole invoice
+// in it.
+//
+// Unless that week's report has already gone out. A week is closed once its
+// report is published, and money put into it then is in no report at all: the
+// one that went out never had it, and no later one counts it. So it comes off
+// the first week after it whose report has not gone out, and wherever it is
+// shown against that week it says which delivery it is from. His decision of
+// 1 October 2026. A week nobody has sent is open, gap or not.
+//
+// `sent` is the start of every week whose report is published (sentWeeks).
+export function claimWeek(deliveredOn, sent = []) {
+    const delivered = weekStartOf(deliveredOn)
+    const closed = new Set(sent || [])
+    let week = delivered
+    while (closed.has(week)) week = addDays(week, 7)
+    return { week, delivered, moved: week !== delivered }
+}
+
+// The claims coming off a week for a delivery in an earlier one, because that
+// delivery's report had already gone out (claimWeek). Whatever shows the week
+// says which delivery each is from, or its food cost is lower with nothing
+// saying why. The money is what the week takes off, by claimTakesOff.
+//
+// `invoices` are the documents the claims were put against, for the day each
+// delivery landed. A claim with none, money a credit brought that nobody
+// logged, is from the day it was raised.
+export function fromEarlierWeeks(claims, invoices, weekStart) {
+    const landed = new Map((invoices || []).map(i => [i.id, i.invoice_date]))
+    return (claims || [])
+        .filter(c => c.counted_week === weekStart && claimTakesOff(c) > 0)
+        .map(c => ({ claim: c, on: landed.get(c.invoice_id) || c.raised_on }))
+        .filter(({ on }) => !!on)
+        .map(({ claim, on }) => ({ claim, delivered: weekStartOf(on) }))
+        .filter(({ delivered }) => delivered < weekStart)
+        .map(({ claim, delivered }) => ({
+            id: claim.id,
+            what: claim.what || 'A delivery problem',
+            kind: claim.kind,
+            label: claimKind(claim.kind).label,
+            colour: claimKind(claim.kind).colour,
+            money: claimTakesOff(claim),
+            delivered,
+        }))
+        .sort((a, b) => a.delivered.localeCompare(b.delivered) || b.money - a.money)
+}
+
+// The weeks whose report has gone out, for claimWeek. Published is what
+// closes a week; a draft can still take the money. One row a week, so it is
+// a few dozen a year and never needs paging.
+//
+// `publishedOn` is the day each went out, for claimReopened.
+export async function sentWeeks(db, restaurantId) {
+    const { data, error } = await db.from('weekly_reports')
+        .select('week_start, published_at')
+        .eq('restaurant_id', restaurantId)
+        .eq('status', 'published')
+    if (error) return { weeks: null, publishedOn: null, error }
+    const rows = data || []
+    return {
+        weeks: rows.map(r => r.week_start),
+        publishedOn: Object.fromEntries(rows
+            .filter(r => r.published_at)
+            .map(r => [r.week_start, String(r.published_at).slice(0, 10)])),
+        error: null,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -335,15 +820,34 @@ export function claimMatch(claim, invoices) {
 // becomes a claim of its own, settled, with no reason given yet. Leaving it to
 // count on its own would take part of one credit note off in one week and the
 // rest in another.
-export function creditSettles({ credit, lines = [], against = null, claims = [], supplierId, restaurantId }) {
+//
+// **Which week, by claimWeek.** The credit often comes after the delivery's
+// report has gone out, so the claim it makes and a note from the door that
+// gets its first money here take the first week still open, the same as
+// putting a note against its line. A claim that already had money on it had
+// its week decided then, and keeps it. `sent` is sentWeeks' list.
+//
+// **A claim with this docket that is on another invoice is not settled.** Had
+// the Chorizo of 2 October stayed open on the delivery of 13 September, the
+// credit for its docket would have paid 21.00 into a 41.99 claim there, which
+// would then show 20.99 owed for ever on the wrong invoice. It comes back in
+// `mismatched` for the import to say so. Meanwhile the credit does not count
+// on its own, and money left over is not made into a claim of its own: that
+// claim's whole ask is already coming off, and counting the credit as well
+// would take the same money off twice. Deleted and imported again once the
+// claim is put right, the credit settles it the ordinary way.
+export function creditSettles({ credit, lines = [], against = null, claims = [], supplierId, restaurantId, sent = [] }) {
     const reference = credit.orderReference || null
-    const mine = (claims || [])
+    const onIt = c => !!against && c.invoice_id === against.id
+    const byDocket = c => !!reference && !!c.docket_number && String(c.docket_number) === String(reference)
+    const theirs = (claims || [])
         .filter(c => c.status === 'open' && (!supplierId || !c.supplier_id || c.supplier_id === supplierId))
-        .filter(c => (against && c.invoice_id === against.id)
-            || (reference && c.docket_number && String(c.docket_number) === String(reference)))
+    const mismatched = theirs.filter(c => !onIt(c) && byDocket(c) && !!c.invoice_id)
+    const mine = theirs
+        .filter(c => onIt(c) || (byDocket(c) && !c.invoice_id))
         .sort((a, b) => String(a.raised_on).localeCompare(String(b.raised_on)))
 
-    if (!mine.length) return { settle: [], extra: null, countsInCost: true }
+    if (!mine.length) return { settle: [], extra: null, countsInCost: !mismatched.length, mismatched }
 
     // What each claim can still take. A note from the door with no line behind
     // it has no amount yet, and takes whatever the credit says it was worth.
@@ -364,7 +868,10 @@ export function creditSettles({ credit, lines = [], against = null, claims = [],
     // Same product code first, then anything still open, oldest first.
     for (const pot of pots) {
         for (const c of mine.filter(c => pot.code && c.code === pot.code)) {
-            if (pot.money > 0.004) pot.money = give(c, pot.money)
+            if (pot.money > 0.004) {
+                pot.money = give(c, pot.money)
+                pot.took = c
+            }
         }
     }
     for (const pot of pots) {
@@ -373,12 +880,25 @@ export function creditSettles({ credit, lines = [], against = null, claims = [],
         }
     }
 
+    // A few cents left on a line after the claim for that product took its
+    // share is rounding between their split price and ours, not money somebody
+    // asked for and never wrote down. So it goes to that claim, which asked
+    // for that much after all, rather than becoming a claim of its own with no
+    // reason on it.
+    for (const pot of pots) {
+        if (pot.took && pot.money > 0.004 && pot.money <= 0.05) {
+            got.set(pot.took.id, round2(got.get(pot.took.id) + pot.money))
+            pot.money = 0
+        }
+    }
+
     const on = credit.date || credit.invoice_date || null
     const settle = mine
         .filter(c => got.get(c.id) > 0)
         .map(c => {
             const credited = round2(num(c.credited_amount) + got.get(c.id))
-            const asked = c.amount == null ? credited : num(c.amount)
+            // Only those few cents ever make it more than was asked.
+            const asked = c.amount == null ? credited : Math.max(num(c.amount), credited)
             const done = credited + 0.004 >= asked
             return {
                 id: c.id,
@@ -389,12 +909,16 @@ export function creditSettles({ credit, lines = [], against = null, claims = [],
                     settled_on: done ? on : null,
                     credit_invoice_id: credit.id || null,
                     invoice_id: c.invoice_id || against?.id || null,
+                    // Its first money, so its week is decided now.
+                    ...(c.amount == null
+                        ? { counted_week: claimWeek(against?.invoice_date || c.raised_on || on, sent).week }
+                        : {}),
                 },
             }
         })
 
     const surplus = round2(pots.reduce((t, p) => t + p.money, 0))
-    const extra = surplus > 0.004 ? {
+    const extra = surplus > 0.004 && !mismatched.length ? {
         restaurant_id: restaurantId,
         supplier_id: supplierId || null,
         invoice_id: against?.id || null,
@@ -409,11 +933,68 @@ export function creditSettles({ credit, lines = [], against = null, claims = [],
         raised_on: on,
         settled_on: on,
         credit_invoice_id: credit.id || null,
-        counted_week: weekStartOf(against?.invoice_date || on),
+        counted_week: claimWeek(against?.invoice_date || on, sent).week,
         note: 'Nothing was logged at the door for this part of the credit.',
     } : null
 
-    return { settle, extra, countsInCost: false }
+    return { settle, extra, countsInCost: false, mismatched }
+}
+
+// Deleting a credit note that settled claims.
+//
+// A credit that settles a claim does not count on its own: the claim carries
+// its money, in the week the delivery happened. Left settled, a claim outlives
+// the credit, and importing the credit again finds nothing open to settle, so
+// it counts on its own date as well and the same money comes off twice. So the
+// claims it settled are open again before it goes, and the claim it made for
+// money nobody logged goes with it. Importing it again settles them once, the
+// same way the first import did.
+//
+// A claim keeps only its running total and the last credit that touched it,
+// not what each credit gave. Nearly always this credit is the only one on
+// them, and then every claim goes back to nothing. When the claims hold more
+// than this credit came to, an earlier credit gave some of it, and that part
+// stays. This credit's money comes back off the newest claim first, never more
+// than one holds, because a credit fills the oldest first, so the oldest is the
+// one an earlier credit can have part filled. Where that guess is wrong the
+// split between two claims comes out wrong, never the total.
+//
+// A refusal stands: the claim stays refused, only without this credit's money.
+// One taken back is not counted anywhere, so it is left alone.
+export function creditTakenBack(credit, claims) {
+    const mine = (claims || []).filter(c => c.credit_invoice_id === credit?.id && c.status !== 'void')
+    const made = mine.filter(c => c.kind === NOT_LOGGED.value)
+    const asked = mine.filter(c => c.kind !== NOT_LOGGED.value)
+    const sum = list => round2(list.reduce((t, c) => t + num(c.credited_amount), 0))
+
+    // What this credit gave the claims people asked for: all of it, less the
+    // claim it made for money nobody logged. A few cents between the total and
+    // what its lines came to is rounding, not an earlier credit.
+    const total = Math.abs(num(credit?.total_amount))
+    let left = total ? round2(total - sum(made)) : Infinity
+    if (left + 0.05 >= sum(asked)) left = Infinity
+
+    const back = new Map()
+    const newestFirst = [...asked].sort((a, b) => String(b.raised_on).localeCompare(String(a.raised_on)))
+    for (const c of newestFirst) {
+        const taken = Math.min(num(c.credited_amount), left)
+        back.set(c.id, round2(num(c.credited_amount) - taken))
+        left = round2(left - taken)
+    }
+
+    return {
+        change: asked.map(c => ({
+            id: c.id,
+            patch: {
+                credited_amount: back.get(c.id),
+                credit_invoice_id: null,
+                ...(c.status === 'settled' ? { status: 'open', settled_on: null } : {}),
+            },
+        })),
+        remove: made.map(c => c.id),
+        // How many will be waiting for a credit again, for the dialog.
+        waiting: asked.filter(c => c.status !== 'refused').length,
+    }
 }
 
 // A credit that reverses a whole invoice.
@@ -484,7 +1065,7 @@ export function chasingList(claims, today) {
         .map(claim => ({
             claim,
             balance: claimBalance(claim),
-            days: daysBetween(claim.raised_on, today),
+            days: daysBetweenOrZero(claim.raised_on, today),
         }))
         .sort((a, b) => b.days - a.days)
 }
@@ -498,28 +1079,9 @@ export function isLate(waiting) {
     return waiting.days >= LATE_AFTER_DAYS
 }
 
-function daysBetween(from, to) {
-    if (!from || !to) return 0
-    return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000)
-}
-
-// What the week's report says about claims.
-//
-// Both halves, because they answer different questions: what came back is money
-// on the week, and what is still out is a job nobody has finished.
-export function claimsForWeek(claims, weekStart, weekEnd) {
-    const inWeek = (claims || []).filter(c => c.raised_on >= weekStart && c.raised_on <= weekEnd)
-    const settled = inWeek.filter(c => c.status === 'settled')
-    const open = inWeek.filter(claimIsOpen)
-
-    return {
-        raised: inWeek.length,
-        settled: settled.length,
-        open: open.length,
-        credited: round2(settled.reduce((t, c) => t + num(c.credited_amount), 0)),
-        waiting: round2(open.reduce((t, c) => t + num(claimBalance(c)), 0)),
-    }
-}
+// Not the shared daysBetween on its own: a missing date has always counted as
+// none here, so the lists still sort and add up.
+const daysBetweenOrZero = (from, to) => daysBetween(from, to) ?? 0
 
 // ---------------------------------------------------------------------------
 // How a supplier does on claims
@@ -536,6 +1098,9 @@ export function bySupplier(claims, suppliers, today) {
     const byId = new Map()
 
     for (const claim of claims || []) {
+        // Taken back means logged by mistake, so it was never asked of them
+        // and would only drag their share back down.
+        if (claim.status === 'void') continue
         const id = claim.supplier_id || 'none'
         if (!byId.has(id)) {
             byId.set(id, {
@@ -557,7 +1122,7 @@ export function bySupplier(claims, suppliers, today) {
             row.waiting += num(claimBalance(claim))
         } else if (claim.status === 'settled') {
             row.settled += 1
-            if (claim.settled_on) row.days.push(daysBetween(claim.raised_on, claim.settled_on))
+            if (claim.settled_on) row.days.push(daysBetweenOrZero(claim.raised_on, claim.settled_on))
         }
     }
 
@@ -589,5 +1154,5 @@ function middleOf(numbers) {
 function oldestOpen(claims, supplierId, today) {
     const mine = (claims || []).filter(c => c.supplier_id === supplierId && claimIsOpen(c))
     if (!mine.length) return null
-    return Math.max(...mine.map(c => daysBetween(c.raised_on, today)))
+    return Math.max(...mine.map(c => daysBetweenOrZero(c.raised_on, today)))
 }

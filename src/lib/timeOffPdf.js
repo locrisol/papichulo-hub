@@ -1,19 +1,8 @@
 import { absenceDays } from '@/lib/absences'
 import { requestLabel, partWords } from '@/lib/timeOff'
+import { stampDate, stampDateTime, DAY_NAMES } from '@/lib/dates'
+import { loadJsPdf, letterhead, footers } from '@/lib/pdfPage'
 import logo from '@/assets/PapiChuloLogoPrint.png?inline'
-
-// jsPDF is fetched when somebody asks for a PDF, not when the screen opens.
-//
-// It is 400KB with its own optional dependencies behind it, and a plain import
-// at the top of this file means every visit to the screen that can make one
-// pays for it whether or not anybody presses the button. Most never do.
-let jsPdfModule = null
-
-async function loadJsPdf() {
-    if (!jsPdfModule) jsPdfModule = (await import('jspdf')).default
-    return jsPdfModule
-}
-
 
 // The answer to a time off request, as a piece of paper.
 //
@@ -26,31 +15,28 @@ async function loadJsPdf() {
 // Part of a day never gets one. Leaving at three on a Tuesday is a note between
 // two people, not something anybody needs filed.
 //
-// The header is the stock take report's header, because both are the same kind
-// of thing: a page this app produced that somebody outside the app will read.
-
-const LOGO_WIDTH = 26
-const LOGO_HEIGHT = (LOGO_WIDTH * 249) / 400
+// The top and the foot are the stock take report's, because both are the same
+// kind of thing: a page this app produced that somebody outside the app will
+// read.
 
 const GREEN = [46, 125, 82]
 const RED = [185, 28, 28]
 const INK = [40, 40, 40]
 
+// A day off with its weekday in front, for example Mon 05/10/2026. The weekday
+// stays because somebody reading the record asks which days they were.
 function fmtDate(iso) {
     if (!iso) return '—'
     const d = iso.length === 10 ? new Date(iso + 'T00:00:00') : new Date(iso)
     if (isNaN(d)) return '—'
-    return d.toLocaleDateString('en-IE', {
-        weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
-    })
+    return `${DAY_NAMES[d.getDay()]} ${stampDate(d)}`
 }
 
 function fmtStamp(iso) {
     if (!iso) return '—'
     const d = new Date(iso)
     if (isNaN(d)) return '—'
-    return d.toLocaleDateString('en-IE', { day: 'numeric', month: 'short', year: 'numeric' })
-        + ', ' + d.toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })
+    return stampDateTime(d)
 }
 
 // What to call the file. The person's name and the dates, so a folder of these
@@ -67,7 +53,6 @@ export function recordName(absence, employeeName) {
 export async function timeOffRecordPdf({ absence, employeeName, restaurant, answeredBy, cleared }) {
     const pdf = new (await loadJsPdf())({ unit: 'mm', format: 'a4', orientation: 'portrait' })
     const pageWidth = pdf.internal.pageSize.getWidth()
-    const pageHeight = pdf.internal.pageSize.getHeight()
     const marginX = 18
     const rightEdge = pageWidth - marginX
 
@@ -77,26 +62,13 @@ export async function timeOffRecordPdf({ absence, employeeName, restaurant, answ
     const freed = cleared || absence.cleared_shifts || []
 
     // ---------- the top ----------
-    pdf.addImage(logo, 'PNG', marginX, 12, LOGO_WIDTH, LOGO_HEIGHT)
-    const textX = marginX + LOGO_WIDTH + 6
-
-    pdf.setFont('helvetica', 'bold')
-    pdf.setFontSize(7)
-    pdf.setTextColor(150)
-    pdf.text('TIME OFF RECORD', textX, 16, { charSpace: 0.7 })
-
-    pdf.setFontSize(15)
-    pdf.setTextColor(...INK)
-    pdf.text(restaurant?.name || '', textX, 23.5)
-
-    pdf.setFont('helvetica', 'normal')
-    pdf.setFontSize(8)
-    pdf.setTextColor(130)
-    pdf.text(`Produced ${fmtStamp(new Date().toISOString())}`, rightEdge, 16, { align: 'right' })
-
-    pdf.setDrawColor(200)
-    pdf.setLineWidth(0.2)
-    pdf.line(marginX, 32, rightEdge, 32)
+    letterhead(pdf, {
+        logo,
+        label: 'TIME OFF RECORD',
+        name: restaurant?.name,
+        lines: [`Produced ${fmtStamp(new Date())}`],
+        margin: marginX,
+    })
 
     // ---------- the answer ----------
     // The one thing anybody opens this to find out, so it is the biggest thing
@@ -171,7 +143,7 @@ export async function timeOffRecordPdf({ absence, employeeName, restaurant, answ
         pdf.setFontSize(9)
         pdf.setTextColor(...INK)
         pdf.text(
-            `${freed.length} ${freed.length === 1 ? 'shift was' : 'shifts were'} taken off the roster`,
+            `${freed.length} ${freed.length === 1 ? 'shift was' : 'shifts were'} removed from the roster`,
             marginX + 5, boxTop + 7.5,
         )
 
@@ -188,17 +160,13 @@ export async function timeOffRecordPdf({ absence, employeeName, restaurant, answ
     }
 
     // ---------- the foot ----------
-    pdf.setDrawColor(220)
-    pdf.line(marginX, pageHeight - 22, rightEdge, pageHeight - 22)
-
-    pdf.setFont('helvetica', 'normal')
-    pdf.setFontSize(7.5)
-    pdf.setTextColor(150)
-    pdf.text(
-        'Produced by Papi Chulo Hub when the request was answered. Keep it with your own records.',
-        marginX, pageHeight - 16,
-    )
-    pdf.text(`Reference ${String(absence.id || '').slice(0, 8)}`, rightEdge, pageHeight - 16, { align: 'right' })
+    // One page on purpose, so the right hand side says which request this
+    // was rather than Page 1 of 1.
+    footers(pdf, {
+        left: 'Produced by Papi Chulo Hub when the request was answered. Keep it with your own records.',
+        right: () => `Reference ${String(absence.id || '').slice(0, 8)}`,
+        margin: marginX,
+    })
 
     return pdf
 }

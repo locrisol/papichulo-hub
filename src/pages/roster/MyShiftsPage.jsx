@@ -2,13 +2,15 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { friendlyError } from '@/lib/errors'
-import { todayISO, weekStartOf, weekDates, addDays, shortDate, fullDate } from '@/lib/dates'
-import { DAY_NAMES, dayName } from '@/lib/events'
+import { todayISO, weekStartOf, weekDates, addDays, shortDate, fullDate, DAY_NAMES, dayName } from '@/lib/dates'
 import { bankHolidayFor, BANK_HOLIDAY_INK, BANK_HOLIDAY_WASH } from '@/lib/bankHolidays'
 import { card, cardEdge, badge, rowButton, segmentTrack, segmentButton } from '@/lib/controlStyles'
 import JumpButton from '@/components/ui/JumpButton'
+import ErrorBanner from '@/components/ui/ErrorBanner'
+import Notice from '@/components/ui/Notice'
+import PageHeader from '@/components/ui/PageHeader'
 import {
-    hoursForDate, endLabel, shortTime, breakLabel, fmtHours, shiftHours, weekRows, toTime,
+    hoursForDate, endLabel, shortTime, breakLabel, fmtHours, shiftHours, weekRows, toTime, staffWeekRange,
 } from '@/lib/roster'
 import { weekSpan, freeEnds, dayShape } from '@/lib/presence'
 import { wholeDayOn } from '@/lib/absences'
@@ -16,8 +18,8 @@ import { openGaps } from '@/lib/timeOff'
 import { AWAY } from '@/lib/rosterShare'
 import { isWorkingOn, sortEmployees, NO_COLOUR } from '@/lib/team'
 import {
-    LIVE_STATES, stateOf, waitingOn, requestsOnShift, windowOf, isWholeShift, shiftIdsOf,
-    requestDate,
+    LIVE_STATES, stateOf, waitingOn, requestsOnShift, hoursWords, isWholeShift, shiftIdsOf,
+    requestDate, canTakeBack,
 } from '@/lib/shiftRequests'
 import { emailTheShiftAsk, emailTheShiftAnswer } from '@/lib/rosterMail'
 import DateStepper from '@/components/ui/DateStepper'
@@ -25,11 +27,12 @@ import RosterWeek from '@/components/roster/RosterWeek'
 import DiaryChip from '@/components/diary/DiaryChip'
 import DiaryEntryModal from '@/components/diary/DiaryEntryModal'
 import { calendarItems, itemsByDate, showsOnRoster, atRestaurant } from '@/lib/diary'
-import { nearbyRows, headlinePlaces, PAIRING_COLUMNS } from '@/lib/nearby'
+import { rosterNearby, NEARBY_FAILED, STAFF_PAIRING_COLUMNS } from '@/lib/nearby'
 import PresenceGrid from '@/components/roster/PresenceGrid'
 import ShiftRequestDialog from '@/components/roster/ShiftRequestDialog'
 import TimeOffRequestDialog from '@/components/roster/TimeOffRequestDialog'
 import TimeOffCard from '@/components/roster/TimeOffCard'
+import { useRecountBadges } from '@/context/badges'
 
 // The staff side of the roster. One page.
 //
@@ -49,7 +52,11 @@ import TimeOffCard from '@/components/roster/TimeOffCard'
 //              about is literally the same object. On a phone it is a grid of
 //              bars, because the table is 64rem wide and a phone is 23.
 //
-// Published only, and that is the database's rule rather than this page's.
+// Published only, and at their own restaurant: the week as it went out, from
+// roster_published, with a shift changed since still shown as it was. A
+// manager on the roster can read the drafts on the table, and they are not
+// what went out.
+
 // What is on this week, for the phone.
 //
 // Only the days that have something, because a list of seven headings with
@@ -83,6 +90,7 @@ function WhatIsOn({ diary, nearby, dates }) {
 }
 
 export default function MyShiftsPage() {
+    const recountBadges = useRecountBadges()
     const { user } = useAuth()
 
     const [me, setMe] = useState(null)
@@ -92,6 +100,9 @@ export default function MyShiftsPage() {
     const [diary, setDiary] = useState([])
     const [nearbyOn, setNearbyOn] = useState([])
     const [nearbyPlaces, setNearbyPlaces] = useState([])
+    // Whether the events nearby could not be read. Its own line rather than
+    // the page's error, which the next thing to go wrong writes over.
+    const [nearbyFailed, setNearbyFailed] = useState(false)
     // Read only. Nobody here can change one, and until now nobody here
     // could read one either: the band was a bar with nothing listening to
     // it, which is the same dead control in a different place.
@@ -100,12 +111,16 @@ export default function MyShiftsPage() {
     const [openingHours, setOpeningHours] = useState(null)
     const [breakRules, setBreakRules] = useState(null)
     const [requests, setRequests] = useState([])
+    // Which of this week's shifts somebody has asked about, whoever it is
+    // between. Only the shift ids and the status, from roster_asks.
+    const [weekAsks, setWeekAsks] = useState([])
     // The shifts a request points at, which are often not in the week on
     // screen. Kept apart from `shifts` on purpose: these are two shifts fetched
     // by id so a card can say what it is about, not a week, and folding them in
     // would put somebody else's Saturday into the grid.
     const [askShifts, setAskShifts] = useState([])
     const [asking, setAsking] = useState(null)
+    const [askError, setAskError] = useState('')
     // My own time off, whole rows this time rather than the away view, because
     // these are mine and I am allowed to know why I asked.
     const [myTimeOff, setMyTimeOff] = useState([])
@@ -121,6 +136,15 @@ export default function MyShiftsPage() {
     const today = todayISO()
     const dates = weekDates(weekStart)
 
+    // No further than the team and its time off are given to staff, so a
+    // week never opens with nobody's name on it. See staffWeekRange.
+    const { first: firstWeek, last: lastWeek } = staffWeekRange(today)
+    const toWeek = week => setWeekStart(week < firstWeek ? firstWeek : week > lastWeek ? lastWeek : week)
+    // A request can be about a shift older than that, one left waiting for
+    // months, and a link to its week would open a different one. So a card
+    // only offers to open the week when the page can get there.
+    const opensOn = date => !!date && weekStartOf(date) >= firstWeek && weekStartOf(date) <= lastWeek
+
     // The asks, in two halves, and they answer two different questions.
     //
     // **Anything still going somewhere with my name on it, whatever week it is
@@ -131,7 +155,10 @@ export default function MyShiftsPage() {
     //
     // **Anything about this week's shifts, whoever it is between.** That one is
     // genuinely week shaped. It is what marks a cell as already asked about, so
-    // two people do not ask the same person for the same shift.
+    // two people do not ask the same person for the same shift. It needs only
+    // which shifts, so it comes from roster_asks, which has nothing else of the
+    // request: a swap between two other people, who asked whom, the hours and
+    // the message, is theirs, and since 1 October staff cannot read it at all.
     //
     // Then the shifts those requests name, by id, because a card cannot say
     // what it is about without them and half of them are in another week.
@@ -142,20 +169,22 @@ export default function MyShiftsPage() {
     // something before it is written.
     async function loadAsks(weekShifts, meId = me?.id) {
         const ids = (weekShifts || []).map(s => s.id)
-        const wanted = [
-            ...(meId ? [`from_employee_id.eq.${meId}`, `to_employee_id.eq.${meId}`] : []),
-            ...(ids.length > 0
-                ? [`give_shift_id.in.(${ids.join(',')})`, `take_shift_id.in.(${ids.join(',')})`]
-                : []),
-        ]
-        if (wanted.length === 0) { setRequests([]); setAskShifts([]); return }
+        const nothing = Promise.resolve({ data: [] })
+        const [mineRes, weekRes] = await Promise.all([
+            meId
+                ? supabase.from('shift_requests').select('*')
+                    .or(`from_employee_id.eq.${meId},to_employee_id.eq.${meId}`)
+                    .order('created_at', { ascending: false })
+                : nothing,
+            ids.length > 0
+                ? supabase.from('roster_asks').select('give_shift_id, take_shift_id, status')
+                    .or(`give_shift_id.in.(${ids.join(',')}),take_shift_id.in.(${ids.join(',')})`)
+                : nothing,
+        ])
 
-        const { data } = await supabase.from('shift_requests').select('*')
-            .or(wanted.join(','))
-            .order('created_at', { ascending: false })
-
-        const asks = data || []
+        const asks = mineRes.data || []
         setRequests(asks)
+        setWeekAsks(weekRes.data || [])
 
         // Only the ones the week does not already have. Nothing is fetched at
         // all on a week where every request happens to be about it, which is
@@ -163,9 +192,13 @@ export default function MyShiftsPage() {
         const missing = shiftIdsOf(asks).filter(id => !ids.includes(id))
         if (missing.length === 0) { setAskShifts([]); return }
 
-        const { data: rows } = await supabase.from('roster_shifts')
+        // As it went out, the same as the week, so a manager's card says
+        // nothing an employee's could not, and a shift changed since is still
+        // there to say what the request is about.
+        const { data: rows } = await supabase.from('roster_published')
             .select('id, employee_id, shift_date, starts_at, ends_at, break_minutes')
             .in('id', missing)
+            .not('published_at', 'is', null)
         setAskShifts(rows || [])
     }
 
@@ -177,11 +210,18 @@ export default function MyShiftsPage() {
 
             // Which of the names on the roster is me. Everything else follows
             // from this, so nothing is fetched until it is answered.
-            const { data: mine, error: meErr } = await supabase
-                .from('employees')
-                .select('id, restaurant_id, full_name, position_id')
-                .eq('user_id', user.id)
-                .maybeSingle()
+            //
+            // Through the colleagues view, not the employees table. That row
+            // carries what they cost per hour and whatever a manager wrote in
+            // Notes, and since 1 October staff cannot read it at all.
+            const { data: myId, error: idErr } = await supabase.rpc('get_my_employee_id')
+            const { data: mine, error: meErr } = myId
+                ? await supabase
+                    .from('roster_colleagues')
+                    .select('id, restaurant_id, full_name, position_id')
+                    .eq('id', myId)
+                    .maybeSingle()
+                : { data: null, error: idErr }
 
             if (!live) return
             if (meErr) { setError(friendlyError(meErr)); setReady(true); return }
@@ -194,13 +234,34 @@ export default function MyShiftsPage() {
             const [
                 shiftRes, mateRes, noteRes, diaryRes, awayRes, restRes, eventRes, nearRes, offRes,
             ] = await Promise.all([
-                // Straight off the table. A policy lets staff read published
-                // rows at their own restaurant, so there is nothing between
-                // this and the same shifts a manager sees.
-                supabase.from('roster_shifts').select('*')
+                // The week as it went out, at their own restaurant.
+                //
+                // roster_published rather than the table. Changing a shift
+                // after the week went out takes it back to a draft, and a
+                // draft is not theirs to read, so the shift used to vanish
+                // from here until the week was published again. The view
+                // gives it as it was when it went out, and never gives a
+                // draft, which the table hands a manager: a store manager on
+                // the roster saw next week's draft as though it had gone out.
+                //
+                // Published and their own restaurant are said here as well as
+                // in the view, so the page does not lean on how the view is
+                // written, and because a super admin's view is every
+                // restaurant's.
+                //
+                // The columns the week shows and nothing else, the same as
+                // every other read staff make. The note is a manager's word
+                // to the person on the shift, and the view gives it to them
+                // on their own shifts and to nobody else.
+                supabase.from('roster_published')
+                    .select('id, employee_id, shift_date, starts_at, ends_at, break_minutes, note')
+                    .eq('restaurant_id', mine.restaurant_id)
+                    .not('published_at', 'is', null)
                     .gte('shift_date', from).lte('shift_date', to)
                     .order('shift_date').order('starts_at'),
-                supabase.from('roster_colleagues').select('*').order('sort_order'),
+                supabase.from('roster_colleagues').select('*')
+                    .eq('restaurant_id', mine.restaurant_id)
+                    .order('sort_order'),
                 supabase.from('day_notes').select('*')
                     .eq('restaurant_id', mine.restaurant_id)
                     .gte('note_date', from).lte('note_date', to),
@@ -210,10 +271,13 @@ export default function MyShiftsPage() {
                 // is the one person not told about it.
                 //
                 // No restaurant filter and no filter on who it is for. Both are
-                // the scope, and the policy in the database reads it: a private
-                // entry belongs to whoever wrote it and never comes back here
-                // at all.
-                supabase.from('diary_entries').select('*')
+                // the scope, and the view reads it: a private entry belongs to
+                // whoever wrote it and never comes back to anybody else.
+                //
+                // staff_diary rather than the table, for a manager too, since
+                // nobody changes an entry here. It leaves out where each one
+                // is on Google and who wrote it.
+                supabase.from('staff_diary').select('*')
                     .lte('starts_on', to)
                     .or(`ends_on.gte.${from},and(ends_on.is.null,starts_on.gte.${from})`)
                     .order('starts_on'),
@@ -222,8 +286,11 @@ export default function MyShiftsPage() {
                 // needs: a day greyed out so you do not ask somebody who is in
                 // Spain.
                 supabase.from('roster_away').select('*')
+                    .eq('restaurant_id', mine.restaurant_id)
                     .lte('starts_on', to).gte('ends_on', from),
-                supabase.from('restaurants')
+                // The view rather than the table, which staff cannot read.
+                // It is everything this page needs and nothing about money.
+                supabase.from('staff_restaurants')
                     .select('opening_hours, break_rules, roster_rules, watch_city_events')
                     .eq('id', mine.restaurant_id).maybeSingle(),
                 // What is on near us. Everybody working a concert night needs
@@ -232,8 +299,10 @@ export default function MyShiftsPage() {
                     .lte('event_date', to)
                     .or(`ends_on.gte.${from},and(ends_on.is.null,event_date.gte.${from})`)
                     .order('event_time'),
+                // The place without how it is set up, for a manager too,
+                // since nothing here shows the feed or the page.
                 supabase.from('restaurant_places')
-                    .select(PAIRING_COLUMNS)
+                    .select(STAFF_PAIRING_COLUMNS)
                     .eq('restaurant_id', mine.restaurant_id)
                     .order('sort_order'),
                 // My own requests, not week bound. What I asked for in March is
@@ -259,8 +328,14 @@ export default function MyShiftsPage() {
             setOpeningHours(restRes.data?.opening_hours || null)
             setBreakRules(restRes.data?.break_rules || null)
             setRosterRules(restRes.data?.roster_rules || null)
-            setNearbyOn(nearbyRows(eventRes.data, nearRes.data, restRes.data))
-            setNearbyPlaces(headlinePlaces(nearRes.data, restRes.data))
+            // Everything but a cancelled night or one the feed stopped
+            // listing, the same as the roster, and nothing rather than a
+            // quiet week when the read failed. See rosterNearby and
+            // nearbyRows.
+            const near = rosterNearby(eventRes, nearRes, restRes.data)
+            setNearbyOn(near.rows)
+            setNearbyPlaces(near.places)
+            setNearbyFailed(Boolean(near.failed))
             setMyTimeOff(offRes.data || [])
             setReady(true)
 
@@ -328,8 +403,9 @@ export default function MyShiftsPage() {
     const rows = weekRows(roster, shifts, dates)
     const span = weekSpan(Object.fromEntries(dates.map(d => [d, hoursOn(d)])), shifts)
 
-    // Everything about this week that is still going somewhere.
-    const liveAsks = requests.filter(r => LIVE_STATES.includes(r.status))
+    // Everything about this week that is still going somewhere: mine, and
+    // whichever shifts anybody else has asked about.
+    const liveAsks = [...requests, ...weekAsks].filter(r => LIVE_STATES.includes(r.status))
 
     // This week's shifts first, then the ones fetched because a request points
     // at them. A card cannot say what it is about without the shift, so a
@@ -350,16 +426,23 @@ export default function MyShiftsPage() {
     // come**, because otherwise every request either of us has ever been part
     // of piles up above the week for ever, and a list that long is a list
     // nobody reads, including the one line in it that mattered.
+    //
+    // An answered one whose shift cannot be read is left off too.
+    // roster_published only gives the weeks this page opens and one more, so
+    // a shift from before then is not there, and the card would be a name
+    // and a word with nothing under it, for every request ever answered.
     const involving = requests.filter(r => {
         if (r.status === 'withdrawn') return false
         if (r.from_employee_id !== me?.id && r.to_employee_id !== me?.id) return false
         if (LIVE_STATES.includes(r.status)) return true
         const when = requestDate(r, shiftById)
-        return !when || when >= today
+        return !!when && when >= today
     })
 
+    // After an answer: the sidebar's My shifts count follows it.
     async function reload() {
         await loadAsks(shifts)
+        recountBadges()
     }
 
     async function reloadTimeOff() {
@@ -373,15 +456,22 @@ export default function MyShiftsPage() {
 
     // Only while nobody has answered it. Once it has been decided it is a
     // record of what was decided, and the database refuses anything else.
+    //
+    // The refusal is a delete that matches nothing, which is not an error, so
+    // the row is asked for back. A manager answering it after this page
+    // loaded used to leave the page carrying on as if it had been cancelled.
     async function withdrawTimeOff(id) {
-        const { error: err } = await supabase.from('absences').delete().eq('id', id)
+        const { data, error: err } = await supabase.from('absences').delete().eq('id', id).select('id')
         if (err) { setError(friendlyError(err)); return }
+        if (!data?.length) setError('This request has already been answered, so it cannot be cancelled.')
         reloadTimeOff()
     }
 
+    // A failed ask is said inside the dialog. The page's own line sits behind
+    // it, where nobody holding the dialog open would see it.
     async function send(draft) {
         setSaving(true)
-        setError('')
+        setAskError('')
         // The row comes back because the mail goes out by id and there is no
         // other way for the browser to learn it.
         const { data, error: err } = await supabase.from('shift_requests').insert({
@@ -390,7 +480,7 @@ export default function MyShiftsPage() {
             created_by: user.id,
         }).select('id').single()
         setSaving(false)
-        if (err) { setError(friendlyError(err)); return }
+        if (err) { setAskError(friendlyError(err)); return }
         // Not awaited. Asking is the thing that had to happen and it has; the
         // mail is how the other person finds out, and it does not get to fail
         // the ask.
@@ -427,11 +517,20 @@ export default function MyShiftsPage() {
     // Opening a shift starts an ask. Your own goes out, somebody else's comes
     // in, and the dialog is the same one either way.
     function openShift(shift) {
+        setAskError('')
         setAsking(shift.employee_id === me.id ? { mine: shift } : { theirs: shift })
     }
 
     if (!ready) {
         return <p className="text-sm text-muted">Loading...</p>
+    }
+
+    // The question of which name is theirs never got an answer, which is not
+    // the same as the answer being nobody. Without this a dropped signal on a
+    // phone read as an account not linked, and sent them to a manager to fix
+    // a setup problem that was not there.
+    if (error && !me) {
+        return <ErrorBanner className="mb-4">{error}</ErrorBanner>
     }
 
     // Somebody with a login but no record on the team list. It happens the day
@@ -448,8 +547,8 @@ export default function MyShiftsPage() {
                     Not on the team list yet
                 </h2>
                 <p className="text-sm text-muted">
-                    Your account is not joined up to anybody on the roster, so there are no shifts to
-                    show. Ask a manager to link it and this fills in.
+                    Your account is not linked to anyone on the roster yet, so there are no shifts to
+                    show. Ask a manager to link it.
                 </p>
             </div>
         )
@@ -461,32 +560,27 @@ export default function MyShiftsPage() {
         // and was the only one that was, which read as a page that had not
         // finished loading rather than as a choice.
         <>
-            <div className="mb-4">
-                <h2 className="font-serif text-2xl font-bold text-gray-900">
-                    {view === 'mine' ? 'My shifts' : 'The week'}
-                </h2>
-                <p className="text-sm text-muted mt-1">{me.full_name}</p>
-            </div>
+            <PageHeader title={view === 'mine' ? 'My shifts' : 'The week'} subtitle={me.full_name} />
 
-            {error && <div className="bg-amber-50 text-amber-700 text-sm rounded-lg p-3 mb-4">{error}</div>}
+            <ErrorBanner className="mb-4">{error}</ErrorBanner>
+            <ErrorBanner className="mb-4">{nearbyFailed ? NEARBY_FAILED : null}</ErrorBanner>
 
             <div className={`${cardEdge} bg-white p-3 mb-4 flex flex-col sm:flex-row sm:items-center gap-3`}>
                 <DateStepper
-                    onBack={() => setWeekStart(addDays(weekStart, -7))}
-                    onNext={() => setWeekStart(addDays(weekStart, 7))}
+                    onBack={() => toWeek(addDays(weekStart, -7))}
+                    onNext={() => toWeek(addDays(weekStart, 7))}
+                    backDisabled={weekStart <= firstWeek}
+                    nextDisabled={weekStart >= lastWeek}
                     backLabel="Previous week"
                     nextLabel="Next week"
+                    weekStart={weekStart}
                     jump={(
                         <JumpButton
                             isCurrent={weekStart === weekStartOf(today)}
                             onClick={() => setWeekStart(weekStartOf(today))}
                         />
                     )}
-                >
-                    <span className="text-sm font-semibold text-gray-800 whitespace-nowrap">
-                        {shortDate(dates[0])} to {shortDate(dates[6])}
-                    </span>
-                </DateStepper>
+                />
 
                 <div className="flex items-center gap-4 sm:ml-auto">
                     <div>
@@ -536,8 +630,8 @@ export default function MyShiftsPage() {
                             saving={saving}
                             dates={dates}
                             onAnswer={waitingOn(r, me.id, false) === 'answer' ? answer : null}
-                            onWithdraw={r.from_employee_id === me.id ? withdraw : null}
-                            onGoToWeek={date => setWeekStart(weekStartOf(date))}
+                            onWithdraw={canTakeBack(r, me.id) ? withdraw : null}
+                            onGoToWeek={opensOn(requestDate(r, shiftById)) ? date => toWeek(weekStartOf(date)) : null}
                         />
                     ))}
                 </div>
@@ -637,8 +731,8 @@ export default function MyShiftsPage() {
                 anybody reading this is that Saturday evening is free, not whose
                 it used to be. */}
             {freeShifts.length > 0 && (
-                <div className="bg-green-50 border border-green-200 rounded-lg p-3 mt-4">
-                    <p className="text-sm font-semibold text-green-900 mb-1">
+                <Notice tone="good" className="mt-4">
+                    <p className="font-semibold mb-1">
                         {freeShifts.length === 1
                             ? 'One shift is free this week'
                             : `${freeShifts.length} shifts are free this week`}
@@ -651,7 +745,7 @@ export default function MyShiftsPage() {
                         ))}
                     </ul>
                     <p className="text-xs text-green-800 mt-1.5">Ask a manager if you want one of them.</p>
-                </div>
+                </Notice>
             )}
 
             {/* Time off, under the week. It is the other thing somebody opens
@@ -683,6 +777,7 @@ export default function MyShiftsPage() {
                     openingHours={openingHours}
                     breakRules={breakRules}
                     saving={saving}
+                    error={askError}
                     onSend={send}
                     onClose={() => setAsking(null)}
                 />
@@ -759,7 +854,7 @@ function MyWeek({
                             </span>
                             <span className="text-xs text-muted">
                                 {note?.is_closed
-                                    ? 'Store closed'
+                                    ? 'Restaurant closed'
                                     : hours
                                         ? `Open ${hours.open} to ${hours.close}`
                                         : ''}
@@ -768,7 +863,7 @@ function MyWeek({
 
                         <div className="px-4 py-3">
                             {working.length === 0 ? (
-                                <p className="text-sm text-muted">Not in.</p>
+                                <p className="text-sm text-muted">Not working.</p>
                             ) : working.map(s => (
                                 <div key={s.id} className="mb-2 last:mb-0">
                                     <p className="text-lg font-bold text-gray-900">
@@ -777,7 +872,10 @@ function MyWeek({
                                     <p className="text-xs text-muted">
                                         {fmtHours(shiftHours(s))} hours · {breakLabel(s.break_minutes)}
                                     </p>
-                                    {s.notes && <p className="text-xs text-gray-600 mt-1">{s.notes}</p>}
+                                    {/* The same note their phone calendar
+                                        carries. Only ever their own: the
+                                        view gives nobody a colleague's. */}
+                                    {s.note && <p className="text-xs text-gray-600 mt-1">{s.note}</p>}
                                     {/* On the shift rather than on a page of
                                         its own, because this is where somebody
                                         is standing when they realise they
@@ -788,7 +886,7 @@ function MyWeek({
                                             onClick={() => onOpenShift(s)}
                                             className={rowButton('plain')}
                                         >
-                                            Ask somebody to take this
+                                            Ask somebody to take this shift
                                         </button>
                                         {asksOn(s.id).length > 0 && (
                                             <span className={`${badge} bg-accent-light text-accent-ink`}>
@@ -807,7 +905,7 @@ function MyWeek({
                             {others.length > 0 && (
                                 <div className="mt-3 pt-3 border-t border-border">
                                     <p className="text-[0.625rem] font-bold text-muted uppercase tracking-wider mb-1.5">
-                                        Also on
+                                        Also working
                                     </p>
                                     <div className="flex flex-wrap gap-x-4 gap-y-1">
                                         {others.map(s => (
@@ -867,10 +965,10 @@ function DayCard({
             </p>
 
             {closedOn(date) ? (
-                <p className="text-sm text-red-700 mt-1">The store is closed.</p>
+                <p className="text-sm text-red-700 mt-1">The restaurant is closed.</p>
             ) : theirs.length === 0 ? (
-                <p className="text-sm text-gray-500 mt-1">
-                    {awayOn(employeeId, date) ? AWAY.label + ' all day.' : 'Nothing on. Free all day.'}
+                <p className="text-sm text-muted mt-1">
+                    {awayOn(employeeId, date) ? AWAY.label + ' all day.' : 'Not working. Free all day.'}
                 </p>
             ) : (
                 <>
@@ -903,7 +1001,7 @@ function DayCard({
                                 onClick={() => onOpenShift(s)}
                                 className={rowButton(isMe ? 'plain' : 'edit')}
                             >
-                                {isMe ? 'Ask somebody to take this' : 'Ask for this shift'}
+                                {isMe ? 'Ask somebody to take this shift' : 'Ask for this shift'}
                             </button>
                         ))}
                         {theirs.some(s => asksOn(s.id).length > 0) && (
@@ -916,7 +1014,7 @@ function DayCard({
             {rest.length > 0 && (
                 <div className="mt-3 pt-3 border-t border-border">
                     <p className="text-[0.625rem] font-bold text-muted uppercase tracking-wider mb-1.5">
-                        Everybody else that day
+                        Also working
                     </p>
                     <div className="space-y-1">
                         {rest.map(s => (
@@ -959,15 +1057,12 @@ function RequestCard({ request, meId, nameOf, shiftById, hoursOn, dates, saving,
     const half = (shiftId, from, to, takerId) => {
         const shift = shiftById(shiftId)
         if (!shift) return null
-        const window = windowOf(shift, from, to)
         const whole = isWholeShift(shift, from, to)
         return {
             taker: who(takerId),
             date: shift.shift_date,
             owner: who(shift.employee_id),
-            when: whole
-                ? `${shortTime(shift.starts_at)} to ${endLabel(shift, hoursOn(shift.shift_date))}`
-                : `${shortTime(window.from)} to ${shortTime(window.to)}`,
+            when: hoursWords(shift, from, to, hoursOn(shift.shift_date)),
             whole,
         }
     }
@@ -1005,7 +1100,7 @@ function RequestCard({ request, meId, nameOf, shiftById, hoursOn, dates, saving,
             ))}
 
             {halves.length === 1 && (
-                <p className="text-xs text-muted mt-0.5">Nothing comes back the other way.</p>
+                <p className="text-xs text-muted mt-0.5">No shift in return.</p>
             )}
 
             {request.message && (
@@ -1058,7 +1153,7 @@ function RequestCard({ request, meId, nameOf, shiftById, hoursOn, dates, saving,
                         onClick={() => onWithdraw(request)}
                         className={rowButton('plain')}
                     >
-                        Take it back
+                        Cancel request
                     </button>
                 )}
             </div>

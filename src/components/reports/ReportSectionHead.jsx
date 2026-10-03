@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { cardHeader } from '@/lib/controlStyles'
+import { cardHeader, denseField } from '@/lib/controlStyles'
 import { isOwnSection } from '@/lib/weeklyReport'
 import { useConfirm } from '@/context/confirm'
 
@@ -30,10 +30,10 @@ export default function ReportSectionHead({ section, canEdit, onRename, onRemove
 
     async function drop() {
         const ok = await confirm({
-            title: `Drop ${section.title}?`,
+            title: `Remove ${section.title}?`,
             message: 'Everything written in it this week goes with it, and it stops appearing on the weeks '
                 + 'after. Reports already sent keep their own copy and do not change.',
-            confirmLabel: 'Drop it',
+            confirmLabel: 'Remove',
         })
         if (ok) onRemove(section.id)
     }
@@ -41,18 +41,20 @@ export default function ReportSectionHead({ section, canEdit, onRename, onRemove
     return (
         <div className={`${cardHeader} rounded-t-xl flex flex-wrap items-center justify-between gap-x-3 gap-y-2`}>
             {renaming ? (
-                <input
-                    value={title}
-                    onChange={e => setTitle(e.target.value)}
-                    onBlur={commit}
-                    onKeyDown={e => {
-                        if (e.key === 'Enter') e.currentTarget.blur()
-                        if (e.key === 'Escape') { setTitle(section.title); setRenaming(false) }
-                    }}
-                    autoFocus
-                    aria-label="What this section is called"
-                    className="flex-1 min-w-[8rem] bg-white/15 border border-white/40 rounded px-2 py-1 text-white text-xs font-bold uppercase tracking-wider focus:outline-none focus:ring-2 focus:ring-white/60"
-                />
+                <div className="flex-1 min-w-[8rem]">
+                    <input
+                        value={title}
+                        onChange={e => setTitle(e.target.value)}
+                        onBlur={commit}
+                        onKeyDown={e => {
+                            if (e.key === 'Enter') e.currentTarget.blur()
+                            if (e.key === 'Escape') { setTitle(section.title); setRenaming(false) }
+                        }}
+                        autoFocus
+                        aria-label="What this section is called"
+                        className={denseField}
+                    />
+                </div>
             ) : (
                 <span className="min-w-0">{section.title}</span>
             )}
@@ -76,10 +78,10 @@ export default function ReportSectionHead({ section, canEdit, onRename, onRemove
                 {own && !renaming && (
                     <button
                         onClick={drop}
-                        aria-label={`Drop the ${section.title} section`}
+                        aria-label={`Remove the ${section.title} section`}
                         className="normal-case tracking-normal text-[11px] font-semibold opacity-75 hover:opacity-100 transition-opacity"
                     >
-                        Drop
+                        Remove
                     </button>
                 )}
             </span>

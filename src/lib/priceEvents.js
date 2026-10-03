@@ -10,7 +10,7 @@
 // Nothing here writes anything. It works out the rows, and the screen sends
 // them, so all of this can be tested without a database.
 
-import { num } from '@/lib/format'
+import { num, round2, round4 } from '@/lib/format'
 
 export const REASONS = {
     invoice: 'An invoice said so',
@@ -19,8 +19,8 @@ export const REASONS = {
     created: 'First price we had',
 }
 
-const to4 = n => (n == null ? null : Math.round(num(n) * 10000) / 10000)
-const to2 = n => (n == null ? null : Math.round(num(n) * 100) / 100)
+const to4 = n => (n == null ? null : round4(n))
+const to2 = n => (n == null ? null : round2(n))
 
 // Accepting what an invoice charged.
 //
@@ -134,26 +134,6 @@ export function ownedByAnother(price, code, codes = []) {
     ))
 }
 
-// Refusing one.
-//
-// **A rejected price change still happened.** He paid the new price whatever
-// the Hub costs from, so rejecting means "do not move our costing" and never
-// "that did not happen". The invoice line stands, the food cost already has it,
-// and the report has to be able to say both things: what the supplier charged,
-// and where the Hub's costing did not follow.
-export function rejectPrice(row) {
-    const { line, price, product } = row
-    return {
-        product_id: product?.id || null,
-        price_id: price?.id || null,
-        supplier_code: line.code,
-        description: line.description,
-        was: to4(price?.price_per_case),
-        charged: to4(line.price_per_case),
-        difference: to2(num(line.price_per_case) - num(price?.price_per_case)),
-    }
-}
-
 // Buying it somewhere else.
 //
 // The decision with no document. Without a record of it the product's own cost
@@ -182,17 +162,35 @@ export function movePreferred(product, to, { restaurantId, userId, from = null, 
 // **It is the first point on the graph, marked as typed rather than dressed up
 // as a document.** Eight months of prices were entered by hand and they are
 // real, they just cannot be opened and looked at.
-export function typedPrice(product, price, { restaurantId, userId, at = null, first = false } = {}) {
+export function typedPrice(product, price, { restaurantId, userId, at = null, first = false, previous = null } = {}) {
     return {
         restaurant_id: restaurantId,
         product_id: product.id,
         price_id: price.id,
         at,
         price_per_unit: to4(price.price_per_unit),
-        previous_per_unit: null,
+        previous_per_unit: to4(previous?.price_per_unit),
         reason: first ? 'created' : 'by_hand',
         changed_by: userId || null,
     }
+}
+
+// What saving a price by hand puts on the graph, if anything.
+//
+// The Prices page and the product form wrote prices straight in and recorded
+// nothing, so the product's own line stayed on whatever an invoice last said
+// while every recipe had moved on. `before` is the row as it was, or nothing
+// for a new one.
+//
+// **Only the preferred price gets one.** The product's line is what the Hub
+// costs from, and an event on a second supplier's price would pull the line
+// onto a price nothing is costed from. **And only when the price per unit
+// moved**, because the product form saves the preferred price again every time
+// the product itself is saved.
+export function typedPriceEvent(product, saved, { before = null, restaurantId, userId, at = null } = {}) {
+    if (!saved?.is_preferred) return null
+    if (before && to4(before.price_per_unit) === to4(saved.price_per_unit)) return null
+    return typedPrice(product, saved, { restaurantId, userId, at, first: !before, previous: before })
 }
 
 // What a code now means, once somebody has said.
@@ -215,17 +213,23 @@ export function codeRow({ code, line, supplierId, restaurantId, priceId, date })
 
 // Seeing a code again.
 //
-// Only ever moves last_seen_on forward, and never touches first_seen_on, since
-// that is what says how long the Hub has known about something. The description
-// follows the most recent document, because a supplier tidying up its own
-// wording should not leave the Hub quoting a name nobody uses.
-export function seenAgain(existing, { line, date }) {
+// last_seen_on only ever moves forward. first_seen_on only ever moves back: it
+// says how long the code has been bought, and a typed invoice filled in with
+// its document, or a late batch, can be older than anything imported. The
+// description and the pack follow the most recent document, because a supplier
+// tidying up its own wording should not leave the Hub quoting a name nobody
+// uses, and an older piece of paper is not the most recent.
+//
+// `date` is the newest document the code was on, `firstSeen` the oldest.
+export function seenAgain(existing, { line, date, firstSeen = date }) {
+    const newest = !existing?.last_seen_on || date >= existing.last_seen_on
     return {
-        last_seen_on: !existing?.last_seen_on || date > existing.last_seen_on
-            ? date
-            : existing.last_seen_on,
-        last_description: line?.description || existing?.last_description || null,
-        pack_size: line?.pack_size || existing?.pack_size || null,
+        first_seen_on: existing?.first_seen_on && existing.first_seen_on <= firstSeen
+            ? existing.first_seen_on
+            : firstSeen,
+        last_seen_on: newest ? date : existing.last_seen_on,
+        last_description: (newest && line?.description) || existing?.last_description || line?.description || null,
+        pack_size: (newest && line?.pack_size) || existing?.pack_size || line?.pack_size || null,
     }
 }
 

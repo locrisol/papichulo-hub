@@ -6,7 +6,10 @@ import { useAuth } from '@/context/auth'
 import { useConfirm } from '@/context/confirm'
 import { friendlyError } from '@/lib/errors'
 import { todayISO, fullDate } from '@/lib/dates'
-import { secondaryButton, cardEdge, cardHeader, badge, tableCard, tableHeadRow, rowButton } from '@/lib/controlStyles'
+import {
+    primaryButton, secondaryButton, cardEdge, cardHeader, badge, tableCard, tableHeadRow, rowButton,
+} from '@/lib/controlStyles'
+import { roleLabel } from '@/lib/access'
 import { availabilitySummary, patternOn, pendingAvailability } from '@/lib/availability'
 import { nextAbsence, kindLabel, absenceRange } from '@/lib/absences'
 import {
@@ -21,6 +24,8 @@ import {
 } from '@/lib/team'
 import Modal from '@/components/ui/Modal'
 import RowActions from '@/components/ui/RowActions'
+import ErrorBanner from '@/components/ui/ErrorBanner'
+import PageHeader from '@/components/ui/PageHeader'
 import EmployeeForm from '@/components/team/EmployeeForm'
 import PositionsModal from '@/components/team/PositionsModal'
 import CalendarLinkDialog from '@/components/team/CalendarLinkDialog'
@@ -85,7 +90,11 @@ export default function EmployeesPage() {
         const [empRes, posRes, userRes, offRes] = await Promise.all([
             supabase.from('employees').select('*').eq('restaurant_id', restaurantId),
             supabase.from('positions').select('*').eq('restaurant_id', restaurantId).order('sort_order'),
-            supabase.from('users').select('id, full_name, role').eq('is_active', true).order('full_name'),
+            // This restaurant's accounts only. A super admin can read every
+            // one, and a person here linked to a login at the other
+            // restaurant would read one roster under the other's notes.
+            supabase.from('users').select('id, full_name, role')
+                .eq('is_active', true).eq('restaurant_id', restaurantId).order('full_name'),
             // Only what is current or coming. This list is read down to see
             // who is about, and every holiday anybody ever took would make it
             // slower every year for nothing.
@@ -212,7 +221,7 @@ export default function EmployeesPage() {
                     onClick: () => setCalendarFor(employee),
                 },
                 !employee.ended_on && {
-                    label: 'Leaving',
+                    label: 'Set last day',
                     tone: 'danger',
                     onClick: () => recordLastDay(employee),
                 },
@@ -261,39 +270,34 @@ export default function EmployeesPage() {
 
     return (
         <div className="w-full">
-            <div className="mb-4 flex items-start justify-between gap-3 flex-wrap">
-                <div>
-                    <h2 className="font-serif text-2xl font-bold text-gray-900">Team</h2>
-                    <p className="text-sm text-muted mt-1">
-                        Everyone who works at {activeRestaurant?.name}, whether or not they log in.
-                    </p>
-                </div>
-                <div className="flex gap-2 flex-wrap">
-                    {/* Arranging is a button rather than arrows on every row.
-                        The order matters, it is the order people appear in on
-                        the roster, but it is set once and then left alone, and
-                        the arrows were a whole column and two more controls on
-                        a card that already carries plenty. */}
-                    <button
-                        onClick={() => setArranging(true)}
-                        disabled={shown.length < 2}
-                        className={secondaryButton}
-                    >
-                        Arrange
-                    </button>
-                    <button onClick={() => setShowPositions(true)} className={secondaryButton}>
-                        Positions
-                    </button>
-                    <button
-                        onClick={openAdd}
-                        className="px-4 py-2 bg-accent text-white text-sm font-semibold rounded-lg hover:bg-orange-600 transition-colors whitespace-nowrap"
-                    >
-                        Add someone
-                    </button>
-                </div>
-            </div>
+            <PageHeader
+                title="Team"
+                subtitle={`Everyone who works at ${activeRestaurant?.name}, whether or not they have an account.`}
+            >
+                {/* Arranging is a button rather than arrows on every row.
+                    The order matters, it is the order people appear in on
+                    the roster, but it is set once and then left alone, and
+                    the arrows were a whole column and two more controls on
+                    a card that already carries plenty. */}
+                <button
+                    onClick={() => setArranging(true)}
+                    disabled={shown.length < 2}
+                    className={secondaryButton}
+                >
+                    Arrange
+                </button>
+                <button onClick={() => setShowPositions(true)} className={secondaryButton}>
+                    Positions
+                </button>
+                <button
+                    onClick={openAdd}
+                    className={`${primaryButton()} whitespace-nowrap`}
+                >
+                    Add someone
+                </button>
+            </PageHeader>
 
-            {error && <div className="bg-amber-50 text-amber-700 text-sm rounded-lg p-3 mb-4">{error}</div>}
+            <ErrorBanner className="mb-4">{error}</ErrorBanner>
 
             {/* Above the list rather than inside it. Filling these in is a job
                 of its own, done sitting down once in a while, not something to
@@ -329,12 +333,10 @@ export default function EmployeesPage() {
                             return (
                                 <div
                                     key={employee.id}
-                                    className={`rounded-xl border p-4 ${
-                                        gone ? 'bg-gray-50 border-border' : 'bg-white border-border'
-                                    }`}
+                                    className={`${cardEdge} p-4 ${gone ? 'bg-gray-50' : 'bg-white'}`}
                                 >
                                     <div className="flex items-start justify-between gap-2">
-                                        <p className={`font-semibold ${gone ? 'text-gray-500' : 'text-gray-900'}`}>
+                                        <p className={`font-semibold ${gone ? 'text-muted' : 'text-gray-900'}`}>
                                             {employee.full_name}
                                         </p>
                                         {statusPill(employee)}
@@ -352,8 +354,8 @@ export default function EmployeesPage() {
                                         ) : (
                                             <span className="text-sm text-muted">No position</span>
                                         )}
-                                        <span className="text-xs text-gray-500">
-                                            {account ? account.role.replace('_', ' ') : 'No account'}
+                                        <span className="text-xs text-muted">
+                                            {account ? roleLabel(account.role) : 'No account'}
                                         </span>
                                     </div>
 
@@ -364,7 +366,7 @@ export default function EmployeesPage() {
                                         column it sits in, so a change that has
                                         already started reads as what they work. */}
                                     {availabilitySummary(patternOn(employee, today)) && (
-                                        <p className="text-xs text-gray-500 mt-1">
+                                        <p className="text-xs text-muted mt-1">
                                             Works {availabilitySummary(patternOn(employee, today))}
                                         </p>
                                     )}
@@ -374,17 +376,17 @@ export default function EmployeesPage() {
                                         </p>
                                     )}
                                     {coming && (
-                                        <p className="text-xs text-gray-500 mt-1">
+                                        <p className="text-xs text-muted mt-1">
                                             {kindLabel(coming.kind)} {absenceRange(coming, fullDate)}
                                         </p>
                                     )}
 
                                     <dl className="mt-3 text-sm">
                                         <div className="flex items-baseline justify-between gap-3">
-                                            <dt className="text-gray-500">Per hour</dt>
+                                            <dt className="text-muted">Per hour</dt>
                                             <dd className="text-right text-gray-900 font-medium">
                                                 {employee.hourly_rate == null
-                                                    ? <span className="text-muted">-</span>
+                                                    ? <span className="text-muted">—</span>
                                                     : `${fmtMoney(Number(employee.hourly_rate))}`}
                                             </dd>
                                         </div>
@@ -421,7 +423,7 @@ export default function EmployeesPage() {
                                             className={`border-b border-border last:border-b-0 ${gone ? 'bg-gray-50' : ''}`}
                                         >
                                             <td className="px-3 py-2">
-                                                <span className={`font-medium ${gone ? 'text-gray-500' : 'text-gray-900'}`}>
+                                                <span className={`font-medium ${gone ? 'text-muted' : 'text-gray-900'}`}>
                                                     {employee.full_name}
                                                 </span>
                                                 {employee.notes && (
@@ -433,7 +435,7 @@ export default function EmployeesPage() {
                                                     availability set looks
                                                     exactly as it did before. */}
                                                 {availabilitySummary(patternOn(employee, today)) && (
-                                                    <span className="block text-xs text-gray-500">
+                                                    <span className="block text-xs text-muted">
                                                         Works {availabilitySummary(patternOn(employee, today))}
                                                     </span>
                                                 )}
@@ -447,7 +449,7 @@ export default function EmployeesPage() {
                                                     The list is for reading down
                                                     to see who is about. */}
                                                 {nextAbsence(absences, employee.id, today) && (
-                                                    <span className="block text-xs text-gray-500">
+                                                    <span className="block text-xs text-muted">
                                                         {kindLabel(nextAbsence(absences, employee.id, today).kind)}
                                                         {' '}
                                                         {absenceRange(nextAbsence(absences, employee.id, today), fullDate)}
@@ -470,7 +472,7 @@ export default function EmployeesPage() {
                                             <td className="px-3 py-2">{statusPill(employee)}</td>
                                             <td className="px-3 py-2 whitespace-nowrap">
                                                 {account
-                                                    ? <span className="text-gray-600 capitalize">{account.role.replace('_', ' ')}</span>
+                                                    ? <span className="text-gray-600">{roleLabel(account.role)}</span>
                                                     : <span className="text-muted">No account</span>}
                                             </td>
                                             <td className="px-3 py-2 text-right whitespace-nowrap text-gray-700">
@@ -492,7 +494,7 @@ export default function EmployeesPage() {
                         <button
                             type="button"
                             onClick={() => setShowPast(p => !p)}
-                            className="mt-3 text-sm text-blue-600 hover:text-blue-800 font-medium"
+                            className={`${secondaryButton} mt-3`}
                         >
                             {showPast
                                 ? 'Hide people who have left'
@@ -516,7 +518,7 @@ export default function EmployeesPage() {
                         onChange={change}
                         onSubmit={save}
                         onCancel={() => { setAdding(false); setEditing(null) }}
-                        submitLabel={editing ? 'Save' : 'Add them'}
+                        submitLabel={editing ? 'Save' : 'Add'}
                         saving={saving}
                         problem={problem}
                         note={note}

@@ -3,7 +3,7 @@ import {
     whereItGoes, placeDocument, lineCategory, SECTION_CATEGORY, similarWords,
     codeSuccessor, unitsWanted, matchLines, pilesOf, documentTotals,
     linePayload, invoicePayload, documentBlocks, storedLine,
-    fillInPlan, fillInPayload, fillInClaim, creditOnHandEntry, documentTotal, lineCost,
+    fillInPlan, fillInPayload, fillInClaim, creditOnHandEntry, documentTotal, lineCost, typedAgain,
     samePrice, packReadings, unitsForPack, byPieceWeight, sameMeasure, unitsPatch,
 } from '@/lib/invoiceImport'
 
@@ -98,6 +98,14 @@ describe('where a document goes', () => {
             { id: 'near', invoice_number: null, invoice_date: '2026-08-23', total_amount: 160 },
         ]
         expect(placeDocument(doc, held).candidates.map(c => c.id)).toEqual(['near', 'far'])
+    })
+
+    // Every invoice typed by hand is an invoice: none on live has ever been a
+    // credit. A credit note dated a day with one typed in used to be offered
+    // only as that invoice, to be overwritten with a negative total.
+    it('never takes a credit note for an invoice typed in that day', () => {
+        const held = [{ id: 'i1', invoice_number: null, invoice_date: '2026-08-23', total_amount: 140 }]
+        expect(placeDocument({ ...doc, kind: 'credit', payable: -12 }, held)).toEqual({ what: 'new' })
     })
 })
 
@@ -476,6 +484,27 @@ describe('the four piles', () => {
         expect(row.pile).toBe('ignored')
     })
 
+    // Not stock only stops the question. The line is still money on the
+    // invoice, and with no category the cost view counted it nowhere once the
+    // invoice had other lines on it.
+    it('files a not stock line where a line nobody recognises goes, so the week still counts it', () => {
+        const codes = [{ supplier_code: '600100', ignored: true }]
+        const mop = line({ code: '600100', description: 'MOP HEAD', value: 6, vat: 1.38, deposit: 0 })
+        const charge = line({ code: '600200', description: 'DELIVERY CHARGE', value: 5 })
+
+        const [taxed] = matchLines({ lines: [mop], codes, supplier: SUPPLIER })
+        expect(taxed.category).toBe('packaging')
+        expect(linePayload(taxed, 'i1')).toMatchObject({ category: 'packaging', decision: 'ignored' })
+
+        const [plain] = matchLines({
+            lines: [charge], codes: [{ supplier_code: '600200', ignored: true }], supplier: SUPPLIER,
+        })
+        expect(linePayload(plain, 'i1').category).toBe('food')
+
+        const [other] = matchLines({ lines: [mop], codes, supplier: EQUIPMENT })
+        expect(linePayload(other, 'i1').category).toBe('other')
+    })
+
     // supplier_codes is the authority once it has anything in it, and the
     // column on the price row seeds it the first time.
     it('matches off the price row the first time, before any code is recorded', () => {
@@ -738,6 +767,47 @@ describe('what gets written', () => {
         expect(again.price.id).toBe('pr1')
     })
 
+    // Their UNIT column counts items of the pack, a bag of a "4X500 GM" case,
+    // and it was added to cases in the product's own unit, so for Chorizo
+    // counted in kilos a bag was stored as a kilo.
+    describe('the whole line in the product\'s unit', () => {
+        const chorizo = over => line({
+            code: '5016842', description: 'CHORIZO CUBES', pack_size: '4X500 GM',
+            pack: { count: 4, size: 0.5, unit: 'KG', total: 2, printed: '4X500 GM' }, price_per_case: 27.99, ...over,
+        })
+
+        it('counts a single bag on the credit as the half kilo it is', () => {
+            const credited = chorizo({
+                pack_size: '1X500 GM', pack: { count: 1, size: 0.5, unit: 'KG', total: 0.5, printed: '1X500 GM' },
+                cases: 0, units: -3, price_per_case: 7, value: -21,
+            })
+            expect(linePayload({ line: credited, wantedUnits: 0.5 }, 'i1').quantity).toBe(-1.5)
+        })
+
+        it('counts a case and two bags of a kilo product as three kilos', () => {
+            expect(linePayload({ line: chorizo({ cases: 1, units: 2 }), wantedUnits: 2 }, 'i1').quantity).toBe(3)
+        })
+
+        it('leaves a product counted in bags as it was', () => {
+            expect(linePayload({ line: chorizo({ cases: 1, units: 2 }), wantedUnits: 4 }, 'i1').quantity).toBe(6)
+        })
+
+        // Six of four or four of six: no telling, so the sum it always was.
+        it('adds the two up as before where the pack does not say how many items', () => {
+            const unclear = chorizo({ pack_size: '6X4', pack: { count: 24, size: null, unit: null, total: 24 }, cases: 1, units: 2 })
+            expect(linePayload({ line: unclear, wantedUnits: 24 }, 'i1').quantity).toBe(26)
+        })
+
+        it('is the same when the review puts the pack right', () => {
+            const stored = { units_per_case: 1 }
+            const credited = { pack_size: '1X500 GM', cases: 0, units: -3, price_per_case: 7 }
+            expect(unitsPatch({ wantedUnits: 0.5, stored, line: credited }))
+                .toEqual({ units_per_case: 0.5, unit_price: 14, quantity: -1.5 })
+            expect(unitsPatch({ wantedUnits: 2, stored, line: { pack_size: '4X500 GM', cases: 1, units: 2, price_per_case: 27.99 } }))
+                .toMatchObject({ quantity: 3 })
+        })
+    })
+
     it('says nothing rather than guessing when the pack size could not be read', () => {
         const [row] = matchLines({
             lines: [line({ pack_size: null, pack: null })], supplier: SUPPLIER,
@@ -814,8 +884,8 @@ describe('what stops a document being written', () => {
             deposits: 21.6,
             checks: { values: { ok: false, got: 390, expected: 396.63 }, cases: { ok: true } },
         })
-        expect(out[0]).toBe('The lines come to 390.00 and the goods come to 396.63 before the '
-            + '21.60 container deposit, so something on it was not read.')
+        expect(out[0]).toBe('The lines come to €390.00 and the goods come to €396.63 before the '
+            + '€21.60 container deposit, so something on it was not read.')
     })
 
     it('says which part of the charges did not add up', () => {
@@ -907,6 +977,19 @@ describe('filling in an invoice somebody typed off a total', () => {
     it('puts the document total on the invoice, because that is what was charged', () => {
         expect(fillInPayload(doc, { createdBy: 'u1' })).toMatchObject({
             invoice_number: '45448455', total_amount: 163.03, entry_method: 'parsed',
+        })
+    })
+
+    // A fill in whose lines did not go in puts the invoice back as typed, so
+    // pressing again does not put the lines in twice.
+    it('can put the invoice back exactly as it was typed', () => {
+        const typed = {
+            id: 'i1', invoice_number: null, document_type: 'invoice', invoice_date: '2026-08-23',
+            total_amount: 140, entry_method: 'manual', created_by: 'u-typist', notes: 'Short one case',
+        }
+        expect(typedAgain(typed)).toEqual({
+            invoice_number: null, document_type: 'invoice', invoice_date: '2026-08-23',
+            total_amount: 140, entry_method: 'manual', created_by: 'u-typist',
         })
     })
 

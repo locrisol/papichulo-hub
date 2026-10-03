@@ -10,7 +10,11 @@ import { mockSupabase, renderWithRouter } from '@/test/helpers'
 // anything the supplier sent is still missing.
 
 let db = mockSupabase({})
-vi.mock('@/lib/supabase', () => ({ supabase: new Proxy({}, { get: (_, k) => db[k] }) }))
+// The real everyRow, paging through the mock the way it pages through the API.
+vi.mock('@/lib/supabase', async importOriginal => ({
+    everyRow: (await importOriginal()).everyRow,
+    supabase: new Proxy({}, { get: (_, k) => db[k] }),
+}))
 
 const { default: StillMissing } = await import('./StillMissing')
 
@@ -50,6 +54,28 @@ describe('still to download', () => {
         answers({
             held: [
                 { id: 'a', supplier_id: 's1', invoice_number: null, invoice_date: '2026-08-23', total_amount: 163.03 },
+                { id: 'b', supplier_id: 's1', invoice_number: '45612214' },
+                { id: 'c', supplier_id: 's1', invoice_number: 'C45620001' },
+            ],
+        })
+        renderWithRouter(<StillMissing restaurantId="r1" />)
+
+        expect(await screen.findByText('Everything on the lists you have recorded is in the Hub.'))
+            .toBeInTheDocument()
+    })
+
+    // The audit of 28 September. Eight months of typed invoices put Point
+    // Campus near a thousand, and a read of every invoice in one go stops
+    // there, so the newest documents, the ones just imported, showed as
+    // still to download.
+    it('finds a document held after the first thousand invoices', async () => {
+        const older = Array.from({ length: 1000 }, (_, i) => ({
+            id: `old${i}`, supplier_id: 's9', invoice_number: String(9000000 + i),
+        }))
+        answers({
+            held: [
+                ...older,
+                { id: 'a', supplier_id: 's1', invoice_number: '45448455' },
                 { id: 'b', supplier_id: 's1', invoice_number: '45612214' },
                 { id: 'c', supplier_id: 's1', invoice_number: 'C45620001' },
             ],

@@ -3,7 +3,7 @@ import { useConfirm } from '@/context/confirm'
 import { supabase } from '@/lib/supabase'
 import { useRestaurant } from '@/context/restaurant'
 import { friendlyError } from '@/lib/errors'
-import { tableHeadRow, modalFooter, rowButton, secondaryButton, fieldClass, primaryButton } from '@/lib/controlStyles'
+import { tableHeadRow, modalFooter, rowButton, secondaryButton, fieldClass, denseField, inactiveBadge, hintClass, primaryButton } from '@/lib/controlStyles'
 import ArrangeList from '@/components/ui/ArrangeList'
 import { ModalSectionBar } from '@/components/ui/ModalSection'
 import Modal from '@/components/ui/Modal'
@@ -12,12 +12,12 @@ import ErrorBanner from '@/components/ui/ErrorBanner'
 // The stored value stays 'catering'. Only what you read changes, so nothing
 // already recorded against it has to move.
 const BUCKETS = [
-  { value: 'online_platform', label: 'Online Platform' },
+  { value: 'online_platform', label: 'Online platform' },
   { value: 'catering', label: 'Corporate' },
 ]
 
 const BUCKET_LABEL = {
-  online_platform: 'Online Platforms',
+  online_platform: 'Online platforms',
   catering: 'Corporate',
 }
 
@@ -72,7 +72,20 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
 
     const name = newName.trim()
     if (!name) {
-      setError('Name is required')
+      setError('Enter a name')
+      return
+    }
+
+    // Its figures are kept under a key that never changes, so a rename keeps
+    // them. The database makes a new platform's key the name it is given, so
+    // none is sent here, which also works on a database from before platforms
+    // had a key column. One renamed since still keeps its figures
+    // under the name it had, so that name cannot be a new platform's key or
+    // the two would share one set of figures.
+    const renamed = platforms.find(p => p.key === name && p.name !== name)
+    if (renamed) {
+      setError(`${renamed.name} was called ${name} before, so a new platform cannot use that name. `
+        + `Enter another name, or rename ${renamed.name} back.`)
       return
     }
 
@@ -143,9 +156,24 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
 
     const name = editName.trim()
     if (!name) {
-      setError('Name is required')
+      setError('Enter a name')
       return
     }
+
+    // The group decides which total a platform's figures count toward, and it
+    // is read off the platform, not kept with each day. So moving one takes
+    // every week already entered with it, which can be right but should not
+    // happen by a slip of the select.
+    if (editBucket !== p.bucket) {
+      const ok = await confirm({
+        title: `Move ${p.name} to ${BUCKET_LABEL[editBucket]}?`,
+        message: `Its figures in every week already entered will count toward ${BUCKET_LABEL[editBucket]} `
+          + `instead of ${BUCKET_LABEL[p.bucket]}, not only the weeks from now on.`,
+        confirmLabel: 'Move',
+      })
+      if (!ok) return
+    }
+
     const { error: e1 } = await supabase
       .from('sales_platforms')
       .update({ name, bucket: editBucket })
@@ -166,9 +194,9 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
     if (p.is_active) {
       const ok = await confirm({
         title: `Retire ${p.name}?`,
-        message: 'It stops appearing on the sales screens from now on. Weeks already entered keep their '
-          + 'figures for it, and turning it back on brings the row back.',
-        confirmLabel: 'Retire it',
+        message: 'It stops appearing on new weeks. Weeks that already have figures for it keep them and '
+          + 'still show it. Press Bring back to show it on new weeks again.',
+        confirmLabel: 'Retire',
         tone: 'danger',
       })
       if (!ok) return
@@ -195,14 +223,14 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
               type="text"
               value={editName}
               onChange={e => setEditName(e.target.value)}
-              className="w-full border border-border rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+              className={denseField}
             />
           </td>
           <td className="px-3 py-2">
             <select
               value={editBucket}
               onChange={e => setEditBucket(e.target.value)}
-              className="w-full border border-border rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+              className={denseField}
             >
               {BUCKETS.map(b => (
                 <option key={b.value} value={b.value}>{b.label}</option>
@@ -234,8 +262,8 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
         <td className={`px-3 py-2 font-medium ${p.is_active ? 'text-gray-900' : 'text-muted'}`}>
           {p.name}
         </td>
-        <td className={`px-3 py-2 text-xs ${p.is_active ? 'text-gray-700' : 'text-muted'}`}>
-          {p.is_active ? 'Active' : 'Inactive'}
+        <td className="px-3 py-2 text-xs text-gray-700">
+          {p.is_active ? 'Active' : <span className={inactiveBadge}>Retired</span>}
         </td>
         <td className="px-3 py-2">
           <div className="flex gap-3">
@@ -249,7 +277,7 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
               onClick={() => toggleActive(p)}
               className={rowButton(p.is_active ? 'danger' : 'good')}
             >
-              {p.is_active ? 'Deactivate' : 'Reactivate'}
+              {p.is_active ? 'Retire' : 'Bring back'}
             </button>
           </div>
         </td>
@@ -275,7 +303,7 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
           )}
         </div>
         {rows.length === 0 ? (
-          <p className="text-xs text-muted italic mb-2">No platforms in this bucket yet.</p>
+          <p className="text-xs text-muted italic mb-2">No platforms in this group yet.</p>
         ) : (
           <>
           {/* A card each on a phone. Three columns inside a dialog put Retire
@@ -315,9 +343,9 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
                       <span className={`text-sm font-semibold ${p.is_active ? 'text-gray-900' : 'text-muted'}`}>
                         {p.name}
                       </span>
-                      <span className={`text-xs whitespace-nowrap ${p.is_active ? 'text-green-700' : 'text-muted'}`}>
-                        {p.is_active ? 'Active' : 'Retired'}
-                      </span>
+                      {p.is_active
+                        ? <span className="text-xs whitespace-nowrap text-green-700">Active</span>
+                        : <span className={inactiveBadge}>Retired</span>}
                     </div>
                     <div className="flex flex-wrap gap-3 mt-2 pt-2 border-t border-border">
                       <button onClick={() => startEdit(p)} className={rowButton('edit')}>Edit</button>
@@ -358,8 +386,8 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
             <ErrorBanner className="mb-4">{error}</ErrorBanner>
           )}
 
-          <p className="text-xs text-gray-500 mb-4">
-            Platforms feed the Online Platform and Corporate totals on the sales entry form. Retire one rather than deleting it, so weeks already entered keep their figures. Arrange sets the order they appear in.
+          <p className="text-xs text-muted mb-4">
+            Platforms feed the Online platforms and Corporate totals on the sales entry form. Retire one rather than deleting it, so weeks already entered keep their figures. Arrange sets the order they appear in.
           </p>
 
           {loading ? (
@@ -380,14 +408,14 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
                   value={newName}
                   onChange={e => setNewName(e.target.value)}
                   placeholder="Platform name"
-                  className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+                  className={fieldClass}
                 />
               </div>
               <div className="w-40">
                 <select
                   value={newBucket}
                   onChange={e => setNewBucket(e.target.value)}
-                  className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+                  className={fieldClass}
                 >
                   {BUCKETS.map(b => (
                     <option key={b.value} value={b.value}>{b.label}</option>
@@ -401,7 +429,7 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
                 Add
               </button>
             </form>
-            <p className="text-xs text-muted mt-2">
+            <p className={hintClass}>
               A new platform goes on the end of its group. Use Arrange to move it.
             </p>
           </div>

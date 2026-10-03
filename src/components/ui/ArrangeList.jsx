@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import Modal from '@/components/ui/Modal'
-import { modalFooter, secondaryButton, primaryButton } from '@/lib/controlStyles'
+import { modalFooter, secondaryButton, primaryButton, iconButton } from '@/lib/controlStyles'
 
 // Putting a list in the order it should be read in.
 //
@@ -65,12 +65,14 @@ export default function ArrangeList({
                             <li key={item.id} className="flex items-center gap-2 px-3 py-2">
                                 <span className="w-6 text-xs text-muted tabular-nums">{i + 1}</span>
                                 <span className="flex-1 min-w-0 text-sm text-gray-900">{nameOf(item)}</span>
+                                {/* A thumb's width each, with an edge so they read as
+                                    buttons in a list that is otherwise only names. */}
                                 <button
                                     type="button"
                                     onClick={() => move(i, -1)}
                                     disabled={i === 0 || saving}
                                     aria-label={`Move ${nameOf(item)} up`}
-                                    className="px-2 py-1 border border-border rounded text-gray-600 hover:bg-gray-50 disabled:opacity-30"
+                                    className={`${iconButton} border border-gray-300`}
                                 >
                                     &uarr;
                                 </button>
@@ -79,7 +81,7 @@ export default function ArrangeList({
                                     onClick={() => move(i, 1)}
                                     disabled={i === order.length - 1 || saving}
                                     aria-label={`Move ${nameOf(item)} down`}
-                                    className="px-2 py-1 border border-border rounded text-gray-600 hover:bg-gray-50 disabled:opacity-30"
+                                    className={`${iconButton} border border-gray-300`}
                                 >
                                     &darr;
                                 </button>

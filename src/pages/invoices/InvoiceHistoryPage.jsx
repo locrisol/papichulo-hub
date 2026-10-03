@@ -5,11 +5,12 @@ import { useRestaurant } from '@/context/restaurant'
 import { fmtMoney, num } from '@/lib/format'
 import { todayISO, addDays, shortDate } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
-import { secondaryButton, tableHeadRow, card, cardEdge, cardHeader, rowButton, labelClass, fieldClass, pageTitle } from '@/lib/controlStyles'
+import { secondaryButton, tableHeadRow, card, cardEdge, cardHeader, rowButton, labelClass, fieldClass } from '@/lib/controlStyles'
 import {
     INVOICE_CATEGORIES, INVOICE_SUMMARY_CARDS, invoiceCategory, invoiceSplit, mainCategory, spentIn,
 } from '@/lib/invoiceCategories'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import PageHeader from '@/components/ui/PageHeader'
 import CategoryBadges from '@/components/invoices/CategoryBadges'
 
 // Invoice history. The entry screen only shows the week you are working on,
@@ -105,20 +106,16 @@ export default function InvoiceHistoryPage() {
 
     return (
         <>
-            <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
-                <div>
-                    <h2 className={pageTitle}>Invoice history</h2>
-                    <p className="text-sm text-gray-500 mt-1">{activeRestaurant?.name}</p>
-                </div>
+            <PageHeader title="Invoice history" subtitle={activeRestaurant?.name}>
                 <button
                     onClick={() => navigate('/invoices')}
                     className={secondaryButton}
                 >
                     Add an invoice
                 </button>
-            </div>
+            </PageHeader>
 
-            {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
+            <ErrorBanner className="mb-4">{error}</ErrorBanner>
 
             {/* Filters */}
             <div className={`${card} p-4 mb-4`}>
@@ -150,9 +147,9 @@ export default function InvoiceHistoryPage() {
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
-                    <button type="button" onClick={() => setRange(7)} className="px-3 py-1.5 border border-border rounded-lg text-xs text-gray-600 hover:bg-gray-50">Last 7 days</button>
-                    <button type="button" onClick={() => setRange(30)} className="px-3 py-1.5 border border-border rounded-lg text-xs text-gray-600 hover:bg-gray-50">Last 30 days</button>
-                    <button type="button" onClick={() => setRange(90)} className="px-3 py-1.5 border border-border rounded-lg text-xs text-gray-600 hover:bg-gray-50">Last 90 days</button>
+                    <button type="button" onClick={() => setRange(7)} className={rowButton('plain')}>Last 7 days</button>
+                    <button type="button" onClick={() => setRange(30)} className={rowButton('plain')}>Last 30 days</button>
+                    <button type="button" onClick={() => setRange(90)} className={rowButton('plain')}>Last 90 days</button>
                     <button type="button" onClick={clearFilters} className={rowButton('edit')}>Clear</button>
                 </div>
             </div>
@@ -189,10 +186,37 @@ export default function InvoiceHistoryPage() {
                 ) : shown.length === 0 ? (
                     <p className="text-sm text-muted italic">No invoices match those filters.</p>
                 ) : (
-                    // Same as the invoices screen: this table is inside a padded
-                    // card, so it needs its own scrolling wrapper or the Total
-                    // column is off the edge of a phone.
-                    <div className="overflow-x-auto">
+                    <>
+                    {/* A card each on a phone, the way the invoices screen
+                        does it: the supplier and the total on one line, the
+                        date and the category under them. */}
+                    <div className="sm:hidden">
+                        {shown.map(inv => {
+                            const cat = invoiceCategory(mainCategory(invoiceSplit(inv), inv.category))
+                            return (
+                                <div
+                                    key={inv.id}
+                                    className={`border-b border-border last:border-b-0 border-l-4 px-3 py-2.5 ${cat.stripe}`}
+                                >
+                                    <div className="flex items-baseline justify-between gap-3">
+                                        <span className="text-sm font-medium text-gray-900 min-w-0">
+                                            {inv.suppliers?.name || 'Unknown supplier'}
+                                        </span>
+                                        <span className="text-sm font-semibold text-gray-900 whitespace-nowrap tabular-nums">
+                                            {fmtMoney(inv.total_amount)}
+                                        </span>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-2 mt-1">
+                                        <span className="text-xs text-muted whitespace-nowrap">{shortDate(inv.invoice_date)}</span>
+                                        <CategoryBadges invoice={inv} />
+                                    </div>
+                                    {inv.notes && <p className="text-xs text-muted mt-1">{inv.notes}</p>}
+                                </div>
+                            )
+                        })}
+                    </div>
+
+                    <div className="hidden sm:block overflow-x-auto">
                     <table className="w-full text-sm">
                         <thead>
                             <tr className={tableHeadRow}>
@@ -202,7 +226,7 @@ export default function InvoiceHistoryPage() {
                                         from a particular week. */}
                                     <button
                                         onClick={() => setSortDesc(!sortDesc)}
-                                        className="text-xs font-semibold text-gray-500 uppercase tracking-wider hover:text-gray-900"
+                                        className="text-xs font-bold text-white uppercase tracking-wider hover:text-green-300"
                                     >
                                         Date {sortDesc ? '↓' : '↑'}
                                     </button>
@@ -234,6 +258,7 @@ export default function InvoiceHistoryPage() {
                         </tbody>
                     </table>
                     </div>
+                    </>
                 )}
                 </div>
             </div>

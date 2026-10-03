@@ -2,21 +2,22 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
-import { fmtMoney, num, fmtPct } from '@/lib/format'
-import { todayISO, weekStartOf, weekDates, shortDate, addDays } from '@/lib/dates'
-import { resolveTarget, statusFor } from '@/lib/costTargets'
+import { fmtMoney, num, fmtPct, namesList } from '@/lib/format'
+import { todayISO, weekStartOf, weekDates, shortDate, addDays, DAY_NAMES } from '@/lib/dates'
+import { resolveTarget, statusFor, targetInForce } from '@/lib/costTargets'
+import { reportFigures } from '@/lib/weeklyReport'
+import { fromEarlierWeeks } from '@/lib/invoiceClaims'
 import CostTargetModal from '@/components/costs/CostTargetModal'
-import { dateField, card, rowButton } from '@/lib/controlStyles'
+import { dateField, card, rowButton, badge } from '@/lib/controlStyles'
 import JumpButton from '@/components/ui/JumpButton'
 import DateStepper from '@/components/ui/DateStepper'
 import { friendlyError } from '@/lib/errors'
 import { tendersToShow } from '@/lib/salesTenders'
-import { spendOn, FOOD, PACKAGING } from '@/lib/invoiceCategories'
 import WeekTakenChart from '@/components/costs/WeekTakenChart'
-import { DAY_NAMES } from '@/lib/events'
 import { bankHolidayOn, BANK_HOLIDAY_INK, BANK_HOLIDAY_LABEL } from '@/lib/bankHolidays'
 import { can, RESTAURANT_CONFIG } from '@/lib/access'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import Notice from '@/components/ui/Notice'
 
 // The cost dashboard. Everything else in the Hub feeds this: sales give the
 // denominator, invoices give food and packaging, labour gives hours times rate,
@@ -47,6 +48,21 @@ const LINE_TONE = {
     none: 'text-muted',
 }
 
+// What the week takes off for delivery problems from earlier weeks, with the
+// weeks they are from. One line, under the costs it is part of.
+//
+// Comes off, the word every other screen uses for a claim, and not back: an
+// open claim comes off in full before the supplier has credited anything, so
+// back read as money already received.
+function earlierWords(earlier) {
+    const money = earlier.reduce((t, e) => t + num(e.money), 0)
+    const weeks = [...new Set(earlier.map(e => e.delivered))].sort()
+    const one = weeks.length === 1
+    const what = earlier.length === 1 ? 'a delivery problem' : `${earlier.length} delivery problems`
+    return `${fmtMoney(money)} comes off the costs above for ${what} from the week${one ? '' : 's'} of `
+        + `${namesList(weeks.map(shortDate))}, whose report${one ? '' : 's'} had already gone out.`
+}
+
 // One cost, as a percentage of net sales, against its target.
 //
 // The bar fills toward the target rather than toward 100%, so being at 29 of 30
@@ -55,7 +71,7 @@ const LINE_TONE = {
 function KpiCard({ label, pct, target, amount, status, onEdit, temporaryUntil, footnote }) {
     const colour = {
         green: 'text-green-700',
-        amber: 'text-amber-600',
+        amber: 'text-amber-700',
         red: 'text-red-600',
         none: 'text-muted',
     }[status]
@@ -67,11 +83,13 @@ function KpiCard({ label, pct, target, amount, status, onEdit, temporaryUntil, f
         none: 'bg-gray-300',
     }[status]
 
-    const badge = {
+    // Named for what it says rather than badge, which is the shared pill
+    // shape it is drawn in.
+    const verdict = {
         green: { text: 'On track', cls: 'bg-green-50 text-green-700' },
         amber: { text: 'Near limit', cls: 'bg-amber-50 text-amber-700' },
         red: { text: 'Over target', cls: 'bg-red-50 text-red-700' },
-        none: { text: 'No data', cls: 'bg-gray-100 text-gray-600' },
+        none: { text: pct == null ? 'No sales entered' : 'No target set', cls: 'bg-gray-100 text-gray-600' },
     }[status]
 
     const fill = pct != null && target ? Math.min((pct / target) * 100, 100) : 0
@@ -105,11 +123,11 @@ function KpiCard({ label, pct, target, amount, status, onEdit, temporaryUntil, f
             </div>
 
             <div className="mt-2 flex items-center gap-2 flex-wrap">
-                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${badge.cls}`}>
-                    {badge.text}
+                <span className={`${badge} ${verdict.cls}`}>
+                    {verdict.text}
                 </span>
                 {temporaryUntil && (
-                    <span className="text-xs text-amber-600">
+                    <span className="text-xs text-amber-700">
                         temporary, ends after {shortDate(temporaryUntil)}
                     </span>
                 )}
@@ -127,16 +145,19 @@ export default function CostDashboardPage() {
     const [weekStart, setWeekStart] = useState(weekStartOf(todayISO()))
     const [pickerDate, setPickerDate] = useState(weekStart)
 
-    // Kept as rows as well as totals, because the day by day list needs them.
+    // Kept as rows, because the day by day list needs the sales, and because
+    // the money is added up by reportFigures, the same as the weekly report.
     const [salesRows, setSalesRows] = useState([])
-    const [foodCost, setFoodCost] = useState(0)
-    const [packagingCost, setPackagingCost] = useState(0)
-    const [labourCost, setLabourCost] = useState(0)
+    const [spendRows, setSpendRows] = useState([])
+    const [labourRows, setLabourRows] = useState([])
     const [wasteCost, setWasteCost] = useState(0)
     const [overrides, setOverrides] = useState([])
     // The till rows, so the split below can name them. Retired ones included, so
     // a week from before the till changed still splits the way it was taken.
     const [tenders, setTenders] = useState([])
+    // Delivery problems this week takes off for a delivery in an earlier one,
+    // because that week's report had already gone out. See fromEarlierWeeks.
+    const [earlier, setEarlier] = useState([])
 
     // Whether this page has ever finished loading.
     //
@@ -171,9 +192,9 @@ export default function CostDashboardPage() {
 
             const end = addDays(weekStart, 6)
 
-            // All six at once. Not one of them needs anything from another,
+            // All seven at once. Not one of them needs anything from another,
             // and this is the page everybody but an employee lands on, so
-            // waiting for each in turn was six round trips of pure latency
+            // waiting for each in turn was seven round trips of pure latency
             // before a single figure appeared. The roster does it this way
             // already.
             const [
@@ -183,6 +204,7 @@ export default function CostDashboardPage() {
                 { data: labour, error: lErr },
                 { data: waste, error: wErr },
                 { data: overrideRows, error: oErr },
+                { data: claimRows, error: cErr },
             ] = await Promise.all([
                 supabase.from('sales_records')
                     .select('sale_date, net_sales, gross_sales, tender_sales, is_closed')
@@ -221,23 +243,33 @@ export default function CostDashboardPage() {
                 supabase.from('cost_target_overrides')
                     .select('*')
                     .eq('restaurant_id', restaurantId),
+                // The claims coming off this week, with the day each delivery
+                // landed, so a claim from an earlier week's delivery can say
+                // so under the food. By the key's name, because a claim
+                // points at invoices twice: the delivery and the credit note.
+                supabase.from('invoice_line_claims')
+                    .select('id, what, kind, status, amount, credited_amount, counted_week, raised_on, invoice_id, '
+                        + 'delivery:invoices!invoice_line_claims_invoice_id_fkey(invoice_date)')
+                    .eq('restaurant_id', restaurantId)
+                    .eq('counted_week', weekStart),
             ])
 
             // One message, whichever of them failed. Reporting the first is
             // the same behaviour as before, where the first failure stopped
             // the rest from being asked at all.
-            const failed = [sErr, tErr, iErr, lErr, wErr, oErr].find(Boolean)
+            const failed = [sErr, tErr, iErr, lErr, wErr, oErr, cErr].find(Boolean)
             if (failed) { setError(friendlyError(failed)); setReady(true); return }
 
             setSalesRows(sales || [])
             setTenders(tends || [])
-
-            setFoodCost(spendOn(spend, FOOD))
-            setPackagingCost(spendOn(spend, PACKAGING))
-
-            setLabourCost((labour || []).reduce((t, l) => t + num(l.labour_cost), 0))
+            setSpendRows(spend || [])
+            setLabourRows(labour || [])
             setWasteCost((waste || []).reduce((t, w) => t + num(w.waste_value), 0))
             setOverrides(overrideRows || [])
+            const claims = claimRows || []
+            setEarlier(fromEarlierWeeks(claims, claims
+                .filter(c => c.invoice_id && c.delivery)
+                .map(c => ({ id: c.invoice_id, invoice_date: c.delivery.invoice_date })), weekStart))
 
             setReady(true)
         }
@@ -245,10 +277,19 @@ export default function CostDashboardPage() {
         load()
     }, [restaurantId, weekStart, refresh])
 
-    // Closed days are left out of every total: they have no sales and would only
-    // drag the denominator down.
+    // The week's money, worked out by the same function as the weekly report,
+    // so the two cannot give different figures for the same week. They did:
+    // this page added it up for itself and took waste off gross profit, which
+    // the report never did. It also leaves out closed days, which have no
+    // sales and would only drag the denominator down.
+    const figures = reportFigures({ days: salesRows, spend: spendRows, labour: labourRows })
+    const netSales = figures.net
+    const foodCost = figures.food
+    const packagingCost = figures.packaging
+    const labourCost = figures.labour
+    const grossProfit = figures.grossProfit
+
     const trading = salesRows.filter(s => !s.is_closed)
-    const netSales = trading.reduce((t, s) => t + num(s.net_sales), 0)
     // How the week was taken, one figure per till row. Built from whatever rows
     // the week actually has rather than a fixed five, so a week entered before
     // the till split Outside Catering still splits the way it was taken, and a
@@ -283,14 +324,10 @@ export default function CostDashboardPage() {
     }
 
     // Is the target in force this week a temporary one, and when does it end?
+    // Asked of the same row the figure on the card came from, so a permanent
+    // target is never labelled with an older temporary one's end date.
     function temporaryUntil(targetType) {
-        const match = overrides.find(o =>
-            o.target_type === targetType &&
-            o.effective_until != null &&
-            o.effective_from <= weekStart &&
-            o.effective_until >= weekStart
-        )
-        return match ? match.effective_until : null
+        return targetInForce(overrides, targetType, weekStart)?.effective_until ?? null
     }
 
     function goToWeek(newStart) {
@@ -301,9 +338,6 @@ export default function CostDashboardPage() {
     function shiftWeek(weeks) {
         goToWeek(addDays(weekStart, weeks * 7))
     }
-
-    const totalCost = foodCost + packagingCost + labourCost + wasteCost
-    const grossProfit = netSales - totalCost
 
     const salesByDate = {}
     for (const s of salesRows) salesByDate[s.sale_date] = s
@@ -331,23 +365,26 @@ export default function CostDashboardPage() {
 
                 {/* Four controls in one row fits a laptop and does not fit a
                     phone, where the date box was pushed clean off the right
-                    edge. The three week buttons stay together on their own line
-                    and the date box drops underneath them, full width so it is
-                    easy to hit with a thumb. On anything wider it goes back to
-                    being one row. */}
-                <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
+                    edge. On a phone the arrows keep their own line with the
+                    week between them, and the jump button and the date box
+                    drop underneath, full width so they are easy to hit with a
+                    thumb. On anything wider it goes back to being one row, and
+                    the date box wraps under the arrows where there is not room,
+                    as on a tablet with the sidebar showing. */}
+                <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 w-full sm:w-auto">
                     <DateStepper
                         onBack={() => shiftWeek(-1)}
                         onNext={() => shiftWeek(1)}
                         backLabel="Previous week"
                         nextLabel="Next week"
-                    >
-                        <JumpButton
-                            isCurrent={isThisWeek}
-                            onClick={() => goToWeek(weekStartOf(todayISO()))}
-                            className="w-full sm:w-auto"
-                        />
-                    </DateStepper>
+                        weekStart={weekStart}
+                        jump={
+                            <JumpButton
+                                isCurrent={isThisWeek}
+                                onClick={() => goToWeek(weekStartOf(todayISO()))}
+                            />
+                        }
+                    />
                     <input type="date" value={pickerDate}
                         onChange={e => {
                             const v = e.target.value
@@ -370,10 +407,10 @@ export default function CostDashboardPage() {
                 until the new week replaces it, which is what the cards and
                 the charts underneath already do. */}
             {ready && netSales === 0 && (
-                <div className="bg-amber-50 text-amber-700 text-sm rounded-lg p-4 mb-4">
+                <Notice tone="warn" className="mb-4">
                     No sales are recorded for this week, so the percentages cannot be worked out. Enter the week's
                     sales and everything here fills in.
-                </div>
+                </Notice>
             )}
 
             {/* The current week is only ever part of a week. Halfway through, a
@@ -382,10 +419,10 @@ export default function CostDashboardPage() {
                 nothing, and a week with no sales at all already has the message
                 above rather than this one. */}
             {ready && isThisWeek && netSales > 0 && (
-                <div className="bg-blue-50 text-blue-700 text-sm rounded-lg p-4 mb-4">
+                <Notice tone="info" className="mb-4">
                     Week in progress. These figures are worked out from the days entered so far, so they will keep
                     moving as the rest of the week goes in.
-                </div>
+                </Notice>
             )}
 
             {/* The four costs.
@@ -440,7 +477,7 @@ export default function CostDashboardPage() {
             <div className={`${card} p-6 mb-6`}>
                 <h2 className="font-serif text-base font-bold text-gray-900 mb-1">How the week was taken</h2>
                 <p className="text-xs text-muted mb-4">
-                    One share for every row on the till receipt. Change what the till takes and this follows it.
+                    Each line on the till receipt, as a share of the week's till total.
                 </p>
                 <WeekTakenChart rows={takenBy} />
             </div>
@@ -473,14 +510,11 @@ export default function CostDashboardPage() {
                             The share is here for the same reason. €586 means
                             nothing without the sales it came out of, and a week
                             where sales doubled would show every cost rising and
-                            nothing wrong. Waste stays grey rather than green
-                            because there is no configurable target for it, and a
-                            colour would be inventing one. */}
+                            nothing wrong. */}
                         {[
-                            { label: 'Food purchases', value: foodCost, target: foodTarget },
+                            { label: 'Food', value: foodCost, target: foodTarget },
                             { label: 'Packaging and cleaning', value: packagingCost, target: packagingTarget },
                             { label: 'Labour', value: labourCost, target: labourTarget },
-                            { label: 'Waste', value: wasteCost, target: null },
                         ].map(r => {
                             const share = pct(r.value)
                             const tone = LINE_TONE[r.target ? statusFor(share, r.target) : 'none']
@@ -490,7 +524,7 @@ export default function CostDashboardPage() {
                                         {r.label}
                                         {share != null && (
                                             <span className="block text-xs text-muted tabular-nums">
-                                                {share.toFixed(1)}% of net
+                                                {fmtPct(share)} of net
                                                 {r.target ? ` · target ${r.target}%` : ' · no target set'}
                                             </span>
                                         )}
@@ -501,13 +535,37 @@ export default function CostDashboardPage() {
                                 </div>
                             )
                         })}
+                        {/* A delivery problem on a delivery whose report had
+                            already gone out comes off the first week still
+                            open, so the food above is lower than this week's
+                            invoices. Said here with the week it is from. */}
+                        {earlier.length > 0 && (
+                            <p className="text-xs text-muted py-2 border-b border-border">
+                                {earlierWords(earlier)}
+                            </p>
+                        )}
                         <div className="flex justify-between gap-3 text-base py-3 font-bold">
                             <span className="text-gray-900">Gross profit</span>
                             <span className={`whitespace-nowrap ${grossProfit >= 0 ? 'text-green-700' : 'text-red-600'}`}>
                                 {fmtMoney(grossProfit)}
-                                {pct(grossProfit) != null && (
-                                    <span className="font-normal text-sm ml-2">({pct(grossProfit).toFixed(0)}%)</span>
+                                {figures.grossProfitPct != null && (
+                                    <span className="font-normal text-sm ml-2">({fmtPct(figures.grossProfitPct)})</span>
                                 )}
+                            </span>
+                        </div>
+                        {/* Under the line rather than above it. Waste is valued
+                            at what the food cost, and that food is already in the
+                            food purchases, so taking it off here counted it twice
+                            and left this page a waste total away from the report.
+                            No minus sign for the same reason, and grey because
+                            there is no configurable target for it. */}
+                        <div className="flex justify-between gap-3 text-sm py-2 border-t border-border">
+                            <span className="text-muted">
+                                Waste
+                                <span className="block text-xs text-muted">Already counted in the food cost</span>
+                            </span>
+                            <span className={`font-semibold whitespace-nowrap tabular-nums ${LINE_TONE.none}`}>
+                                {fmtMoney(wasteCost)}
                             </span>
                         </div>
                     </div>

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
     portalFields, portalValue, portalDate, portalRow, readPortalList,
     portalSummary, compareDocuments, pairCredits, creditDelays, stillMissing,
-    listReaderFor,
+    listReaderFor, creditsFor,
 } from '@/lib/supplierDocuments'
 
 // The shape of a real paste, with the account number changed.
@@ -241,6 +241,26 @@ describe('pairing a credit with its invoice', () => {
 
     it('leaves the invoices out of it', () => {
         expect(loose).toEqual([])
+    })
+})
+
+// A credit imported before its invoice had nothing to pair with, and only
+// this list keeps the invoice it credits.
+describe('the credits for an invoice', () => {
+    const recorded = readPortalList(PASTE).rows.map(r => ({ ...r, supplier_id: 's1' }))
+
+    it('are the ones whose reference is that invoice', () => {
+        expect(creditsFor(recorded, 's1', '45612214')).toEqual(['C45620001'])
+        expect(creditsFor(recorded, 's1', '45612570')).toEqual([])
+    })
+
+    // A document number is only unique to one supplier.
+    it('are only that supplier\'s', () => {
+        expect(creditsFor(recorded, 's2', '45612214')).toEqual([])
+    })
+
+    it('are none for a document with no number', () => {
+        expect(creditsFor(recorded, 's1', null)).toEqual([])
     })
 })
 

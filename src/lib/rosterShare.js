@@ -8,9 +8,8 @@
 // The image is the one that matters. The roster goes to a WhatsApp group, and
 // everything else here is for the wall and for the accountant.
 
-import { DAY_NAMES } from '@/lib/events'
 import { dayState, availabilityOn, availabilityStart } from '@/lib/availability'
-import { fullDate, shortDate } from '@/lib/dates'
+import { fullDate, shortDate, DAY_NAMES } from '@/lib/dates'
 import {
     weekRows, dayTotals, endLabel, shortTime, dayBreakLabels, fmtHours, hoursForDate, shiftEdges,
 } from '@/lib/roster'
@@ -178,7 +177,9 @@ export function weekTable({
     // and a line in a list on the other is two versions of Thursday.
     //
     // The cards carry no place name. The band is named after the place, and
-    // saying it again on every card under it is the place said twice.
+    // saying it again on every card under it is the place said twice. A night
+    // the feed stopped listing is not here at all, the same as on screen. See
+    // nearbyRows.
     const headlines = ownRows(nearby, nearbyPlaces).map(group => ({
         name: placeName(group.place, { short: true }),
         kind: group.kind,

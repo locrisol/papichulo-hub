@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import Modal from '@/components/ui/Modal'
-import { categoryStyle, statusNote, dayName } from '@/lib/events'
+import ClockField from '@/components/ui/ClockField'
+import { categoryStyle, statusNote } from '@/lib/events'
 import {
-    placeName, elsewhere, walkWords, hostOf, agoWords, whenWords, eventName,
+    placeName, elsewhere, walkWords, hostOf, sinceWords, whenWords, eventName,
 } from '@/lib/nearby'
-import { fullDate } from '@/lib/dates'
+import { fullDate, todayISO, dayName } from '@/lib/dates'
 import { fmtMoney } from '@/lib/format'
 import {
-    badge, fieldClass, labelClass, dateField, secondaryButton, checkbox, checkRow,
+    badge, fieldClass, labelClass, secondaryButton, checkbox, checkRow, hintClass,
 } from '@/lib/controlStyles'
 
 // One thing on near us, opened from the calendar or from the list beside it.
@@ -29,6 +30,8 @@ export default function EventModal({ row, canEdit = false, sameName = 0, onRenam
     // string is never used: there is no modal to type into without an event.
     const [name, setName] = useState(() => eventName(row?.event) || '')
     const [ends, setEnds] = useState(() => row?.event?.ends_on || '')
+    // Hours and minutes, the way the box shows them. The column carries seconds.
+    const [time, setTime] = useState(() => String(row?.event?.event_time || '').slice(0, 5))
     // Ticked by default when there is more than one, because a tour is one
     // decision rather than six and renaming one night of six is the answer
     // almost nobody wants.
@@ -41,6 +44,9 @@ export default function EventModal({ row, canEdit = false, sameName = 0, onRenam
         : 'bg-amber-50 text-amber-700'
 
     const fromAPage = event.source === 'page'
+    const unchanged = name.trim() === eventName(event)
+        && ends === (event.ends_on || '')
+        && time === String(event.event_time || '').slice(0, 5)
 
     // Labelled Doors rather than Time, because that is what it is.
     //
@@ -98,8 +104,10 @@ export default function EventModal({ row, canEdit = false, sameName = 0, onRenam
     // fact and a reading. A feed needs no such line: the venue itself said so.
     const source = hostOf(event.source_url)
     if (fromAPage && source) {
-        const when = agoWords(event.found_at, new Date().toISOString().slice(0, 10))
-        rows.push({ label: 'Read from', value: when ? `${source}, ${when}` : source })
+        // Today here, the way sinceWords counts. The UTC date put a reading found
+        // the evening before on today, from midnight to one all summer.
+        const when = sinceWords(event.found_at, todayISO())
+        rows.push({ label: 'Source', value: when ? `${source}, ${when}` : source })
     }
 
     return (
@@ -126,8 +134,8 @@ export default function EventModal({ row, canEdit = false, sameName = 0, onRenam
                     hint, and on a phone it is barely that. */}
                 {row?.checked === false && (
                     <p className="text-sm rounded-lg p-3 mt-4 bg-blue-50 text-blue-900">
-                        A model read this off a page and nobody has checked it yet.
-                        Keep it or say it is not for us at the top of the calendar.
+                        This was found online and has not been checked yet.
+                        {canEdit && ' Press Keep or Not for us at the top of the Calendar page.'}
                     </p>
                 )}
 
@@ -142,7 +150,7 @@ export default function EventModal({ row, canEdit = false, sameName = 0, onRenam
                     It writes beside the name rather than over it, so what
                     arrived is still what a second reading is matched on, and a
                     Ticketmaster name that the sync rewrites twice a day keeps
-                    the one we chose. See migration 015. */}
+                    the one we chose. See events.display_name in schema.sql. */}
                 {canEdit && onRename && (
                     <div className="mt-4 pt-4 border-t border-border">
                         <label className={labelClass} htmlFor="event-name">
@@ -158,8 +166,8 @@ export default function EventModal({ row, canEdit = false, sameName = 0, onRenam
                             />
                             <button
                                 type="button"
-                                disabled={name.trim() === eventName(event) && ends === (event.ends_on || '')}
-                                onClick={() => onRename(event, name, sameName > 1 && all, ends)}
+                                disabled={unchanged}
+                                onClick={() => onRename(event, name, sameName > 1 && all, ends, fromAPage ? time : undefined)}
                                 className={`${secondaryButton} disabled:opacity-50`}
                             >
                                 Save
@@ -180,7 +188,7 @@ export default function EventModal({ row, canEdit = false, sameName = 0, onRenam
                             <input
                                 id="event-ends"
                                 type="date"
-                                className={dateField}
+                                className={fieldClass}
                                 value={ends}
                                 min={event.event_date}
                                 onChange={e => setEnds(e.target.value)}
@@ -190,6 +198,27 @@ export default function EventModal({ row, canEdit = false, sameName = 0, onRenam
                                 is being changed on several.
                             </p>
                         </div>
+
+                        {/* A time read off a page can be read wrong, and the
+                            page's 7:30pm turning up as half past seven in the
+                            morning is the way it goes wrong. Written over the
+                            reading rather than beside it: a page reading is
+                            never written again once it is in, so this sticks.
+                            Not for a feed, which writes its own time again
+                            twice a day and would undo this by the evening. */}
+                        {fromAPage && (
+                            <div className="mt-3">
+                                <label className={labelClass} htmlFor="event-time">
+                                    Start time
+                                </label>
+                                <div className="w-36">
+                                    <ClockField id="event-time" value={time} onChange={setTime} />
+                                </div>
+                                <p className={hintClass}>
+                                    Leave it empty if the page gave no time. This one only.
+                                </p>
+                            </div>
+                        )}
 
                         {/* A residency is one name on six nights, and renaming
                             one of them is the answer almost nobody wants. The

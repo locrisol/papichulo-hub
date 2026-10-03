@@ -1,9 +1,8 @@
 import { useConfirm } from '@/context/confirm'
-import { card, badge } from '@/lib/controlStyles'
+import { card, badge, primaryButton } from '@/lib/controlStyles'
 import { absenceRange } from '@/lib/absences'
 import { requestLabel, partWords } from '@/lib/timeOff'
-import { shortDate } from '@/lib/dates'
-import { dayName } from '@/lib/events'
+import { dayLabel } from '@/lib/dates'
 
 // Your own time off, on your own page.
 //
@@ -29,12 +28,13 @@ export default function TimeOffCard({ requests, onAsk, onWithdraw }) {
     async function ask(row) {
         const ok = await confirm({
             title: 'Cancel this request?',
-            message: 'It is taken back and your manager will not see it. You can ask again afterwards.',
+            message: 'Your manager will no longer see it. You can send a new request afterwards.',
             details: [
                 { label: 'What', value: requestLabel(row) },
-                { label: 'When', value: absenceRange(row, d => `${dayName(d)} ${shortDate(d)}`) },
+                { label: 'When', value: absenceRange(row, dayLabel) },
             ],
-            confirmLabel: 'Cancel it',
+            confirmLabel: 'Cancel request',
+            cancelLabel: 'Go back',
             tone: 'danger',
         })
         if (ok) onWithdraw(row.id)
@@ -53,7 +53,7 @@ export default function TimeOffCard({ requests, onAsk, onWithdraw }) {
                 <button
                     type="button"
                     onClick={onAsk}
-                    className="bg-accent hover:bg-accent/90 text-white text-xs font-semibold px-3 py-2 rounded-lg transition-colors"
+                    className={primaryButton('sm')}
                 >
                     Request time off
                 </button>
@@ -80,7 +80,7 @@ export default function TimeOffCard({ requests, onAsk, onWithdraw }) {
                                     <span className={`${badge} ${look.tone}`}>{look.text}</span>
                                 </div>
                                 <p className="text-xs text-muted mt-0.5">
-                                    {absenceRange(row, d => `${dayName(d)} ${shortDate(d)}`)}
+                                    {absenceRange(row, dayLabel)}
                                     {hours ? `, ${hours}` : ''}
                                 </p>
                                 {row.note && <p className="text-xs text-muted italic mt-0.5">{row.note}</p>}

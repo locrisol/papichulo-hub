@@ -1,18 +1,25 @@
 import { useState, useEffect, Fragment, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
 import { fmtMoney, fmtUnitCost } from '@/lib/format'
 import { priceProblem, pricePayload } from '@/lib/productPrice'
+import { movePreferred, typedPriceEvent } from '@/lib/priceEvents'
 import PriceForm from '@/components/inventory/PriceForm'
 import Modal from '@/components/ui/Modal'
 import PriceCountUnitsEditor from '@/components/inventory/PriceCountUnitsEditor'
 import { friendlyError } from '@/lib/errors'
-import { tableHeadRow, tableCard, badge, card, rowButton, pageTitle, primaryButton } from '@/lib/controlStyles'
+import { claimCode } from '@/lib/invoiceReview'
+import {
+    tableHeadRow, tableHeadCell, tableCard, badge, card, cardHeader, rowButton, primaryButton,
+} from '@/lib/controlStyles'
 import { useConfirm } from '@/context/confirm'
 import BackButton from '@/components/ui/BackButton'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import PageHeader from '@/components/ui/PageHeader'
 import ProductPriceHistory from '@/components/inventory/ProductPriceHistory'
+import { useSaveOnce } from '@/components/ui/useSaveOnce'
 
 // Every price we can buy one product at, for the restaurant you are working in.
 //
@@ -31,6 +38,7 @@ import ProductPriceHistory from '@/components/inventory/ProductPriceHistory'
 // and the margin differ by restaurant while the selling price does not.
 export default function ProductPricesPage() {
     const { id } = useParams()
+    const { user } = useAuth()
     const { activeRestaurant } = useRestaurant()
     const confirm = useConfirm()
 
@@ -51,6 +59,9 @@ export default function ProductPricesPage() {
     const [editingPrice, setEditingPrice] = useState(null)
     const [formData, setFormData] = useState(emptyForm())
     const [formatsForPriceId, setFormatsForPriceId] = useState(null)
+    // Bumped whenever a price moves here, so the chart above the rows reads
+    // its events again. See recordPrice.
+    const [historyVersion, setHistoryVersion] = useState(0)
 
     // The price the formats dialog is showing, looked up from the list rather
     // than kept as a second copy, so it cannot go stale if the list reloads.
@@ -82,16 +93,6 @@ export default function ProductPricesPage() {
         else setProduct(data)
         }, [id])
 
-    useEffect(() => {
-        // The fetch sets a loading state before it starts, which is one render
-        // this rule would rather avoid. The alternative is to leave it,
-        // and then a change of what is shown keeps the previous one's figures
-        // on screen under the new one's heading until the answer arrives.
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        fetchProduct()
-        fetchSuppliers()
-    }, [fetchProduct])
-
     async function fetchSuppliers() {
         const { data } = await supabase
             .from('suppliers')
@@ -101,6 +102,16 @@ export default function ProductPricesPage() {
 
         if (data) setSuppliers(data)
     }
+
+    useEffect(() => {
+        // The fetch sets a loading state before it starts, which is one render
+        // this rule would rather avoid. The alternative is to leave it,
+        // and then a change of what is shown keeps the previous one's figures
+        // on screen under the new one's heading until the answer arrives.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        fetchProduct()
+        fetchSuppliers()
+    }, [fetchProduct])
 
     const fetchPrices = useCallback(async () => {
         setLoading(true)
@@ -133,9 +144,17 @@ export default function ProductPricesPage() {
 
     const validate = () => priceProblem(formData)
 
-    async function handleSave(e) {
-        e.preventDefault()
+    // A second tap on Save while the first was on its way added the price
+    // twice, and a first price twice is two prices both marked preferred. See
+    // useSaveOnce.
+    const [saving, once] = useSaveOnce()
 
+    function handleSave(e) {
+        e.preventDefault()
+        return once(savePrice)
+    }
+
+    async function savePrice() {
         setFormProblem('')
 
         const newErrors = validate()
@@ -152,35 +171,76 @@ export default function ProductPricesPage() {
         }
 
         if (editingPrice) {
-            const { error } = await supabase
+            const { data: saved, error } = await supabase
                 .from('product_supplier_prices')
                 .update(payload)
                 .eq('id', editingPrice.id)
+                .select()
+                .single()
 
             if (error) handleSupabaseError(error)
-            else { fetchPrices(); resetForm() }
+            else {
+                await recordPrice(typedPriceEvent({ id }, saved, {
+                    ...who(), before: editingPrice,
+                }))
+                await findsItsCode(saved)
+                fetchPrices(); resetForm()
+            }
         } else {
             // First price link for this product+restaurant becomes preferred by default
             if (prices.length === 0) {
                 payload.is_preferred = true
             }
 
-            const { error } = await supabase
+            const { data: saved, error } = await supabase
                 .from('product_supplier_prices')
                 .insert(payload)
+                .select()
+                .single()
 
             if (error) handleSupabaseError(error)
-            else { fetchPrices(); resetForm() }
+            else {
+                await recordPrice(typedPriceEvent({ id }, saved, who()))
+                await findsItsCode(saved)
+                fetchPrices(); resetForm()
+            }
         }
+    }
+
+    // Who is changing a price, where, and when, for the event that says so.
+    function who() {
+        return { restaurantId: activeRestaurant.id, userId: user?.id, at: new Date().toISOString() }
+    }
+
+    // Writing down that what the Hub costs from has moved.
+    //
+    // The chart above the rows draws the product's own line from these
+    // events, and this page used to change prices without writing one, so
+    // the line stayed where an invoice last left it while every recipe had
+    // moved. Nothing is written when there is nothing to say (see
+    // typedPriceEvent). The price itself is saved by then, so a failure here
+    // says so on the page rather than undoing it.
+    async function recordPrice(event) {
+        if (!event) return
+        const { error } = await supabase.from('product_price_events').insert(event)
+        if (error) setError(`The price was saved, but the price history was not updated: ${friendlyError(error)}`)
+        setHistoryVersion(n => n + 1)
+    }
+
+    // A code the invoices already met means this price from now on. See
+    // claimCode. Said after anything the price history said.
+    async function findsItsCode(saved) {
+        const said = await claimCode(saved, activeRestaurant.id)
+        if (said) setError(before => (before ? `${before} ${said}` : said))
     }
 
     function handleSupabaseError(err) {
         // 23505 is the PostgreSQL unique-violation code
         if (err.code === '23505') {
             if (formData.purchase_type === 'case') {
-                setFormProblem('A case price link with this pack size for this supplier already exists. Edit the existing one instead.')
+                setFormProblem('This supplier already has a case price with this many units per case. Edit that one instead.')
             } else {
-                setFormProblem('A loose price link for this supplier already exists. Edit the existing one instead.')
+                setFormProblem('This supplier already has a loose price. Edit that one instead.')
             }
         } else {
             setFormProblem(friendlyError(err))
@@ -249,8 +309,18 @@ export default function ProductPricesPage() {
             .eq('restaurant_id', activeRestaurant.id)
             .neq('id', price.id)
 
-        if (e2) setError(friendlyError(e2))
-        else fetchPrices()
+        if (e2) { setError(friendlyError(e2)); return }
+
+        // Buying it somewhere else is the decision with no document behind
+        // it, so this is the only record the chart has of it. The row it
+        // moved from is named, which a row read with select('*') is not.
+        const before = prices.find(p => p.is_preferred && p.id !== price.id) || null
+        const move = movePreferred({ id }, price, {
+            ...who(),
+            from: before && { ...before, supplier_name: getSupplierName(before.supplier_id) },
+        })
+        await recordPrice(move.event)
+        fetchPrices()
     }
 
     async function removePrice(price) {
@@ -285,22 +355,17 @@ export default function ProductPricesPage() {
         <div>
             <BackButton to="/catalogue/products" className="mb-4">Back to products</BackButton>
 
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-                <div>
-                    <h2 className={pageTitle}>
-                        Prices: {product?.name || '...'}
-                    </h2>
-                    <p className="text-sm text-gray-500 mt-1">
-                        {product ? `${product.section} • ${product.unit} • ` : ''}for {activeRestaurant?.name}
-                    </p>
-                </div>
+            <PageHeader
+                title={`Prices: ${product?.name || '...'}`}
+                subtitle={`${product ? `${product.section} · ${product.unit} · ` : ''}for ${activeRestaurant?.name ?? ''}`}
+            >
                 <button
                     onClick={() => { resetForm(); setShowForm(true) }}
                     className={primaryButton()}
                 >
-                    + Add Price
+                    + Add price
                 </button>
-            </div>
+            </PageHeader>
 
             {error && (
                 <ErrorBanner className="mb-4">{error}</ErrorBanner>
@@ -314,35 +379,39 @@ export default function ProductPricesPage() {
                 restaurantId={activeRestaurant?.id}
                 product={product}
                 suppliers={suppliers}
+                refresh={historyVersion}
             />
 
             <div className="bg-blue-50 text-blue-700 text-xs rounded-lg p-3 mb-4">
-                Case and loose prices for the same supplier are saved as separate records. Add both if your supplier offers both options. Case prices are sometimes cheaper per unit and sometimes more expensive, so it pays to compare and pick the preferred one yourself.
+                Case and loose prices from the same supplier are kept separately. If a supplier sells both, add both, compare the cost per unit, and press Set as preferred on the one to use.
             </div>
 
             {showForm && !editingPrice && (
-                <div className={`${card} p-6 mb-6`}>
-                    <h3 className="text-sm font-semibold text-gray-900 mb-4">New Price Link</h3>
-                    <PriceForm
-                      problem={formProblem}
-                        formData={formData}
-                        onChange={handleFieldChange}
-                        onSubmit={handleSave}
-                        onCancel={resetForm}
-                        submitLabel="Add Price"
-                        errors={errors}
-                        suppliers={suppliers}
-                        unit={product?.unit}
-                    />
+                <div className={`${card} overflow-hidden mb-6`}>
+                    <h3 className={cardHeader}>New price</h3>
+                    <div className="p-6">
+                        <PriceForm
+                            problem={formProblem}
+                            formData={formData}
+                            onChange={handleFieldChange}
+                            onSubmit={handleSave}
+                            onCancel={resetForm}
+                            submitLabel="Add price"
+                            saving={saving}
+                            errors={errors}
+                            suppliers={suppliers}
+                            unit={product?.unit}
+                        />
+                    </div>
                 </div>
             )}
 
             {loading ? (
-                <div className="text-sm text-gray-500">Loading prices...</div>
+                <div className="text-sm text-muted">Loading prices...</div>
             ) : prices.length === 0 ? (
                 <div className={`${card} p-8 text-center`}>
-                    <p className="text-sm text-gray-500">
-                        No price links yet for this product at {activeRestaurant?.name}. Click "+ Add Price" to create the first one.
+                    <p className="text-sm text-muted">
+                        No prices yet for this product at {activeRestaurant?.name}. Press Add price to add the first one.
                     </p>
                 </div>
             ) : (
@@ -404,7 +473,7 @@ export default function ProductPricesPage() {
                                     {editingPrice?.id === p.id ? 'Cancel' : 'Edit'}
                                 </button>
                                 <button onClick={() => setFormatsForPriceId(p.id)} className={rowButton()}>
-                                    Formats
+                                    Packs
                                 </button>
                                 <button onClick={() => removePrice(p)} className={rowButton('danger')}>
                                     Remove
@@ -418,13 +487,13 @@ export default function ProductPricesPage() {
                     <table className="w-full text-sm">
                         <thead>
                             <tr className={tableHeadRow}>
-                                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Supplier</th>
-                                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Type</th>
-                                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Supplier Code</th>
-                                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Pack</th>
-                                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Cost / {product?.unit || 'Unit'}</th>
-                                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Preferred</th>
-                                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Actions</th>
+                                <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Supplier</th>
+                                <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Type</th>
+                                <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Supplier code</th>
+                                <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Pack</th>
+                                <th className={`text-right px-4 py-3 ${tableHeadCell}`}>Cost / {product?.unit || 'Unit'}</th>
+                                <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Preferred</th>
+                                <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -447,13 +516,13 @@ export default function ProductPricesPage() {
                                                 {p.purchase_type === 'case' ? 'Case' : 'Loose'}
                                             </span>
                                         </td>
-                                        <td className="px-4 py-3 text-gray-500">{p.supplier_code || '—'}</td>
-                                        <td className="px-4 py-3 text-gray-500">
+                                        <td className="px-4 py-3 text-muted">{p.supplier_code || '—'}</td>
+                                        <td className="px-4 py-3 text-muted">
                                             {p.purchase_type === 'case'
                                                 ? `${parseFloat(p.units_per_case)} ${product?.unit} @ ${fmtMoney(parseFloat(p.price_per_case))}`
                                                 : '—'}
                                         </td>
-                                        <td className="px-4 py-3 font-medium text-gray-900">
+                                        <td className="px-4 py-3 font-medium text-gray-900 text-right tabular-nums">
                                             {fmtUnitCost(parseFloat(p.price_per_unit))}
                                         </td>
                                         <td className="px-4 py-3">
@@ -480,7 +549,7 @@ export default function ProductPricesPage() {
                                                     onClick={() => setFormatsForPriceId(p.id)}
                                                     className={rowButton()}
                                                 >
-                                                    Formats
+                                                    Packs
                                                 </button>
                                                 <button
                                                     onClick={() => removePrice(p)}
@@ -503,7 +572,7 @@ export default function ProductPricesPage() {
                 the prices around them, and they pushed every row below down. */}
             {formatsPrice && (
                 <Modal
-                    title={`Pack formats for the ${getSupplierName(formatsPrice.supplier_id)} price`}
+                    title={`Packs for the ${getSupplierName(formatsPrice.supplier_id)} price`}
                     onClose={() => setFormatsForPriceId(null)}
                     width="max-w-2xl"
                 >
@@ -519,14 +588,15 @@ export default function ProductPricesPage() {
 
             {editingPrice && (
                 <Modal title={`Edit the ${getSupplierName(editingPrice.supplier_id)} price`} onClose={resetForm} width="max-w-2xl">
-                    <div className="p-5">
+                    <div className="px-6 py-4">
                         <PriceForm
-                          problem={formProblem}
+                            problem={formProblem}
                             formData={formData}
                             onChange={handleFieldChange}
                             onSubmit={handleSave}
                             onCancel={resetForm}
                             submitLabel="Save changes"
+                            saving={saving}
                             errors={errors}
                             suppliers={suppliers}
                             unit={product?.unit}

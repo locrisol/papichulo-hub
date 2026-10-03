@@ -83,7 +83,7 @@ describe('more than one of the same on a day', () => {
 
     it('takes one of them off and keeps the rest', () => {
         draw([{ name: 'Feedr', time: '11:30' }, { name: 'Feedr', time: '12:00' }, { name: 'Feedr', time: '12:30' }])
-        fireEvent.click(screen.getAllByRole('button', { name: 'Take this Feedr off this day' })[1])
+        fireEvent.click(screen.getAllByRole('button', { name: 'Remove Feedr from this day' })[1])
         expect(feedrTimes()).toEqual(['11:30', '12:30'])
     })
 
@@ -92,7 +92,7 @@ describe('more than one of the same on a day', () => {
         draw([{ name: 'Office drop', time: '10:00' }])
         fireEvent.change(screen.getByLabelText('Something else, just this day'), { target: { value: 'Office drop' } })
         fireEvent.change(screen.getByLabelText('Time for the one off'), { target: { value: '15:00' } })
-        fireEvent.click(screen.getByRole('button', { name: 'Add it' }))
+        fireEvent.click(screen.getByRole('button', { name: 'Add' }))
         expect(screen.getAllByLabelText('Office drop time').map(box => box.value)).toEqual(['10:00', '15:00'])
     })
 

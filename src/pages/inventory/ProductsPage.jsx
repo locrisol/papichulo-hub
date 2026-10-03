@@ -1,28 +1,41 @@
 import { fmtUnitCost } from '@/lib/format'
 import { useState, useEffect, useRef, Fragment, useCallback } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
-import { supabase } from '@/lib/supabase'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { supabase, everyRow } from '@/lib/supabase'
+import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
 import { useConfirm } from '@/context/confirm'
 import { calculateMixCost } from '@/lib/mixCost'
 import { EMPTY_PRICE, hasPrice, priceProblem, pricePayload } from '@/lib/productPrice'
-import { emptyAllergens } from '@/lib/allergens'
+import { typedPriceEvent } from '@/lib/priceEvents'
+import { emptyAllergens, noAllergensDeclared } from '@/lib/allergens'
+import { everyReadArrived } from '@/lib/allergenSheet'
+import { allergensChanged } from '@/lib/allergensChanged'
 import {
   sameName, sameSupplierCode, nameClashMessage, canBeIngredient, declaresAllergens,
   heldFor, partiesIn, prefillFrom,
 } from '@/lib/products'
 import SearchBox from '@/components/ui/SearchBox'
+import { useSaveOnce } from '@/components/ui/useSaveOnce'
 import RowActions from '@/components/ui/RowActions'
 import { useKeepScroll } from '@/context/scroll'
 import { sectionColour, productInk, DRINK_COLOUR } from '@/lib/sections'
 import ProductForm from '@/components/inventory/ProductForm'
 import Modal from '@/components/ui/Modal'
 import { friendlyError } from '@/lib/errors'
+import { claimCode } from '@/lib/invoiceReview'
 import { matches } from '@/lib/search'
 import { orderFormats } from '@/lib/countUnits'
-import { tableHeadRow, tableHeadCell, badge, card, cardEdge, rowButton, pageTitle, primaryButton } from '@/lib/controlStyles'
+import {
+  tableHeadRow, tableHeadCell, badge, mixBadge, inactiveBadge, card, cardEdge, cardHeader, rowButton, chip,
+  primaryButton, secondaryButton, urgentNote,
+} from '@/lib/controlStyles'
+import { readStored, writeStored } from '@/lib/browserStore'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import Notice from '@/components/ui/Notice'
+import PageHeader from '@/components/ui/PageHeader'
 import ShowInactiveButton from '@/components/ui/ShowInactiveButton'
+import useShowInactive from '@/components/ui/useShowInactive'
 
 // Every column in the table, in the order it appears.
 //
@@ -78,31 +91,22 @@ const EMPTY_RECIPE = {
 // All has no colour of its own, so it keeps the app's accent. Written once
 // because there are two rows of them and they have to be the same control asked
 // twice, not two kinds of control.
+//
+// The shared chip, with the section's ink laid over it through style where
+// there is one. A style beats a class whatever order the stylesheet is in, so
+// the ink always wins over the chip's own orange or grey.
 function FilterChip({ label, isOn, ink, onClick }) {
-  const base = 'px-3 py-1.5 rounded-full text-xs font-medium border transition-colors '
-
-  if (!ink) {
-    return (
-      <button
-        type="button"
-        onClick={onClick}
-        className={base + (isOn
-          ? 'bg-accent border-accent text-white'
-          : 'bg-white border-border text-gray-600 hover:bg-gray-50')}
-      >
-        {label}
-      </button>
-    )
-  }
+  const inked = !ink ? undefined : isOn
+    ? { backgroundColor: ink, borderColor: ink }
+    : { color: ink, borderColor: ink }
 
   return (
     <button
       type="button"
       onClick={onClick}
-      className={base + (isOn ? 'text-white' : 'bg-white hover:bg-gray-50')}
-      style={isOn
-        ? { backgroundColor: ink, borderColor: ink }
-        : { color: ink, borderColor: ink }}
+      aria-pressed={isOn}
+      className={chip(isOn)}
+      style={inked}
     >
       {label}
     </button>
@@ -125,10 +129,10 @@ const STICK_TOP = 'top-[-1.75rem]'
 // and the cards both say it, and a label that reads Drink in one place and
 // Purchased in the other is worse than not saying it at all.
 function typeBadge(p) {
-  if (!p.is_active) return { label: p.is_mix ? 'MIX' : 'Purchased', cls: 'bg-gray-100 text-muted' }
-  if (p.is_mix) return { label: 'MIX', cls: 'bg-amber-500 text-white' }
-  if (p.category === 'drink') return { label: 'Drink', cls: 'bg-sky-100 text-sky-800' }
-  return { label: 'Purchased', cls: 'bg-green-100 text-green-800' }
+  if (!p.is_active) return { label: p.is_mix ? 'MIX' : 'Purchased', cls: `${badge} bg-gray-100 text-muted` }
+  if (p.is_mix) return { label: 'MIX', cls: mixBadge }
+  if (p.category === 'drink') return { label: 'Drink', cls: `${badge} bg-sky-100 text-sky-800` }
+  return { label: 'Purchased', cls: `${badge} bg-green-100 text-green-800` }
 }
 
 const COLUMNS = [
@@ -136,13 +140,14 @@ const COLUMNS = [
   { key: 'section', label: 'Section', width: 'w-48' },
   { key: 'unit', label: 'Unit', width: 'w-20' },
   { key: 'type', label: 'Type', width: 'w-32' },
-  { key: 'supplier', label: 'Preferred Supplier', sortable: true },
+  { key: 'supplier', label: 'Preferred supplier', sortable: true },
   { key: 'cost', label: 'Cost/Unit', width: 'w-28', sortable: true },
-  { key: 'weightLoss', label: 'Weight Loss', width: 'w-28', sortable: true },
+  { key: 'weightLoss', label: 'Weight loss', width: 'w-28', sortable: true },
 ]
 
 export default function ProductsPage() {
   const confirm = useConfirm()
+  const { user } = useAuth()
   const { activeRestaurant } = useRestaurant()
   const navigate = useNavigate()
   const [products, setProducts] = useState([])
@@ -176,6 +181,9 @@ export default function ProductsPage() {
   // render, and the same snapshot decides that the form should be open at all.
   const [params] = useSearchParams()
   const [fromLink] = useState(() => prefillFrom(params))
+  // Where saving the product the link asked for goes back to. Only that one:
+  // the form closed, the next product added is an ordinary one.
+  const backTo = useRef(fromLink?.back || null)
 
   const [priceForm, setPriceForm] = useState(() => ({ ...EMPTY_PRICE, ...(fromLink?.price || {}) }))
   const [priceErrors, setPriceErrors] = useState({})
@@ -187,6 +195,14 @@ export default function ProductsPage() {
   // them at the default. All fourteen at Not Present is a real answer for a bag
   // of rice, so it cannot be told apart from never looking by the values alone.
   const [allergensTouched, setAllergensTouched] = useState(false)
+  // Whether opening a product to change it could not read its allergens. A
+  // failed read looked like a product nobody had answered, with the one tap
+  // that declares it has none, and saving wrote that over the real answer.
+  // So the form offers nothing for them and the save leaves them alone.
+  const [allergensUnread, setAllergensUnread] = useState(false)
+  // Which product the form is for, so a read for one opened earlier that
+  // lands late does not fill in the one open now.
+  const editingId = useRef(null)
   // One section open at a time, and both shut to start with.
   // Open on the supplier when the link brought a price with it, since that
   // is the half already filled in and the half worth checking.
@@ -232,6 +248,13 @@ export default function ProductsPage() {
   // page that is not on screen when you press it.
   const [formProblem, setFormProblem] = useState('')
   const [errors, setErrors] = useState({})
+  // A second tap on Save while the first is on its way ran the whole save
+  // again and made a second product. See useSaveOnce.
+  const [saving, once] = useSaveOnce()
+  // While it asks whether to save without a price or allergens. Nothing is
+  // being saved yet, so the button behind the question keeps its own name
+  // rather than saying Saving. A second tap is still turned away by once.
+  const [asking, setAsking] = useState(false)
   const [search, setSearch] = useState('')
   // Which sections are showing. Empty means all of them, which is the same
   // thing and one fewer state to keep straight than a list that has to contain
@@ -239,9 +262,39 @@ export default function ProductsPage() {
   const [activeSections, setActiveSections] = useState([])
   const [showForm, setShowForm] = useState(!!fromLink)
   const [editingProduct, setEditingProduct] = useState(null)
-  const [showInactive, setShowInactive] = useState(() => {
-    return localStorage.getItem('productsShowInactive') === 'true'
-  })
+  const [showInactive, setShowInactive] = useShowInactive('productsShowInactive')
+
+  // What the count of products with no allergens set is worked out from,
+  // beyond the products and recipes this page already holds: which products
+  // have an allergen row, and what is in each dish. Null until all of it has
+  // arrived, and for good if any of it failed. Read before then, every food
+  // product would look unanswered.
+  const [answers, setAnswers] = useState(null)
+  // Whether the recipes came back. A MIX with a recipe is answered by what is
+  // in it, so until they arrive every MIX would look like it has none.
+  const [recipesRead, setRecipesRead] = useState(false)
+  // Whether the last read of either failed. Nothing is marked then, which is
+  // right, but the red line going quietly read as every product done, so the
+  // page says it could not check. Its own flag rather than the page's error,
+  // which a save clears and fills with its own message.
+  const [answersFailed, setAnswersFailed] = useState(false)
+  const [recipesFailed, setRecipesFailed] = useState(false)
+  // Whether the product list has arrived. Until it has, an empty list is not a
+  // list with nothing missing, so the choice to show only those is kept.
+  const [productsRead, setProductsRead] = useState(false)
+
+  // Showing only the products with no allergens set, so they can be worked
+  // through. Kept for the session: each one is answered on its own Allergens
+  // or Recipe page, and coming back from it is a fresh visit to this one that
+  // should land on the same short list rather than all of them.
+  const [onlyNoAllergens, setOnlyNoAllergens] = useState(
+    () => readStored('session', 'productsOnlyNoAllergens') === 'true',
+  )
+
+  function showOnlyNoAllergens(on) {
+    setOnlyNoAllergens(on)
+    writeStored('session', 'productsOnlyNoAllergens', on)
+  }
   const [formData, setFormData] = useState(() => ({
     name: '',
     section: 'Freezer',
@@ -275,7 +328,28 @@ export default function ProductsPage() {
   useEffect(() => {
     fetchProducts()
     fetchSuppliers()
+    fetchAnswers()
   }, [])
+
+  // Whether each product has an allergen row, and what is in each dish on
+  // sale. Only the columns the rule reads: what the allergens actually are is
+  // the Allergens page's business. All three or nothing, see answers above.
+  //
+  // Every row, a page at a time, each in an order that cannot tie. Read
+  // short, every answered product past the first thousand rows would be
+  // marked as not set.
+  async function fetchAnswers() {
+    const reads = await Promise.all([
+      everyRow(() => supabase.from('product_allergens').select('product_id').order('product_id')),
+      everyRow(() => supabase.from('menu_items').select('id, is_active').order('id')),
+      everyRow(() => supabase.from('menu_item_components')
+        .select('id, menu_item_id, product_id').order('id')),
+    ])
+    if (!everyReadArrived(reads)) { setAnswers(null); setAnswersFailed(true); return }
+    const [allergens, menuItems, components] = reads.map(r => r.data)
+    setAnswersFailed(false)
+    setAnswers({ allergens, menuItems, components })
+  }
 
   
 
@@ -289,7 +363,7 @@ export default function ProductsPage() {
       .order('name')
 
     if (error) setError(friendlyError(error))
-    else setProducts(data)
+    else { setProducts(data); setProductsRead(true) }
     setLoading(false)
   }
 
@@ -359,16 +433,51 @@ export default function ProductsPage() {
     fetchRecipeLines()
   }, [fetchPrices, activeRestaurant])
 
+  // Every line, a page at a time. Read short, a MIX whose lines fell past the
+  // first thousand would be marked as having no recipe here while the sidebar,
+  // which reads every row, did not count it.
   async function fetchRecipeLines() {
-    const { data } = await supabase
+    const { data } = await everyRow(() => supabase
       .from('mix_recipes')
       .select('*')
+      .order('id'))
 
-    if (data) setRecipeLines(data)
+    if (data) {
+      setRecipeLines(data)
+      setRecipesRead(true)
+    }
+    setRecipesFailed(!data)
   }
 
   function getPreferredPrice(productId) {
     return prices.find(p => p.product_id === productId)
+  }
+
+  // A price typed on the form, written down for the chart on the product's
+  // Prices screen, which draws what the Hub costs from out of these events.
+  // The form wrote prices and recorded nothing, so that line stayed where an
+  // invoice last left it. typedPriceEvent says when there is nothing to
+  // record. The price is saved by then, so a failure here is said on the page
+  // rather than stopping the save: a sentence, or null.
+  async function recordPrice(productId, saved, before) {
+    const event = typedPriceEvent({ id: productId }, saved, {
+      before,
+      restaurantId: activeRestaurant.id,
+      userId: user?.id,
+      at: new Date().toISOString(),
+    })
+    if (!event) return null
+    const { error: eventErr } = await supabase.from('product_price_events').insert(event)
+    return eventErr ? `The price was saved, but the price history was not updated: ${friendlyError(eventErr)}` : null
+  }
+
+  // After a price is saved: its point on the chart, and the code the invoices
+  // know it by (see claimCode). What did not happen, in sentences.
+  async function afterPrice(productId, saved, before) {
+    return [
+      await recordPrice(productId, saved, before),
+      await claimCode(saved, activeRestaurant.id),
+    ].filter(Boolean)
   }
 
   function getSupplierName(supplierId) {
@@ -415,7 +524,7 @@ export default function ProductsPage() {
     const newErrors = {}
 
     if (!formData.name.trim()) {
-      newErrors.name = 'Name is required'
+      newErrors.name = 'Enter a name'
     } else if (sameName(products, formData.name, editingProduct?.id)) {
       // Refused rather than warned about. Two rows with the same name on a
       // stock take is somebody guessing which one to count, and a guess is
@@ -426,22 +535,74 @@ export default function ProductsPage() {
 
     const weightLoss = parseFloat(formData.weight_loss_pct)
     if (isNaN(weightLoss) || weightLoss < 0 || weightLoss > 100) {
-      newErrors.weight_loss_pct = 'Weight loss must be between 0 and 100'
+      newErrors.weight_loss_pct = 'Enter a weight loss from 0 to 100'
     }
 
     // Empty is a real answer: nobody has said. A number has to be more than
     // nothing, since a piece that weighs nothing would make a case of ten free.
     if (String(formData.piece_weight ?? '').trim() !== '' && !(parseFloat(formData.piece_weight) > 0)) {
-      newErrors.piece_weight = 'Leave it empty, or say roughly what one piece weighs'
+      newErrors.piece_weight = 'Enter a weight above 0, or leave it empty'
     }
 
     return newErrors
   }
 
-  async function handleSave(e) {
+  function handleSave(e) {
     e.preventDefault()
+    return once(saveProduct)
+  }
 
+  // The pack sizes on a price, swapped for the ones on the form.
+  //
+  // Replaced rather than reconciled: there are a handful of them, they have no
+  // history worth keeping, and working out which one somebody renamed is a lot
+  // of care for a list of three. The new ones go in before the old ones come
+  // out, and the old ones go by their own ids. It used to delete first and
+  // check nothing, so a put in that failed lost every pack and the dialog
+  // closed as if it had saved. Hands back the error, or nothing.
+  async function replacePacks(priceId) {
+    const { data: old, error: readErr } = await supabase
+      .from('price_count_units').select('id').eq('price_id', priceId)
+    if (readErr) return readErr
+
+    if (formats.packs.length > 0) {
+      const { error: insertErr } = await supabase.from('price_count_units').insert(
+        formats.packs.map((pack, order) => ({
+          price_id: priceId,
+          label: pack.label,
+          factor: pack.factor,
+          sort_order: order,
+        })),
+      )
+      if (insertErr) return insertErr
+    }
+
+    const oldIds = (old || []).map(u => u.id)
+    if (oldIds.length > 0) {
+      const { error: deleteErr } = await supabase.from('price_count_units').delete().in('id', oldIds)
+      if (deleteErr) return deleteErr
+    }
+    return null
+  }
+
+  // What went in and what did not, when a save gets part of the way. The
+  // product row is the first write and the rest hang off it, so by the time
+  // any of them fails the product exists.
+  //
+  // missed is a list of { what, plural, error, next }: what did not save, and
+  // the sentence saying where to add it. One reason is enough, since on a weak
+  // signal it is the same one each time.
+  function savedButNot(name, missed) {
+    const what = missed.map(m => m.what)
+    const list = what.length > 1 ? `${what.slice(0, -1).join(', ')} and ${what.at(-1)}` : what[0]
+    const verb = missed.length > 1 || missed[0].plural ? 'were' : 'was'
+    const reason = friendlyError(missed[0].error).replace(/\.?$/, '.')
+    return `${name} was saved, but its ${list} ${verb} not: ${reason} ${missed.map(m => m.next).join(' ')}`
+  }
+
+  async function saveProduct() {
     setFormProblem('')
+    setError('')
 
     const newErrors = validate()
     // The price block is only checked if somebody started filling it in. Left
@@ -505,23 +666,49 @@ export default function ProductsPage() {
       // Nothing to ask about a bottle of bleach or a paper container.
       if (!allergensTouched && declaresAllergens(formData)) missing.push('allergens')
 
+      // Allergens nobody entered are not none. Until they are set, the
+      // allergen sheet asks customers about any dish the product goes into
+      // to see staff, so that is what the question says.
       if (missing.length > 0) {
+        setAsking(true)
         const ok = await confirm({
           title: 'Save without ' + missing.join(' or ') + '?',
           message: missing.length === 2
-            ? 'Nothing is set for either. You can add both later from the product\'s own screens, but the allergens are what customers are shown, so a product with none declared reads as having none.'
+            ? 'Nothing is set for either. You can add both later from the product\'s own screens. Until the allergens are set, the allergen sheet asks customers to speak to a member of staff about any dish it goes into.'
             : missing[0] === 'a supplier price'
               ? 'It will have no cost until a price is set, so it counts as nothing on a stock take and adds nothing to a dish.'
-              : 'Allergens are what customers are shown, so a product with none declared reads as having none of the fourteen.',
+              : 'Until the allergens are set, the allergen sheet asks customers to speak to a member of staff about any dish it goes into.',
           confirmLabel: 'Save anyway',
           cancelLabel: 'Go back',
         })
+        setAsking(false)
         if (!ok) {
           // Open whichever one is missing, so Go back lands somewhere useful
           // rather than on the form they were already looking at.
           setOpenExtra(!wantsPrice ? 'supplier' : 'allergens')
           return
         }
+      }
+    }
+
+    // The same question for something made here, and it is about the recipe
+    // instead. A MIX has no supplier, and its allergens come from what goes
+    // into it, so with nothing in it there is no cost and no allergens either.
+    // Its own branch rather than the one above: that one would ask about a
+    // supplier price and open a section a MIX never shows.
+    if (!editingProduct && formData.is_mix && recipe.lines.length === 0) {
+      setAsking(true)
+      const ok = await confirm({
+        title: 'Save without a recipe?',
+        message: 'Nothing goes into it yet, so it has no cost and its allergens are not known. '
+          + 'Until a recipe is added, the allergen sheet asks customers to speak to a member of staff about any dish it goes into.',
+        confirmLabel: 'Save anyway',
+        cancelLabel: 'Go back',
+      })
+      setAsking(false)
+      if (!ok) {
+        setOpenExtra('recipe')
+        return
       }
     }
 
@@ -574,26 +761,32 @@ export default function ProductsPage() {
                 is_preferred: true,
               }).select().single()
 
+        // An edit stays open when part of it fails, and Save changes again
+        // is safe: the product and the price are updated, not added. The
+        // prices are read again first, so a price this save has just added
+        // is the one updated next time rather than a second one.
         if (priceErr) {
-          setFormProblem(`${formData.name} was saved, but the price was not: ${friendlyError(priceErr)}`)
+          setFormProblem(savedButNot(formData.name,
+            [{ what: 'price', error: priceErr, next: 'Press Save changes to try again.' }]))
           fetchProducts()
+          // The product row itself was saved, so the count may have moved.
+          allergensChanged()
           return
         }
 
-        // The packs are replaced rather than reconciled. There are a handful of
-        // them, they have no history worth keeping, and working out which one
-        // somebody renamed is a lot of care for a list of three.
+        const notes = await afterPrice(editingProduct.id, saved, existing || null)
+        if (notes.length) setError(notes.join(' '))
+
         if (saved) {
-          await supabase.from('price_count_units').delete().eq('price_id', saved.id)
-          if (formats.packs.length > 0) {
-            await supabase.from('price_count_units').insert(
-              formats.packs.map((pack, order) => ({
-                price_id: saved.id,
-                label: pack.label,
-                factor: pack.factor,
-                sort_order: order,
-              })),
-            )
+          const packsErr = await replacePacks(saved.id)
+          if (packsErr) {
+            setFormProblem(savedButNot(formData.name,
+              [{ what: 'packs', plural: true, error: packsErr, next: 'Press Save changes to try again.' }]))
+            await fetchPrices()
+            fetchProducts()
+            // The product row itself was saved, so the count may have moved.
+            allergensChanged()
+            return
           }
         }
       }
@@ -602,21 +795,29 @@ export default function ProductsPage() {
       // off a product is what the Prices screen is for, and doing it silently
       // because somebody cleared a field would be a poor way to lose a cost.
 
-      if (allergensTouched && declaresAllergens(formData)) {
+      if (allergensTouched && !allergensUnread && declaresAllergens(formData)) {
         const { error: allergenErr } = await supabase
           .from('product_allergens')
           .upsert({ product_id: editingProduct.id, ...allergens, updated_at: new Date().toISOString() },
             { onConflict: 'product_id' })
 
         if (allergenErr) {
-          setFormProblem(`${formData.name} was saved, but the allergens were not: ${friendlyError(allergenErr)}`)
+          setFormProblem(savedButNot(formData.name,
+            [{ what: 'allergens', plural: true, error: allergenErr, next: 'Press Save changes to try again.' }]))
+          await fetchPrices()
           fetchProducts()
+          // The product row itself was saved, so the count may have moved.
+          allergensChanged()
           return
         }
       }
 
       fetchProducts()
       fetchPrices()
+      // The allergens may have been answered in this same dialog, and the
+      // count in the sidebar goes with them.
+      fetchAnswers()
+      allergensChanged()
       resetForm()
     } else {
       const { data, error } = await supabase
@@ -646,7 +847,23 @@ export default function ProductsPage() {
         fetchProducts()
         fetchPrices()
         fetchRecipeLines()
+        fetchAnswers()
+        allergensChanged()
       }
+
+      // Once the product is in, anything after it that fails closes the form
+      // and says what is missing and where to add it. Left open, the form
+      // still said Add product, and pressing it again made a second product
+      // with the same name. The rest of the product is on its own screens.
+      //
+      // A failure does not stop the writes after it unless they hang off it:
+      // the packs need the price, but the recipe and the allergens need only
+      // the product. Stopping at the price threw the ticked allergens away
+      // with the form, and a product with no allergen row reads to a customer
+      // as having none of the fourteen.
+      const missed = []
+      // Things that happened after the price, that it is worth knowing did not.
+      const notes = []
 
       // The first price on a product is the preferred one, since it is the
       // only one. The same rule the prices screen uses.
@@ -663,26 +880,21 @@ export default function ProductsPage() {
           .select()
           .single()
 
-        // The product is saved either way. Saying so and leaving the form open
-        // would be worse than saying the price did not take: the product would
-        // be entered twice.
-        if (priceErr) {
-          setFormProblem(`${data.name} was saved, but the price was not: ${friendlyError(priceErr)}`)
-          fetchProducts()
-          return
-        }
+        const packsMissed = { what: 'packs', plural: true, next: 'Add the packs from its Prices page.' }
 
-        // The packs, which belong to the price rather than to the product and
-        // so have to wait for it the same way the recipe waits for the product.
-        if (newPrice && formats.packs.length > 0) {
-          await supabase.from('price_count_units').insert(
-            formats.packs.map((pack, order) => ({
-              price_id: newPrice.id,
-              label: pack.label,
-              factor: pack.factor,
-              sort_order: order,
-            })),
-          )
+        if (priceErr) {
+          missed.push({ what: 'price', error: priceErr, next: 'Add the price from its Prices page.' })
+          // The packs typed in go with it, since they have nothing to hang off.
+          if (formats.packs.length > 0) missed.push({ ...packsMissed, error: priceErr })
+        } else {
+          notes.push(...await afterPrice(data.id, newPrice, null))
+
+          // The packs, which belong to the price rather than to the product and
+          // so have to wait for it the same way the recipe waits for the product.
+          if (newPrice) {
+            const packsErr = await replacePacks(newPrice.id)
+            if (packsErr) missed.push({ ...packsMissed, error: packsErr })
+          }
         }
       }
 
@@ -699,9 +911,7 @@ export default function ProductsPage() {
           })))
 
         if (recipeErr) {
-          setFormProblem(`${data.name} was saved, but the recipe was not: ${friendlyError(recipeErr)}`)
-          refresh()
-          return
+          missed.push({ what: 'recipe', error: recipeErr, next: 'Add the ingredients from its Recipe page.' })
         }
       }
 
@@ -716,18 +926,25 @@ export default function ProductsPage() {
           .insert({ product_id: data.id, ...allergens })
 
         if (allergenErr) {
-          setFormProblem(`${data.name} was saved, but the allergens were not: ${friendlyError(allergenErr)}`)
-          refresh()
-          return
+          missed.push({ what: 'allergens', plural: true, error: allergenErr, next: 'Set the allergens from its Allergens page.' })
         }
       }
 
+      const said = [missed.length > 0 ? savedButNot(data.name, missed) : '', ...notes].filter(Boolean)
+      if (said.length) setError(said.join(' '))
+      // Read before resetForm, which forgets it.
+      const back = backTo.current
       refresh()
       resetForm()
+      // Made from a line on Review, which is where the rest of that line is
+      // decided. Not when anything did not save: the page says what and
+      // where, and leaving would take that away.
+      if (back && !said.length) navigate(back)
     }
   }
 
   function resetForm() {
+    backTo.current = null
     setFormProblem('')
     setFormData({
       name: '', section: 'Freezer', also_in: [], held_for: '', category: 'ingredient',
@@ -738,6 +955,8 @@ export default function ProductsPage() {
     setRecipe(EMPTY_RECIPE)
     setAllergens(emptyAllergens())
     setAllergensTouched(false)
+    setAllergensUnread(false)
+    editingId.current = null
     setOpenExtra(null)
     setEditingProduct(null)
     setShowForm(false)
@@ -801,12 +1020,24 @@ export default function ProductsPage() {
     setOpenExtra(null)
 
     // Whatever is on the row now, so ticking nothing and saving does not read
-    // as declaring the product free of all fourteen.
-    const { data: row } = await supabase
+    // as declaring the product free of all fourteen. Cleared while it is on
+    // its way, so the product open before this one is not what gets saved.
+    setAllergens(emptyAllergens())
+    setAllergensTouched(false)
+    setAllergensUnread(false)
+    editingId.current = product.id
+    const { data: row, error: rowError } = await supabase
       .from('product_allergens')
       .select('*')
       .eq('product_id', product.id)
       .maybeSingle()
+
+    // Another product was opened, or the form shut, while this was on its way.
+    if (editingId.current !== product.id) return
+    if (rowError) {
+      setAllergensUnread(true)
+      return
+    }
 
     if (row) {
       // Only the fourteen. The row also carries its own id and stamps, and
@@ -830,10 +1061,13 @@ export default function ProductsPage() {
     if (product.is_active) {
       const ok = await confirm({
         title: `Deactivate ${product.name}?`,
-        message: 'It stays on every recipe and every count that already used it, and it cannot be picked for anything new.',
-        confirmLabel: 'Deactivate it',
+        // The cost part is said here because it is the surprise. Its old
+        // price is not used for anything made with it, see lib/mixCost.
+        message: 'It stays on every recipe and every stock take that already used it, and it cannot be picked for anything new. '
+          + 'A recipe or dish still using it has no cost until it is replaced.',
+        confirmLabel: 'Deactivate',
         tone: 'danger',
-        dangerNote: 'You can turn it back on at any time.',
+        dangerNote: 'You can reactivate it at any time.',
       })
       if (!ok) return
     }
@@ -843,8 +1077,9 @@ export default function ProductsPage() {
       .update({ is_active: !product.is_active })
       .eq('id', product.id)
 
+    // Switching one off or on changes what the sidebar's count asks about.
     if (error) setError(friendlyError(error))
-    else fetchProducts()
+    else { fetchProducts(); allergensChanged() }
   }
 
   // What you can do to a product, written once as a list rather than as
@@ -855,13 +1090,8 @@ export default function ProductsPage() {
   // inside another component is a new type on every render, so React throws the
   // old one away and builds it again.
   function rowActionList(p) {
-    const editing = editingProduct?.id === p.id
     return {
-      primary: {
-        label: editing ? 'Cancel' : 'Edit',
-        tone: 'edit',
-        onClick: () => editing ? resetForm() : startEdit(p),
-      },
+      primary: { label: 'Edit', tone: 'edit', onClick: () => startEdit(p) },
       items: [
         { label: 'Allergens', onClick: () => navigate(`/catalogue/products/${p.id}/allergens`) },
         p.is_mix && { label: 'Recipe', onClick: () => navigate(`/catalogue/products/${p.id}/recipe`) },
@@ -964,8 +1194,73 @@ export default function ProductsPage() {
   // using, so offering it on a new product is offering a mistake.
   const activeSuppliers = suppliers.filter(sup => sup.is_active)
 
+  // The products with no allergens set: the same ones the red count on
+  // Products in the sidebar counts, by the same rule, which is the one the
+  // customer sheet uses to send people to staff. Nothing until everything it
+  // is worked out from has arrived.
+  const allergensKnown = Boolean(answers && recipesRead && productsRead && !loading)
+  const noAllergens = allergensKnown
+    ? new Set(noAllergensDeclared({ products, recipeLines, ...answers }).map(p => p.id))
+    : new Set()
+  // Only while there are any. With none left the list would be empty, and the
+  // line with the way back to everything would be gone with them.
+  const onlyThose = onlyNoAllergens && noAllergens.size > 0
+
+  // And forgotten once there are none. Kept, the choice waited in the browser
+  // for the next product saved without allergens, and shrank the whole list to
+  // that one product without anybody asking. Only once everything has
+  // arrived, so a page still loading does not lose it.
+  const noneLeft = allergensKnown && noAllergens.size === 0
+  useEffect(() => {
+    if (!noneLeft || !onlyNoAllergens) return
+    // The rule would rather this were worked out while drawing, but the
+    // choice is also kept in the browser, and forgetting it there is a side
+    // effect. One extra render, once, when the last one is answered.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setOnlyNoAllergens(false)
+    writeStored('session', 'productsOnlyNoAllergens', false)
+  }, [noneLeft, onlyNoAllergens])
+
+  // Where a product with no allergens set is answered. A MIX with no recipe
+  // has nothing to work its allergens out from, and adding the recipe is what
+  // answers it, so its Recipe page. Anything else, its Allergens page.
+  function whereToAnswer(p) {
+    const noRecipe = p.is_mix && !recipeLines.some(l => l.mix_product_id === p.id)
+    return `/catalogue/products/${p.id}/${noRecipe ? 'recipe' : 'allergens'}`
+  }
+
+  // The mark on a product with no allergens set, written once for the table
+  // and the cards. A link straight to where it is answered, because that is
+  // the one thing to do about it. Named with the product for a screen reader,
+  // where a column of links all saying the same thing is no help.
+  //
+  // Allergens not set, never No allergens: a red pill saying No allergens
+  // reads as allergen free, which is the very mix-up that let these build up.
+  //
+  // Solid red-700 so it still stands out on a deactivated product's pale red
+  // row. White on it is 6.4 to 1.
+  function noAllergensMark(p) {
+    if (!noAllergens.has(p.id)) return null
+    return (
+      <Link
+        to={whereToAnswer(p)}
+        aria-label={`Allergens not set for ${p.name}`}
+        className={`${badge} bg-red-700 text-white hover:bg-red-800 focus:outline-none focus:ring-2 focus:ring-accent`}
+      >
+        Allergens not set
+      </Link>
+    )
+  }
+
   const filteredProducts = products
-    .filter(p => showInactive || p.is_active)
+    // A switched off product still in a dish on sale is one of the ones to
+    // answer, because the sheet still reads it. So showing only those shows
+    // it, whether the inactive ones are showing or not.
+    .filter(p => showInactive || p.is_active || (onlyThose && noAllergens.has(p.id)))
+    // On top of every other filter rather than instead of them, so the dry
+    // store's can be done on their own and turning this off leaves the rest
+    // as they were.
+    .filter(p => !onlyThose || noAllergens.has(p.id))
     // Somewhere it is also kept counts. Picking Freezer is asking what is in
     // the freezer, and the two boxes of tacos defrosting in the cold room are
     // still freezer stock as far as anybody walking up to it is concerned.
@@ -1016,30 +1311,15 @@ export default function ProductsPage() {
 
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        <div>
-          <h2 className={pageTitle}>Products</h2>
-          <p className="text-sm text-gray-500 mt-1">
-            Showing prices for {activeRestaurant?.name}
-          </p>
-        </div>
-        <div className="flex gap-3">
-          <ShowInactiveButton
-            showing={showInactive}
-            onToggle={() => {
-              const next = !showInactive
-              setShowInactive(next)
-              localStorage.setItem('productsShowInactive', next)
-            }}
-          />
-          <button
-            onClick={() => { resetForm(); setShowForm(true) }}
-            className={primaryButton()}
-          >
-            + Add Product
-          </button>
-        </div>
-      </div>
+      <PageHeader title="Products" subtitle={`Showing prices for ${activeRestaurant?.name ?? ''}`}>
+        <ShowInactiveButton showing={showInactive} onToggle={() => setShowInactive(on => !on)} />
+        <button
+          onClick={() => { resetForm(); setShowForm(true) }}
+          className={primaryButton()}
+        >
+          + Add product
+        </button>
+      </PageHeader>
 
       {error && (
         <ErrorBanner className="mb-4">{error}</ErrorBanner>
@@ -1049,35 +1329,39 @@ export default function ProductsPage() {
           so the answer to "which one am I filling in" is the paper rather than
           a field somebody has to go back and read. */}
       {showForm && !editingProduct && (
-        <div className={`${cardEdge} ${sectionColour(formData.section).bg} p-6 mb-6`}>
-          <h3 className="text-sm font-semibold text-gray-900 mb-4">New Product</h3>
-          <ProductForm
-            problem={formProblem}
-            formData={formData}
-            onChange={handleFieldChange}
-            onSubmit={handleSave}
-            onCancel={resetForm}
-            submitLabel="Add Product"
-            errors={errors}
-            extras
-            priceForm={priceForm}
-            onPriceChange={handlePriceChange}
-            priceErrors={priceErrors}
-            nameClash={nameClash}
-            heldForNames={heldForNames}
-            suppliers={activeSuppliers}
-            formats={formats}
-            onFormatsChange={setFormats}
-            allergens={allergens}
-            onAllergenChange={handleAllergenChange}
-            allergensAnswered={allergensTouched}
-            onNoAllergens={handleNoAllergens}
-            recipe={recipe}
-            onRecipeChange={setRecipe}
-            ingredientOptions={ingredientOptions}
-            openExtra={openExtra}
-            onOpenExtra={setOpenExtra}
-          />
+        <div className={`${card} overflow-hidden mb-6`}>
+          <h3 className={cardHeader}>New product</h3>
+          <div className={`p-6 ${sectionColour(formData.section).bg}`}>
+            <ProductForm
+              problem={formProblem}
+              formData={formData}
+              onChange={handleFieldChange}
+              onSubmit={handleSave}
+              onCancel={resetForm}
+              submitLabel="Add product"
+              saving={saving && !asking}
+              errors={errors}
+              extras
+              priceForm={priceForm}
+              onPriceChange={handlePriceChange}
+              priceErrors={priceErrors}
+              nameClash={nameClash}
+              heldForNames={heldForNames}
+              suppliers={activeSuppliers}
+              formats={formats}
+              onFormatsChange={setFormats}
+              allergens={allergens}
+              onAllergenChange={handleAllergenChange}
+              allergensAnswered={allergensTouched}
+              allergensUnread={allergensUnread}
+              onNoAllergens={handleNoAllergens}
+              recipe={recipe}
+              onRecipeChange={setRecipe}
+              ingredientOptions={ingredientOptions}
+              openExtra={openExtra}
+              onOpenExtra={setOpenExtra}
+            />
+          </div>
         </div>
       )}
 
@@ -1124,8 +1408,27 @@ export default function ProductsPage() {
         ))}
       </div>
 
+      {/* How many have no allergens set, while there are any, and a way to
+          show only those. Its own line rather than a third row of chips: it
+          is not a way of sorting the catalogue, it is a job to get done. */}
+      {(answersFailed || recipesFailed) && (
+        <Notice tone="warn" className="mb-4">
+          Could not check which products have allergens set. Check your connection and reload the page.
+        </Notice>
+      )}
+      {noAllergens.size > 0 && (
+        <div className={`${urgentNote} flex flex-wrap items-center justify-between gap-x-4 gap-y-2 mb-4`}>
+          <p className="font-semibold">
+            Allergens are not set for {noAllergens.size === 1 ? '1 product' : `${noAllergens.size} products`}.
+          </p>
+          <button type="button" onClick={() => showOnlyNoAllergens(!onlyThose)} className={secondaryButton}>
+            {onlyThose ? 'Show all products' : 'Show only these'}
+          </button>
+        </div>
+      )}
+
       {loading ? (
-        <div className="text-sm text-gray-500">Loading products...</div>
+        <div className="text-sm text-muted">Loading products...</div>
       ) : (
         <>
         {/* Phone: one card per product instead of a table to swipe.
@@ -1149,17 +1452,17 @@ export default function ProductsPage() {
                 // keeps its own background, so a deactivated one still reads
                 // as deactivated first and as a freezer product second.
                 style={{ borderLeftWidth: '6px', borderLeftColor: productInk(p) }}
-                className={`rounded-xl border p-4 ${!p.is_active
-                  ? 'bg-red-100 border-red-200'
+                className={`${cardEdge} p-4 ${!p.is_active
+                  ? 'bg-red-100'
                   : p.is_mix
-                    ? 'bg-amber-50 border-amber-200'
-                    : 'bg-white border-border'}`}
+                    ? 'bg-amber-50'
+                    : 'bg-white'}`}
               >
                 <div className="flex items-start justify-between gap-2">
                   <p className={`font-semibold ${p.is_active ? 'text-gray-900' : 'text-muted'}`}>
                     {p.name}
                   </p>
-                  <span className={`${badge} flex-shrink-0 ${typeBadge(p).cls}`}>
+                  <span className={`${typeBadge(p).cls} flex-shrink-0`}>
                     {typeBadge(p).label}
                   </span>
                 </div>
@@ -1182,7 +1485,7 @@ export default function ProductsPage() {
                       {heldFor(p)}
                     </span>
                   )}
-                  <span className="text-xs text-gray-500">
+                  <span className="text-xs text-muted">
                     {p.unit}
                     {/* The unit is right there in front of it, so the packs
                         do not repeat it. */}
@@ -1197,29 +1500,30 @@ export default function ProductsPage() {
                   {/* The table says this with a red row, which a single card
                       cannot do on its own, so it says it in words instead. */}
                   {!p.is_active && (
-                    <span className={`${badge} bg-red-200 text-red-800`}>Inactive</span>
+                    <span className={inactiveBadge}>Inactive</span>
                   )}
+                  {noAllergensMark(p)}
                 </div>
 
                 <dl className="mt-3 space-y-1.5 text-sm">
                   <div className="flex items-baseline justify-between gap-3">
-                    <dt className="text-gray-500">Cost/unit</dt>
+                    <dt className="text-muted">Cost/unit</dt>
                     <dd className={`font-medium text-right ${p.is_active ? 'text-gray-900' : 'text-muted'}`}>
                       {v.cost ?? (
-                        <span className="text-amber-600 text-xs">
+                        <span className="text-amber-700 text-xs">
                           {p.is_mix ? 'Incomplete' : 'No price set'}
                         </span>
                       )}
                     </dd>
                   </div>
                   <div className="flex items-baseline justify-between gap-3">
-                    <dt className="text-gray-500">Supplier</dt>
+                    <dt className="text-muted">Supplier</dt>
                     <dd className={`text-right ${p.is_active ? 'text-gray-700' : 'text-muted'} ${p.is_mix ? 'italic' : ''}`}>
                       {v.supplier}
                     </dd>
                   </div>
                   <div className="flex items-baseline justify-between gap-3">
-                    <dt className="text-gray-500">Weight loss</dt>
+                    <dt className="text-muted">Weight loss</dt>
                     <dd className={`text-right ${p.is_active ? 'text-gray-700' : 'text-muted'}`}>
                       {v.weightLoss}
                     </dd>
@@ -1229,46 +1533,11 @@ export default function ProductsPage() {
                 <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-black/10">
                   {rowActions(p)}
                 </div>
-
-                {editingProduct?.id === p.id && (
-                  <div className={`mt-3 pt-3 border-t border-black/10 ${sectionColour(formData.section).bg} -mx-4 -mb-4 px-4 pb-4 rounded-b-xl`}>
-                    <ProductForm
-                      problem={formProblem}
-                      formData={formData}
-                      onChange={handleFieldChange}
-                      onSubmit={handleSave}
-                      onCancel={resetForm}
-                      submitLabel="Save Changes"
-                      errors={errors}
-                      nameClash={nameClash}
-                      heldForNames={heldForNames}
-                      extras
-                      recipeBlock={false}
-                      priceForm={priceForm}
-                      onPriceChange={handlePriceChange}
-                      priceErrors={priceErrors}
-                      suppliers={activeSuppliers}
-                      formats={formats}
-                      onFormatsChange={setFormats}
-                      allergens={allergens}
-                      onAllergenChange={handleAllergenChange}
-                      allergensAnswered={allergensTouched}
-                      onNoAllergens={handleNoAllergens}
-                      recipe={recipe}
-                      onRecipeChange={setRecipe}
-                      ingredientOptions={ingredientOptions}
-                      openExtra={openExtra}
-                      onOpenExtra={setOpenExtra}
-                      otherPriceCount={Math.max(0, (priceCounts[editingProduct?.id] || 0) - 1)}
-                      onOpenPrices={() => navigate(`/catalogue/products/${editingProduct.id}/prices`)}
-                    />
-                  </div>
-                )}
               </div>
             )
           })}
           {filteredProducts.length === 0 && (
-            <div className={`${card} px-4 py-8 text-center text-sm text-gray-500`}>
+            <div className={`${card} px-4 py-8 text-center text-sm text-muted`}>
               No products found.
             </div>
           )}
@@ -1360,6 +1629,9 @@ export default function ProductsPage() {
                           style={{ backgroundColor: productInk(p) }}
                         />
                         {p.name}
+                        {/* Beside the name, because the name is what the eye
+                            runs down. */}
+                        {noAllergens.has(p.id) && <span className="ml-2">{noAllergensMark(p)}</span>}
                         {/* How it is counted, under the name rather than in a
                             column of its own. The table is wide enough, and
                             this is a thing you check rather than scan down. */}
@@ -1396,7 +1668,7 @@ export default function ProductsPage() {
                       </td>
                       <td className={`px-4 py-3 ${p.is_active ? 'text-gray-700' : 'text-muted'}`}>{p.unit}</td>
                       <td className="px-4 py-3">
-                        <span className={`${badge} ${typeBadge(p).cls}`}>
+                        <span className={typeBadge(p).cls}>
                           {typeBadge(p).label}
                         </span>
                       </td>
@@ -1407,7 +1679,7 @@ export default function ProductsPage() {
                         {p.is_mix
                           ? (mixResult?.cost !== null
                               ? fmtUnitCost(mixResult.cost)
-                              : <span className="text-amber-600 text-xs">Incomplete</span>)
+                              : <span className="text-amber-700 text-xs">Incomplete</span>)
                           : (price ? fmtUnitCost(parseFloat(price.price_per_unit)) : '—')}
                       </td>
                       <td className={`px-4 py-3 ${p.is_active ? 'text-gray-700' : 'text-muted'}`}>
@@ -1423,7 +1695,7 @@ export default function ProductsPage() {
             </tbody>
           </table>
           {filteredProducts.length === 0 && (
-            <div className="px-4 py-8 text-center text-sm text-gray-500 rounded-b-xl">
+            <div className="px-4 py-8 text-center text-sm text-muted rounded-b-xl">
               No products found.
             </div>
           )}
@@ -1441,6 +1713,7 @@ export default function ProductsPage() {
               onSubmit={handleSave}
               onCancel={resetForm}
               submitLabel="Save changes"
+              saving={saving && !asking}
               errors={errors}
               nameClash={nameClash}
               heldForNames={heldForNames}
@@ -1455,6 +1728,7 @@ export default function ProductsPage() {
               allergens={allergens}
               onAllergenChange={handleAllergenChange}
               allergensAnswered={allergensTouched}
+              allergensUnread={allergensUnread}
               onNoAllergens={handleNoAllergens}
               recipe={recipe}
               onRecipeChange={setRecipe}

@@ -2,9 +2,10 @@ import { describe, it, expect } from 'vitest'
 import {
     reportEmail, money, negative, pct, withShare, weekWords, weekNumber, slashDate,
     escapeHtml, tidy, stars, starColour, costTone, senderFor, heldNotice, WIDTH, SIDE,
-    renewalWords,
-    deliverable, isJustTheGoodbye, replyToFor,
+    renewalWords, escapeLines, page, headline,
+    deliverable, isJustTheGoodbye, replyToFor, switchedOff, whatToSend, correctionSend,
 } from '../../supabase/functions/weekly-report-email/email'
+import { readFileSync } from 'node:fs'
 import { MAIL_WIDTH } from '@/lib/reportChartImage'
 import { changesSince } from '../../supabase/functions/weekly-report-email/changes'
 import { priceWeek } from '@/lib/invoiceReport'
@@ -235,14 +236,14 @@ describe('reportEmail', () => {
         expect(mail.html).toContain('Ana Rocha')
     })
 
-    it('leads each kind of paperwork with how many are fine', () => {
-        expect(mail.html).toContain('8 of 8 fine')
-        expect(mail.html).toContain('6 of 8 fine')
+    it('leads each kind of paperwork with how many are in date', () => {
+        expect(mail.html).toContain('8 of 8 in date')
+        expect(mail.html).toContain('6 of 8 in date')
     })
 
     it('puts the names under a heading rather than in a sentence', () => {
         expect(mail.html).toContain('Nothing on file:')
-        expect(mail.html).toContain('Runs out soon:')
+        expect(mail.html).toContain('Expires soon:')
     })
 
     it('never uses an em dash', () => {
@@ -278,8 +279,8 @@ describe('reportEmail, as a test send', () => {
         expect(mail.subject).toContain('[Test]')
     })
 
-    it('says nobody else got it', () => {
-        expect(mail.html).toContain('Nobody else has been sent it')
+    it('says who it went to', () => {
+        expect(mail.html).toContain('It went to everyone on the report list except the owners')
         expect(mail.text).toContain('THIS IS A TEST')
     })
 
@@ -296,9 +297,8 @@ describe('reportEmail, as a correction', () => {
         { ...figures, food: 5100, foodPct: 34.58 },
         figures,
     )
-    const mail = reportEmail({
-        ...base, report: { ...base.report, send_count: 2 }, changes,
-    })
+    const sent = { ...base.report, send_count: 2, sent_to: ['owner@papichulo.ie'] }
+    const mail = reportEmail({ ...base, report: sent, changes })
 
     it('says so in the subject', () => {
         expect(mail.subject).toContain('Corrected:')
@@ -311,10 +311,42 @@ describe('reportEmail, as a correction', () => {
     })
 
     it('still says it is a correction when nothing measurable moved', () => {
-        const quiet = reportEmail({
-            ...base, report: { ...base.report, send_count: 2 }, changes: [],
-        })
-        expect(quiet.html).toContain('the same as the ones you already have')
+        const quiet = reportEmail({ ...base, report: sent, changes: [] })
+        expect(quiet.html).toContain('have not changed from the report you already have')
+    })
+
+    // Before 1 October the count went up on every publish, mail or no mail. A
+    // report whose first two sends both failed has a count of two and nobody
+    // who ever got it, and sending it from Published, not sent would have told
+    // the owners it replaced a report they never had.
+    it('is not a correction when no earlier send reached anybody', () => {
+        const never = reportEmail({ ...base, report: { ...sent, sent_to: null }, changes })
+        expect(never.subject).not.toContain('Corrected')
+        expect(never.html).not.toContain('replaces the report sent earlier')
+        expect(reportEmail({ ...base, report: { ...sent, sent_to: [] } }).subject).not.toContain('Corrected')
+    })
+})
+
+// The function and the browser have to agree on this, or the manager is asked
+// to send a correction and the owners get a first mail, or the other way round.
+describe('correctionSend', () => {
+    it('needs a second send and an earlier one that reached somebody', () => {
+        expect(correctionSend({ send_count: 2, sent_to: ['owner@papichulo.ie'] })).toBe(true)
+        expect(correctionSend({ send_count: 1, sent_to: ['owner@papichulo.ie'] })).toBe(false)
+        expect(correctionSend({ send_count: 3, sent_to: null })).toBe(false)
+        expect(correctionSend({ send_count: 2, sent_to: [] })).toBe(false)
+    })
+
+    it('is never a test', () => {
+        expect(correctionSend({ send_count: 2, sent_to: ['owner@papichulo.ie'] }, true)).toBe(false)
+    })
+
+    it('is what the function asks, off a report read with who it went to', () => {
+        const source = readFileSync('supabase/functions/weekly-report-email/index.ts', 'utf8')
+        const read = source.slice(source.indexOf(".from('weekly_reports')"), source.indexOf("eq('id', reportId)"))
+        expect(read).toContain('sent_to')
+        expect(source).toMatch(/correctionSend\(report, test\)/)
+        expect(source).not.toMatch(/send_count \|\| 0\) > 1/)
     })
 })
 
@@ -667,7 +699,7 @@ describe('people and operations', () => {
 
     it('puts the count in the header beside the name', () => {
         expect(mail.html).toContain('>Food safety certificates<')
-        expect(mail.html).toContain('>8 of 8 fine<')
+        expect(mail.html).toContain('>8 of 8 in date<')
     })
 
     it('edges the card by how bad it is', () => {
@@ -699,7 +731,7 @@ describe('people and operations', () => {
                 },
             },
         })
-        expect(clean.html).toContain('>8 of 8 fine<')
+        expect(clean.html).toContain('>8 of 8 in date<')
         expect(clean.html).not.toContain('Nothing on file:')
     })
 })
@@ -918,11 +950,18 @@ describe('senderFor', () => {
         expect(senderFor(FROM, null)).toBe(FROM)
     })
 
-    it('keeps MAIL_FROM as it is rather than send a name that needs encoding', () => {
-        // A display name with an accent has to be encoded to travel in a
-        // header, and a name that arrives as mojibake is worse than a
-        // generic one.
-        expect(senderFor(FROM, 'D\u00fan Laoghaire')).toBe(FROM)
+    it('keeps an accent in the name, because the send encodes it properly now', () => {
+        // It used to fall back to MAIL_FROM, because denomailer's own encoding
+        // of a name like this was broken. headersFor in mime.js does it right.
+        expect(senderFor(FROM, 'D\u00fan Laoghaire'))
+            .toBe('Papi Chulo D\u00fan Laoghaire <point@papichulo.ie>')
+    })
+
+    it('turns a line break in the name into a space', () => {
+        // A line break in a header starts a header of its own.
+        expect(senderFor(FROM, 'Dun\r\nBcc: x@y.com'))
+            .toBe('"Papi Chulo Dun Bcc: x@y.com" <point@papichulo.ie>')
+        expect(senderFor(FROM, '\r\n')).toBe(FROM)
     })
 
     it('quotes a name a header parser would read as punctuation', () => {
@@ -1012,6 +1051,64 @@ describe('the figure column is only as wide as the money', () => {
     it('keeps the target colour on the share where there is one', () => {
         expect(mail.html).toContain('(32.00%)</span>')
         expect(mail.html).toContain(`color:${costTone(32, 30)};`)
+    })
+})
+
+// Switching somebody off only sets users.is_active. Their password still signs
+// them in, and this function reads users with the service key, which row level
+// security does not stop, so it has to ask for itself.
+describe('a login that is switched off', () => {
+    it('is refused, whatever its role', () => {
+        expect(switchedOff({ role: 'store_manager', is_active: false })).toBe(true)
+        expect(switchedOff({ role: 'super_admin', is_active: false })).toBe(true)
+    })
+
+    it('lets an active one through', () => {
+        expect(switchedOff({ role: 'store_manager', is_active: true })).toBe(false)
+    })
+
+    it('refuses when it cannot tell, rather than letting it through', () => {
+        expect(switchedOff({ role: 'store_manager' })).toBe(true)
+        expect(switchedOff(null)).toBe(true)
+    })
+
+    it('is asked off a row that carries is_active, before either mail is built', () => {
+        const source = readFileSync('supabase/functions/weekly-report-email/index.ts', 'utf8')
+        expect(source).toMatch(/\.from\('users'\)\.select\('[^']*\bis_active\b[^']*'\)\s*\.eq\('id', caller\.id\)/)
+        const asked = source.indexOf('switchedOff(account)')
+        expect(asked).toBeGreaterThan(-1)
+        expect(asked).toBeLessThan(source.indexOf("if (kind === 'timesheet')"))
+    })
+})
+
+// The browser's figures are for a test and only for a test. A real send of a
+// draft would have mailed the owners figures that were frozen nowhere, so
+// nobody could ever look up what they were sent.
+describe('what a send is built from', () => {
+    const posted = { figures: { net: 1 }, charts: { sales: 'https://x/s.png' } }
+    const frozen = { status: 'published', figures: { net: 14750 }, charts: { sales: 'https://x/frozen.png' } }
+    const draft = { status: 'draft', figures: null, charts: null }
+
+    it('reads a published report off what was frozen, whatever the browser sent', () => {
+        expect(whatToSend(frozen, { ...posted })).toEqual({ figures: frozen.figures, charts: frozen.charts })
+        expect(whatToSend(frozen, { ...posted, test: true })).toEqual({ figures: frozen.figures, charts: frozen.charts })
+    })
+
+    it('takes the browser\'s figures for a test of a draft', () => {
+        expect(whatToSend(draft, { ...posted, test: true })).toEqual({ figures: posted.figures, charts: posted.charts })
+    })
+
+    it('refuses a real send of a report that has not been published', () => {
+        expect(whatToSend(draft, { ...posted })).toEqual({ refused: expect.stringMatching(/not been published/) })
+        expect(whatToSend(draft, {})).toHaveProperty('refused')
+    })
+
+    it('is asked before anything is worked out for the mail', () => {
+        const source = readFileSync('supabase/functions/weekly-report-email/index.ts', 'utf8')
+        const asked = source.indexOf('whatToSend(report')
+        expect(asked).toBeGreaterThan(-1)
+        expect(asked).toBeLessThan(source.indexOf('changesSince('))
+        expect(source).not.toMatch(/\(posted \|\| \{\}\)/)
     })
 })
 
@@ -1166,7 +1263,7 @@ describe('where the charts sit', () => {
 describe('whether a renewal was applied for', () => {
     it('says so, with the date', () => {
         expect(renewalWords({ name: 'Majo', on: '2026-09-13', applied: '2026-08-12' }))
-            .toContain('Renewal applied for 12 Aug 2026')
+            .toContain('Applied to renew on 12 Aug 2026')
     })
 
     it('says plainly when nobody has', () => {
@@ -1178,12 +1275,12 @@ describe('whether a renewal was applied for', () => {
     // Left as two dates in a list it is a subtraction nobody does at speed.
     it('says when it was applied for too late', () => {
         expect(renewalWords({ name: 'Majo', on: '2026-09-13', applied: '2026-09-20' }))
-            .toContain('after it ran out')
+            .toContain('after it expired')
     })
 
     it('does not say it was late when it was not', () => {
         expect(renewalWords({ name: 'Majo', on: '2026-09-13', applied: '2026-09-13' }))
-            .not.toContain('after it ran out')
+            .not.toContain('after it expired')
     })
 
     // A food safety certificate is not renewed, it is sat again. undefined is
@@ -1215,9 +1312,9 @@ describe('the people section, with renewals', () => {
     })
 
     it('puts the answer under each name that needs one', () => {
-        expect(mail.html).toContain('Renewal applied for 1 Aug 2026')
+        expect(mail.html).toContain('Applied to renew on 1 Aug 2026')
         expect(mail.html).toContain('No renewal applied for')
-        expect(mail.html).toContain('Renewal applied for 30 Sept 2026')
+        expect(mail.html).toContain('Applied to renew on 30 Sept 2026')
     })
 
     // The food safety card sits in the same section and must stay quiet about
@@ -1227,6 +1324,43 @@ describe('the people section, with renewals', () => {
             mail.html.indexOf('Food safety certificates'),
             mail.html.indexOf('Right to work'))
         expect(people).not.toContain('Renewal')
+    })
+})
+
+// His ask of 29 September: a line in the paperwork while a new allergen sheet
+// is due, frozen with the report in the words the Allergens page uses.
+describe('the allergen sheet', () => {
+    const words = 'Last printed 12 June. The allergen information has changed since then. Print a new sheet.'
+    const due = reportEmail({
+        ...base,
+        figures: { ...figures, paperwork: { ...figures.paperwork, allergenSheet: { reason: 'changed', words } } },
+    })
+
+    it('says a new one is due, under People and operations', () => {
+        expect(due.html).toContain('Allergen sheet')
+        expect(due.html).toContain(words)
+        expect(due.html.indexOf(words)).toBeGreaterThan(due.html.indexOf('People and operations'))
+        expect(due.html.indexOf(words)).toBeLessThan(due.html.indexOf('Marketing and sales development'))
+    })
+
+    it('says it in the plain copy too', () => {
+        expect(due.text).toContain('  Allergen sheet')
+        expect(due.text).toContain(`  ${words}`)
+    })
+
+    // Not due, or a report frozen before this existed.
+    it('says nothing while it is not due', () => {
+        const mail = reportEmail(base)
+        expect(mail.html).not.toContain('Allergen sheet')
+        expect(mail.text).not.toContain('Allergen sheet')
+    })
+
+    it('keeps everything that cannot wrap narrow enough for a phone', () => {
+        const lines = [...due.html.matchAll(/<td[^>]*white-space:nowrap[^>]*>([\s\S]*?)<\/td>/g)]
+            .flatMap(m => m[1].split(/<br\s*\/?>/))
+            .map(l => l.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&[a-z0-9#]+;/gi, 'x').trim())
+        expect(lines).toContain('Print a new one')
+        expect(lines.filter(l => l.length > 16)).toEqual([])
     })
 })
 
@@ -1312,7 +1446,7 @@ describe('prices and suppliers', () => {
 
     it('says why things came back and what is still owed', () => {
         expect(mail.html).toContain('Bad quality')
-        expect(mail.html).toContain('Still waiting on a credit')
+        expect(mail.html).toContain('Still waiting for a credit')
         expect(mail.html).toContain('Bowls charged 49.73')
     })
 
@@ -1320,6 +1454,28 @@ describe('prices and suppliers', () => {
         expect(mail.text).toContain('PRICES AND SUPPLIERS')
         expect(mail.text).toContain('Tomatoes: €11.75 to €8.60 a case, -26.8%, -€3.15')
         expect(mail.text.split('\n').every(l => l === l.replace(/\s+$/, ''))).toBe(true)
+    })
+
+    // His decision of 1 October: a claim on a delivery whose report had gone
+    // out comes off the first week still open, and says which delivery it is
+    // from. Absent on anything frozen before it existed.
+    it('says when a claim taken off this week is from an earlier delivery', () => {
+        const later = priceWeek({
+            weekStart: '2026-09-13', weekEnd: '2026-09-19',
+            claims: [{
+                id: 'k2', what: 'COKE ZERO 24X330ML', kind: 'short', amount: 22.34, credited_amount: 0,
+                status: 'open', raised_on: '2026-09-11', counted_week: '2026-09-13', invoice_id: 'i0',
+            }],
+            invoices: [{ id: 'i0', invoice_date: '2026-09-11' }],
+        })
+        const moved = reportEmail({ ...base, sections: withPrices, figures: { ...figures, prices: later } })
+        expect(moved.html).toContain('From an earlier week')
+        expect(moved.html).toContain('from the delivery in the week of 6 Sept')
+        expect(moved.text).toContain('  From an earlier week')
+        expect(moved.text).toContain('    COKE ZERO 24X330ML: €22.34, Short, from the delivery in the week of 6 Sept')
+
+        const old = reportEmail({ ...base, sections: withPrices, figures: { ...figures, prices: { ...prices, earlier: undefined } } })
+        expect(old.html).not.toContain('From an earlier week')
     })
 
     it('says so when a report went out without the prices read', () => {
@@ -1501,5 +1657,344 @@ describe('the cleaning section', () => {
         const { html } = reportEmail(withCleaning)
         expect(html.lastIndexOf('>8</td>')).toBeGreaterThan(html.indexOf('Support / actions needed'))
         expect(html.indexOf('Cleaning')).toBeGreaterThan(html.indexOf('Support / actions needed'))
+    })
+})
+
+describe('money, at nothing at all', () => {
+    // A balanced figure can come out of the sums at minus a fraction of a cent.
+    // The same rule as fmtMoney in the app.
+    it('prints no minus sign on something that rounds to nought', () => {
+        expect(money(-0.0001)).toBe('€0.00')
+        expect(money(-0.004)).toBe('€0.00')
+        expect(money(-0.01)).toBe('-€0.01')
+    })
+})
+
+describe('escapeLines', () => {
+    it('keeps a typed line break, trimmed at the end', () => {
+        expect(escapeLines('a \nb')).toBe('a<br />b')
+        expect(escapeLines('a\r\nb')).toBe('a<br />b')
+    })
+
+    it('still escapes what is typed', () => {
+        expect(escapeLines('<b>\n&')).toBe('&lt;b&gt;<br />&amp;')
+        expect(escapeLines(null)).toBe('')
+    })
+
+    it('carries a comment over its lines in the mail', () => {
+        const typed = reportEmail({
+            ...base,
+            sections: sections.map(s => (s.key === 'marketing'
+                ? { ...s, items: [{ kind: 'comment', note: 'First line \nSecond line', sort_order: 0 }] }
+                : s)),
+        })
+        expect(typed.html).toContain('First line<br />Second line')
+        expect(typed.text).toContain('  First line\n  Second line')
+    })
+
+    // The plain copy printed these line by line and the HTML ran them into one.
+    it('carries a platform remark and a review over their lines', () => {
+        const typed = reportEmail({
+            ...base,
+            sections: sections.map(s => (s.key === 'online_sales'
+                ? {
+                    ...s,
+                    items: [
+                        ...s.items.filter(i => i.kind !== 'review'),
+                        { kind: 'review', key: 'p1', label: 'Deliveroo', meta: { stars: 2, count: 1 }, note: 'Cold chips\nLate too' },
+                        { kind: 'comment', key: 'p2', note: 'Tablet was offline\nBack on Monday' },
+                    ],
+                }
+                : s)),
+        })
+        expect(typed.html).toContain('Cold chips<br />Late too')
+        expect(typed.html).toContain('Tablet was offline<br />Back on Monday')
+    })
+})
+
+// Classic Outlook drops an eight digit colour and rgba(), and the header text,
+// the section numbers and the band edges went with it.
+describe('every colour is solid', () => {
+    const styles = html => [...html.matchAll(/style="([^"]*)"/g)].map(m => m[1])
+
+    it('has no see through colour anywhere in the mail', () => {
+        const sent = { ...base.report, send_count: 2, sent_to: ['owner@papichulo.ie'] }
+        for (const mail of [
+            reportEmail(base),
+            reportEmail({ ...base, isTest: true }),
+            reportEmail({ ...base, report: sent }),
+        ]) {
+            const found = styles(mail.html)
+            expect(found.length).toBeGreaterThan(50)
+            expect(found.filter(s => /#[0-9a-f]{8}\b|rgba?\(|hsla?\(/i.test(s))).toEqual([])
+        }
+    })
+
+    it('gives the band a border of its own colour', () => {
+        expect(reportEmail({ ...base, isTest: true }).html).toContain('border:1px solid #F3D9A6;')
+    })
+})
+
+describe('the page the mail sits in', () => {
+    const mail = reportEmail(base)
+
+    it('says what it is to a phone', () => {
+        expect(mail.html).toContain('<html lang="en">')
+        expect(mail.html).toContain('<meta charset="utf-8" />')
+        expect(mail.html).toContain('<meta name="viewport" content="width=device-width,initial-scale=1" />')
+        expect(mail.html).toContain('<meta name="x-apple-disable-message-reformatting" />')
+        expect(mail.html).toContain('<meta name="format-detection" content="telephone=no,date=no,address=no,email=no" />')
+        expect(mail.html).toContain('<meta name="color-scheme" content="light dark" />')
+        expect(mail.html).toContain(`<title>${mail.subject}</title>`)
+    })
+
+    // The line an inbox shows under the subject. Without it the inbox shows
+    // the first words of the mail, which repeat the subject.
+    it('opens with the week in one line, hidden from the mail itself', () => {
+        expect(mail.html).toMatch(/<body[^>]*><div style="display:none;[^"]*">Net sales €14,750\.00, net earnings €1,840\.00 \(12\.47%\)(&#847;&zwnj;&nbsp;)+<\/div>/)
+    })
+
+    // An inbox fills the rest of the line with the text that comes next, which
+    // was the mail's own heading. The filler takes that room instead.
+    it('fills the rest of the preview line with nothing to read', () => {
+        const hidden = mail.html.match(/<div style="display:none;[^"]*">(.*?)<\/div>/)[1]
+        expect(hidden.startsWith('Net sales')).toBe(true)
+        expect(hidden.endsWith('&#847;&zwnj;&nbsp;'.repeat(80))).toBe(true)
+    })
+
+    it('says a correction is one before the figures', () => {
+        expect(headline(figures, true)).toBe('Corrected. Net sales €14,750.00, net earnings €1,840.00 (12.47%)')
+        expect(headline({ net: 100, earnings: -5 })).toBe('Net sales €100.00, net earnings -€5.00')
+        const sent = { ...base.report, send_count: 2, sent_to: ['owner@papichulo.ie'] }
+        expect(reportEmail({ ...base, report: sent }).html).toContain('>Corrected. Net sales €14,750.00')
+    })
+
+    it('leaves the preheader out when there is none', () => {
+        expect(page('<p>x</p>', { subject: 'S' })).not.toContain('display:none')
+        expect(page('<p>x</p>', { subject: 'S' })).toContain('<p>x</p></body></html>')
+    })
+
+    it('still lets a held mail put its band first in the body', () => {
+        const held = heldNotice(mail, ['ana@p.ie'])
+        expect(held.html).toMatch(/<body style="margin:0;padding:0;background:#F7F5F0;"><table[^>]*background:#7C2D12;/)
+    })
+})
+
+describe('the link to the Hub', () => {
+    it('opens this report rather than the list', () => {
+        const mail = reportEmail({ ...base, report: { ...base.report, id: 'r-42' } })
+        expect(mail.html).toContain('href="https://hub.test/reports/r-42"')
+        expect(mail.text).toContain('Open it in the Hub: https://hub.test/reports/r-42')
+    })
+
+    it('falls back to the list when the report has no id', () => {
+        const mail = reportEmail(base)
+        expect(mail.html).toContain('href="https://hub.test/reports"')
+        expect(mail.text).toContain('Open it in the Hub: https://hub.test/reports\n')
+    })
+
+    // Classic Outlook reads neither the auto margin nor the background.
+    it('is centred and coloured by attribute as well as by style', () => {
+        const { html } = reportEmail(base)
+        expect(html).toMatch(/<table role="presentation" align="center"[^>]*><tr><td align="center" bgcolor="#2C6FCF"/)
+    })
+})
+
+// A pasted link is one word that cannot break, and it held the mail wider than
+// a phone the same way a nowrap figure does.
+describe('long typed text', () => {
+    const url = 'https://example.test/' + 'a'.repeat(99)
+
+    it('sits in a cell that may break it', () => {
+        expect(url.length).toBe(120)
+        const mail = reportEmail({
+            ...base,
+            sections: sections.map(s => (s.key === 'marketing'
+                ? { ...s, items: [{ kind: 'comment', note: url, sort_order: 0 }] }
+                : s)),
+        })
+        const cell = mail.html.match(new RegExp(`<td style="([^"]*)">${url}</td>`))
+        expect(cell).not.toBeNull()
+        expect(cell[1]).toContain('word-break:break-word;')
+        expect(cell[1]).toContain('overflow-wrap:anywhere;')
+    })
+
+    it('never lets a figure break', () => {
+        const { html } = reportEmail(base)
+        const cells = [...html.matchAll(/<td[^>]*style="([^"]*white-space:nowrap[^"]*)"/g)].map(m => m[1])
+        expect(cells.length).toBeGreaterThan(10)
+        expect(cells.filter(c => c.includes('word-break'))).toEqual([])
+    })
+})
+
+describe('the plain copy says what the HTML says', () => {
+    const mail = reportEmail({
+        ...base,
+        figures: {
+            ...figures,
+            paperwork: {
+                ...figures.paperwork,
+                permits: {
+                    ...figures.paperwork.permits,
+                    expiring: [{ name: 'Ana Rocha', on: '2026-10-14', applied: null }],
+                },
+            },
+        },
+        sections: sections.map(s => {
+            if (s.key === 'support_actions') {
+                return { ...s, items: [...s.items, { kind: 'action', label: 'Hood filters', opened_on: '2026-08-23', sort_order: 2 }] }
+            }
+            if (s.key === 'marketing') {
+                return { ...s, items: [{ kind: 'comment', label: 'Flyers', note: 'Out on Friday', sort_order: 0 }] }
+            }
+            if (s.key === 'online_sales') {
+                return { ...s, items: [...s.items, { kind: 'comment', key: 'p2', note: 'Tablet was offline Sunday' }] }
+            }
+            return s
+        }),
+    })
+
+    it('gives every rated platform its rating, moved or not', () => {
+        expect(mail.text).toContain('    Overall rating: 4.6 out of 5 (up from 4.4)')
+        expect(mail.text).toContain('    Overall rating: 4.8 out of 5 (no change)')
+        // A corporate account has none, the same as in the HTML.
+        expect(mail.text).toContain('  Corporate Ltd: €900.00\n')
+        expect(mail.text).not.toMatch(/Corporate Ltd: €900\.00\n {4}Overall rating/)
+    })
+
+    it('counts each review', () => {
+        expect(mail.text).toContain('      2 star x 1: Cold chips')
+    })
+
+    it('carries the date and the renewal under a name', () => {
+        expect(mail.text).toContain('    - Ana Rocha (14 Oct 2026)\n      No renewal applied for')
+        expect(mail.text).toContain('    - Joao Silva\n')
+    })
+
+    it('says one week, not one weeks', () => {
+        expect(mail.text).toContain('  Hood filters (open 1 week)')
+        expect(mail.text).toContain('  Fryer thermostat (open 3 weeks)')
+    })
+
+    it('keeps a comment label and a platform remark', () => {
+        expect(mail.text).toContain('  Flyers. Out on Friday')
+        expect(mail.text).toContain('    Tablet was offline Sunday')
+    })
+})
+
+// Gmail cuts a mail off past 102KB and hides the rest behind a link. The mail
+// goes as base64, a third bigger on the wire, so 75,000 characters of HTML is
+// where it starts to get close. This week came to about 72,000 on 3 October,
+// so there is not much room: a mail with nothing in its lists is already
+// 34,000, and each checklist with a warning adds about 2,000.
+// Each list is in the order the Hub hands it over: moves and switches biggest
+// effect first, recipes furthest out first.
+describe('a heavy week', () => {
+    const many = (n, make) => Array.from({ length: n }, (_, i) => make(i))
+    const prices = {
+        moves: many(40, i => ({
+            name: `Product number ${i}`, was: 10 + i, now: 11 + i, per: 'a case', on: '2026-09-02',
+            invoice: `INV${1000 + i}`, change: 5.5, effect: 40 - i, up: true, split: `${40 - i} cases, €1.00 more each`,
+        })),
+        doubtful: [],
+        switches: many(15, i => ({
+            name: `Switched thing ${i}`, bought: `Other brand ${i}`, on: '2026-09-03',
+            per: 2.5, unit: 'a kg', usualPer: 2.2, change: 13.6, effect: (15 - i) * 3,
+        })),
+        recipes: many(25, i => ({
+            name: `Recipe product ${i}`, state: 'behind', unit: 'a kg', recipe: 3, paid: 3.4,
+            // The furthest out was not bought this week, so it moved nothing.
+            paidOn: '2026-09-04', gap: 40 - i, effect: i === 0 ? 0 : 30 - i,
+        })),
+        back: [], owed: [], reasons: [], words: ['Dearer on the same code: a long headline about the week.'],
+        totals: { moves: 820, switches: 315, recipes: 25, back: 0 },
+        threshold: 5, checkedOn: '2026-09-05',
+    }
+    const longNote = 'A long comment about the week, the kind somebody writes on a Sunday night. '.repeat(6)
+    const cleaning = {
+        lists: many(8, i => ({
+            name: `Checklist ${i}`, repeats: 'Every week',
+            lines: [{
+                words: 'Ended with 4 not done.', warn: true,
+                left: many(4, j => ({ label: `Area ${j}: a task with a name`, lastDoneWords: 'last done 12 Sept', again: j % 2 === 0 })),
+            }],
+            photos: ['a', 'b'],
+        })),
+        byDay: [1, 2, 3, 4, 5, 6, 7], busiest: 'Most were done on Saturday.',
+    }
+    // A long comment in four of the sections, the ones people write most in.
+    const written = ['sales_costs', 'profit_loss', 'marketing']
+    const heavySections = [
+        ...sections.map(s => (written.includes(s.key)
+            ? { ...s, items: [...s.items, { kind: 'comment', note: longNote, sort_order: 9 }] }
+            : s)),
+        { key: 'prices_suppliers', title: 'Prices and suppliers', sort_order: 2, items: [{ kind: 'comment', note: longNote }] },
+        { key: 'cleaning', title: 'Cleaning', sort_order: 8, items: [] },
+    ]
+    const mail = reportEmail({ ...base, sections: heavySections, figures: { ...figures, prices, cleaning } })
+    const more = text => [...text.matchAll(/and (\d+) more, on the Hub/g)].map(m => Number(m[1]))
+
+    it('stays well under the size Gmail cuts off at', () => {
+        // Found the heavy parts before saying anything about the size.
+        expect(mail.html).toContain('Checklist 7')
+        expect(mail.html).toContain('Product number 0<')
+        expect(mail.html).toContain(longNote.trim())
+        expect(mail.html.length).toBeGreaterThan(30000)
+        expect(mail.html.length).toBeLessThan(75000)
+    })
+
+    it('shows the top of each list and says how many more', () => {
+        // The first of each list, in its own order, and none past the cap.
+        expect(mail.html).toContain('Product number 7<')
+        expect(mail.html).not.toContain('Product number 8<')
+        expect(mail.html).toContain('Switched thing 3<')
+        expect(mail.html).not.toContain('Switched thing 4<')
+        expect(mail.html).toContain('Recipe product 3<')
+        expect(mail.html).not.toContain('Recipe product 4<')
+        // 32 moves, 11 switches and 21 recipes left for the Hub.
+        expect(more(mail.html)).toEqual([32, 11, 21])
+        expect(more(mail.text)).toEqual([32, 11, 21])
+        expect(mail.text).toContain('Product number 7:')
+        expect(mail.text).not.toContain('Product number 8:')
+    })
+
+    it('keeps a recipe that moved nothing this week', () => {
+        // Furthest out of all, but not bought this week, so its effect is 0.
+        expect(mail.html).toContain('Recipe product 0<')
+        expect(mail.text).toContain('Recipe product 0:')
+    })
+
+    it('says nothing about more when everything fits', () => {
+        const light = reportEmail({
+            ...base, sections: heavySections,
+            figures: { ...figures, prices: { ...prices, moves: prices.moves.slice(0, 5), switches: [], recipes: prices.recipes.slice(0, 3) } },
+        })
+        expect(light.html).toContain('Product number 0<')
+        expect(more(light.html)).toEqual([])
+        expect(more(light.text)).toEqual([])
+    })
+
+    it('keeps the recipes in the order the Hub gives them', () => {
+        const recipe = (name, state, gap, effect) => ({
+            name, state, gap, effect, unit: 'a kg', recipe: 3, paid: 3.4, paidOn: '2026-09-04', why: 'units',
+        })
+        const light = reportEmail({
+            ...base, sections: heavySections,
+            figures: {
+                ...figures,
+                prices: {
+                    ...prices, moves: [], switches: [],
+                    recipes: [recipe('Wide gap', 'behind', 40, 0), recipe('Narrow gap', 'behind', 20, 12), recipe('No compare', 'cannot', null, 0)],
+                },
+            },
+        })
+        const at = name => light.html.indexOf(`${name}<`)
+        expect(at('Wide gap')).toBeGreaterThan(-1)
+        expect(at('Wide gap')).toBeLessThan(at('Narrow gap'))
+        expect(at('Narrow gap')).toBeLessThan(at('No compare'))
+        expect(light.text.indexOf('Wide gap:')).toBeGreaterThan(-1)
+        expect(light.text.indexOf('Wide gap:')).toBeLessThan(light.text.indexOf('Narrow gap:'))
+        expect(light.text.indexOf('Narrow gap:')).toBeLessThan(light.text.indexOf('No compare:'))
+        expect(more(light.html)).toEqual([])
     })
 })

@@ -5,9 +5,10 @@ import { useRestaurant } from '@/context/restaurant'
 import { friendlyError } from '@/lib/errors'
 import { numberField } from '@/lib/numberInput'
 import { DEFAULT_BREAK_RULES, OPERATORS, breakFor } from '@/lib/roster'
-import { modalFooter, removeButton, fieldClass, segmentTrack, segmentButton, primaryButton } from '@/lib/controlStyles'
+import { modalFooter, removeButton, fieldClass, segmentTrack, segmentButton, primaryButton, secondaryButton } from '@/lib/controlStyles'
 import ModalSection from '@/components/ui/ModalSection'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import AddButton from '@/components/ui/AddButton'
 
 // The break ladder.
 //
@@ -49,12 +50,12 @@ export default function BreakRulesModal({ onClose }) {
         .sort((a, b) => b.hours - a.hours)
 
     const problem = (() => {
-        if (clean.length === 0) return 'A ladder needs at least one rung.'
-        if (clean.some(r => isNaN(r.hours) || r.hours <= 0)) return 'Every rung needs a length in hours.'
-        if (clean.some(r => isNaN(r.minutes) || r.minutes < 0)) return 'A break cannot be less than nothing.'
+        if (clean.length === 0) return 'Enter the hours and minutes for at least one rule.'
+        if (clean.some(r => isNaN(r.hours) || r.hours <= 0)) return 'Enter a length in hours for every rule.'
+        if (clean.some(r => isNaN(r.minutes) || r.minutes < 0)) return 'Enter 0 or more break minutes for every rule.'
         const lengths = clean.map(r => `${r.hours}-${r.operator}`)
         if (new Set(lengths).size !== lengths.length) {
-            return 'Two rungs cannot say the same thing. The lower one would never be reached.'
+            return 'Two rules apply to the same shifts. Change or remove one of them.'
         }
         return null
     })()
@@ -87,8 +88,8 @@ export default function BreakRulesModal({ onClose }) {
         <Modal title="Break rules" onClose={onClose} width="max-w-xl">
             <div>
                 <ModalSection
-                    title="The ladder"
-                    description="Read top down, and the first rung a shift is long enough for is the one it gets. Breaks are paid and are never taken off the hours: this decides what is printed beside a shift, not what the shift is worth."
+                    title="Rules"
+                    description="Read from the top: a shift gets the first rule it is long enough for. Breaks are paid and are never taken off the hours. This only decides the break shown beside a shift."
                 >
 
                 {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
@@ -129,7 +130,7 @@ export default function BreakRulesModal({ onClose }) {
                                     <div
                                         className={segmentTrack}
                                         role="group"
-                                        aria-label="Which shifts this rung catches"
+                                        aria-label="Which shifts this rule applies to"
                                     >
                                         {OPERATORS.map(o => (
                                             <button
@@ -137,7 +138,7 @@ export default function BreakRulesModal({ onClose }) {
                                                 type="button"
                                                 onClick={() => set(i, 'operator', o.value)}
                                                 aria-pressed={rule.operator === o.value}
-                                                className={segmentButton(rule.operator === o.value)}
+                                                className={segmentButton(rule.operator === o.value, true)}
                                             >
                                                 {o.label}
                                             </button>
@@ -148,7 +149,7 @@ export default function BreakRulesModal({ onClose }) {
                                     type="button"
                                     onClick={() => removeRung(i)}
                                     className={removeButton}
-                                    aria-label="Remove this rung"
+                                    aria-label="Remove this rule"
                                 >
                                     &times;
                                 </button>
@@ -163,7 +164,7 @@ export default function BreakRulesModal({ onClose }) {
                                         placeholder="8"
                                     />
                                 </div>
-                                <span className="text-sm text-gray-500 whitespace-nowrap">hours</span>
+                                <span className="text-sm text-muted whitespace-nowrap">hours</span>
                                 <span className="text-muted" aria-hidden="true">&rarr;</span>
                                 <div className="w-16 flex-shrink-0">
                                     <input
@@ -173,30 +174,26 @@ export default function BreakRulesModal({ onClose }) {
                                         placeholder="60"
                                     />
                                 </div>
-                                <span className="text-sm text-gray-500 whitespace-nowrap">min</span>
+                                <span className="text-sm text-muted whitespace-nowrap">min</span>
                             </div>
                         </div>
                     ))}
                 </div>
 
-                <button
-                    type="button"
-                    onClick={addRung}
-                    className="text-sm text-blue-600 hover:text-blue-800 font-medium mb-5"
-                >
-                    Add a rung
-                </button>
+                <AddButton onClick={addRung} className="mb-5">
+                    Add rule
+                </AddButton>
 
                 </ModalSection>
 
                 {/* What it does, before it is saved. */}
-                <ModalSection title="What that gives">
+                <ModalSection title="Examples">
                     <div className="flex flex-wrap gap-x-4 gap-y-1">
                         {examples.map(h => {
                             const minutes = problem ? null : breakFor(h, clean)
                             return (
                                 <span key={h} className="text-sm whitespace-nowrap">
-                                    <span className="text-gray-500">{h}h</span>
+                                    <span className="text-muted">{h}h</span>
                                     <span className="text-muted mx-1">→</span>
                                     <span className={minutes ? 'text-gray-900 font-medium' : 'text-muted'}>
                                         {problem ? '—' : minutes ? `${minutes} min` : 'none'}
@@ -215,7 +212,7 @@ export default function BreakRulesModal({ onClose }) {
                     <button
                         type="button"
                         onClick={onClose}
-                        className="px-4 py-2 border border-border text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 bg-white"
+                        className={secondaryButton}
                     >
                         Cancel
                     </button>

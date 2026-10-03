@@ -31,3 +31,28 @@ export function freshFetch(input, init = {}) {
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     global: { fetch: freshFetch },
 })
+
+// **Every row, however many there are.**
+//
+// The database hands back a thousand rows at most (max_rows, the same on live
+// as in config.toml), and a read that would have more simply stops there with
+// nothing to say so. So anything that can grow past that is read a page at a
+// time until a page comes back short.
+//
+// build makes the query afresh for each page, and it has to end in an order
+// that cannot tie, usually .order('id'). Pages are separate requests, so
+// without a fixed order a row can land on two pages or on none.
+//
+//     const { data, error } = await everyRow(() => supabase.from('invoices')
+//         .select('id, invoice_number').eq('restaurant_id', id).order('id'))
+const PAGE = 1000
+
+export async function everyRow(build) {
+    const out = []
+    for (let from = 0; ; from += PAGE) {
+        const { data, error } = await build().range(from, from + PAGE - 1)
+        if (error) return { error }
+        out.push(...(data || []))
+        if (!data || data.length < PAGE) return { data: out }
+    }
+}

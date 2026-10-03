@@ -6,11 +6,12 @@ import { useRestaurant } from '@/context/restaurant'
 import { can, MANAGERS } from '@/lib/access'
 import { addDays, todayISO } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
-import { badge, card, pageTitle, primaryButton, rowButton, secondaryButton } from '@/lib/controlStyles'
+import { badge, card, inactiveBadge, primaryButton, rowButton, secondaryButton } from '@/lib/controlStyles'
 import {
     agoWords, cardState, doneDayLong, leftLastTime, listTree, periodWords, progressOf, repeatWords, roundBefore,
 } from '@/lib/checklists'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import PageHeader from '@/components/ui/PageHeader'
 import AddButton from '@/components/ui/AddButton'
 import ShowInactiveButton from '@/components/ui/ShowInactiveButton'
 import PrintListButton from '@/components/checklists/PrintListButton'
@@ -122,7 +123,7 @@ export default function ChecklistsPage() {
         setError(friendlyError(startErr))
     }
 
-    if (!activeRestaurant) return <p className="text-sm text-muted">Select a restaurant to see its checklists.</p>
+    if (!activeRestaurant) return <p className="text-sm text-muted">Pick a restaurant to see its checklists.</p>
     if (loading) return <p className="text-sm text-muted">Loading checklists...</p>
 
     const today = todayISO()
@@ -131,22 +132,19 @@ export default function ChecklistsPage() {
 
     return (
         <>
-            <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
-                <div>
-                    <h1 className={pageTitle}>Checklists</h1>
-                    <p className="text-sm text-muted mt-1">
-                        {activeRestaurant.name} | tick things off as you go, then press Submit.
-                    </p>
-                </div>
+            <PageHeader
+                title="Checklists"
+                subtitle={`${activeRestaurant.name} · tick things off as you go, then press Submit.`}
+            >
                 {isManager && (
-                    <div className="flex flex-wrap gap-2">
+                    <>
                         <button type="button" onClick={() => navigate('/checklists/report')} className={secondaryButton}>
                             Reports
                         </button>
                         <AddButton onClick={() => navigate('/checklists/new')}>New list</AddButton>
-                    </div>
+                    </>
                 )}
-            </header>
+            </PageHeader>
 
             <ErrorBanner className="mb-4">{error}</ErrorBanner>
 
@@ -205,14 +203,14 @@ export default function ChecklistsPage() {
 function ListCard({ list, state, empty, starting, isManager, restaurant, onStart, onContinue, onEdit, onError }) {
     const period = periodWords(list)
     const status = !list.is_active
-        ? { text: 'Inactive', tone: 'bg-gray-100 text-gray-700' }
+        ? { text: 'Inactive', look: inactiveBadge }
         : state.kind === 'open'
-            ? { text: 'In progress', tone: 'bg-accent-light text-accent-ink' }
+            ? { text: 'In progress', look: `${badge} bg-accent-light text-accent-ink` }
             : state.kind === 'done'
-                ? { text: period ? `Done ${period}` : 'Done', tone: 'bg-green-100 text-green-800' }
+                ? { text: period ? `Done ${period}` : 'Done', look: `${badge} bg-green-100 text-green-800` }
                 : state.late
-                    ? { text: 'Late', tone: 'bg-red-100 text-red-800' }
-                    : { text: period ? `Due ${period}` : 'To do', tone: 'bg-amber-100 text-amber-800' }
+                    ? { text: 'Late', look: `${badge} bg-red-100 text-red-800` }
+                    : { text: period ? `Due ${period}` : 'To do', look: `${badge} bg-amber-100 text-amber-800` }
 
     return (
         // One edge or the other, never both: two border colours on one element
@@ -220,7 +218,7 @@ function ListCard({ list, state, empty, starting, isManager, restaurant, onStart
         <div className={`${state.kind === 'open' && list.is_active ? 'bg-white rounded-xl border-2 border-accent shadow-md' : card} p-4 flex flex-col`}>
             <div className="flex items-start justify-between gap-3">
                 <h2 className="font-serif text-lg font-bold text-gray-900 min-w-0 break-words">{list.name}</h2>
-                <span className={`${badge} ${status.tone} flex-shrink-0`}>{status.text}</span>
+                <span className={`${status.look} flex-shrink-0`}>{status.text}</span>
             </div>
             <p className="text-xs text-muted mt-0.5">
                 {repeatWords(list)}
@@ -251,8 +249,8 @@ function ListCard({ list, state, empty, starting, isManager, restaurant, onStart
                     </p>
                 )}
                 {state.priority > 0 && list.is_active && (
-                    <p className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-800">
-                        <span aria-hidden="true" className="w-2 h-2 rounded-full bg-red-600" />
+                    <p className={`${badge} mt-2 border border-red-200 bg-red-50 text-red-800`}>
+                        <span aria-hidden="true" className="inline-block w-2 h-2 mr-1.5 align-middle rounded-full bg-red-600" />
                         {state.priority} high priority from last time
                     </p>
                 )}

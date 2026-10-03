@@ -20,8 +20,7 @@
 // shop and an hour from the next.
 
 import { shortTime } from '@/lib/roster'
-import { shortDate, toISODate, addDays } from '@/lib/dates'
-import { dayName } from '@/lib/events'
+import { shortDate, toISODate, addDays, dayName } from '@/lib/dates'
 
 // The city rule, in one place so the settings screen can say it out loud
 // rather than describing a number somebody has to take on trust.
@@ -47,16 +46,57 @@ export const WALKABLE_MINUTES = 20
 //             read of the same page does not offer it again.
 export const LIVE = ['trusted', 'kept']
 
-export function onRoster(event) {
-    return LIVE.includes(String(event?.review || ''))
-}
-
 export function notChecked(event) {
     return event?.review === 'found'
 }
 
 export function dismissed(event) {
     return event?.review === 'dismissed'
+}
+
+// -- A night that is not going ahead ------------------------------------
+
+// Whether a listing is off, and why, or '' when it is going ahead.
+//
+// **Ticketmaster spells it canceled**, the American way, and everything here
+// only knew cancelled. So a 3Arena show called off kept its purple chip on the
+// roster, on the picture sent to the group and on every My shifts, looking
+// exactly like a night that was still on. Both spellings, in any case.
+//
+// withdrawn is ours rather than Ticketmaster's. The sync writes it on a night
+// still to come that a whole answer from the feed no longer lists, which is
+// what a show taken down without being marked cancelled looks like. No screen
+// shows it, see nearbyRows, and the sync writes the real status back if the
+// night is ever listed again. See goneBetween in the nearby-events function.
+export function offFor(event) {
+    const status = String(event?.status || '').toLowerCase()
+    if (status === 'cancelled' || status === 'canceled') return 'cancelled'
+    if (status === 'withdrawn') return 'withdrawn'
+    return ''
+}
+
+// Only a cancelled night is ever drawn as off. A withdrawn one is never drawn.
+const OFF_WORDS = { cancelled: 'Cancelled' }
+
+export function offWords(off) {
+    return OFF_WORDS[off] || ''
+}
+
+// What the roster gets, which is everything but a cancelled night.
+//
+// The same rule the diary keeps with showsOnRoster: a cancelled catering job
+// stays in the diary and comes off the roster, because the roster is only
+// about who is needed. A manager does not roster for nine thousand people who
+// are not coming.
+//
+// Applied where the roster and My shifts load, and **not inside nearbyRows**,
+// which the calendar shares. The calendar keeps the night, struck through, so
+// whoever opens it can see it was called off rather than wonder where it went.
+//
+// A night the feed stopped listing never gets this far. nearbyRows leaves it
+// out for every screen at once.
+export function forRoster(rows) {
+    return (rows || []).filter(r => offFor(r?.event) !== 'cancelled')
 }
 
 // -- Which places a restaurant is actually watching ---------------------
@@ -96,13 +136,13 @@ export function cityProblem(pairing) {
     if (pairing?.relation !== 'city') return ''
 
     const capacity = figure(pairing?.place?.capacity)
-    if (capacity === null) return 'waiting on how many it holds'
+    if (capacity === null) return 'needs how many people it holds'
     if (capacity < CITY_CAPACITY) {
-        return `holds ${capacity.toLocaleString('en-IE')}, under the rule`
+        return `holds ${capacity.toLocaleString('en-IE')}, too small to count`
     }
 
     const km = figure(pairing?.distance_km)
-    if (km !== null && km > CITY_RADIUS_KM) return `${km} km away, past the rule`
+    if (km !== null && km > CITY_RADIUS_KM) return `${km} km away, too far to count`
     return ''
 }
 
@@ -118,6 +158,13 @@ export function cityProblem(pairing) {
 export const PAIRING_COLUMNS =
     'id, relation, walk_minutes, distance_km, is_active, own_row, sort_order, place:places(*)'
 
+// The same for staff, with the place from staff_places: its name, the short
+// one and how many it holds, which is all the roster and the calendar draw.
+// The page address, the Ticketmaster id and how the last read went are for
+// Settings and the feed notice, and staff cannot read the places table.
+export const STAFF_PAIRING_COLUMNS =
+    'id, relation, walk_minutes, distance_km, is_active, own_row, sort_order, place:staff_places(*)'
+
 // Switched off is switched off, and the city ones answer to three things rather
 // than one: the restaurant's switch, their own, and the rule itself.
 //
@@ -130,10 +177,6 @@ export function watching(pairings, restaurant) {
         && p.is_active !== false
         && (p.relation !== 'city' || (cityOn && countsAsCity(p)))
     ))
-}
-
-export function placeIds(pairings) {
-    return (pairings || []).map(p => p?.place?.id).filter(Boolean)
 }
 
 export function byPlace(pairings) {
@@ -194,6 +237,19 @@ export function coversDate(event, date) {
 //
 // Dismissed is the one that goes nowhere, and it stays in the table precisely
 // so the next read of the same page does not offer it again.
+//
+// **A night the feed stopped listing goes nowhere either.** It used to stay on
+// every screen marked "No longer listed", on the grounds that we worked it out
+// rather than being told. He checked every one of them against Ticketmaster
+// and changed that, 3 Oct 2026: "everything that shows as No longer listed
+// means is not happening anymore, so there is no need to show it on the roster
+// or the Calendar". Brandi Carlile on 15 October had moved to April, and Paul
+// Smith had dropped 7 October and put everything into the 8th.
+//
+// Left out here rather than on each screen, so the roster, My shifts, the
+// picture and the calendar cannot disagree about it. The row itself stays in
+// the table as it is: if Ticketmaster lists the night again the sync writes
+// its real status back and it shows again with nothing else to do.
 export function nearbyRows(events, pairings, restaurant) {
     const near = byPlace(watching(pairings, restaurant))
     const rows = []
@@ -202,6 +258,7 @@ export function nearbyRows(events, pairings, restaurant) {
         const pairing = near.get(event?.place_id)
         if (!pairing) continue
         if (dismissed(event)) continue
+        if (offFor(event) === 'withdrawn') continue
 
         const row = {
             event,
@@ -209,6 +266,7 @@ export function nearbyRows(events, pairings, restaurant) {
             pairing,
             kind: kindOf(event, pairing),
             checked: !notChecked(event),
+            off: offFor(event),
             time: event.event_time ? shortTime(event.event_time) : '',
             ownRow: pairing.own_row === true,
         }
@@ -299,6 +357,29 @@ export function headlinePlaces(pairings, restaurant) {
         .map(p => p.place)
 }
 
+// What the roster and My shifts get from their two reads: the listings going
+// ahead, the places with a row of their own, and the pairings themselves.
+//
+// **Or nothing, and the reason, when either read failed.** Both pages read
+// these beside the shifts and looked at neither answer, so listings that
+// failed to load with the pairings fine drew the Arena row with a dash on
+// every day. That is a quiet week nobody checked, looking exactly like one
+// somebody had, which is the one thing the always drawn row is there to
+// prevent. No row and a line saying why is honest; a row of dashes is not.
+export function rosterNearby(eventRes, nearRes, restaurant) {
+    const failed = eventRes?.error || nearRes?.error || null
+    if (failed) return { rows: [], places: [], pairings: [], failed }
+    return {
+        rows: forRoster(nearbyRows(eventRes?.data, nearRes?.data, restaurant)),
+        places: headlinePlaces(nearRes?.data, restaurant),
+        pairings: nearRes?.data || [],
+        failed: null,
+    }
+}
+
+// Said where the week is, when the reads above failed.
+export const NEARBY_FAILED = 'Events nearby could not be loaded, so they are not shown this week.'
+
 export function rowsOn(rows, date) {
     return (rows || []).filter(r => coversDate(r?.event, date))
 }
@@ -384,6 +465,27 @@ export function samePlace(a, b) {
     return fewer.every(w => more.includes(w))
 }
 
+// Which place a venue the search turned up fills in, or null to add a new one.
+//
+// The place with that venue id if there is one. Otherwise **a place of the same
+// name that has no venue id yet**, which is the Convention Centre's case: on
+// the list with a page and no feed, so watching it gives that place the feed
+// as well.
+//
+// Never a place that already has a different venue id. Filling that in moved
+// the place to the other venue: a second Ticketmaster venue called "The
+// Convention Centre Dublin Auditorium" matched by name, re-pointed the
+// Convention Centre at itself, and the first venue's shows stopped arriving.
+// Two venue ids are two venues as far as the feed is concerned, so that is a
+// second place, and the search says so before anybody presses.
+export function placeToFill(places, found) {
+    const all = places || []
+    const id = found?.ticketmaster_venue_id
+    return (id && all.find(p => p?.ticketmaster_venue_id === id))
+        || all.find(p => p && !p.ticketmaster_venue_id && samePlace(p.name, found?.name))
+        || null
+}
+
 // Whether two names might be the same venue, which is a weaker question than
 // whether they are.
 //
@@ -427,7 +529,7 @@ export function couldBeSamePlace(a, b) {
 // The two are kept apart rather than one overwriting the other. name is what
 // arrived and display_name is ours, which matters because a page read a second
 // time lands on the row it made the first time, and because a Ticketmaster
-// name is rewritten by every sync. See migration 015.
+// name is rewritten by every sync. See events.display_name in schema.sql.
 export function eventName(event) {
     const ours = String(event?.display_name || '').trim()
     return ours || String(event?.name || '').trim()
@@ -538,7 +640,7 @@ export function whenWords(event) {
 // Today and yesterday are named because those are the two that decide whether a
 // reading is still worth anything. Everything older is dated, since "eleven
 // days ago" is harder to place than the date itself.
-export function agoWords(stamp, today) {
+export function sinceWords(stamp, today) {
     if (!stamp || !today) return ''
     const at = new Date(stamp)
     if (isNaN(at)) return ''
@@ -570,8 +672,8 @@ export function foundWords(row, today) {
     if (where) bits.push(walk ? `${where}, ${walk}` : where)
 
     const from = hostOf(row?.event?.source_url) || hostOf(row?.place?.page_url)
-    const when = agoWords(row?.event?.found_at, today)
-    if (from) bits.push(when ? `read from ${from} ${when}` : `read from ${from}`)
+    const when = sinceWords(row?.event?.found_at, today)
+    if (from) bits.push(when ? `found on ${from} ${when}` : `found on ${from}`)
 
     return bits.filter(Boolean).join(' · ')
 }
@@ -580,13 +682,73 @@ export function foundWords(row, today) {
 //
 // The count is the point. A page that changes its layout goes quiet rather than
 // going wrong, and a run of zeroes is the only way anybody would ever notice.
+//
+// **And what went wrong, when the last read failed.** A page that failed every
+// Monday only kept an old date here, with nothing saying why. read-listings
+// writes a sentence of its own on the place, never the error itself, and it
+// comes first, then when a read last worked. As sentences, since what went
+// wrong can be two: what happened, and whether anybody has to do anything.
 export function readWords(place, today) {
     if (!place?.page_url) return ''
+    const when = sinceWords(place.last_read_at, today)
+    if (place.read_problem) {
+        const said = String(place.read_problem).trim()
+        const why = /[.!?]$/.test(said) ? said : `${said}.`
+        return place.last_read_at ? `${why} Last read ${when}.` : `${why} Never read.`
+    }
     if (!place.last_read_at) return 'never read'
-    const when = agoWords(place.last_read_at, today)
     const found = Number(place.last_read_count)
     if (!Number.isFinite(found)) return `read ${when}`
     return `read ${when}, ${found === 0 ? 'nothing found' : `${found} found`}`
+}
+
+// When this place's feed last answered, and what it said.
+//
+// The same idea as readWords, for a feed. Every sync writes it on the place,
+// the schedule's included, so a refused key is on the settings row the next
+// morning rather than only in a function log nobody reads.
+export function feedWords(place, today) {
+    if (!place?.ticketmaster_venue_id) return ''
+    if (place.feed_problem) return place.feed_problem
+    if (!place.feed_synced_at) return 'not checked yet'
+    const when = sinceWords(place.feed_synced_at, today)
+    const listed = Number(place.feed_count)
+    if (!Number.isFinite(listed)) return `checked ${when}`
+    return `checked ${when}, ${listed === 0 ? 'nothing listed' : `${listed} listed`}`
+}
+
+// How long a feed can go without answering before somebody is told. The
+// schedule asks twice a day, so two days is four runs in a row with nothing.
+export const FEED_QUIET_HOURS = 48
+
+// Every watched feed that has stopped answering, said where the week is
+// planned: the roster and the calendar.
+//
+// **A broken feed looks exactly like a quiet fortnight**, which is the worst
+// way for this to fail. The Arena row draws a dash on every day either way,
+// and only one of the two has been checked.
+//
+// Two signs. The last sync said what went wrong, or nothing has answered for
+// two days, which is the schedule stopping or the function failing before it
+// reached any place, and neither of those writes anything. A feed never asked
+// yet says nothing: there is no answer to be out of date.
+export function feedTrouble(pairings, restaurant, now = new Date()) {
+    const out = []
+    for (const p of watching(pairings, restaurant)) {
+        const place = p.place
+        if (!place?.ticketmaster_venue_id) continue
+
+        const last = place.feed_synced_at ? new Date(place.feed_synced_at) : null
+        const lastOn = last && !isNaN(last) ? shortDate(toISODate(last)) : ''
+        const name = placeName(place)
+
+        if (place.feed_problem) {
+            out.push({ place, words: `${name}: ${place.feed_problem}${lastOn ? ` Last updated ${lastOn}.` : ''}` })
+        } else if (lastOn && (now - last) / 36e5 > FEED_QUIET_HOURS) {
+            out.push({ place, words: `${name}: not updated since ${lastOn}.` })
+        }
+    }
+    return out
 }
 
 // -- Finding the next restaurant's places -------------------------------
@@ -651,9 +813,9 @@ export function suggest(km, capacity) {
 // Why a place found by searching is not being offered, in a few words.
 export function pastWalking(km, capacity) {
     const minutes = walkMinutesFor(km)
-    if (minutes === null) return 'nowhere near'
+    if (minutes === null) return 'distance not known'
     if (minutes <= WALKABLE_MINUTES) return ''
-    if (Number(capacity) >= CITY_CAPACITY) return `${minutes} minutes, big enough for the city rule`
+    if (Number(capacity) >= CITY_CAPACITY) return `${minutes} minutes, big enough to count`
     return `${minutes} minutes, past walking`
 }
 

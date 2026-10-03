@@ -1,10 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import {
-    toMinutes, toTime, shiftMinutes, shiftHours, breakFor, breakForShift, breakLabel,
-    hoursForDay, shiftEdges, endLabel, shiftsOverlap, findOverlaps, totals, publishState,
-    fmtHours, hoursForDate, timelineRange, staffAt, staffPerSlot, weekRows, dayTotals, tint, DEFAULT_BREAK_RULES,
-    hourLabelStep,
-    dayBreakLabels,
+    toMinutes, toTime, shiftMinutes, shiftHours, breakFor, breakLabel, hoursForDay, shiftEdges,
+    endLabel, shiftsOverlap, findOverlaps, totals, publishState, fmtHours, hoursForDate,
+    timelineRange, staffAt, staffPerSlot, weekRows, dayTotals, tint, DEFAULT_BREAK_RULES,
+    hourLabelStep, dayBreakLabels, endMinutes, closeMinutes, STAFF_WEEKS, staffWeekRange,
 } from '@/lib/roster'
 
 const shift = (starts_at, ends_at, extra = {}) => ({
@@ -152,22 +151,6 @@ describe('breakFor', () => {
     })
 })
 
-describe('breakForShift', () => {
-    it('works it out from the ladder', () => {
-        expect(breakForShift(shift('09:00', '21:00'), DEFAULT_BREAK_RULES)).toBe(60)
-    })
-
-    it('leaves a typed break alone', () => {
-        const s = shift('09:00', '21:00', { break_minutes: 45, break_is_manual: true })
-        expect(breakForShift(s, DEFAULT_BREAK_RULES)).toBe(45)
-    })
-
-    it('respects a deliberate no break', () => {
-        const s = shift('09:00', '21:00', { break_minutes: 0, break_is_manual: true })
-        expect(breakForShift(s, DEFAULT_BREAK_RULES)).toBe(0)
-    })
-})
-
 describe('breakLabel', () => {
     it('names the break or says there is none', () => {
         expect(breakLabel(30)).toBe('30 minutes')
@@ -229,6 +212,40 @@ describe('shiftEdges and endLabel', () => {
 
     it('prints the time when there are no hours to compare against', () => {
         expect(endLabel(shift('09:00', '21:30'), null)).toBe('21:30')
+    })
+
+    // Dragging a shift to the right edge of the day makes one that ends at
+    // 00:00, and that is the end of the night, not the start of the day. Read
+    // as nought it printed 17:00 to 00:00 on a roster that never prints a
+    // closing time.
+    it('reads a finish at midnight or after as that night', () => {
+        const saturday = { open: '12:00', close: '23:00' }
+        expect(endLabel(shift('17:00', '00:00:00'), saturday)).toBe('Closing')
+        expect(endLabel(shift('18:00', '01:30'), saturday)).toBe('Closing')
+        expect(shiftEdges(shift('17:00', '00:00'), saturday).closing).toBe(true)
+    })
+
+    // A late night for a concert, saved as closing at one in the morning.
+    // Read as one in the afternoon, every shift that day was a closing one.
+    it('reads a store that closes after midnight the same way', () => {
+        const late = { open: '12:00', close: '01:00' }
+        expect(endLabel(shift('12:00', '17:00'), late)).toBe('17:00')
+        expect(endLabel(shift('18:00', '00:00'), late)).toBe('00:00')
+        expect(endLabel(shift('18:00', '01:30'), late)).toBe('Closing')
+    })
+})
+
+describe('endMinutes and closeMinutes', () => {
+    it('is the end in minutes from the start of the shift\'s own day', () => {
+        expect(endMinutes(shift('09:00', '17:00'))).toBe(17 * 60)
+        expect(endMinutes(shift('17:00', '00:00'))).toBe(24 * 60)
+        expect(endMinutes(shift('22:00', '02:00:00'))).toBe(26 * 60)
+    })
+
+    it('puts a close at or before opening on the night after', () => {
+        expect(closeMinutes({ open: '09:00', close: '21:00' })).toBe(21 * 60)
+        expect(closeMinutes({ open: '12:00', close: '00:00' })).toBe(24 * 60)
+        expect(closeMinutes({ open: '12:00', close: '01:00' })).toBe(25 * 60)
     })
 })
 
@@ -605,5 +622,20 @@ describe('what a day of breaks reads as', () => {
 
     it('treats a missing break as none rather than throwing', () => {
         expect(dayBreakLabels([{ id: 'a' }, { id: 'b' }])).toEqual(['No break'])
+    })
+})
+
+// How far My shifts steps either way. roster_colleagues and roster_away give
+// staff nothing outside it, so a week it opens on must be inside what they
+// give: schema.test.js checks the two agree.
+describe('staffWeekRange', () => {
+    it('is eight weeks either side of this week, Sunday to Sunday', () => {
+        expect(STAFF_WEEKS).toBe(8)
+        // Thursday 1 October 2026, in the week that starts on Sunday 27 September.
+        expect(staffWeekRange('2026-10-01')).toEqual({ first: '2026-08-02', last: '2026-11-22' })
+    })
+
+    it('is the same whichever day of the week it is asked on', () => {
+        expect(staffWeekRange('2026-09-27')).toEqual(staffWeekRange('2026-10-03'))
     })
 })

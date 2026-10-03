@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { weeksOpen } from '@/lib/weeklyReport'
 import { useRemoveCard } from '@/components/reports/useRemoveCard'
-import { removeButton } from '@/lib/controlStyles'
+import { removeButton, fieldClass } from '@/lib/controlStyles'
 import AutoTextarea from '@/components/ui/AutoTextarea'
 import AddButton from '@/components/ui/AddButton'
 
@@ -64,9 +64,8 @@ export default function ReportActions({ section, weekStart, canEdit, onAdd, onSa
     return (
         <div>
             <p className="text-sm text-muted mb-3">
-                These carry from week to week on their own until they are ticked off. Nothing has to be retyped,
-                and nothing quietly disappears because somebody forgot to mention it again. Tick one that is
-                done; remove one that should never have been here.
+                These carry over from week to week until they are ticked off. Tick one when it is done, or
+                remove it if it should not be on the list.
             </p>
 
             <div className="space-y-2">
@@ -119,7 +118,7 @@ export default function ReportActions({ section, weekStart, canEdit, onAdd, onSa
                                             if (!text) return onRemove(item.id)
                                             if (text !== item.label) onSave(item.id, { label: text })
                                         }}
-                                        className="w-full bg-transparent text-sm text-gray-800 focus:outline-none"
+                                        className="w-full bg-transparent text-base pointer-fine:text-sm text-gray-800 focus:outline-none"
                                     />
                                 ) : (
                                     <p className={`text-sm ${done ? 'text-muted line-through' : 'text-gray-800'}`}>
@@ -170,7 +169,7 @@ export default function ReportActions({ section, weekStart, canEdit, onAdd, onSa
                         onChange={e => setAdding(e.target.value)}
                         onBlur={add}
                         placeholder="What needs doing"
-                        className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 shadow-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
+                        className={fieldClass}
                     />
                     {adding.trim() && (
                         <AddButton
@@ -179,7 +178,7 @@ export default function ReportActions({ section, weekStart, canEdit, onAdd, onSa
                             keepFocus
                             onClick={add}
                         >
-                            {busy ? 'Adding' : 'Add task'}
+                            {busy ? 'Adding...' : 'Add task'}
                         </AddButton>
                     )}
                 </div>

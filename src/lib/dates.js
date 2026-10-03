@@ -24,10 +24,36 @@ export function weekStartOf(dateStr) {
     return toISODate(d)
 }
 
+// The three letter weekday names, Sunday first, the way getDay() counts. The
+// Hub's weeks start on Sunday too (weekStartOf). Here rather than with the
+// Calendar, where they began, because the whole app uses them.
+export const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+// The three letter day, for a date like 2026-08-27.
+export function dayName(dateStr) {
+    return DAY_NAMES[new Date(dateStr + 'T00:00:00').getDay()]
+}
+
 // A short readable date, for example 19 Jul.
 export function shortDate(dateStr) {
     const d = new Date(dateStr + 'T00:00:00')
     return d.toLocaleDateString('en-IE', { day: 'numeric', month: 'short' })
+}
+
+// A day named in a sentence, for example Tue 8 Sept.
+export function dayLabel(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00')
+    return `${d.toLocaleDateString('en-IE', { weekday: 'short' })} ${shortDate(dateStr)}`
+}
+
+// Several of them, for example Mon 7 Sept, Tue 8 Sept and Wed 9 Sept.
+//
+// The sales upload and the weekly grid both say which days something happened
+// to, and they had a copy each.
+export function dayList(dates) {
+    const names = (dates || []).map(dayLabel)
+    if (names.length <= 1) return names[0] || ''
+    return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
 }
 
 // A date with the month written out, for example 6 September.
@@ -99,12 +125,16 @@ export function monthStart(dateStr) {
     return toISODate(d)
 }
 
-// Move a date by a number of months. Always call this on the first of a month:
-// moving 31 January forward gives 3 March, because February has no 31st.
+// Move a date by a number of months, kept inside the month it lands in. 31
+// January and a month is 28 February: plain Date arithmetic says 3 March, and
+// the allergen sheet's reminder would have come two days late for no reason
+// anybody could see. From the first of a month, which is how the calendar and
+// the checklists call it, nothing changes.
 export function addMonths(dateStr, months) {
-    const d = new Date(dateStr + 'T00:00:00')
-    d.setMonth(d.getMonth() + months)
-    return toISODate(d)
+    const [y, m, d] = dateStr.split('-').map(Number)
+    // Day 0 of the month after is the last day of the one landed in.
+    const lastDay = new Date(y, m + months, 0).getDate()
+    return toISODate(new Date(y, m - 1 + months, Math.min(d, lastDay)))
 }
 
 // A month and year, for a heading. For example August 2026.
@@ -112,6 +142,14 @@ export function monthLabel(dateStr) {
     const d = new Date(dateStr + 'T00:00:00')
     return d.toLocaleDateString('en-IE', { month: 'long', year: 'numeric' })
 }
+
+// Just the month, for example August. A monthly checklist names its stretch
+// this way, and the checklist record and its report each had a copy.
+export function monthName(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00')
+    return d.toLocaleDateString('en-IE', { month: 'long' })
+}
+
 // Which week of the year a week is, counting the way the reports always have.
 //
 // Not the ISO week number. ISO weeks run Monday to Sunday and this system runs
@@ -190,9 +228,54 @@ export function stampDateTime(stamp) {
     if (!stamp) return ''
     const d = new Date(stamp)
     if (isNaN(d)) return ''
+    return `${stampDate(stamp)}, ${clockTime(stamp)}`
+}
+
+// Just the time of a timestamp, for example 14:05.
+//
+// The half of stampDateTime after the comma, so a "Saved at" line and a dated
+// row read the time the same way. Built by hand for the same reason the date
+// is: toLocaleTimeString follows the browser, and some say 2:05 pm.
+export function clockTime(stamp) {
+    if (!stamp) return ''
+    const d = new Date(stamp)
+    if (isNaN(d)) return ''
     const hours = String(d.getHours()).padStart(2, '0')
     const minutes = String(d.getMinutes()).padStart(2, '0')
-    return `${stampDate(stamp)}, ${hours}:${minutes}`
+    return `${hours}:${minutes}`
+}
+
+// The day a timestamp falls on here, as YYYY-MM-DD, so it can be compared with
+// a plain date or handed to dayLabel.
+//
+// The local day, not the UTC one. Something done just after midnight in
+// summer is on the database as the previous evening in UTC, and slicing the
+// first ten characters off it files it under the day before.
+export function stampDay(stamp) {
+    if (!stamp) return ''
+    const d = new Date(stamp)
+    if (isNaN(d)) return ''
+    return toISODate(d)
+}
+
+// The days of the week written out, Sunday first like DAY_NAMES in events.js
+// and like every week in the Hub.
+//
+// Not called WEEKDAYS, because availability.js already has a WEEKDAYS that is a
+// list of objects, and the same name meaning two things is how a wrong import
+// goes unnoticed.
+export const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+
+// Whole days from one YYYY-MM-DD to another. Negative when to is before from.
+//
+// Both are read as midnight UTC, so the clocks changing in between cannot turn
+// fourteen days into thirteen and a half. Null when either is missing, so a
+// caller decides what no date means rather than being handed a zero that looks
+// like the same day.
+export function daysBetween(from, to) {
+    if (!from || !to) return null
+    const [a, b] = [from, to].map(d => Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10)))
+    return Math.round((b - a) / 86400000)
 }
 
 // The month a timestamp falls in, written out. For example September 2026.

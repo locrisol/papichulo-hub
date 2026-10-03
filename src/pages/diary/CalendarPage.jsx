@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
@@ -7,17 +7,20 @@ import { todayISO, weekStartOf, addDays, monthStart, addMonths, monthLabel, week
 import { friendlyError } from '@/lib/errors'
 import { syncEvents, syncIsDue, markSynced } from '@/lib/nearbySync'
 import {
-    nearbyRows, waiting, eventName, headlinePlaces, placeName, PAIRING_COLUMNS,
+    nearbyRows, waiting, eventName, headlinePlaces, placeName, PAIRING_COLUMNS, STAFF_PAIRING_COLUMNS,
 } from '@/lib/nearby'
 import FoundNearby from '@/components/nearby/FoundNearby'
+import FeedTrouble from '@/components/nearby/FeedTrouble'
 import {
-    LAYERS, layerOf, calendarItems, itemsByDate, kindLabel, kindDot, atRestaurant,
+    LAYERS, layerOf, calendarItems, itemsByDate, kindLabel, kindDot, atRestaurant, canChangeEntry,
 } from '@/lib/diary'
 import {
-    card, pageTitle, secondaryButton, segmentTrack, segmentButton,
+    card, pageTitle, pageSubtitle, primaryButton, secondaryButton, segmentTrack, segmentButton,
 } from '@/lib/controlStyles'
 import JumpButton from '@/components/ui/JumpButton'
+import DateStepper from '@/components/ui/DateStepper'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import Notice from '@/components/ui/Notice'
 import DiaryMonth from '@/components/diary/DiaryMonth'
 import DiaryWeek from '@/components/diary/DiaryWeek'
 import DiaryList from '@/components/diary/DiaryList'
@@ -25,6 +28,7 @@ import DiaryDialog from '@/components/diary/DiaryDialog'
 import DiaryEntryModal from '@/components/diary/DiaryEntryModal'
 import WeekExtrasModal from '@/components/roster/WeekExtrasModal'
 import EventModal from '@/components/forecast/EventModal'
+import { useRecountBadges } from '@/context/badges'
 
 // One screen for what is coming up.
 //
@@ -54,6 +58,7 @@ const OFF_BY_DEFAULT = { month: [], list: [], week: [] }
 const WIDE = '(min-width: 1024px)'
 
 export default function CalendarPage() {
+    const recountBadges = useRecountBadges()
     const { user } = useAuth()
     const { activeRestaurant } = useRestaurant()
     const today = todayISO()
@@ -100,6 +105,8 @@ export default function CalendarPage() {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
     const [refresh, setRefresh] = useState(0)
+    // A refresh follows something done here that the sidebar may count.
+    useEffect(() => { if (refresh) recountBadges() }, [refresh, recountBadges])
 
     const [editing, setEditing] = useState(null)
     const [viewing, setViewing] = useState(null)
@@ -129,44 +136,86 @@ export default function CalendarPage() {
         : (view === 'week' ? addDays(weekStart, 6) : addDays(weekStartOf(viewMonth), 41))
 
 
+    // A reload after the Ticketmaster check swaps the listings underneath what
+    // is on screen rather than blanking it, the same as the roster does after
+    // its first arrival. Set just before that reload and read once by it.
+    const quietly = useRef(false)
+    // The check that is out right now, and for which restaurant, so nothing
+    // asks twice. React runs every effect twice in development, and the second
+    // run waits on the first one's answer rather than sending another.
+    const checking = useRef(null)
+
+    // Ticketmaster at most twice a day. The Arena listing does not change
+    // often enough to justify a call every time somebody opens the page, and
+    // the free tier is generous rather than infinite.
+    //
+    // **After the calendar has drawn, not before it.** It used to be asked
+    // first, so once every twelve hours a manager looked at "Loading the
+    // calendar..." for as long as Ticketmaster took, and for the function's
+    // whole time limit when it hung. What is already in the table is worth
+    // drawing straight away, and the sync is news on top of it.
+    //
+    // Its own effect, so changing the view or the month does not ask again
+    // while the first answer is still out.
+    //
+    // The restaurant, never the venue. The function reads the venue off that
+    // restaurant's own list, so nothing the browser says can point the quota
+    // at a venue of somebody else's choosing.
+    useEffect(() => {
+        if (!activeRestaurant || !canWrite) return undefined
+        const id = activeRestaurant.id
+        const out = checking.current?.id === id ? checking.current.run : null
+        if (!out && !syncIsDue(id)) return undefined
+        let alive = true
+
+        async function check() {
+            let run = out
+            if (!run) {
+                run = syncEvents(supabase, id)
+                checking.current = { id, run }
+            }
+            setSyncing(true)
+            try {
+                const r = await run
+                markSynced(id)
+                if (!alive) return
+                if (r.added > 0) {
+                    setNote(`Found ${r.added} new ${r.added === 1 ? 'event' : 'events'} nearby.`)
+                }
+                // Read again whatever it added, and whatever it took off the
+                // waiting list: a reading the feed now covers is dismissed by
+                // the sync, and pressing Keep on it would bring back the very
+                // duplicate the dismissal was there to stop.
+                quietly.current = true
+                setRefresh(n => n + 1)
+            } catch (e) {
+                // A failed sync is not a failed page. What is already in the
+                // table is still worth drawing.
+                if (alive) setError(`Could not check Ticketmaster: ${friendlyError(e)}`)
+            } finally {
+                if (checking.current?.run === run) checking.current = null
+                if (alive) setSyncing(false)
+            }
+        }
+
+        check()
+        return () => { alive = false }
+    }, [activeRestaurant, canWrite])
+
     useEffect(() => {
         if (!activeRestaurant) return undefined
         let alive = true
 
         async function load() {
-            setLoading(true)
+            if (!quietly.current) setLoading(true)
+            quietly.current = false
             setError('')
 
-            // Ticketmaster at most twice a day. The Arena listing does not
-            // change often enough to justify a call every time somebody opens
-            // the page, and the free tier is generous rather than infinite.
-            //
-            // This came over from the Events screen along with everything else.
-            // Deleting that page without carrying the sync would have left the
-            // Arena layer quietly frozen on whatever was last fetched.
-            //
-            // The restaurant, never the venue. The function reads the venue
-            // off that restaurant's own row, so nothing the browser says can
-            // point the quota at a venue of somebody else's choosing.
-            if (canWrite && syncIsDue()) {
-                try {
-                    setSyncing(true)
-                    const r = await syncEvents(supabase, activeRestaurant.id)
-                    markSynced()
-                    if (r.added > 0) {
-                        setNote(`Found ${r.added} new ${r.added === 1 ? 'thing' : 'things'} happening nearby.`)
-                    }
-                } catch (e) {
-                    // A failed sync is not a failed page. What is already in the
-                    // table is still worth drawing.
-                    setError(`Could not check Ticketmaster: ${friendlyError(e)}`)
-                } finally {
-                    setSyncing(false)
-                }
-            }
-
             const [diary, eventRes, notes, places, nearRes, pendRes] = await Promise.all([
-                supabase.from('diary_entries').select('*')
+                // Staff read the view, which leaves out where each entry is
+                // on Google and who wrote it. A manager reads the table,
+                // because Edit needs to know who wrote a private entry.
+                supabase.from(canWrite ? 'diary_entries' : 'staff_diary').select('*')
                     .lte('starts_on', to)
                     .or(`ends_on.gte.${from},and(ends_on.is.null,starts_on.gte.${from})`)
                     .order('starts_on'),
@@ -184,18 +233,29 @@ export default function CalendarPage() {
                 supabase.from('day_notes').select('note_date, extras')
                     .eq('restaurant_id', activeRestaurant.id)
                     .gte('note_date', from).lte('note_date', to),
-                supabase.from('restaurants').select('id, name, google_calendar_id, sort_order')
-                    .eq('is_active', true).order('sort_order'),
+                // The names that say which site an entry is for. Staff cannot
+                // read the table, so they get the view, which only holds open
+                // restaurants. A manager needs the calendar id as well, to be
+                // told which restaurant has no Google calendar yet.
+                canWrite
+                    ? supabase.from('restaurants').select('id, name, google_calendar_id, sort_order')
+                        .eq('is_active', true).order('sort_order')
+                    : supabase.from('staff_restaurants').select('id, name, sort_order').order('sort_order'),
+                // Staff get the place without how it is set up. A manager
+                // needs the feed and the page as well, for the feed notice.
                 supabase.from('restaurant_places')
-                    .select(PAIRING_COLUMNS)
+                    .select(canWrite ? PAIRING_COLUMNS : STAFF_PAIRING_COLUMNS)
                     .eq('restaurant_id', activeRestaurant.id)
                     .order('sort_order'),
                 // Not bounded by the view. Anything unchecked that has not
-                // happened yet, however far out it is.
-                supabase.from('events').select('*')
-                    .eq('review', 'found')
-                    .or(`ends_on.gte.${today},and(ends_on.is.null,event_date.gte.${today})`)
-                    .order('event_date'),
+                // happened yet, however far out it is. Only a manager decides
+                // these, so only a manager is asked for them.
+                canWrite
+                    ? supabase.from('events').select('*')
+                        .eq('review', 'found')
+                        .or(`ends_on.gte.${today},and(ends_on.is.null,event_date.gte.${today})`)
+                        .order('event_date')
+                    : Promise.resolve({ data: [], error: null }),
             ])
 
             if (!alive) return
@@ -353,16 +413,24 @@ export default function CalendarPage() {
     // Past dates are renamed too. A week that has been and gone reading
     // differently from the same thing next month is a worse answer than
     // consistency nobody will look at.
-    async function rename(event, to, all = false, until) {
+    //
+    // at is the start time, and only a page reading sends one. Left undefined
+    // for a feed, so its time is never touched here: the sync writes it again
+    // twice a day and a correction would be gone by the evening.
+    async function rename(event, to, all = false, until, at) {
         const name = String(to ?? '').trim()
         const display_name = name && name !== event.name ? name : null
         const ends_on = String(until ?? '').trim() || null
+        const timed = at !== undefined
+        const event_time = String(at ?? '').trim() || null
 
         // The name can go to every date of a residency. **An end date never
-        // does**: six nights of a tour are six one night things, and giving
-        // them all the same last day would draw one band over the lot.
+        // does**, and nor does a start time: six nights of a tour are six one
+        // night things, and giving them all the same last day would draw one
+        // band over the lot.
         const change = { display_name }
-        const mine = { display_name, ends_on }
+        const own = { ends_on, ...(timed ? { event_time } : {}) }
+        const mine = { display_name, ...own }
 
         const where = supabase.from('events')
         const { data, error: failed } = all
@@ -376,10 +444,21 @@ export default function CalendarPage() {
             return
         }
 
-        // The end date only ever lands on the one that was open, so it is
-        // written on its own when the name went to the others.
-        if (all && ends_on !== (event.ends_on ?? null)) {
-            await where.update({ ends_on }).eq('id', event.id)
+        // The end date and the time only ever land on the one that was open, so
+        // they are written on their own when the name went to the others.
+        //
+        // If that second write fails the name has still gone to every date, so
+        // the screen shows the name and says the rest did not save, rather than
+        // drawing an end date and a time the database never got.
+        const ownChanged = ends_on !== (event.ends_on ?? null)
+            || (timed && event_time !== (String(event.event_time || '').slice(0, 5) || null))
+        let ownSaved = true
+        if (all && ownChanged) {
+            const { error: missed } = await where.update(own).eq('id', event.id)
+            if (missed) {
+                setError(`The name was saved, but not the end date or start time. ${friendlyError(missed)}`)
+                ownSaved = false
+            }
         }
 
         const hits = e => (all
@@ -388,7 +467,7 @@ export default function CalendarPage() {
         const patch = e => ({
             ...e,
             display_name,
-            ...(e.id === event.id ? { ends_on } : {}),
+            ...(ownSaved && e.id === event.id ? own : {}),
         })
 
         setEvents(was => was.map(e => (hits(e) ? patch(e) : e)))
@@ -407,8 +486,8 @@ export default function CalendarPage() {
     // A corrected name rides along with a keep, into display_name rather than
     // over the name that arrived. It is only written when it has actually
     // changed and is not blank, so keeping forty rows does not rewrite forty
-    // names with what they already said. See migration 015 for why the two are
-    // kept apart.
+    // names with what they already said. See events.display_name in schema.sql
+    // for why the two are kept apart.
     //
     // Written straight into the list as well as to the database, rather than
     // waiting for a reload. Pressing Keep on four things in a row and watching
@@ -447,6 +526,7 @@ export default function CalendarPage() {
         // Settled, so it leaves the waiting list whether or not the calendar
         // happens to be drawing it.
         setPending(was => was.filter(e => e.id !== event.id))
+        recountBadges()
     }
 
     // The jump says what pressing it does, and only says where you are when
@@ -466,8 +546,8 @@ export default function CalendarPage() {
         <div className="pb-24 sm:pb-6">
             <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
                 <div>
-                    <h1 className={pageTitle}>Calendar</h1>
-                    <p className="text-sm text-muted mt-0.5">
+                    <h2 className={pageTitle}>Calendar</h2>
+                    <p className={pageSubtitle}>
                         {activeRestaurant?.name}
                         {heading ? ` · ${heading}` : ''}
                     </p>
@@ -495,35 +575,30 @@ export default function CalendarPage() {
                     </div>
 
                     {view !== 'list' && (
-                        <div className="flex items-center gap-2 w-full sm:w-auto">
-                            <button
-                                type="button"
-                                onClick={() => step(-1)}
-                                className={`${secondaryButton} flex-none w-11`}
-                                aria-label="Back"
-                            >
-                                &#8249;
-                            </button>
-                            {/* The one that says something takes the room the
-                                two arrows do not need. */}
-                            <JumpButton
-                                isCurrent={atNow}
-                                unit={unit}
-                                className="flex-1 sm:flex-none"
-                                onClick={() => {
-                                    setViewMonth(monthStart(today))
-                                    setWeekStart(weekStartOf(today))
-                                }}
-                            />
-                            <button
-                                type="button"
-                                onClick={() => step(1)}
-                                className={`${secondaryButton} flex-none w-11`}
-                                aria-label="Forward"
-                            >
-                                &#8250;
-                            </button>
-                        </div>
+                        <DateStepper
+                            onBack={() => step(-1)}
+                            onNext={() => step(1)}
+                            backLabel={`Previous ${unit}`}
+                            nextLabel={`Next ${unit}`}
+                            weekStart={view === 'week' ? weekStart : null}
+                            jump={(
+                                <JumpButton
+                                    isCurrent={atNow}
+                                    unit={unit}
+                                    onClick={() => {
+                                        setViewMonth(monthStart(today))
+                                        setWeekStart(weekStartOf(today))
+                                    }}
+                                />
+                            )}
+                        >
+                            {/* The week writes itself from weekStart. */}
+                            {view === 'month' ? (
+                                <span className="text-sm font-semibold text-gray-800 whitespace-nowrap">
+                                    {monthLabel(viewMonth)}
+                                </span>
+                            ) : null}
+                        </DateStepper>
                     )}
 
                     {canWrite && (
@@ -537,12 +612,12 @@ export default function CalendarPage() {
                                 onClick={() => setWeekExtrasOpen(true)}
                                 className={`${secondaryButton} w-full sm:w-auto`}
                             >
-                                Corporate schedule
+                                Corporate orders
                             </button>
                             <button
                                 type="button"
                                 onClick={() => openAdd()}
-                                className="hidden sm:inline-flex px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg transition-colors hover:bg-orange-600"
+                                className={`${primaryButton('md')} hidden sm:inline-flex`}
                             >
                                 + Add
                             </button>
@@ -552,6 +627,12 @@ export default function CalendarPage() {
             </div>
 
             {error && <ErrorBanner className="mb-3">{error}</ErrorBanner>}
+
+            {/* Whatever the schedule ran into, not only this browser's own
+                sync, because it is written on the place either way. */}
+            {canWrite && (
+                <FeedTrouble pairings={pairings} restaurant={activeRestaurant} className="mb-3" />
+            )}
 
             {/* Everything behind this is already saved. What a person decides
                 here is not whether a thing exists, it is whether it is ours. */}
@@ -564,7 +645,7 @@ export default function CalendarPage() {
                     busy={deciding}
                 />
             )}
-            {note && <p className="mb-3 text-sm text-green-700 bg-green-50 rounded-lg p-3">{note}</p>}
+            <Notice tone="good" className="mb-3">{note}</Notice>
             {syncing && <p className="mb-3 text-sm text-muted">Checking Ticketmaster...</p>}
 
             {/* The switches. Pressing one only changes what is drawn, so this is
@@ -636,7 +717,7 @@ export default function CalendarPage() {
                     type="button"
                     onClick={() => openAdd()}
                     aria-label="Add to the calendar"
-                    className="sm:hidden fixed bottom-4 right-4 z-40 w-14 h-14 rounded-full bg-accent text-white text-2xl leading-none shadow-lg flex items-center justify-center transition-colors hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-sidebar"
+                    className="sm:hidden fixed bottom-4 right-4 z-20 w-14 h-14 rounded-full bg-accent text-white text-2xl leading-none shadow-lg flex items-center justify-center transition-colors hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-sidebar"
                 >
                     +
                 </button>
@@ -656,7 +737,11 @@ export default function CalendarPage() {
                 <DiaryEntryModal
                     entry={viewing}
                     restaurants={restaurants}
-                    canEdit={canWrite}
+                    /* Per entry, not per page. Anybody here can open an entry
+                       to read it, but an owner's group entry, or one a super
+                       admin put on both restaurants, is not a store manager's
+                       to change, and the database refuses the save. */
+                    canEdit={canWrite && canChangeEntry(user, viewing)}
                     onEdit={() => { setEditing({ entry: viewing, date: viewing.starts_on }); setViewing(null) }}
                     onClose={() => setViewing(null)}
                 />

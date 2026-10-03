@@ -1,4 +1,4 @@
-import { labelClass, primaryButton } from '@/lib/controlStyles'
+import { labelClass, fieldClass, fieldError, primaryButton, secondaryButton } from '@/lib/controlStyles'
 import { useRef, useEffect } from 'react'
 import ProductSelect from '@/components/ui/ProductSelect'
 import QuantityInUnit from '@/components/ui/QuantityInUnit'
@@ -13,7 +13,7 @@ import ErrorBanner from '@/components/ui/ErrorBanner'
 // Typing it in grams rather than in fractions of a kilo is QuantityInUnit's
 // job, which the product form uses as well so a recipe reads the same wherever
 // it is written.
-export default function RecipeIngredientForm({ problem, formData, onChange, onSubmit, onCancel, submitLabel, errors, availableProducts }) {
+export default function RecipeIngredientForm({ problem, formData, onChange, onSubmit, onCancel, submitLabel, errors, availableProducts, saving = false, editing = false }) {
   const ingredient = availableProducts.find(p => p.id === formData.ingredient_product_id)
   const ingredientUnit = ingredient?.unit || 'unit'
   const ingredientSelectRef = useRef(null)
@@ -37,9 +37,9 @@ export default function RecipeIngredientForm({ problem, formData, onChange, onSu
             value={formData.ingredient_product_id}
             onChange={v => onChange('ingredient_product_id', v)}
             products={availableProducts}
-            placeholder="Select an ingredient..."
+            placeholder="Pick an ingredient"
           />
-          {errors.ingredient_product_id && <p className="text-xs text-red-600 mt-1">{errors.ingredient_product_id}</p>}
+          {errors.ingredient_product_id && <p className={fieldError}>{errors.ingredient_product_id}</p>}
         </div>
 
         <div>
@@ -49,7 +49,7 @@ export default function RecipeIngredientForm({ problem, formData, onChange, onSu
             onChange={v => onChange('quantity', v)}
             unit={ingredientUnit}
           />
-          {errors.quantity && <p className="text-xs text-red-600 mt-1">{errors.quantity}</p>}
+          {errors.quantity && <p className={fieldError}>{errors.quantity}</p>}
         </div>
       </div>
 
@@ -60,7 +60,7 @@ export default function RecipeIngredientForm({ problem, formData, onChange, onSu
           value={formData.notes}
           onChange={e => onChange('notes', e.target.value)}
           placeholder="e.g. drained"
-          className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+          className={fieldClass}
         />
       </div>
 
@@ -72,19 +72,20 @@ export default function RecipeIngredientForm({ problem, formData, onChange, onSu
         <ErrorBanner className="mb-3">{problem}</ErrorBanner>
       )}
 
-      <div className="flex gap-3">
-        <button
-          type="submit"
-          className={primaryButton()}
-        >
-          {submitLabel}
-        </button>
+      <div className="flex flex-wrap justify-end gap-3">
         <button
           type="button"
           onClick={onCancel}
-          className="px-4 py-2 border border-green-600 text-green-700 text-sm font-medium rounded-lg hover:bg-green-50 bg-white transition-colors"
+          className={secondaryButton}
         >
-          Done
+          {editing ? 'Cancel' : 'Done'}
+        </button>
+        <button
+          type="submit"
+          disabled={saving}
+          className={primaryButton()}
+        >
+          {saving ? 'Saving...' : submitLabel}
         </button>
       </div>
     </form>

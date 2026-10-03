@@ -1,5 +1,4 @@
-import { DAY_NAMES } from '@/lib/events'
-import { shortDate } from '@/lib/dates'
+import { shortDate, DAY_NAMES } from '@/lib/dates'
 import { fmtMoney, fmtPct } from '@/lib/format'
 import { statusFor } from '@/lib/costTargets'
 import { weekTotals, ROW_BANDS } from '@/lib/timesheet'
@@ -62,7 +61,7 @@ const SHEET = {
 // bands come from costTargets, the same as the dashboard and the report, so a
 // week cannot be judged differently depending on the screen you read it on.
 // Only the colours are this screen's own.
-const PERCENT_TONE = { green: 'text-green-700', amber: 'text-amber-600', red: 'text-red-600', none: 'text-gray-900' }
+const PERCENT_TONE = { green: 'text-green-700', amber: 'text-amber-700', red: 'text-red-600', none: 'text-gray-900' }
 
 // The same three judgements on the dark green of the Cost column, where the
 // text colours above would be unreadable.
@@ -122,7 +121,7 @@ export default function TimesheetWeek({
                         to start flush against it. */}
                     <tr className={`${tableHeadRow} border-b-[3px] border-[#0B1A12]`}>
                         <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider whitespace-nowrap">
-                            Who
+                            Name
                         </th>
                         {dates.map((date, i) => {
                             const day = totals.perDay[i]

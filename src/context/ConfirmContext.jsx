@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { secondaryButton } from '@/lib/controlStyles'
+import { secondaryButton, primaryButton, modalFooter } from '@/lib/controlStyles'
 import Modal from '@/components/ui/Modal'
 import { ConfirmContext } from '@/context/confirm'
 
@@ -71,6 +71,12 @@ function ConfirmDialog({ request, onClose }) {
         notice = false,
     } = request
 
+    // Only a plain true makes a notice, and never one that names its own
+    // cancel button. Publishing the roster passed a sentence here, and any
+    // value at all used to do it: Go back disappeared and the one button left
+    // said Close and published the week.
+    const isNotice = notice === true && request.cancelLabel === undefined
+
     const confirmRef = useRef(null)
 
     // The button that does the thing takes focus, so Enter answers it and a
@@ -80,16 +86,15 @@ function ConfirmDialog({ request, onClose }) {
         confirmRef.current?.focus()
     }, [])
 
-    const confirmCls = tone === 'danger'
-        ? 'px-5 py-2.5 bg-red-600 text-white text-sm font-semibold rounded-lg hover:bg-red-700 transition-colors'
-        : 'px-5 py-2.5 bg-accent text-white text-sm font-semibold rounded-lg hover:bg-orange-600 transition-colors'
-
     // Closing any other way than a button counts as no, the same as the
     // browser box it replaced.
     return (
         <Modal title={title} onClose={() => onClose(false)} width="max-w-md">
-                <div className="p-5">
-                    {message && <p className="text-sm text-gray-700">{message}</p>}
+                <div className="px-6 py-5">
+                    {/* pre-line so a message made of several paragraphs, like
+                        the reasons a roster is held, reads as paragraphs
+                        rather than running together. */}
+                    {message && <p className="text-sm text-gray-700 whitespace-pre-line">{message}</p>}
 
                     {/* What is actually about to happen, laid out rather than
                         squeezed into the sentence. Reading back the supplier and
@@ -99,20 +104,20 @@ function ConfirmDialog({ request, onClose }) {
                         <dl className="mt-4 border border-border rounded-lg divide-y divide-border">
                             {details.map(d => (
                                 <div key={d.label} className="flex items-baseline justify-between gap-4 px-3 py-2">
-                                    <dt className="text-xs text-gray-500 uppercase tracking-wider">{d.label}</dt>
+                                    <dt className="text-xs text-muted uppercase tracking-wider">{d.label}</dt>
                                     <dd className="text-sm font-semibold text-gray-900 text-right">{d.value}</dd>
                                 </div>
                             ))}
                         </dl>
                     )}
 
-                    {tone === 'danger' && !notice && dangerNote && (
+                    {tone === 'danger' && !isNotice && dangerNote && (
                         <p className="mt-4 text-xs text-red-600">{dangerNote}</p>
                     )}
                 </div>
 
-                <div className="px-5 py-4 border-t border-border flex justify-end gap-3">
-                    {!notice && (
+                <div className={modalFooter}>
+                    {!isNotice && (
                         <button type="button" onClick={() => onClose(false)} className={secondaryButton}>
                             {cancelLabel}
                         </button>
@@ -121,9 +126,9 @@ function ConfirmDialog({ request, onClose }) {
                         ref={confirmRef}
                         type="button"
                         onClick={() => onClose(true)}
-                        className={notice ? secondaryButton : confirmCls}
+                        className={isNotice ? secondaryButton : primaryButton('lg', tone === 'danger' ? 'danger' : 'accent')}
                     >
-                        {notice ? 'Close' : confirmLabel}
+                        {isNotice ? 'Close' : confirmLabel}
                     </button>
                 </div>
         </Modal>

@@ -22,9 +22,30 @@
 -- many restaurants there are, which is the whole point of everything being
 -- keyed by restaurant_id.
 --
--- Only Point Campus gets forecasting, because it is the one across from
--- 3Arena. Dun Laoghaire has no big venue near it, so a calendar of concerts
--- would tell them nothing.
+-- The slug is what the printed QR codes point at. It is in here now. It
+-- used to arrive in a later migration that backfilled it by name, which
+-- worked on the live database and meant this file could never run on a new
+-- one: by the time it ran, slug was already NOT NULL and had nothing in it.
+-- The documented way to set this project up had not worked in months and
+-- nobody had cause to find out.
+insert into public.restaurants (name, slug, location)
+values ('Point Campus', 'point-campus', 'Dublin Docklands')
+on conflict (slug) do nothing;
+
+insert into public.restaurants (name, slug, location)
+values ('Dun Laoghaire', 'dun-laoghaire', 'Unit 4a, The Pavillions, Marine Road')
+on conflict (slug) do nothing;
+
+
+-- ── What is on nearby ────────────────────────────────────────────────────
+
+-- The 3Arena, watched from Point Campus, two minutes away, with a row of its
+-- own on the roster. That is how live has it.
+--
+-- This used to be forecasting_venue_id on the restaurant. Nothing has read
+-- that since places and restaurant_places replaced it, and the sync reads
+-- only the pairings, so a database set up from this file watched no venue at
+-- all: no Arena row on the roster and nothing on the calendar, with no error.
 --
 -- KovZ9177WYV is the 3Arena venue id in the Ticketmaster Discovery API. An
 -- earlier version of this file had a different one, and because a wrong
@@ -32,19 +53,20 @@
 -- like Ticketmaster simply had no events. Worth checking against the API
 -- before ever changing it.
 --
--- The slug is what the printed QR codes point at. It is in here now. It
--- used to arrive in a later migration that backfilled it by name, which
--- worked on the live database and meant this file could never run on a new
--- one: by the time it ran, slug was already NOT NULL and had nothing in it.
--- The documented way to set this project up had not worked in months and
--- nobody had cause to find out.
-insert into public.restaurants (name, slug, location, forecasting_enabled, forecasting_venue_id)
-values ('Point Campus', 'point-campus', 'Dublin Docklands', true, 'KovZ9177WYV')
-on conflict (slug) do nothing;
+-- Only the Arena. Everything else is added in Settings, Places near us,
+-- where the search finds what sells tickets near an address and a person
+-- ticks what counts. Which pages are worth reading is decided on live, and a
+-- page address seeded here would go stale with nobody noticing.
+insert into public.places (name, ticketmaster_venue_id)
+values ('3Arena', 'KovZ9177WYV')
+on conflict (ticketmaster_venue_id) do nothing;
 
-insert into public.restaurants (name, slug, location)
-values ('Dun Laoghaire', 'dun-laoghaire', 'Unit 4a, The Pavillions, Marine Road')
-on conflict (slug) do nothing;
+insert into public.restaurant_places (restaurant_id, place_id, relation, walk_minutes, own_row, sort_order)
+select r.id, p.id, 'walk', 2, true, 0
+from public.restaurants r
+join public.places p on p.ticketmaster_venue_id = 'KovZ9177WYV'
+where r.slug = 'point-campus'
+on conflict (restaurant_id, place_id) do nothing;
 
 
 -- ── Who we buy from ──────────────────────────────────────────────────────
@@ -159,3 +181,10 @@ select cron.unschedule('record-logins')
 where exists (select 1 from cron.job where jobname = 'record-logins');
 
 select cron.schedule('record-logins', '*/10 * * * *', $$select public.record_logins()$$);
+
+-- A leaver's login switched off the night after their last day, at 00:05 UTC.
+-- See switch_off_leavers in schema.sql.
+select cron.unschedule('switch-off-leavers')
+where exists (select 1 from cron.job where jobname = 'switch-off-leavers');
+
+select cron.schedule('switch-off-leavers', '5 0 * * *', $$select public.switch_off_leavers()$$);

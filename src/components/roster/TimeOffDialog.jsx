@@ -5,17 +5,19 @@ import ModalSection from '@/components/ui/ModalSection'
 import { supabase } from '@/lib/supabase'
 import { friendlyError } from '@/lib/errors'
 import { useConfirm } from '@/context/confirm'
-import { fullDate } from '@/lib/dates'
+import { fullDate, shortDate, dayLabel } from '@/lib/dates'
 import { numberField } from '@/lib/numberInput'
-import { modalFooter, secondaryButton, badge, rowButton, labelClass, fieldClass } from '@/lib/controlStyles'
+import {
+    modalFooter, primaryButton, secondaryButton, badge, rowButton, labelClass, fieldClass, hintClass,
+} from '@/lib/controlStyles'
+import ErrorBanner from '@/components/ui/ErrorBanner'
+import Notice from '@/components/ui/Notice'
 import {
     ABSENCE_KINDS, kindOf, kindLabel, takesHours, sortAbsences, absenceRange,
     absenceDays, absenceProblem, overlappingAbsence,
 } from '@/lib/absences'
 import { shiftsHit, asCleared, isPartDay, partWords } from '@/lib/timeOff'
 import { shortTime } from '@/lib/roster'
-import { dayName } from '@/lib/events'
-import { shortDate } from '@/lib/dates'
 
 // The days somebody is not there.
 //
@@ -180,13 +182,12 @@ export default function TimeOffDialog({
         setError('')
 
         const clearing = freeing ? clashing : []
-        if (clearing.length > 0) {
-            const { error: delErr } = await supabase.from('roster_shifts')
-                .delete().in('id', clearing.map(x => x.id))
-            if (delErr) { setSaving(false); setError(friendlyError(delErr)); return }
-        }
 
-        const { error: err } = editing
+        // The time off first, carrying what it takes off, and the shifts only
+        // once that is written. The other way round, a save that failed left
+        // the shifts gone and nothing saying what they had been, so the week
+        // could not ask for cover. The new row is kept, see below.
+        const { data: saved, error: err } = editing
             ? await supabase.from('absences').update(toRow()).eq('id', editing.id)
             : await supabase.from('absences').insert({
                 ...toRow(),
@@ -196,20 +197,41 @@ export default function TimeOffDialog({
                 status: 'approved',
                 created_by: userId,
                 cleared_shifts: clearing.length > 0 ? clearing.map(asCleared) : null,
-            })
+            }).select().single()
+
+        if (err) { setSaving(false); setError(friendlyError(err)); return }
+
+        // If this fails the time off is still right and the shifts are still
+        // there, and the roster warns about a shift on a day somebody is away,
+        // so nothing is lost or hidden.
+        //
+        // The form then holds the row it just wrote, as if Edit had been
+        // pressed on it. Left as a new one, with the button to free the day
+        // still on it, pressing again after the error wrote the same time off
+        // a second time, and a holiday's hours counted twice. Only ever a new
+        // row here: nothing is cleared while editing.
+        if (clearing.length > 0) {
+            const { error: delErr } = await supabase.from('roster_shifts')
+                .delete().in('id', clearing.map(x => x.id))
+            if (delErr) {
+                setSaving(false)
+                setEditing(saved)
+                setError(`Saved, but the shifts are still on the roster. Remove them there. ${friendlyError(delErr)}`)
+                reload()
+                return
+            }
+        }
 
         setSaving(false)
-        if (err) { setError(friendlyError(err)); return }
-
         openNew()
         reload()
     }
 
     async function remove(absence) {
         const ok = await confirm({
-            title: 'Take this off the record?',
-            message: `${kindLabel(absence.kind)}, ${absenceRange(absence, fullDate)}. It goes for good, so this is for one typed in by mistake rather than for one that has been and gone.`,
-            confirmLabel: 'Take it off',
+            title: 'Delete this time off?',
+            message: `${kindLabel(absence.kind)}, ${absenceRange(absence, fullDate)}. Only delete time off that was entered by mistake. Time off that has already happened should stay on record.`,
+            confirmLabel: 'Delete',
             tone: 'danger',
         })
         if (!ok) return
@@ -271,7 +293,7 @@ export default function TimeOffDialog({
                                 onChange={e => change('endsOn', e.target.value)}
                                 className={fieldClass}
                             />
-                            <p className="text-xs text-muted mt-1">
+                            <p className={hintClass}>
                                 Leave it empty for a single day.
                             </p>
                         </div>
@@ -294,8 +316,8 @@ export default function TimeOffDialog({
                                     className={`${fieldClass} text-right`}
                                     placeholder="0.00"
                                 />
-                                <p className="text-xs text-muted mt-1">
-                                    Off the payslip. The app holds no entitlement.
+                                <p className={hintClass}>
+                                    Copy this from the payslip. The Hub does not track holiday allowance.
                                 </p>
                             </div>
                         )}
@@ -332,7 +354,7 @@ export default function TimeOffDialog({
                                         aria-label="Can work until"
                                         />
                                 </div>
-                                <p className="text-xs text-muted mt-1">
+                                <p className={hintClass}>
                                     The hours they can still work. Leave both empty for the whole day,
                                     or fill one in for somebody leaving early or starting late.
                                 </p>
@@ -355,50 +377,51 @@ export default function TimeOffDialog({
                         <p className="text-xs text-amber-700 mt-3">
                             {person?.full_name} already has {kindLabel(clash.kind).toLowerCase()} down for
                             {' '}{absenceRange(clash, fullDate)}. That is fine if they went sick during a
-                            holiday, and worth a look if it is the same week typed twice.
+                            holiday. Check it is not the same time off entered twice.
                         </p>
                     )}
 
-                    {(problem || error) && (
-                        <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mt-3">{problem || error}</p>
-                    )}
+                    {/* What is wrong with what is typed, as it is typed, and
+                        apart from a save that failed, which is the alert. */}
+                    {problem && <p className="text-sm text-red-700 mt-3">{problem}</p>}
+                    <ErrorBanner className="mt-3">{error}</ErrorBanner>
 
                     {/* What this empties. Somebody going off sick this morning
                         is the case that matters: the shifts are already out and
                         somebody has to cover them. */}
                     {!problem && clashing.length > 0 && (
-                        <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2.5 mt-3">
-                            <p className="text-sm font-semibold text-red-800">
-                                {person?.full_name || 'They'} {clashing.length === 1 ? 'is' : 'is'} rostered on{' '}
-                                {clashing.length} of {clashing.length === 1 ? 'these days' : 'these days'}
+                        <Notice tone="urgent" className="mt-3">
+                            <p className="font-semibold">
+                                {person?.full_name || 'They'} {person?.full_name ? 'has' : 'have'} {clashing.length}{' '}
+                                {clashing.length === 1 ? 'shift' : 'shifts'} on these days
                             </p>
                             <ul className="text-xs text-red-700 mt-1 space-y-0.5">
                                 {clashing.map(x => (
                                     <li key={x.id}>
-                                        {dayName(x.shift_date)} {shortDate(x.shift_date)},{' '}
+                                        {dayLabel(x.shift_date)},{' '}
                                         {shortTime(x.starts_at)} to {shortTime(x.ends_at)}
                                     </li>
                                 ))}
                             </ul>
-                        </div>
+                        </Notice>
                     )}
 
                     <div className="flex flex-wrap gap-2 mt-4">
                         <button
                             type="submit"
                             disabled={saving || !!problem}
-                            className="px-5 py-2 bg-accent text-white text-sm font-semibold rounded-lg hover:bg-orange-600 disabled:opacity-50"
+                            className={primaryButton('lg')}
                         >
-                            {saving ? 'Saving...' : editing ? 'Save it' : clashing.length > 0 ? 'Add it, leave the shifts' : 'Add it'}
+                            {saving ? 'Saving...' : editing ? 'Save' : clashing.length > 0 ? 'Add and keep shifts' : 'Add time off'}
                         </button>
                         {!editing && clashing.length > 0 && (
                             <button
                                 type="button"
                                 onClick={e => save(e, true)}
                                 disabled={saving || !!problem}
-                                className="px-5 py-2 bg-green-brand text-white text-sm font-semibold rounded-lg hover:bg-green-brand/90 disabled:opacity-50"
+                                className={primaryButton('lg', 'good')}
                             >
-                                Add it and free {clashing.length === 1 ? 'that day' : `those ${clashing.length} days`}
+                                Add and remove {clashing.length === 1 ? '1 shift' : `${clashing.length} shifts`}
                             </button>
                         )}
                         {editing && (
@@ -439,7 +462,7 @@ export default function TimeOffDialog({
                                                 </span>
                                             )}
                                             {absence.hours != null && (
-                                                <span className="font-normal text-gray-500">
+                                                <span className="font-normal text-muted">
                                                     {' '}· {Number(absence.hours).toFixed(2)} hours
                                                 </span>
                                             )}
@@ -468,7 +491,7 @@ export default function TimeOffDialog({
                                             onClick={() => remove(absence)}
                                             className={rowButton('danger')}
                                         >
-                                            Remove
+                                            Delete
                                         </button>
                                     </span>
                                 </div>

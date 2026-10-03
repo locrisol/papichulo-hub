@@ -31,13 +31,13 @@ describe('ShowInactiveButton', () => {
     it.each(['store_manager', 'owner', 'super_admin'])('is there for a %s', role => {
         asRole(role)
         render(<ShowInactiveButton showing={false} onToggle={() => {}} />)
-        expect(screen.getByRole('button', { name: 'Show Inactive' })).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Show inactive' })).toBeInTheDocument()
     })
 
     it('says how to turn it off once it is on', () => {
         asRole('owner')
         render(<ShowInactiveButton showing onToggle={() => {}} />)
-        expect(screen.getByRole('button', { name: 'Hide Inactive' })).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Hide inactive' })).toBeInTheDocument()
     })
 
     it('says whether it is on, for anybody not reading the colour', () => {
@@ -52,5 +52,20 @@ describe('ShowInactiveButton', () => {
         render(<ShowInactiveButton showing={false} onToggle={onToggle} />)
         await userEvent.click(screen.getByRole('button'))
         expect(onToggle).toHaveBeenCalledOnce()
+    })
+})
+
+describe('ShowInactiveButton, how it looks', () => {
+    it('is the ordinary secondary button when off', async () => {
+        const { secondaryButton } = await import('@/lib/controlStyles')
+        asRole('owner')
+        render(<ShowInactiveButton showing={false} onToggle={() => {}} />)
+        expect(screen.getByRole('button').className).toBe(secondaryButton)
+    })
+
+    it('is amber when on', () => {
+        asRole('owner')
+        render(<ShowInactiveButton showing onToggle={() => {}} />)
+        expect(screen.getByRole('button').className).toContain('bg-amber-50 text-amber-800')
     })
 })

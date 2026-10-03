@@ -1,6 +1,5 @@
 import Modal from '@/components/ui/Modal'
-import { fullDate } from '@/lib/dates'
-import { dayName } from '@/lib/events'
+import { fullDate, dayName } from '@/lib/dates'
 import { badge, modalFooter, secondaryButton, primaryButton } from '@/lib/controlStyles'
 import { kindTag, kindLabel, scopeLabel, timeLabel, labelsOf, runsMoreThanADay } from '@/lib/diary'
 
@@ -32,7 +31,7 @@ export default function DiaryEntryModal({ entry, restaurants, canEdit, onEdit, o
     if (entry.contact_name) rows.push({ label: 'Who to contact', value: entry.contact_name })
     if (entry.contact_detail) rows.push({ label: 'Phone or email', value: entry.contact_detail })
     if (entry.status && entry.status !== 'confirmed') {
-        rows.push({ label: 'How sure', value: entry.status })
+        rows.push({ label: 'Status', value: { enquiry: 'Enquiry, not confirmed yet', done: 'Done', cancelled: 'Cancelled' }[entry.status] || entry.status })
     }
 
     // Said out loud, because an entry that quietly stayed in the Hub looks
@@ -40,8 +39,8 @@ export default function DiaryEntryModal({ entry, restaurants, canEdit, onEdit, o
     // meant to leave.
     if (entry.scope !== 'private') {
         rows.push({
-            label: 'Google',
-            value: entry.google_synced_at ? 'On the calendar' : 'Not on the calendar',
+            label: 'Google calendar',
+            value: entry.google_synced_at ? 'Added' : 'Not added',
         })
     }
 

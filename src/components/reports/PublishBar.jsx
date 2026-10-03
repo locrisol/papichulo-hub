@@ -1,5 +1,7 @@
-import { secondaryButton } from '@/lib/controlStyles'
-import { fullDate } from '@/lib/dates'
+import { Link } from 'react-router-dom'
+import { primaryButton, secondaryButton, rowButton } from '@/lib/controlStyles'
+import { stampDate } from '@/lib/dates'
+import { isCorrection, mailMissing } from '@/lib/weeklyReport'
 
 // The bar that finishes a report, or re-opens one.
 //
@@ -22,17 +24,46 @@ import { fullDate } from '@/lib/dates'
 // knowing whether five people have the week or nobody does.
 function Outcome({ children }) {
     return (
-        <p className="w-full text-sm text-sidebar bg-cream border border-border rounded-lg px-3 py-2 mt-3">
+        <p className="w-full text-sm text-sidebar bg-app-bg border border-border rounded-lg px-3 py-2 mt-3">
             {children}
         </p>
     )
 }
 
 export default function PublishBar({
-    report, blockers, warnings, canWrite, busy, mailed, onPublish, onReopen, onTest,
+    report, blockers, warnings, canWrite, busy, mailed, onPublish, onReopen, onTest, onSend,
 }) {
     const sent = report.status === 'published'
-    const correction = (report.send_count || 0) > 0
+    const reopened = (report.send_count || 0) > 0
+    const correction = isCorrection(report)
+
+    // Frozen and published, and the mail never went. This used to say Sent
+    // like any other, so after one reload nothing on the Hub said the owners
+    // had nothing. Sending it from here is the same report going out for the
+    // first time: nothing is frozen again and it is not a correction.
+    if (sent && mailMissing(report)) {
+        return (
+            <div className="rounded-xl border border-accent/50 bg-accent-light/50 p-4 flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0">
+                    <p className="text-sm font-bold text-sidebar">Published, not sent</p>
+                    <p className="text-xs text-muted mt-0.5">
+                        The figures are frozen, but the mail did not go out, so nobody has received this report yet.
+                    </p>
+                </div>
+                {canWrite && (
+                    <div className="flex flex-wrap gap-2">
+                        <button type="button" onClick={onReopen} disabled={busy} className={secondaryButton}>
+                            Reopen
+                        </button>
+                        <button type="button" onClick={onSend} disabled={busy} className={primaryButton()}>
+                            {busy ? 'Sending...' : 'Send report'}
+                        </button>
+                    </div>
+                )}
+                {mailed && <Outcome>{mailed}</Outcome>}
+            </div>
+        )
+    }
 
     if (sent) {
         return (
@@ -40,7 +71,7 @@ export default function PublishBar({
                 <div className="min-w-0">
                     <p className="text-sm font-bold text-green-800">
                         Sent{report.send_count > 1 ? ` ${report.send_count} times` : ''}
-                        {report.published_at && `, last on ${fullDate(report.published_at.slice(0, 10))}`}
+                        {report.published_at && `, last on ${stampDate(report.published_at)}`}
                     </p>
                     <p className="text-xs text-green-800/80 mt-0.5">
                         The figures on it are frozen as they were that day, so an invoice entered since cannot
@@ -49,7 +80,7 @@ export default function PublishBar({
                 </div>
                 {canWrite && (
                     <button onClick={onReopen} disabled={busy} className={secondaryButton}>
-                        {busy ? 'Re-opening' : 'Re-open to correct it'}
+                        {busy ? 'Reopening...' : 'Reopen report'}
                     </button>
                 )}
                 {mailed && <Outcome>{mailed}</Outcome>}
@@ -71,12 +102,14 @@ export default function PublishBar({
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0">
                     <p className="text-sm font-bold text-sidebar">
-                        {correction ? 'Re-opened' : 'Not sent yet'}
+                        {reopened ? 'Reopened' : 'Not sent yet'}
                     </p>
                     <p className="text-xs text-muted mt-0.5">
                         {correction
                             ? 'Publishing again sends a second mail marked as a correction, to everyone who got the first.'
-                            : 'Publishing freezes the figures and mails the report out.'}
+                            : reopened
+                                ? 'Nobody got it the first time, so publishing sends it as the first mail, not a correction.'
+                                : 'Publishing freezes the figures and mails the report out.'}
                     </p>
                 </div>
 
@@ -91,17 +124,17 @@ export default function PublishBar({
                             disabled={busy}
                             className={secondaryButton}
                         >
-                            {busy ? 'Working' : 'Send a test'}
+                            {busy ? 'Working...' : 'Send a test'}
                         </button>
                     )}
                     <button
                         onClick={onPublish}
                         disabled={busy || stopped}
-                        className="px-4 py-2 bg-accent text-white rounded-lg text-sm font-semibold shadow-sm hover:bg-accent-ink transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className={primaryButton()}
                     >
                         {busy
-                            ? 'Publishing'
-                            : correction ? 'Publish again and re-send' : 'Publish and send'}
+                            ? 'Publishing...'
+                            : correction ? 'Publish again and resend' : 'Publish and send'}
                     </button>
                 </div>
             </div>
@@ -119,18 +152,31 @@ export default function PublishBar({
             {!stopped && onTest && (
                 <p className="text-xs text-muted mt-2">
                     A test goes to everyone on the list below except the owners, marked as a test.
-                    Nothing is frozen and it does not count as a send, so try it as many times as
-                    it takes.
+                    Nothing is frozen and it does not count as a send, so you can send as many tests
+                    as you need.
                 </p>
             )}
 
             {stopped && (
                 <div className="mt-3 pt-3 border-t border-accent/30">
                     <p className="text-xs font-bold text-accent-ink uppercase tracking-wider mb-1.5">
-                        {blockers.length === 1 ? 'One thing first' : `${blockers.length} things first`}
+                        Not ready to send
                     </p>
+                    {/* A sentence, or a sentence with the place to sort it out,
+                        when that place is another screen. A button rather than
+                        a link in the sentence, which on a phone is hard to hit
+                        and reads as prose. */}
                     <ul className="text-sm text-accent-ink space-y-1 list-disc pl-5">
-                        {blockers.map(b => <li key={b}>{b}</li>)}
+                        {blockers.map(b => (
+                            <li key={b.text || b}>
+                                {b.text || b}
+                                {b.to && (
+                                    <div className="mt-1.5">
+                                        <Link to={b.to} className={`${rowButton()} inline-block`}>{b.link}</Link>
+                                    </div>
+                                )}
+                            </li>
+                        ))}
                     </ul>
                 </div>
             )}
@@ -138,13 +184,13 @@ export default function PublishBar({
             {!stopped && warnings.length > 0 && (
                 <div className="mt-3 pt-3 border-t border-border">
                     <p className="text-xs font-bold text-muted uppercase tracking-wider mb-1.5">
-                        Worth knowing before you send it
+                        Warnings
                     </p>
                     <ul className="text-sm text-muted space-y-1 list-disc pl-5">
                         {warnings.map(w => <li key={w}>{w}</li>)}
                     </ul>
                     <p className="text-xs text-muted mt-2">
-                        None of these stop it going out. If the week really was like that, send it.
+                        These do not stop the report being sent. If the week really was like that, you can send it.
                     </p>
                 </div>
             )}

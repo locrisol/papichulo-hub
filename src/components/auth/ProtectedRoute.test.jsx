@@ -7,7 +7,7 @@ const auth = { session: null, user: null, loading: true, error: null }
 const restaurant = { error: null }
 
 vi.mock('@/context/auth', () => ({ useAuth: () => auth, NO_ACCESS: 'no access' }))
-vi.mock('@/context/restaurant', () => ({ useRestaurant: () => restaurant }))
+vi.mock('@/context/restaurant', () => ({ useRestaurant: () => restaurant, NO_RESTAURANT: 'no restaurant' }))
 vi.mock('@/lib/supabase', () => ({
     supabase: { auth: { signOut: vi.fn(() => Promise.resolve({ error: null })) } },
 }))
@@ -48,6 +48,36 @@ describe('ProtectedRoute', () => {
         expect(screen.getByText('the app')).toBeInTheDocument()
     })
 
+    // Every account so far was made with a password somebody else picked.
+    describe('somebody who has never chosen their own password', () => {
+        it('is asked to choose one before anything else', () => {
+            Object.assign(auth, { loading: false, session: { user: { id: 'u1' } }, user: { id: 'u1', password_set_at: null } })
+            show()
+            expect(screen.getByRole('heading', { name: 'Choose your own password' })).toBeInTheDocument()
+            expect(screen.queryByText('the app')).not.toBeInTheDocument()
+        })
+
+        it('goes straight in once they have', () => {
+            Object.assign(auth, { loading: false, session: { user: { id: 'u1' } }, user: { id: 'u1', password_set_at: '2026-10-03T12:00:00Z' } })
+            show()
+            expect(screen.getByText('the app')).toBeInTheDocument()
+        })
+
+        // A database without the column at all, where nothing could fill it.
+        it('does not ask while the database cannot record the answer', () => {
+            Object.assign(auth, { loading: false, session: { user: { id: 'u1' } }, user: { id: 'u1' } })
+            show()
+            expect(screen.getByText('the app')).toBeInTheDocument()
+        })
+
+        // The database tests sign in as these with the password they have.
+        it('is never a developer account', () => {
+            Object.assign(auth, { loading: false, session: { user: { id: 'u1' } }, user: { id: 'u1', password_set_at: null, is_test: true } })
+            show()
+            expect(screen.getByText('the app')).toBeInTheDocument()
+        })
+    })
+
     // The three below are the ones that used to have no answer. Each of them
     // left every page sitting at Loading with the reason only in the console.
     it('says so when the signed-in user cannot be read, instead of waiting forever', () => {
@@ -76,14 +106,47 @@ describe('ProtectedRoute', () => {
 
     // Signing in again does nothing for a login that is switched off, after a
     // last day or by a manager, so that screen must not say it will.
-    it('tells somebody whose login is switched off, and who to ask', () => {
+    it('tells somebody whose account is deactivated, and who to ask', () => {
         Object.assign(auth, { loading: false, session: { user: { id: 'u1' } }, error: 'no access' })
         show()
-        expect(screen.getByText('Your login is switched off')).toBeInTheDocument()
+        expect(screen.getByText('Your account is deactivated')).toBeInTheDocument()
         expect(screen.getByText(/ask your manager/)).toBeInTheDocument()
         expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
         expect(screen.queryByText(/usually fixes it/)).not.toBeInTheDocument()
         expect(screen.queryByText('no access')).not.toBeInTheDocument()
+    })
+
+    // A new account has no restaurant until somebody sets one. Signing in
+    // again does nothing for that either, and the reason from the database
+    // means nothing to the person reading it.
+    it('tells somebody whose account has no restaurant yet, and who to ask', () => {
+        Object.assign(auth, { loading: false, session: { user: { id: 'u1' } } })
+        restaurant.error = 'no restaurant'
+        show()
+        expect(screen.getByText('Your account is not linked to a restaurant')).toBeInTheDocument()
+        expect(screen.getByText(/Ask your manager/)).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
+        expect(screen.queryByText(/usually fixes it/)).not.toBeInTheDocument()
+        expect(screen.queryByText('no restaurant')).not.toBeInTheDocument()
+    })
+
+    // Opening the app with no signal showed "TypeError: Failed to fetch" and
+    // said signing out would fix it, which with no signal it cannot.
+    it('says the connection failed and offers to try again, not to sign out', () => {
+        Object.assign(auth, { loading: false, session: { user: { id: 'u1' } }, error: 'TypeError: Failed to fetch' })
+        show()
+        expect(screen.getByText('Could not reach the Hub')).toBeInTheDocument()
+        expect(screen.getByText('Check your connection, then try again.')).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: /Sign out/ })).not.toBeInTheDocument()
+        expect(screen.queryByText(/Failed to fetch/)).not.toBeInTheDocument()
+    })
+
+    it('says the same when it was the restaurant read that could not get through', () => {
+        Object.assign(auth, { loading: false, session: { user: { id: 'u1' } } })
+        restaurant.error = 'NetworkError when attempting to fetch resource.'
+        show()
+        expect(screen.getByText('Could not reach the Hub')).toBeInTheDocument()
     })
 
     // A good sign-in has a session before it has a user, and the error is only

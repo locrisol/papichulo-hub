@@ -17,19 +17,63 @@ import { vi } from 'vitest'
 // the end of it. Anything the app calls that is not listed here should fail
 // loudly rather than return undefined and produce a confusing error three
 // frames later.
+//
+// A list comes back the way the real API hands it over: a thousand rows at
+// most (max_rows in config.toml), or the page asked for with range. So a read
+// that forgets to page stops short here too, the same as it does on live.
+export const MAX_ROWS = 1000
+
 export function makeQuery(result = { data: [], error: null }) {
     const chain = {}
     const steps = [
         'select', 'insert', 'update', 'upsert', 'delete', 'eq', 'neq', 'gt',
         'gte', 'lt', 'lte', 'in', 'is', 'or', 'not', 'like', 'ilike', 'order',
-        'limit', 'range', 'filter', 'contains', 'overlaps',
+        'limit', 'filter', 'contains', 'overlaps',
     ]
     for (const step of steps) chain[step] = vi.fn(() => chain)
 
+    let rows = [0, MAX_ROWS - 1]
+    chain.range = vi.fn((from, to) => {
+        rows = [from, Math.min(to, from + MAX_ROWS - 1)]
+        return chain
+    })
+    const answer = () => (Array.isArray(result.data)
+        ? { ...result, data: result.data.slice(rows[0], rows[1] + 1) }
+        : result)
+
     chain.single = vi.fn(() => Promise.resolve(result))
     chain.maybeSingle = vi.fn(() => Promise.resolve(result))
-    chain.then = (resolve, reject) => Promise.resolve(result).then(resolve, reject)
+    chain.then = (resolve, reject) => Promise.resolve(answer()).then(resolve, reject)
     chain.result = result
+    return chain
+}
+
+// A write still on its way, for a test about what happens meanwhile: a refresh
+// that lands before the save does, or a second tap on Save on a slow phone. It
+// answers when release() is called.
+export function heldQuery(result = { data: null, error: null }) {
+    let release
+    const answered = new Promise(resolve => { release = () => resolve(result) })
+    const chain = makeQuery(result)
+    chain.then = (resolve, reject) => answered.then(resolve, reject)
+    chain.single = vi.fn(() => answered)
+    chain.maybeSingle = chain.single
+    return { chain, release: () => release() }
+}
+
+// A table that answers for the filters it was asked, the way the database
+// would, for a test about which rows a page asks for rather than what it does
+// with whatever comes back. Only eq and in narrow the rows; the rest of the
+// chain is taken and ignored.
+export function tableOf(rows) {
+    const keep = []
+    const chain = makeQuery()
+    chain.eq = vi.fn((column, value) => { keep.push(r => r[column] === value); return chain })
+    chain.in = vi.fn((column, values) => { keep.push(r => values.includes(r[column])); return chain })
+    const answer = () => ({ data: rows.filter(r => keep.every(k => k(r))), error: null })
+    chain.then = (resolve, reject) => Promise.resolve(answer()).then(resolve, reject)
+    chain.single = vi.fn(() => Promise.resolve({ ...answer(), data: answer().data[0] ?? null }))
+    chain.maybeSingle = chain.single
     return chain
 }
 

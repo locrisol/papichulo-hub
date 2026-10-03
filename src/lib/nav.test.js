@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { navItems, landingChoices, landingFor, pageLabel, navTarget } from '@/lib/nav'
+import { navItems, landingChoices, landingFor, pageLabel, navTarget, activeNavPath } from '@/lib/nav'
+import { can } from '@/lib/access'
 
 const person = (role, extra = {}) => ({ id: 'u1', role, ...extra })
 
@@ -20,17 +21,62 @@ describe('the nav itself', () => {
         expect(navItems.filter(n => !n.path.startsWith('/'))).toEqual([])
     })
 
-    // Migration 010 puts a CHECK on the column, and a path that does not match
+    // users_landing_page_is_a_path is a CHECK on the column, and a path that does not match
     // it would save nowhere while the screen said it had.
     it('writes every path in a shape the database will accept', () => {
         const shape = /^\/[a-z0-9/-]{0,60}$/
         expect(navItems.filter(n => !shape.test(n.path)).map(n => n.path)).toEqual([])
+    })
+
+    // Twenty items used to share eight pictures, and Delivery problems had
+    // the bin that Waste uses. The picture is how the eye finds one.
+    it('gives every item a picture of its own', () => {
+        const icons = navItems.map(n => n.icon)
+        expect(icons.every(Boolean)).toBe(true)
+        expect(icons).toEqual([...new Set(icons)])
+    })
+})
+
+describe('which item is lit for the page', () => {
+    const lit = path => activeNavPath(navItems, path)
+
+    it('lights the item for its own page', () => {
+        expect(lit('/roster')).toBe('/roster')
+    })
+
+    // Pages reached from a list are not on the menu, so the list they came
+    // from lights instead of nothing.
+    it('lights the list a detail page belongs to', () => {
+        expect(lit('/reports/abc-123')).toBe('/reports')
+        expect(lit('/invoices/history')).toBe('/invoices')
+        expect(lit('/catalogue/products/p1')).toBe('/catalogue/products')
+    })
+
+    // /sales/weekly starts with /sales too, so only the longest one counts.
+    it('keeps a page that has its own item on that item', () => {
+        expect(lit('/sales/weekly')).toBe('/sales/weekly')
+        expect(lit('/invoices/claims')).toBe('/invoices/claims')
+        expect(lit('/invoices/import')).toBe('/invoices/import')
+        expect(lit('/sales')).toBe('/sales')
+    })
+
+    // /salesman is not under /sales.
+    it('only matches a whole part of the address', () => {
+        expect(lit('/salesman')).toBe(null)
+        expect(lit('/')).toBe(null)
     })
 })
 
 describe('what somebody can be offered as a landing page', () => {
     // His wording, and it is the whole rule. An employee lands where an
     // employee lands.
+    // Every role changes its own password there.
+    it('shows Your account to every role', () => {
+        for (const role of ['employee', 'owner', 'store_manager', 'super_admin']) {
+            expect(navItems.filter(n => can(person(role), n.roles)).map(n => n.label)).toContain('Your account')
+        }
+    })
+
     it('offers an employee nothing', () => {
         expect(landingChoices(person('employee'))).toEqual([])
     })
@@ -101,7 +147,7 @@ describe('saying what a page is called', () => {
 
 describe('the address a link goes to', () => {
     // Without the search, the day form sends a wide screen to the weekly grid
-    // and Daily Sales looks like a link that does nothing.
+    // and Daily sales looks like a link that does nothing.
     it('carries the search where an item has one', () => {
         expect(navTarget(navItems.find(n => n.path === '/sales'))).toBe('/sales?view=day')
     })

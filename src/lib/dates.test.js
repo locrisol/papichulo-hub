@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { toISODate, todayISO, weekStartOf, weekDates, shortDate, addDays, monthStart, addMonths, monthLabel, fullDate, weekMonthLabel, weekNumber, weekRange , stampDate, stampDateTime, monthYearOf } from '@/lib/dates'
+import { toISODate, todayISO, weekStartOf, weekDates, shortDate, dayLabel, dayList, addDays, monthStart, addMonths, monthLabel, monthName, fullDate, weekMonthLabel, weekNumber, weekRange , stampDate, stampDateTime, monthYearOf, clockTime, stampDay, WEEKDAY_NAMES, daysBetween } from '@/lib/dates'
 
 describe('toISODate', () => {
     it('formats a date as YYYY-MM-DD', () => {
@@ -108,6 +108,20 @@ describe('shortDate', () => {
     })
 })
 
+describe('dayLabel and dayList', () => {
+    it('names a day with its date', () => {
+        expect(dayLabel('2026-09-08')).toBe('Tue 8 Sept')
+    })
+
+    it('lists days the way a sentence would', () => {
+        expect(dayList([])).toBe('')
+        expect(dayList(['2026-09-07'])).toBe('Mon 7 Sept')
+        expect(dayList(['2026-09-07', '2026-09-08'])).toBe('Mon 7 Sept and Tue 8 Sept')
+        expect(dayList(['2026-09-07', '2026-09-08', '2026-09-09']))
+            .toBe('Mon 7 Sept, Tue 8 Sept and Wed 9 Sept')
+    })
+})
+
 describe('addDays', () => {
     it('moves forward', () => {
         expect(addDays('2026-07-19', 1)).toBe('2026-07-20')
@@ -162,15 +176,34 @@ describe('addMonths', () => {
         expect(addMonths('2026-01-01', -1)).toBe('2025-12-01')
     })
 
-    // Why the comment on the function says to call it on the first of a month.
     it('is safe from the first of any month, including into February', () => {
         expect(addMonths('2026-01-01', 1)).toBe('2026-02-01')
+    })
+
+    // Plain Date arithmetic says 31 January and a month is 3 March, which is a
+    // date two days into a month nobody asked for.
+    it('stops at the end of a shorter month', () => {
+        expect(addMonths('2026-01-31', 1)).toBe('2026-02-28')
+        expect(addMonths('2026-11-30', 3)).toBe('2027-02-28')
+        expect(addMonths('2028-01-31', 1)).toBe('2028-02-29')
+        expect(addMonths('2026-03-31', -1)).toBe('2026-02-28')
+    })
+
+    it('keeps the day where the month has it', () => {
+        expect(addMonths('2026-06-12', 3)).toBe('2026-09-12')
     })
 })
 
 describe('monthLabel', () => {
     it('gives the month and year', () => {
         expect(monthLabel('2026-08-01')).toBe('August 2026')
+    })
+})
+
+describe('monthName', () => {
+    it('gives the month alone, whatever day of it', () => {
+        expect(monthName('2026-08-01')).toBe('August')
+        expect(monthName('2026-09-30')).toBe('September')
     })
 })
 
@@ -276,5 +309,89 @@ describe('monthYearOf', () => {
 
     it('gives nothing for nothing', () => {
         expect(monthYearOf(undefined)).toBe('')
+    })
+})
+
+// Nothing pins the timezone the tests run in, so these build their stamps from
+// local parts and read the same in Dublin and on a UTC build machine.
+describe('clockTime', () => {
+    it('gives the time of a stamp', () => {
+        expect(clockTime(new Date(2026, 7, 23, 14, 5).toISOString())).toBe('14:05')
+    })
+
+    it('pads a single digit hour', () => {
+        expect(clockTime(new Date(2026, 7, 23, 9, 5))).toBe('09:05')
+    })
+
+    it('is the time stampDateTime prints', () => {
+        const stamp = new Date(2026, 7, 23, 22, 40).toISOString()
+        expect(stampDateTime(stamp).endsWith(`, ${clockTime(stamp)}`)).toBe(true)
+    })
+
+    it('gives nothing for nothing', () => {
+        expect(clockTime(null)).toBe('')
+        expect(clockTime('not a time')).toBe('')
+    })
+})
+
+describe('stampDay', () => {
+    // Quarter past midnight in summer is still the previous evening in UTC,
+    // so slicing the stamp would give the 27th.
+    it('gives the local day of an early morning stamp', () => {
+        expect(stampDay(new Date(2026, 8, 28, 0, 15).toISOString())).toBe('2026-09-28')
+    })
+
+    it('gives the local day of a late evening stamp', () => {
+        const lateEvening = new Date(2026, 8, 27, 23, 30)
+        expect(stampDay(lateEvening.toISOString())).toBe('2026-09-27')
+        expect(stampDay(lateEvening)).toBe('2026-09-27')
+    })
+
+    it('gives nothing for nothing rather than the first of January 1970', () => {
+        expect(stampDay(null)).toBe('')
+        expect(stampDay('')).toBe('')
+        expect(stampDay('not a date')).toBe('')
+    })
+})
+
+describe('WEEKDAY_NAMES', () => {
+    it('starts on Sunday, like the weeks', () => {
+        expect(WEEKDAY_NAMES).toHaveLength(7)
+        expect(WEEKDAY_NAMES[0]).toBe('Sunday')
+        expect(WEEKDAY_NAMES[6]).toBe('Saturday')
+    })
+
+    it('lines up with getDay', () => {
+        // 27 September 2026 is a Sunday.
+        expect(WEEKDAY_NAMES[new Date(2026, 8, 27).getDay()]).toBe('Sunday')
+        expect(WEEKDAY_NAMES[new Date(2026, 8, 30).getDay()]).toBe('Wednesday')
+    })
+})
+
+describe('daysBetween', () => {
+    it('counts whole days', () => {
+        expect(daysBetween('2026-09-27', '2026-10-11')).toBe(14)
+        expect(daysBetween('2026-09-27', '2026-09-27')).toBe(0)
+    })
+
+    it('is negative going backwards', () => {
+        expect(daysBetween('2026-10-11', '2026-09-27')).toBe(-14)
+    })
+
+    // The clocks go back on 25 October 2026. A day that long is still one day.
+    it('is not moved by the clocks changing', () => {
+        expect(daysBetween('2026-10-24', '2026-10-26')).toBe(2)
+        expect(daysBetween('2026-10-18', '2026-11-01')).toBe(14)
+        expect(daysBetween('2026-03-28', '2026-03-30')).toBe(2)
+    })
+
+    it('crosses the end of a month and a year', () => {
+        expect(daysBetween('2026-12-27', '2027-01-02')).toBe(6)
+        expect(daysBetween('2028-02-28', '2028-03-01')).toBe(2)
+    })
+
+    it('is null when a date is missing', () => {
+        expect(daysBetween(null, '2026-09-27')).toBeNull()
+        expect(daysBetween('2026-09-27', '')).toBeNull()
     })
 })

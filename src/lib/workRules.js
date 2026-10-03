@@ -19,7 +19,8 @@ import { shiftHours, shiftMinutes, toMinutes, shortTime } from '@/lib/roster'
 import { outsideAvailability, windowsLabel, dayNameOf, availabilityOn, availabilityStart } from '@/lib/availability'
 import { absencesOn, kindPhrase, isPartDay } from '@/lib/absences'
 import { hitsShift, partWords } from '@/lib/timeOff'
-import { shortDate, fullDate, addDays } from '@/lib/dates'
+import { shortDate, fullDate, addDays, daysBetween } from '@/lib/dates'
+import { irishOffset } from '@/lib/clock'
 
 // What each immigration stamp allows, in hours a week.
 //
@@ -33,7 +34,7 @@ import { shortDate, fullDate, addDays } from '@/lib/dates'
 // thing worth saying.
 export const WORK_PERMISSIONS = [
     { value: '', label: 'Not recorded', term: null, holiday: null, expires: true },
-    { value: 'unrestricted', label: 'No restriction (citizen, EU, Stamp 4)', term: null, holiday: null, expires: false },
+    { value: 'unrestricted', label: 'No restriction (Irish, UK, EEA or Swiss citizen, or Stamp 4)', term: null, holiday: null, expires: false },
     { value: 'stamp2', label: 'Stamp 2 (student)', term: 20, holiday: 40, expires: true },
     { value: 'stamp2a', label: 'Stamp 2A (no permission to work)', term: 0, holiday: 0, expires: true },
     { value: 'stamp1', label: 'Stamp 1 (employment permit)', term: null, holiday: null, expires: true },
@@ -220,8 +221,27 @@ export function ageOn(dateOfBirth, date) {
 // falls in the week, which is the whole point: a shift last Saturday and a
 // shift next Monday both have a place on this line, and the week's own edges
 // stop being walls.
+//
+// **In real time, not on the clock face.** The night the clocks go forward,
+// eleven on Saturday to ten on Sunday is ten hours of rest, not eleven, and
+// the eleven hour rule is about the rest somebody actually gets. So each time
+// of day is taken back by the hour Irish summer time is ahead, the same
+// reading the timesheet's hours use.
+function momentOf(anchor, date, minutes) {
+    return daysBetween(anchor, date) * 1440 + minutes - irishOffset(date, minutes * 60) / 60
+}
+
 function placeOf(anchor, shift) {
-    return daysBetween(anchor, shift.shift_date) * 1440 + toMinutes(shift.starts_at)
+    return momentOf(anchor, shift.shift_date, toMinutes(shift.starts_at))
+}
+
+// Where a shift ends on the same line. An end at or before the start is the
+// next morning, the same allowance shiftMinutes makes.
+function endOf(anchor, shift) {
+    const from = toMinutes(shift.starts_at)
+    const to = toMinutes(shift.ends_at)
+    const date = to > from ? shift.shift_date : addDays(shift.shift_date, 1)
+    return momentOf(anchor, date, to)
 }
 
 function inOrder(shifts) {
@@ -262,13 +282,10 @@ export function longestRest(shifts, weekDates) {
 
     const previous = sorted.filter(s => s.shift_date < first).pop()
 
-    const startOf = s => placeOf(first, s)
-    const endOf = s => startOf(s) + shiftMinutes(s.starts_at, s.ends_at)
-
     const run = [...(previous ? [previous] : []), ...inWeek, next]
     let best = previous ? 0 : Infinity
     for (let i = 1; i < run.length; i++) {
-        best = Math.max(best, startOf(run[i]) - endOf(run[i - 1]))
+        best = Math.max(best, placeOf(first, run[i]) - endOf(first, run[i - 1]))
     }
     return best / 60
 }
@@ -288,8 +305,6 @@ export function shortestGap(shifts, weekDates) {
     if (!first || !last) return { hours: Infinity, after: null }
 
     const sorted = inOrder(shifts)
-    const startOf = s => placeOf(first, s)
-    const endOf = s => startOf(s) + shiftMinutes(s.starts_at, s.ends_at)
     const thisWeek = s => s.shift_date >= first && s.shift_date <= last
 
     let best = Infinity
@@ -313,7 +328,7 @@ export function shortestGap(shifts, weekDates) {
         // against.
         if (before.shift_date === then.shift_date) continue
 
-        const gap = startOf(then) - endOf(before)
+        const gap = placeOf(first, then) - endOf(first, before)
         if (gap < best) { best = gap; after = before }
     }
     return { hours: best / 60, after }
@@ -358,29 +373,30 @@ export function checkWeek({
 
             if (grace.covered && grace.sameDay) {
                 add('warn', 'permissionRenewedSameDay',
-                    `${name}'s permission ran out on ${on(employee.work_permission_expires)} and the `
-                    + `renewal was applied for that same day. The rule says `
-                    + 'before it ran out, so this one is worth confirming.')
+                    `${name}'s permission expired on ${on(employee.work_permission_expires)} and the `
+                    + `renewal was applied for that same day. The rule says it must be applied for `
+                    + 'before the expiry date, so check this one.')
             } else if (grace.covered) {
                 add('warn', 'permissionGrace',
-                    `${name}'s permission ran out on ${on(employee.work_permission_expires)} `
+                    `${name}'s permission expired on ${on(employee.work_permission_expires)} `
                     + `and a renewal was applied for on ${on(employee.permission_renewal_applied)}`
                     + `. They may keep working while it is processed.`)
             } else if (grace.lapsed) {
                 add(settings.permissionGrace?.afterBlocks ? 'block' : 'warn', 'permissionGraceOver',
-                    `${name}'s renewal, applied for on ${on(employee.permission_renewal_applied)}`
-                    + `, has been going more than ${grace.weeks} weeks. `
-                    + 'Worth checking where it stands.')
+                    `${name}'s permission expired on ${on(employee.work_permission_expires)}, more than `
+                    + `${grace.weeks} ${grace.weeks === 1 ? 'week' : 'weeks'} before this week ends. `
+                    + `The renewal was applied for on ${on(employee.permission_renewal_applied)}. `
+                    + 'Check where it stands.')
             } else if (grace.tooLate) {
                 // Applying after it ran out earns nothing. Saying which day
                 // they applied is the difference between a rule that looks
                 // broken and one somebody can act on.
                 add('block', 'permissionRenewedLate',
-                    `${name}'s permission ran out on ${on(employee.work_permission_expires)} `
+                    `${name}'s permission expired on ${on(employee.work_permission_expires)} `
                     + `and the renewal was not applied for until ${on(employee.permission_renewal_applied)}.`)
             } else {
                 add('block', 'permissionExpired',
-                    `${name}'s permission to work ran out on ${on(employee.work_permission_expires)}.`)
+                    `${name}'s permission to work expired on ${on(employee.work_permission_expires)}.`)
             }
         } else if (permission === 'expiring') {
             // A renewal already in means this is a date passing rather than
@@ -389,12 +405,12 @@ export function checkWeek({
             // reads as the app not having noticed.
             if (employee.permission_renewal_applied) {
                 add('warn', 'permissionExpiringRenewing',
-                    `${name}'s permission runs out on ${on(employee.work_permission_expires)}, `
+                    `${name}'s permission expires on ${on(employee.work_permission_expires)}, `
                     + `part way through this week, and a renewal was applied for on `
                     + `${on(employee.permission_renewal_applied)}.`)
             } else {
                 add('block', 'permissionExpiring',
-                    `${name}'s permission to work runs out on ${on(employee.work_permission_expires)}, part way through this week.`)
+                    `${name}'s permission to work expires on ${on(employee.work_permission_expires)}, part way through this week.`)
             }
         } else if (permission === 'soon') {
             // Still a warning either way. One is a job to do and the other is a
@@ -402,12 +418,12 @@ export function checkWeek({
             // sent three weeks ago is how a warning starts being ignored.
             if (employee.permission_renewal_applied) {
                 add('warn', 'permissionSoonRenewing',
-                    `${name}'s permission runs out on ${on(employee.work_permission_expires)}. `
+                    `${name}'s permission expires on ${on(employee.work_permission_expires)}. `
                     + `A renewal was applied for on ${on(employee.permission_renewal_applied)}`
                     + `.`)
             } else {
                 add('warn', 'permissionSoon',
-                    `${name}'s permission to work runs out on ${on(employee.work_permission_expires)}.`)
+                    `${name}'s permission to work expires on ${on(employee.work_permission_expires)}.`)
             }
         }
 
@@ -427,14 +443,35 @@ export function checkWeek({
             )
             if (food === 'expired') {
                 add('warn', 'foodSafetyExpired',
-                    `${name}'s food safety training ran out on ${on(employee.food_safety_expires)}.`)
+                    `${name}'s food safety training expired on ${on(employee.food_safety_expires)}.`)
             } else if (food === 'expiring' || food === 'soon') {
                 add('warn', 'foodSafetySoon',
-                    `${name}'s food safety training runs out on ${on(employee.food_safety_expires)}.`)
+                    `${name}'s food safety training expires on ${on(employee.food_safety_expires)}.`)
             }
         }
 
         if (mine.length === 0) continue
+
+        // Shifts on a day they do not work here, after their last day or
+        // before their first. A warning, because it is a mistake to put right
+        // rather than the law about the company, and it is the only thing that
+        // says these shifts are there: a week is often built before somebody
+        // gives notice, and those shifts go on counting in the hours and the
+        // headcount until somebody takes them off.
+        const daysOf = list => {
+            const days = [...new Set(list.map(s => s.shift_date))].sort().map(on)
+            return days.length > 1 ? `${days.slice(0, -1).join(', ')} and ${days.at(-1)}` : days[0]
+        }
+        const after = mine.filter(s => employee.ended_on && s.shift_date > employee.ended_on)
+        if (after.length > 0) {
+            add('warn', 'afterLastDay',
+                `${name}'s last day is ${on(employee.ended_on)}, and they are rostered after it on ${daysOf(after)}.`)
+        }
+        const before = mine.filter(s => employee.started_on && s.shift_date < employee.started_on)
+        if (before.length > 0) {
+            add('warn', 'beforeFirstDay',
+                `${name} starts on ${on(employee.started_on)}, and is rostered before then on ${daysOf(before)}.`)
+        }
 
         // The visa cap. On from the start and it blocks, because going over it
         // is the employer's offence rather than the employee's problem.
@@ -465,7 +502,7 @@ export function checkWeek({
                 }
                 const gap = shortestGap(around, weekDates)
                 if (gap.hours < 12) {
-                    add('warn', 'minorRest', `${name} is under 18 and has only ${gap.hours.toFixed(1)} hours between two shifts, against 12.`)
+                    add('warn', 'minorRest', `${name} is under 18 and has only ${gap.hours.toFixed(1)} hours between two shifts, and the minimum is 12.`)
                 }
             }
         }
@@ -527,7 +564,7 @@ export function checkWeek({
                 const first = off[0]
                 add('warn', 'timeOff', isPartDay(first)
                     ? `${name} is rostered ${shortTime(s.starts_at)} to ${shortTime(s.ends_at)} on ${shortDate(s.shift_date)} and ${partWords(first)}.`
-                    : `${name} is rostered on ${shortDate(s.shift_date)} and is down as ${kindPhrase(first.kind)}.`)
+                    : `${name} is rostered on ${shortDate(s.shift_date)} but is ${kindPhrase(first.kind)}.`)
             }
         }
 
@@ -535,7 +572,7 @@ export function checkWeek({
             const gap = shortestGap(around, weekDates)
             if (gap.hours < settings.dailyRest.hours) {
                 add('warn', 'dailyRest',
-                    `${name} has only ${gap.hours.toFixed(1)} hours between finishing one day and starting the next, against ${settings.dailyRest.hours}.`)
+                    `${name} has only ${gap.hours.toFixed(1)} hours between finishing one day and starting the next, and the minimum is ${settings.dailyRest.hours}.`)
             }
         }
 
@@ -546,7 +583,7 @@ export function checkWeek({
             const rest = longestRest(around, weekDates)
             if (rest !== null && rest < settings.weeklyRest.hours) {
                 add('warn', 'weeklyRest',
-                    `${name}'s longest break this week is ${rest.toFixed(1)} hours, against ${settings.weeklyRest.hours}.`)
+                    `${name}'s longest break this week is ${rest.toFixed(1)} hours, and the minimum is ${settings.weeklyRest.hours}.`)
             }
         }
 
@@ -555,7 +592,7 @@ export function checkWeek({
             const off = 7 - worked
             if (off < settings.daysOff.count) {
                 add('warn', 'daysOff',
-                    `${name} has ${off} ${off === 1 ? 'day' : 'days'} off this week, against ${settings.daysOff.count}.`)
+                    `${name} has ${off} ${off === 1 ? 'day' : 'days'} off this week, and the minimum is ${settings.daysOff.count}.`)
             }
         }
 
@@ -568,7 +605,7 @@ export function checkWeek({
             const average = (prior.reduce((t, h) => t + h, 0) + hours) / weeks
             if (average > settings.maxWeek.hours) {
                 add('warn', 'maxWeek',
-                    `${name} averages ${average.toFixed(1)} hours a week over the last ${weeks}, against ${settings.maxWeek.hours}.`)
+                    `${name} averages ${average.toFixed(1)} hours a week over the last ${weeks === 1 ? 'week' : `${weeks} weeks`}, and the limit is ${settings.maxWeek.hours}.`)
             }
         }
     }
@@ -644,10 +681,4 @@ export function overlapFindings(clashes, employeesById) {
         name: employeesById?.[a.employee_id]?.full_name || '',
         text: `Rostered twice over the same hours on ${on(a.shift_date)}, ${shortTime(a.starts_at)} and ${shortTime(b.starts_at)}.`,
     }))
-}
-
-function daysBetween(from, to) {
-    return Math.round(
-        (new Date(to + 'T00:00:00') - new Date(from + 'T00:00:00')) / 86400000,
-    )
 }

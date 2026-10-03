@@ -10,6 +10,9 @@
 // for them, so a header that is a picture is a header that is usually blank.
 // The band at the top is a coloured table cell with the name typed into it.
 
+import { oneLine } from './mime.js'
+import { closesStore } from './hours.js'
+
 const GREEN = '#2E7D52'
 const RED = '#B91C1C'
 const CREAM = '#F7F5F0'
@@ -26,6 +29,19 @@ export function escapeHtml(value) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
 }
+
+// Typed text with its line breaks kept, the same as the report's own copy: a
+// function only deploys what is inside its own folder. HTML reads a line break
+// as a space, so a note typed over two lines arrived as one.
+export function escapeLines(text) {
+    return String(text ?? '')
+        .split(/\r?\n/)
+        .map(l => escapeHtml(l.trimEnd()))
+        .join('<br />')
+}
+
+// The same text for the plain copy, with nothing left at the end of a line.
+const trimLines = text => String(text ?? '').split(/\r?\n/).map(l => l.trimEnd()).join('\n')
 
 export function fmtDate(iso) {
     if (!iso) return ''
@@ -84,23 +100,35 @@ export function noticeWords(absence, now) {
     const asked = new Date(String(absence.created_at || now))
     const start = new Date(absence.starts_on + 'T00:00:00Z')
     if (isNaN(asked) || isNaN(start)) return ''
-    const days = Math.round((start - new Date(asked.toISOString().slice(0, 10) + 'T00:00:00Z')) / 86400000)
+    // The day it was asked in Ireland, not in UTC: asked at half twelve at
+    // night in summer is still yesterday in UTC, and counted a day too many.
+    const askedOn = asked.toLocaleDateString('en-CA', { timeZone: 'Europe/Dublin' })
+    const days = Math.round((start - new Date(askedOn + 'T00:00:00Z')) / 86400000)
     if (days < 0) return ''
-    if (days === 0) return 'Asked for today'
+    if (days === 0) return 'Asked the same day'
     return `Asked ${days} ${days === 1 ? 'day' : 'days'} ahead`
 }
 
 // ---------------------------------------------------------------- the shell
 
+// The small line over the name, in a solid colour for each band. Classic
+// Outlook drops a see-through one; these are white at three quarters on each.
+const BAND_SOFT = { [GREEN]: '#CBDED4', [RED]: '#EEC6C6' }
+
 function shell({ restaurantName, bandColour, bandText, body, footer }) {
     return `<!doctype html>
-<html><body style="margin:0;padding:0;background:${CREAM};">
+<html lang="en"><head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="x-apple-disable-message-reformatting" />
+<meta name="format-detection" content="telephone=no,date=no,address=no,email=no" />
+</head><body style="margin:0;padding:0;background:${CREAM};">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${CREAM};padding:24px 12px;">
 <tr><td align="center">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border:1px solid ${BORDER};border-radius:12px;overflow:hidden;font-family:${FONT};">
 
 <tr><td style="background:${bandColour};padding:18px 24px;">
-  <div style="font-size:12px;letter-spacing:1.6px;color:rgba(255,255,255,0.75);font-weight:700;">PAPI CHULO</div>
+  <div style="font-size:12px;letter-spacing:1.6px;color:${BAND_SOFT[bandColour] || '#ffffff'};font-weight:700;">PAPI CHULO</div>
   <div style="font-size:18px;color:#ffffff;font-weight:700;margin-top:2px;">${escapeHtml(bandText || restaurantName)}</div>
 </td></tr>
 
@@ -167,7 +195,7 @@ export function requestEmail({ absence, employeeName, restaurantName, clashes, a
     // easy yes and a week that needs rebuilding.
     const clashBlock = hit.length > 0
         ? noticeBox(
-            `<strong>${escapeHtml(who)} is rostered on ${hit.length} of these ${hit.length === 1 ? 'day' : 'days'}</strong>`
+            `<strong>${escapeHtml(who)} has ${hit.length} ${hit.length === 1 ? 'shift' : 'shifts'} on these days</strong>`
             + `<div style="margin-top:6px;font-size:13px;">`
             + hit.map(s => `${escapeHtml(fmtDate(s.shift_date))}, ${String(s.starts_at).slice(0, 5)} to ${String(s.ends_at).slice(0, 5)}`).join('<br>')
             + `</div>`,
@@ -191,7 +219,7 @@ ${button(appUrl ? `${appUrl}/roster` : '', 'Open the roster')}
         isPartDay(absence) ? `Hours: ${hoursWords(absence)}` : `How long: ${days} ${days === 1 ? 'day' : 'days'}`,
         `Notice: ${noticeWords(absence, now)}`,
         absence.note ? `Their note: "${absence.note}"` : null,
-        hit.length > 0 ? `\n${who} is rostered on ${hit.length} of these days:` : null,
+        hit.length > 0 ? `\n${who} has ${hit.length} ${hit.length === 1 ? 'shift' : 'shifts'} on these days:` : null,
         ...hit.map(s => `  ${fmtDate(s.shift_date)}, ${String(s.starts_at).slice(0, 5)} to ${String(s.ends_at).slice(0, 5)}`),
         '',
         'Nothing changes on the roster until you answer it.',
@@ -220,15 +248,15 @@ export function answerEmail({ absence, employeeName, restaurantName, answeredBy,
 
     const freedBlock = approved && freedCount > 0
         ? noticeBox(
-            `${freedCount} ${freedCount === 1 ? 'shift has' : 'shifts have'} been taken off your roster for those days.`,
+            `${freedCount} ${freedCount === 1 ? 'shift has' : 'shifts have'} been removed from your roster for those days.`,
             '#282828', CREAM, BORDER)
         : ''
 
     // Nothing about why, on purpose. A reason belongs in a conversation, and a
     // sentence generated by an app is the wrong place to have one.
     const closing = approved
-        ? 'There is a copy attached for your own records.'
-        : 'Have a word with your manager if you need to. There is a copy attached for your own records.'
+        ? 'A copy is attached for your records.'
+        : 'Talk to your manager if you have any questions. A copy is attached for your records.'
 
     const body = `<p style="margin:0;font-size:17px;font-weight:700;">Your ${escapeHtml(what)} was ${approved ? 'approved' : 'not approved'}</p>
 ${detailRows(rows)}
@@ -244,7 +272,7 @@ ${button(appUrl ? `${appUrl}/my-shifts` : '', 'Open My shifts')}`
         `When: ${whenWords(absence)}`,
         `Answered by: ${answeredBy || 'your manager'}`,
         approved && freedCount > 0
-            ? `\n${freedCount} ${freedCount === 1 ? 'shift has' : 'shifts have'} been taken off your roster for those days.`
+            ? `\n${freedCount} ${freedCount === 1 ? 'shift has' : 'shifts have'} been removed from your roster for those days.`
             : null,
         '',
         closing,
@@ -258,6 +286,19 @@ ${button(appUrl ? `${appUrl}/my-shifts` : '', 'Open My shifts')}`
         text,
         employeeName,
     }
+}
+
+// What to call the record attached to an answer: the person's name and the
+// date, in letters, numbers and dashes. The same rule as recordName in
+// src/lib/timeOffPdf.js, which makes the PDF, and a test holds the two
+// together.
+//
+// Worked out here off the database rather than taken from the request, because
+// denomailer writes the name into two header lines as it is, and a name from a
+// request could carry a line break and a header of its own.
+export function recordName(absence, employeeName) {
+    const who = String(employeeName || 'employee').replace(/[^a-z0-9]+/gi, '-')
+    return `${who}-${absence.starts_on}-time-off`.toLowerCase().replace(/^-+|-+$/g, '')
 }
 
 // ------------------------------------------------- somebody wants to swap
@@ -291,7 +332,13 @@ export function hhmm(value) {
 // until a manager approves it: approving rewrites the roster, a shift handed
 // over whole keeps its row and changes hands, and from then on the row says the
 // taker owns it. The mail would have somebody taking a shift from themselves.
-export function swapHalves(request, shifts) {
+//
+// hoursOn gives the store's hours for a date, and with it a half that runs past
+// closing says Closing where the roster does, rather than the finishing time
+// the roster never prints. Without it the time is printed, which is all a mail
+// with no hours to go on can honestly say. whole is still decided on the real
+// times, or every whole closing shift would read as part of one.
+export function swapHalves(request, shifts, hoursOn = null) {
     const find = id => (shifts || []).find(s => s.id === id) || null
     const out = []
 
@@ -316,10 +363,13 @@ export function swapHalves(request, shifts) {
         if (!side.shift) continue
         const from = hhmm(side.from || side.shift.starts_at)
         const to = hhmm(side.to || side.shift.ends_at)
+        const closing = !!hoursOn
+            && closesStore({ starts_at: from, ends_at: to }, hoursOn(side.shift.shift_date))
         out.push({
             date: side.shift.shift_date,
             from,
             to,
+            until: closing ? 'Closing' : to,
             // Whole or part changes the size of the favour being asked, so it
             // is said rather than left to be worked out from two times.
             whole: from === hhmm(side.shift.starts_at) && to === hhmm(side.shift.ends_at),
@@ -346,7 +396,7 @@ export function halfWords(half, nameOf, meId = null) {
     const off = half.whole
         ? `from ${mine ? 'you' : nameOf(half.giverId)}`
         : `part of ${mine ? 'your' : `${nameOf(half.giverId)}'s`} shift`
-    return `${takes} ${fmtDate(half.date)}, ${half.from} to ${half.to}, ${off}`
+    return `${takes} ${fmtDate(half.date)}, ${half.from} to ${half.until || half.to}, ${off}`
 }
 
 // The day the swap is about, for a subject line. The earlier of the two.
@@ -379,22 +429,22 @@ export function swapAskEmail({ request, halves, nameOf, restaurantName, appUrl }
     const rows = [
         mine.length > 0 ? ['You take', halfLines(mine, nameOf, meId)] : null,
         theirs.length > 0 ? ['You give', halfLines(theirs, nameOf, meId)] : null,
-        request.message ? ['Their note', `<em>&ldquo;${escapeHtml(request.message)}&rdquo;</em>`] : null,
+        request.message ? ['Their note', `<em>&ldquo;${escapeLines(request.message)}&rdquo;</em>`] : null,
     ]
 
     const body = `<p style="margin:0;font-size:17px;font-weight:700;">${escapeHtml(headline)}</p>
 ${detailRows(rows)}
-${button(appUrl ? `${appUrl}/my-shifts` : '', 'Answer it')}
+${button(appUrl ? `${appUrl}/my-shifts` : '', 'Open My shifts')}
 <p style="margin:14px 0 0;color:${MUTED};font-size:13px;">Saying yes does not change the roster on its own. A manager still has to approve it.</p>`
 
-    const footer = `You are getting this because ${escapeHtml(asker)} asked you at ${escapeHtml(restaurantName)}.`
+    const footer = `You are getting this because ${escapeHtml(asker)} sent you a shift swap request at ${escapeHtml(restaurantName)}.`
 
     const text = [
         `${headline}.`,
         '',
         ...mine.map(h => halfWords(h, nameOf, meId)),
         ...theirs.map(h => halfWords(h, nameOf, meId)),
-        request.message ? `Their note: "${request.message}"` : null,
+        request.message ? `Their note: "${trimLines(request.message)}"` : null,
         '',
         'Saying yes does not change the roster on its own. A manager still has to approve it.',
         appUrl ? `${appUrl}/my-shifts` : null,
@@ -413,8 +463,8 @@ export function swapAnswerEmail({ request, halves, nameOf, restaurantName, appUr
     const meId = request.from_employee_id
 
     const subject = yes
-        ? `${them} said yes to your shift swap`
-        : `${them} said no to your shift swap`
+        ? `${them} accepted your shift swap`
+        : `${them} declined your shift swap`
 
     const rows = [['What you asked', halfLines(halves, nameOf, meId)]]
 
@@ -422,7 +472,7 @@ export function swapAnswerEmail({ request, halves, nameOf, restaurantName, appUr
     // is not: two people agreeing is not a change to the roster.
     const next = yes
         ? noticeBox(
-            'It is with a manager now. Nothing on the roster changes until they approve it.',
+            'A manager now has to approve it. Nothing on the roster changes until they do.',
             INK, CREAM, BORDER)
         : ''
 
@@ -436,7 +486,7 @@ ${next}
 ${closing ? `<p style="margin:14px 0 0;">${escapeHtml(closing)}</p>` : ''}
 ${button(appUrl ? `${appUrl}/my-shifts` : '', 'Open My shifts')}`
 
-    const footer = `You are getting this because you asked ${escapeHtml(them)} at ${escapeHtml(restaurantName)}.`
+    const footer = `You are getting this because you sent ${escapeHtml(them)} a shift swap request at ${escapeHtml(restaurantName)}.`
 
     const text = [
         `${them} said ${yes ? 'yes' : 'no'} to your shift swap.`,
@@ -444,7 +494,7 @@ ${button(appUrl ? `${appUrl}/my-shifts` : '', 'Open My shifts')}`
         ...halves.map(h => halfWords(h, nameOf, meId)),
         '',
         yes
-            ? 'It is with a manager now. Nothing on the roster changes until they approve it.'
+            ? 'A manager now has to approve it. Nothing on the roster changes until they do.'
             : closing,
         appUrl ? `${appUrl}/my-shifts` : null,
     ].filter(v => v !== null).join('\n')
@@ -472,7 +522,7 @@ export function swapDeskEmail({ request, halves, nameOf, restaurantName, appUrl 
 
     const rows = [
         ['What they agreed', halfLines(halves, nameOf, null)],
-        request.message ? ['Their note', `<em>&ldquo;${escapeHtml(request.message)}&rdquo;</em>`] : null,
+        request.message ? ['Their note', `<em>&ldquo;${escapeLines(request.message)}&rdquo;</em>`] : null,
     ]
 
     const body = `<p style="margin:0;font-size:17px;font-weight:700;">${escapeHtml(asker)} and ${escapeHtml(them)} agreed a swap</p>
@@ -486,7 +536,7 @@ ${button(appUrl ? `${appUrl}/roster` : '', 'Open the roster')}
         `${asker} and ${them} agreed a shift swap.`,
         '',
         ...halves.map(h => halfWords(h, nameOf, null)),
-        request.message ? `Their note: "${request.message}"` : null,
+        request.message ? `Their note: "${trimLines(request.message)}"` : null,
         '',
         'The roster does not change until you approve it.',
         appUrl ? `${appUrl}/roster` : null,
@@ -517,8 +567,8 @@ export function swapDecisionEmail({ request, halves, nameOf, restaurantName, ans
     ]
 
     const closing = yes
-        ? 'The roster has already been changed. Open My shifts for what you are on now.'
-        : 'Nothing on the roster has changed, so you are both on what you were on before.'
+        ? 'The roster has been updated. Open My shifts to see your shifts.'
+        : 'Nothing on the roster has changed. You both keep the shifts you had.'
 
     const body = `<p style="margin:0;font-size:17px;font-weight:700;">The swap was ${yes ? 'approved' : 'not approved'}</p>
 ${detailRows(rows)}
@@ -544,6 +594,48 @@ ${button(appUrl ? `${appUrl}/my-shifts` : '', 'Open My shifts')}`
     }
 }
 
+// The same mail twice.
+//
+// Every mail here is set off by the app straight after the change it is about:
+// a request saved, a swap asked, a swap answered. Posting the same id again
+// used to send the same mail again, as often as anybody liked, and a loop of
+// those from one staff login would use up the Gmail account's daily limit and
+// stop every mail the Hub sends, the weekly report and the hours included.
+//
+// So the three that anybody can set off go out while the change is fresh, and
+// not after. Ten minutes, and either side of now, because an answer is timed by
+// the phone that gave it and a phone's clock can be a little out. The app posts
+// within a second or two, so nothing real is ever that late.
+//
+// The two a manager sends, answered and swap-decided, are left alone. Only a
+// manager can set them off, and a manager who changes an answer has to be able
+// to tell the person again.
+//
+// It is a limit, not a lock. Inside those ten minutes the same post still sends
+// again, and a new request is a new mail. Stopping either needs a record of
+// what went, which is a table and a migration.
+export const FRESH_MINUTES = 10
+
+export function fresh(stamp, now, minutes = FRESH_MINUTES) {
+    const at = Date.parse(stamp ?? '')
+    const then = Date.parse(now ?? '')
+    if (isNaN(at) || isNaN(then)) return false
+    return Math.abs(then - at) <= minutes * 60000
+}
+
+// The moment each of the three is about, off its own row.
+const CHANGED_AT = {
+    'asked': 'created_at',
+    'swap-asked': 'created_at',
+    'swap-answered': 'answered_at',
+}
+
+export function tooLate(event, row, now) {
+    const field = CHANGED_AT[event]
+    if (!field) return false
+    return !fresh(row?.[field], now)
+}
+
 // Gmail's untidy goodbye.
 //
 // smtp.gmail.com can accept a message, answer QUIT and drop the socket without
@@ -563,6 +655,20 @@ export function isJustTheGoodbye(err) {
     return said.includes('close_notify')
         || said.includes('unexpected eof')
         || said.includes('unexpectedeof')
+}
+
+// A login that is switched off gets nothing out of this function.
+//
+// Switching somebody off, on the Users page or by the nightly job once their
+// last day has passed, only sets users.is_active. Their password still signs
+// them in and their token is still good. Everywhere else the database itself
+// refuses them, but this function reads users with the service key, which row
+// level security does not stop, so it has to ask for itself.
+//
+// Anything short of is_active being true is refused, so a row read without the
+// column fails shut rather than open.
+export function switchedOff(account) {
+    return account?.is_active !== true
 }
 
 // An address nobody can ever receive mail at.
@@ -630,10 +736,11 @@ export function replyToFor(restaurantAddress, fallback) {
 // only place the restaurant appears in the header: the address is the same for
 // both, so anybody sorting by sender sorts on this.
 //
-// Falls back to MAIL_FROM verbatim when there is no restaurant in hand, when
-// MAIL_FROM holds no address, or when the name is not plain ASCII. That last
-// one matters: a display name with an accent in it has to be encoded to travel
-// in a header, and a name that arrives as mojibake is worse than a generic one.
+// Falls back to MAIL_FROM verbatim when there is no restaurant in hand, or when
+// MAIL_FROM holds no address. An accent in the name is fine: it used to fall
+// back for that too, because denomailer encoded it badly, and headersFor in
+// mime.js now encodes it properly on the way out. A line break is not fine,
+// since it would start a header of its own, so it becomes a space.
 export function senderFor(mailFrom, restaurantName, address) {
     const raw = String(mailFrom || '').trim()
     if (!raw) return ''
@@ -651,10 +758,9 @@ export function senderFor(mailFrom, restaurantName, address) {
     const fallback = (bracketed ? bracketed[1] : raw).trim()
     const chosen = String(address || '').trim() || fallback
 
-    const name = String(restaurantName || '').trim()
+    const name = oneLine(restaurantName)
     if (!chosen.includes('@')) return raw
     if (!name) return chosen === fallback ? raw : chosen
-    if (!/^[ -~]+$/.test(name)) return raw
 
     // "Papi Chulo Point Campus", not "Papi Chulo Papi Chulo Point Campus" if
     // somebody renames a restaurant to include the brand.

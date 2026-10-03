@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { bySection, summarise, FOOD_SECTIONS } from '@/lib/stockTakeSummary'
+import { bySection, summarise, onThisCount, noPrice, breakdownParts, justLoose, FOOD_SECTIONS } from '@/lib/stockTakeSummary'
 
 const product = (id, name, section, extra = {}) =>
     ({ id, name, section, unit: 'KG', ...extra })
@@ -87,9 +87,22 @@ describe('bySection', () => {
         expect(bySection(products, lines)[0].items[0].unitCost).toBe(2.5)
     })
 
+    it('marks a product counted with no price', () => {
+        const products = [product('p1', 'House Salsa', 'Cold Room'), product('p2', 'Limes', 'Cold Room')]
+        const lines = [
+            { ...line('p1', 'Cold Room', 3, 0), unit_cost: null, line_total: null },
+            line('p2', 'Cold Room', 4, 10),
+        ]
+        const items = bySection(products, lines)[0].items
+
+        expect(items.find(it => it.product.id === 'p1').unpriced).toBe(true)
+        expect(items.find(it => it.product.id === 'p2').unpriced).toBe(false)
+    })
+
     it('leaves out a line whose product it does not know', () => {
-        // A product deactivated after it was counted is no longer in the list
-        // the page fetches, and a row with no name on it is worse than no row.
+        // Only a product nobody can read any more, since a deactivated one is
+        // handed in (see onThisCount). A row with no name on it is worse than
+        // no row.
         expect(bySection([], [line('gone', 'Dry', 1, 1)])).toEqual([])
     })
 
@@ -231,5 +244,94 @@ describe('what was not there and what was not looked at', () => {
         const { noneInStock, notCounted } = summarise(products, all)
         expect(noneInStock).toEqual([])
         expect(notCounted).toEqual([])
+    })
+})
+
+describe('onThisCount', () => {
+    const products = [
+        product('p1', 'Cheddar', 'Cold Room', { is_active: true }),
+        product('p2', 'Old Pineapple', 'Cold Room', { is_active: false }),
+        product('p3', 'Retired Sauce', 'Dry', { is_active: false }),
+    ]
+
+    it('keeps a product switched off after it was counted', () => {
+        const kept = onThisCount(products, [line('p2', 'Cold Room', 10, 40)])
+        expect(kept.map(p => p.name)).toEqual(['Cheddar', 'Old Pineapple'])
+    })
+
+    it('leaves out one switched off and never counted', () => {
+        expect(onThisCount(products, []).map(p => p.name)).toEqual(['Cheddar'])
+    })
+
+    it('adds a switched off product into the total, and not into Not counted', () => {
+        const kept = onThisCount(products, [line('p1', 'Cold Room', 2, 12), line('p2', 'Cold Room', 10, 40)])
+        const { total, notCounted } = summarise(kept, [line('p1', 'Cold Room', 2, 12), line('p2', 'Cold Room', 10, 40)])
+        expect(total).toBe(52)
+        expect(notCounted).toEqual([])
+    })
+
+    it('has nothing to say about nothing', () => {
+        expect(onThisCount(null, null)).toEqual([])
+    })
+})
+
+// A line counted while its product had no price adds nothing to any total,
+// which is not the same as being worth nothing.
+describe('noPrice', () => {
+    it('is a quantity counted with no cost behind it', () => {
+        expect(noPrice({ quantity_counted: 3, unit_cost: null, line_total: null })).toBe(true)
+    })
+
+    it('is not a priced line', () => {
+        expect(noPrice({ quantity_counted: 3, unit_cost: 2.5, line_total: 7.5 })).toBe(false)
+    })
+
+    // None on the shelf is worth nothing whatever it costs.
+    it('is not a line of none', () => {
+        expect(noPrice({ quantity_counted: 0, unit_cost: null, line_total: 0 })).toBe(false)
+    })
+})
+
+describe('breakdownParts', () => {
+    const cheese = product('p1', 'Cheese', 'Cold Room')
+
+    it('reads a single loose entry, which is its own total', () => {
+        const parts = breakdownParts({ unit_breakdown: { loose: { qty: 4.27, factor: 1 } } }, cheese)
+        expect(parts).toEqual([{ key: 'loose', text: '4.27 KG', factor: 1, isLoose: true }])
+        expect(justLoose(parts)).toBe(true)
+    })
+
+    it('puts the biggest pack first and loose last', () => {
+        const parts = breakdownParts({
+            unit_breakdown: {
+                loose: { qty: 2.25, factor: 1 },
+                Bag: { qty: 15, factor: 2 },
+                Box: { qty: 6, factor: '10' },
+            },
+        }, cheese)
+        expect(parts.map(p => p.text)).toEqual(['6 Box', '15 Bag', '2.25 KG'])
+        expect(parts[0]).toEqual({ key: 'Box', text: '6 Box', factor: 10, isLoose: false })
+        expect(justLoose(parts)).toBe(false)
+    })
+
+    // A single pack is arithmetic worth showing: 3 Box is not 30 KG at a glance.
+    it('does not treat a single pack as loose', () => {
+        const parts = breakdownParts({ unit_breakdown: { Box: { qty: 3, factor: 10 } } }, cheese)
+        expect(parts.map(p => p.text)).toEqual(['3 Box'])
+        expect(justLoose(parts)).toBe(false)
+    })
+
+    it('tidies the quantity the way the rest of the count does', () => {
+        const parts = breakdownParts({ unit_breakdown: { loose: { qty: 11.799999 } } }, cheese)
+        expect(parts[0].text).toBe('11.8 KG')
+        expect(parts[0].factor).toBe(1)
+    })
+
+    it('is null when nothing was counted in parts', () => {
+        expect(breakdownParts({ unit_breakdown: null }, cheese)).toBeNull()
+        expect(breakdownParts({}, cheese)).toBeNull()
+        expect(breakdownParts({ unit_breakdown: {} }, cheese)).toBeNull()
+        expect(breakdownParts({ unit_breakdown: { Box: { qty: null } } }, cheese)).toBeNull()
+        expect(justLoose(null)).toBe(false)
     })
 })

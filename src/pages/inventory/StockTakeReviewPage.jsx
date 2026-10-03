@@ -6,10 +6,15 @@ import { resolveUnitCost } from '@/lib/mixCost'
 import { fmtMoney, fmtQty } from '@/lib/format'
 import { friendlyError } from '@/lib/errors'
 import { countName } from '@/lib/products'
+import { noPrice } from '@/lib/stockTakeSummary'
 import { sectionRank, sectionColour } from '@/lib/sections'
-import { card } from '@/lib/controlStyles'
+import {
+  badge, captionClass, card, fieldClass, labelClass, modalFooter, primaryButton, rowButton, secondaryButton,
+} from '@/lib/controlStyles'
 import BackButton from '@/components/ui/BackButton'
 import Modal from '@/components/ui/Modal'
+import Notice from '@/components/ui/Notice'
+import PageHeader from '@/components/ui/PageHeader'
 import { can, MANAGERS } from '@/lib/access'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 
@@ -28,6 +33,21 @@ import ErrorBanner from '@/components/ui/ErrorBanner'
 // A product nobody counted is left with no line at all. It is not written as
 // zero, because zero means somebody looked and there was none, and those two
 // things lead to completely different decisions about ordering.
+
+// What a list of lines comes to. A line with no price adds nothing.
+function valueOf(lines) {
+  return (lines || []).reduce((sum, l) => sum + Number(l.line_total || 0), 0)
+}
+
+// The heading over a list worth a look before closing, with how many are in it.
+function ListHeading({ children, count }) {
+  return (
+    <div className="flex items-center gap-3 mb-3">
+      <h2 className={captionClass}>{children}</h2>
+      <span className={`${badge} bg-amber-100 text-amber-800`}>{count}</span>
+    </div>
+  )
+}
 
 export default function StockTakeReviewPage() {
   const { id } = useParams()
@@ -64,28 +84,41 @@ export default function StockTakeReviewPage() {
     const { data: sessionData, error: sessionErr } = await supabase
       .from('stock_takes').select('*').eq('id', id).single()
     if (sessionErr || !sessionData) {
-      setError('Stock take session not found.')
+      setError('This stock take could not be found.')
       setLoading(false)
       return
     }
-    setSession(sessionData)
 
-    const { data: productsData } = await supabase
+    // Any of these failing stops the page rather than carrying on with an
+    // empty list: no lines showed every product as uncounted, and no prices
+    // saved anything counted here with no value.
+    const { data: productsData, error: productsErr } = await supabase
       .from('products').select('*').eq('is_active', true).order('name')
-    setProducts(productsData || [])
 
-    const { data: linesData } = await supabase
+    const { data: linesData, error: linesErr } = await supabase
       .from('stock_take_lines').select('*').eq('stock_take_id', id)
-    setLines(linesData || [])
 
-    const { data: pricesData } = await supabase
-      .from('product_supplier_prices').select('*').eq('is_preferred', true)
-    setPreferredPrices(pricesData || [])
+    // The stock take's own restaurant, for the same reason as on the count:
+    // a super admin can read every restaurant's prices.
+    const { data: pricesData, error: pricesErr } = await supabase
+      .from('product_supplier_prices').select('*')
+      .eq('restaurant_id', sessionData.restaurant_id).eq('is_preferred', true)
 
-    const { data: recipesData } = await supabase
+    const { data: recipesData, error: recipesErr } = await supabase
       .from('mix_recipes').select('*')
-    setRecipeLines(recipesData || [])
 
+    const failed = productsErr || linesErr || pricesErr || recipesErr
+    if (failed) {
+      setError(friendlyError(failed))
+      setLoading(false)
+      return
+    }
+
+    setSession(sessionData)
+    setProducts(productsData || [])
+    setLines(linesData || [])
+    setPreferredPrices(pricesData || [])
+    setRecipeLines(recipesData || [])
     setLoading(false)
     }, [id])
 
@@ -132,9 +165,35 @@ export default function StockTakeReviewPage() {
       .sort((a, b) => a.product.name.localeCompare(b.product.name))
   }, [products, lines])
 
-  const totalValue = useMemo(() => {
-    return lines.reduce((sum, l) => sum + Number(l.line_total || 0), 0)
-  }, [lines])
+  // Counted while they had no price, so they add nothing to the total about
+  // to be saved. Nothing on this page said so, and the total read as the
+  // whole count. See noPrice.
+  const unpricedProducts = useMemo(() => {
+    const unpriced = new Set(lines.filter(noPrice).map(l => l.product_id))
+    return products
+      .filter(p => unpriced.has(p.id))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [products, lines])
+
+  const totalValue = useMemo(() => valueOf(lines), [lines])
+
+  // The lines as they are now. Staff can go on counting on their phones while
+  // a manager has this screen open, so what it read on the way in is not what
+  // there is at Close.
+  async function readLines() {
+    const { data, error: readErr } = await supabase
+      .from('stock_take_lines').select('*').eq('stock_take_id', id)
+    if (!readErr) setLines(data || [])
+    return { data, error: readErr }
+  }
+
+  // The figure in the dialog is the one that will be saved, so it is read
+  // again first. If that fails the dialog still opens, and Close reads again
+  // and says so.
+  async function openCloseConfirm() {
+    await readLines()
+    setShowCloseConfirm(true)
+  }
 
   function getProductLines(productId) {
     return lines
@@ -197,13 +256,22 @@ export default function StockTakeReviewPage() {
 
     // We do NOT create lines for uncounted products. They simply have no
     // observation this session, which keeps "not counted" distinct from a
-    // genuine zero. Total value is the sum of what was actually counted.
+    // genuine zero. Total value is the sum of what was actually counted, from
+    // the lines read again at this moment rather than the list on screen,
+    // which leaves out anything counted since the page opened.
+    const { data: fresh, error: readErr } = await readLines()
+    if (readErr) {
+      setClosing(false)
+      setError(friendlyError(readErr))
+      return
+    }
+
     const { error: updateErr } = await supabase
       .from('stock_takes')
       .update({
         status: 'completed',
         completed_at: new Date().toISOString(),
-        total_value: totalValue,
+        total_value: valueOf(fresh),
       })
       .eq('id', id)
 
@@ -214,7 +282,7 @@ export default function StockTakeReviewPage() {
   }
 
   if (loading) {
-    return <div><p className="text-sm text-gray-500">Loading...</p></div>
+    return <div><p className="text-sm text-muted">Loading...</p></div>
   }
 
   if (error && !session) {
@@ -229,9 +297,9 @@ export default function StockTakeReviewPage() {
   if (!isManager) {
     return (
       <div>
-        <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm px-4 py-3 rounded-lg">
+        <Notice tone="warn">
           Only managers can review and close a stock take.
-        </div>
+        </Notice>
         <BackButton to={`/inventory/stock-takes/${id}`} className="mt-4">Back to counting</BackButton>
       </div>
     )
@@ -240,10 +308,10 @@ export default function StockTakeReviewPage() {
   if (session.status !== 'in_progress') {
     return (
       <div>
-        <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm px-4 py-3 rounded-lg">
+        <Notice tone="warn">
           This stock take is already closed.
-        </div>
-        <button type="button" onClick={() => navigate(`/inventory/stock-takes/${id}/summary`)} className="mt-4 text-sm font-semibold text-accent-ink">View summary →</button>
+        </Notice>
+        <button type="button" onClick={() => navigate(`/inventory/stock-takes/${id}/summary`)} className={`${secondaryButton} mt-4`}>View summary →</button>
       </div>
     )
   }
@@ -252,36 +320,25 @@ export default function StockTakeReviewPage() {
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => navigate(`/inventory/stock-takes/${id}`)}
-        className="inline-flex items-center gap-1 text-sm font-semibold text-gray-500 hover:text-gray-700 mb-4"
-      >
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-        </svg>
-        Back to counting
-      </button>
+      <BackButton to={`/inventory/stock-takes/${id}`} className="mb-4">Back to counting</BackButton>
 
-      <header className="mb-6">
-        <h1 className="font-serif text-2xl font-bold text-gray-900">Review &amp; close</h1>
-        <p className="text-sm text-muted mt-1">
-          Check the count, then close the stock take. Once closed it becomes read-only.
-        </p>
-      </header>
+      <PageHeader
+        title="Review & close"
+        subtitle="Check the entries, then close the stock take. After that, they cannot be changed."
+      />
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
         <div className={`${card} p-4`}>
-          <p className="text-xs text-muted uppercase tracking-wide">Counted</p>
+          <p className={captionClass}>Counted</p>
           <p className="text-2xl font-bold text-gray-900 mt-1">{countedCount}<span className="text-base text-muted">/{products.length}</span></p>
         </div>
         <div className={`${card} p-4`}>
-          <p className="text-xs text-muted uppercase tracking-wide">Uncounted</p>
+          <p className={captionClass}>Uncounted</p>
           <p className="text-2xl font-bold text-amber-600 mt-1">{uncountedProducts.length}</p>
         </div>
         <div className={`${card} p-4 col-span-2 sm:col-span-1`}>
-          <p className="text-xs text-muted uppercase tracking-wide">Total value</p>
+          <p className={captionClass}>Total value</p>
           <p className="text-2xl font-bold text-gray-900 mt-1">{fmtMoney(totalValue)}</p>
         </div>
       </div>
@@ -292,25 +349,36 @@ export default function StockTakeReviewPage() {
         <ErrorBanner className="mb-4">{error}</ErrorBanner>
       )}
 
+      {/* Counted with no price. First, because it is the one that changes
+          the total value, and like the list under it it never blocks closing. */}
+      {unpricedProducts.length > 0 && (
+        <section className="mb-6">
+          <ListHeading count={unpricedProducts.length}>Counted with no price</ListHeading>
+          <div className={`${card} p-4`}>
+            <p className="text-xs text-muted mb-3">
+              These had no price when they were counted, so they are not in the total value. You can
+              still close the stock take.
+            </p>
+            <div className="space-y-2">
+              {unpricedProducts.map(product => (
+                <p key={product.id} className="text-sm font-medium text-gray-900">{countName(product)}</p>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Counted in one place only.
           Above the uncounted list because it is the shorter and stranger of the
           two, and it never blocks closing. */}
       {partlyCounted.length > 0 && (
         <section className="mb-6">
-          <div className="flex items-center gap-3 mb-3">
-            <h2 className="text-sm font-bold uppercase tracking-widest text-muted">
-              Counted in one place only
-            </h2>
-            <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
-              {partlyCounted.length}
-            </span>
-          </div>
+          <ListHeading count={partlyCounted.length}>Counted in one place only</ListHeading>
 
           <div className={`${card} p-4`}>
             <p className="text-xs text-muted mb-3">
-              These are kept in more than one place and you counted them in one of them. Worth a
-              look before closing, in case the other shelf was not empty. It does not stop you
-              closing.
+              These are kept in more than one place but were not counted in all of them. Check the
+              other places are empty before closing. You can still close the stock take.
             </p>
 
             <div className="space-y-2">
@@ -323,7 +391,7 @@ export default function StockTakeReviewPage() {
                   {counted.map(place => (
                     <span
                       key={place}
-                      className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                      className={badge}
                       style={{
                         color: sectionColour(place).ink,
                         backgroundColor: `${sectionColour(place).ink}1a`,
@@ -335,7 +403,7 @@ export default function StockTakeReviewPage() {
                   {missing.map(place => (
                     <span
                       key={place}
-                      className="text-xs font-semibold px-2 py-0.5 rounded-full border bg-white"
+                      className={`${badge} border bg-white`}
                       style={{ color: sectionColour(place).ink, borderColor: sectionColour(place).ink }}
                     >
                       not {place}
@@ -349,7 +417,7 @@ export default function StockTakeReviewPage() {
               <button
                 type="button"
                 onClick={() => setAllPlaces(!allPlaces)}
-                className="mt-3 px-3 py-1.5 rounded-lg border border-gray-300 bg-white text-xs font-semibold text-gray-800 shadow-sm hover:bg-gray-50"
+                className={`${rowButton('plain')} mt-3`}
               >
                 {allPlaces ? 'Show fewer' : `Show the other ${partlyCounted.length - 3}`}
               </button>
@@ -360,18 +428,18 @@ export default function StockTakeReviewPage() {
 
       {/* Uncounted products */}
       <section className="mb-6">
-        <h2 className="text-sm font-bold uppercase tracking-widest text-muted mb-3">
+        <h2 className={`${captionClass} mb-3`}>
           Uncounted products ({uncountedProducts.length})
         </h2>
 
         {uncountedProducts.length === 0 ? (
-          <div className="bg-green-50 border border-green-200 text-green-800 text-sm rounded-xl p-4">
+          <Notice tone="good">
             Everything has been counted. Ready to close.
-          </div>
+          </Notice>
         ) : (
           <>
             <p className="text-xs text-muted mb-3">
-              These have no count for this session. You can count them now, or close without them (they will be left uncounted, not recorded as zero).
+              Nobody has counted these yet. Count them now, or close without them. They will show as not counted, not as zero.
             </p>
             <div className={`${card} overflow-hidden`}>
               {uncountedProducts.map((product, i) => {
@@ -410,28 +478,30 @@ export default function StockTakeReviewPage() {
                         )}
                         <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
                           <div className="flex-1">
-                            <label className="block text-xs font-medium text-muted mb-1">Quantity ({product.unit})</label>
+                            <label htmlFor="review-quantity" className={labelClass}>Quantity ({product.unit})</label>
                             <input
+                              id="review-quantity"
                               type="text" inputMode="decimal" onFocus={e => e.target.select()} value={draftQty}
                               onChange={e => setDraftQty(e.target.value.replace(/[^0-9.]/g, ''))}
                               placeholder="0"
-                              className="w-full px-3 py-2.5 border border-border rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
+                              className={fieldClass}
                             />
                           </div>
                           <div className="flex-1">
-                            <label className="block text-xs font-medium text-muted mb-1">Location <span className="font-normal">(optional)</span></label>
+                            <label htmlFor="review-location" className={labelClass}>Location (optional)</label>
                             <input
+                              id="review-location"
                               type="text" value={draftLocation}
                               onChange={e => setDraftLocation(e.target.value)}
                               placeholder="e.g. back cold room"
-                              className="w-full px-3 py-2.5 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
+                              className={fieldClass}
                             />
                           </div>
                           <button
                             type="button"
                             onClick={() => handleAddLine(product)}
                             disabled={savingLine || draftQty === '' || isNaN(parseFloat(draftQty))}
-                            className="bg-accent hover:bg-accent/90 disabled:opacity-40 text-white font-semibold px-4 py-2.5 rounded-lg transition-colors"
+                            className={primaryButton('md')}
                             style={{ minHeight: '44px' }}
                           >
                             Add
@@ -450,8 +520,8 @@ export default function StockTakeReviewPage() {
       {/* Close button */}
       <button
         type="button"
-        onClick={() => setShowCloseConfirm(true)}
-        className="w-full sm:w-auto bg-green-brand hover:bg-green-brand/90 text-white font-semibold px-6 py-3 rounded-lg transition-colors"
+        onClick={openCloseConfirm}
+        className={`${primaryButton('xl', 'good')} w-full sm:w-auto`}
       >
         Close stock take
       </button>
@@ -464,31 +534,27 @@ export default function StockTakeReviewPage() {
           months. */}
       {showCloseConfirm && (
         <Modal title="Close this stock take?" onClose={closeConfirm} width="max-w-md">
-          <div className="p-6">
-            <p className="text-sm text-gray-700 mb-3">
-              Once closed, counts become read-only. You can reopen it later if a correction is needed.
+          <div className="px-6 py-4 space-y-3">
+            <p className="text-sm text-gray-700">
+              After closing, the entries cannot be changed. You can reopen it later to correct them.
             </p>
             {uncountedProducts.length > 0 && (
-              <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-lg px-3 py-2 mb-3">
-                {uncountedProducts.length} {uncountedProducts.length === 1 ? 'product' : 'products'} will be left uncounted for this session (no count recorded). You can reopen and add them later if needed.
-              </div>
+              <Notice tone="warn">
+                {uncountedProducts.length} {uncountedProducts.length === 1 ? 'product has' : 'products have'} not been counted. You can reopen the stock take later to add more entries.
+              </Notice>
             )}
-            <p className="text-sm text-gray-700 mb-4">
+            <p className="text-sm text-gray-700">
               Total value: <strong>{fmtMoney(totalValue)}</strong>
             </p>
-
-            {error && (
-              <ErrorBanner className="mb-4">{error}</ErrorBanner>
-            )}
-
-            <div className="flex flex-wrap gap-2 justify-end">
-              <button type="button" onClick={closeConfirm} disabled={closing} className="px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 rounded-lg disabled:opacity-50">
-                Cancel
-              </button>
-              <button type="button" onClick={handleCloseSession} disabled={closing} className="px-5 py-2 text-sm font-semibold bg-green-brand hover:bg-green-brand/90 text-white rounded-lg disabled:opacity-50">
-                {closing ? 'Closing...' : 'Close stock take'}
-              </button>
-            </div>
+            <ErrorBanner>{error}</ErrorBanner>
+          </div>
+          <div className={modalFooter}>
+            <button type="button" onClick={closeConfirm} disabled={closing} className={secondaryButton}>
+              Cancel
+            </button>
+            <button type="button" onClick={handleCloseSession} disabled={closing} className={primaryButton('lg', 'good')}>
+              {closing ? 'Closing...' : 'Close stock take'}
+            </button>
           </div>
         </Modal>
       )}

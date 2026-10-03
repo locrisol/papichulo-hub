@@ -1,10 +1,9 @@
 import Modal from '@/components/ui/Modal'
-import { shortDate } from '@/lib/dates'
-import { dayName } from '@/lib/events'
-import { shortTime, endLabel, fmtHours, hoursForDate } from '@/lib/roster'
+import { dayLabel } from '@/lib/dates'
+import { fmtHours, hoursForDate } from '@/lib/roster'
 import { modalFooter, secondaryButton, rowButton, badge } from '@/lib/controlStyles'
 import {
-    windowOf, isWholeShift, hoursChange, weekAfter, newFindings, requestDate,
+    hoursWords, isWholeShift, hoursChange, weekAfter, newFindings, requestDate, shiftsMoved, windowsFit,
 } from '@/lib/shiftRequests'
 
 // What two people have agreed between them, waiting on somebody to say yes.
@@ -55,11 +54,11 @@ export default function RequestDeskModal({
         .every(id => shifts.some(s => s.id === id))
 
     return (
-        <Modal title="Changes to approve" onClose={onClose} width="max-w-2xl">
+        <Modal title="Shift swaps to approve" onClose={onClose} width="max-w-2xl">
             <div className="px-6 py-4 overflow-y-auto space-y-4">
                 {requests.length === 0 && (
                     <p className="text-sm text-muted">
-                        Nothing waiting. Anything two people agree between them turns up here.
+                        No shift swaps to approve. Swaps that two people have agreed show up here.
                     </p>
                 )}
 
@@ -68,21 +67,28 @@ export default function RequestDeskModal({
                     const after = here ? weekAfter(request, shifts, breakRules) : null
                     const change = here ? hoursChange(request, shifts, breakRules) : []
                     const broke = here && check ? newFindings(before, check(after.shifts)) : []
+                    const stops = broke.some(f => f.level === 'block')
+                    // A shift moved to somebody else since the two of them
+                    // agreed. Approving moves whichever shift the request
+                    // names, so it would hand over a shift that is not theirs.
+                    const moved = here && shiftsMoved(request, findShift)
+                    // The hours asked for, against the shift as it is now
+                    // rather than as it was when they agreed. Approving keeps
+                    // whatever sits either side of them, so hours hanging off
+                    // the end of a shortened shift would be hours invented.
+                    const outside = here && !windowsFit(request, findShift)
                     const when = requestDate(request, findShift)
 
                     const half = (shiftId, from, to, takerId) => {
                         const shift = findShift(shiftId)
                         if (!shift) return null
-                        const window = windowOf(shift, from, to)
                         const whole = isWholeShift(shift, from, to)
                         return {
                             key: shiftId,
                             taker: nameOf(takerId),
                             owner: nameOf(shift.employee_id),
                             date: shift.shift_date,
-                            when: whole
-                                ? `${shortTime(shift.starts_at)} to ${endLabel(shift, hoursOn(shift.shift_date))}`
-                                : `${shortTime(window.from)} to ${shortTime(window.to)}`,
+                            when: hoursWords(shift, from, to, hoursOn(shift.shift_date)),
                             whole,
                         }
                     }
@@ -107,7 +113,7 @@ export default function RequestDeskModal({
                             {halves.map(part => (
                                 <p key={part.key} className="text-sm text-gray-800">
                                     <span className="font-medium">{part.taker}</span> takes{' '}
-                                    {dayName(part.date)} {shortDate(part.date)}, {part.when}
+                                    {dayLabel(part.date)}, {part.when}
                                     <span className="text-muted"> from {part.owner}</span>
                                     {!part.whole && <span className="text-muted"> (part of it)</span>}
                                 </p>
@@ -151,14 +157,14 @@ export default function RequestDeskModal({
                             {here && broke.length > 0 && (
                                 <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 mt-3">
                                     <p className="text-xs font-bold text-amber-800 uppercase tracking-wider mb-1.5">
-                                        This would break
+                                        Problems if approved
                                     </p>
                                     {broke.map((f, i) => (
                                         <p key={i} className="text-sm text-amber-800 flex items-start gap-2">
                                             <span className={`${badge} ${
                                                 f.level === 'block' ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-800'
                                             }`}>
-                                                {f.level === 'block' ? 'Stops it' : 'Warning'}
+                                                {f.level === 'block' ? 'Has to be fixed' : 'Warning'}
                                             </span>
                                             <span>{f.text}</span>
                                         </p>
@@ -170,7 +176,7 @@ export default function RequestDeskModal({
                                 <div className="flex flex-wrap gap-2 mt-3">
                                     <button
                                         type="button"
-                                        disabled={saving || broke.some(f => f.level === 'block')}
+                                        disabled={saving || stops || moved || outside}
                                         onClick={() => onApprove(request)}
                                         className={rowButton('good')}
                                     >
@@ -182,12 +188,24 @@ export default function RequestDeskModal({
                                         onClick={() => onRefuse(request)}
                                         className={rowButton('danger')}
                                     >
-                                        Do not approve
+                                        Decline
                                     </button>
-                                    {broke.some(f => f.level === 'block') && (
+                                    {moved && (
                                         <span className="text-xs text-red-700 self-center">
-                                            Something here stops the week going out, so it cannot be approved
-                                            as it stands.
+                                            One of these shifts now belongs to somebody else, so this cannot
+                                            be approved.
+                                        </span>
+                                    )}
+                                    {outside && (
+                                        <span className="text-xs text-red-700 self-center">
+                                            The hours asked for are no longer within the shift, so this cannot
+                                            be approved.
+                                        </span>
+                                    )}
+                                    {stops && (
+                                        <span className="text-xs text-red-700 self-center">
+                                            Something here stops the week being published, so this cannot
+                                            be approved.
                                         </span>
                                     )}
                                 </div>
@@ -197,8 +215,7 @@ export default function RequestDeskModal({
                                         it, because the reason it is not an
                                         Approve is the thing worth reading. */}
                                     <span className="text-sm text-muted">
-                                        This is for another week, so what it would do to that week cannot be
-                                        worked out from here.
+                                        This is for another week. Open that week to approve or decline it.
                                     </span>
                                     {when && onGoToWeek && (
                                         <button

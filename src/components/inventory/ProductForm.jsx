@@ -10,7 +10,10 @@
 //   section  Freezer, Cold Room, Dry, Packaging, Cleaning
 //   unit     KG, Units, Litre
 import { numberField } from '@/lib/numberInput'
-import { checkbox, labelClass, fieldClass, hintClass, primaryButton } from '@/lib/controlStyles'
+import {
+  checkbox, labelClass, captionClass, fieldClass, hintClass, fieldError, primaryButton, secondaryButton,
+  removeButton, chip,
+} from '@/lib/controlStyles'
 import { PriceFields } from '@/components/inventory/PriceForm'
 import ProductSelect from '@/components/ui/ProductSelect'
 import QuantityInUnit from '@/components/ui/QuantityInUnit'
@@ -20,6 +23,7 @@ import { declaredCount } from '@/lib/allergens'
 import { nameClashMessage, declaresAllergens } from '@/lib/products'
 import { sectionColour } from '@/lib/sections'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import AddButton from '@/components/ui/AddButton'
 
 // The five places, in the order the store is walked. The database has the same
 // list twice over, as a check on products.section and as a check on
@@ -33,9 +37,9 @@ export default function ProductForm({
   priceForm, onPriceChange, priceErrors, suppliers, nameClash,
   formats, onFormatsChange,
   recipe, onRecipeChange, ingredientOptions,
-  allergens, onAllergenChange, allergensAnswered, onNoAllergens,
+  allergens, onAllergenChange, allergensAnswered, onNoAllergens, allergensUnread = false,
   extras, openExtra, onOpenExtra,
-  otherPriceCount = 0, onOpenPrices, recipeBlock = true,
+  otherPriceCount = 0, onOpenPrices, recipeBlock = true, saving = false,
 }) {
   // Both of these only make sense for something you buy. A mix has no supplier
   // by definition, and its allergens come from its recipe rather than from
@@ -78,16 +82,16 @@ export default function ProductForm({
             type="text"
             value={formData.name}
             onChange={e => onChange('name', e.target.value)}
-            className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+            className={fieldClass}
           />
-          {errors.name && <p className="text-xs text-red-600 mt-1">{errors.name}</p>}
+          {errors.name && <p className={fieldError}>{errors.name}</p>}
           {/* Said while it is being typed rather than after it is saved, and it
               stops the save. Two products with the same name is one added
               twice, and on a stock take they are counted separately and neither
               total is right. Nobody standing at a shelf with two identical rows
               in front of them can tell which one they are meant to be in. */}
           {!errors.name && nameClash && (
-            <p className="text-xs text-red-600 mt-1">{nameClashMessage(nameClash)}</p>
+            <p className={fieldError}>{nameClashMessage(nameClash)}</p>
           )}
         </div>
 
@@ -97,9 +101,10 @@ export default function ProductForm({
             value={formData.section}
             onChange={e => onChange('section', e.target.value)}
             // The one field that is coloured rather than hinted, since it is
-            // the field the hint is coming from.
-            style={{ color: colour.ink, borderColor: colour.ink }}
-            className="w-full border-2 rounded-lg px-3 py-2 text-sm font-semibold bg-white focus:outline-none focus:ring-2 focus:ring-accent"
+            // the field the hint is coming from. The heavier edge goes through
+            // style with the colour, since the shared box already sets one.
+            style={{ color: colour.ink, borderColor: colour.ink, borderWidth: 2 }}
+            className={`${fieldClass} font-semibold`}
           >
             {/* Each one in its own colour. An option takes the colour of the
                 select unless it is told otherwise, so the whole list was
@@ -119,7 +124,7 @@ export default function ProductForm({
           <select
             value={formData.unit}
             onChange={e => onChange('unit', e.target.value)}
-            className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+            className={fieldClass}
           >
             <option>KG</option>
             <option>Units</option>
@@ -145,10 +150,10 @@ export default function ProductForm({
                 decimals: 3,
               })}
               placeholder="Leave empty"
-              className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+              className={fieldClass}
             />
             {errors.piece_weight
-              ? <p className="text-xs text-red-600 mt-1">{errors.piece_weight}</p>
+              ? <p className={fieldError}>{errors.piece_weight}</p>
               : (
                 <p className={hintClass}>
                   Only for something sold by the piece and counted by weight, or the other way
@@ -163,17 +168,17 @@ export default function ProductForm({
             is not a question you can ask about a case of tomatoes. */}
         {formData.is_mix && (
           <div>
-            <label className={labelClass}>Weight Loss %</label>
+            <label className={labelClass}>Weight loss (%)</label>
             <input
               {...numberField({
                 value: formData.weight_loss_pct,
                 onChange: v => onChange('weight_loss_pct', v),
               })}
-              className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+              className={fieldClass}
             />
             {errors.weight_loss_pct
-              ? <p className="text-xs text-red-600 mt-1">{errors.weight_loss_pct}</p>
-              : <p className="text-xs text-muted mt-1">Prepped cost = raw cost / (1 - weight loss). Leave at 0 if none.</p>}
+              ? <p className={fieldError}>{errors.weight_loss_pct}</p>
+              : <p className={hintClass}>How much weight a batch loses while it is made. It does not change the cost: put what a batch really makes in Batch yield on its recipe. Leave at 0 if none.</p>}
           </div>
         )}
       </div>
@@ -216,11 +221,8 @@ export default function ProductForm({
             <button
               type="button"
               onClick={() => onChange('held_for', '')}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                formData.held_for
-                  ? 'bg-white border-border text-gray-600 hover:bg-gray-50'
-                  : 'bg-accent border-accent text-white'
-              }`}
+              aria-pressed={!formData.held_for}
+              className={chip(!formData.held_for)}
             >
               Ours
             </button>
@@ -229,11 +231,8 @@ export default function ProductForm({
                 key={name}
                 type="button"
                 onClick={() => onChange('held_for', name)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                  formData.held_for === name
-                    ? 'bg-accent border-accent text-white'
-                    : 'bg-white border-border text-gray-600 hover:bg-gray-50'
-                }`}
+                aria-pressed={formData.held_for === name}
+                className={chip(formData.held_for === name)}
               >
                 {name}
               </button>
@@ -241,7 +240,7 @@ export default function ProductForm({
           </div>
         )}
 
-        <p className="text-xs text-muted mt-1">
+        <p className={hintClass}>
           Counted with ours on every stock take, reported apart from it.
         </p>
       </div>
@@ -285,7 +284,7 @@ export default function ProductForm({
             )
           })}
         </div>
-        <p className="text-xs text-muted mt-1">
+        <p className={hintClass}>
           Only changes where it shows up on a stock take. Leave these alone for
           nearly everything.
         </p>
@@ -327,7 +326,7 @@ export default function ProductForm({
           value={formData.notes}
           onChange={e => onChange('notes', e.target.value)}
           rows={2}
-          className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+          className={fieldClass}
         />
       </div>
 
@@ -353,7 +352,7 @@ export default function ProductForm({
           <ModalSectionBar
             collapsible
             tone="recipe"
-            title="What goes into it"
+            title="Recipe"
             summary={recipe.lines.length === 0
               ? 'Nothing yet'
               : `${recipe.lines.length} ${recipe.lines.length === 1 ? 'ingredient' : 'ingredients'}`}
@@ -372,7 +371,7 @@ export default function ProductForm({
                   unit={formData.unit}
                   className="max-w-xs"
                 />
-                <p className="text-xs text-muted mt-1">
+                <p className={hintClass}>
                   What one batch comes out at. It is what the cost of the batch is divided by
                   to get a cost per {formData.unit}.
                 </p>
@@ -401,9 +400,10 @@ export default function ProductForm({
                             ...recipe,
                             lines: recipe.lines.filter(l => l.ingredient_product_id !== line.ingredient_product_id),
                           })}
-                          className="text-red-600 hover:text-red-800 text-xs font-semibold"
+                          aria-label={`Remove ${ingredient?.name || 'this ingredient'}`}
+                          className={removeButton}
                         >
-                          Remove
+                          ×
                         </button>
                       </div>
                     )
@@ -424,7 +424,7 @@ export default function ProductForm({
                     })}
                     products={ingredientOptions.filter(p =>
                       !recipe.lines.some(l => l.ingredient_product_id === p.id))}
-                    placeholder="Select an ingredient..."
+                    placeholder="Pick an ingredient"
                   />
                 </div>
                 <div>
@@ -439,18 +439,17 @@ export default function ProductForm({
                 </div>
               </div>
 
-              <button
-                type="button"
+              <AddButton
                 disabled={!recipe.draft.ingredient_product_id || !(parseFloat(recipe.draft.quantity) > 0)}
                 onClick={() => onRecipeChange({
                   ...recipe,
                   lines: [...recipe.lines, { ...recipe.draft }],
                   draft: { ingredient_product_id: '', quantity: '' },
                 })}
-                className="mt-3 px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-semibold text-gray-800 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+                className="mt-3"
               >
                 Add ingredient
-              </button>
+              </AddButton>
             </div>
           )}
         </div>
@@ -461,7 +460,7 @@ export default function ProductForm({
           <ModalSectionBar
             collapsible
             tone="supplier"
-            title="Who you buy it from"
+            title="Supplier and price"
             summary={supplierSummary}
             open={openExtra === 'supplier'}
             onToggle={() => onOpenExtra(openExtra === 'supplier' ? null : 'supplier')}
@@ -480,8 +479,9 @@ export default function ProductForm({
                 <div className="mb-3 flex items-start justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
                   <p className="text-xs text-amber-900">
                     This is the preferred price.{' '}
-                    {otherPriceCount === 1 ? 'One other supplier' : `${otherPriceCount} other suppliers`}
-                    {' '}also price this product, and are not shown here.
+                    {otherPriceCount === 1
+                      ? 'There is 1 other price for this product, not shown here.'
+                      : `There are ${otherPriceCount} other prices for this product, not shown here.`}
                   </p>
                   {onOpenPrices && (
                     <button
@@ -514,7 +514,7 @@ export default function ProductForm({
                   is why they only appear once a supplier is chosen. */}
               {priceForm.supplier_id && (
                 <div className="mt-4 border-t border-border pt-4">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
+                  <p className={`${captionClass} mb-1`}>
                     How it is counted
                   </p>
                   <p className="text-xs text-muted mb-3">
@@ -543,9 +543,10 @@ export default function ProductForm({
                               ...formats,
                               packs: formats.packs.filter(x => x.label !== pack.label),
                             })}
-                            className="text-red-600 hover:text-red-800 text-xs font-semibold"
+                            aria-label={`Remove ${pack.label}`}
+                            className={removeButton}
                           >
-                            Remove
+                            ×
                           </button>
                         </div>
                       ))}
@@ -567,7 +568,7 @@ export default function ProductForm({
                       />
                     </div>
                     <div>
-                      <label className={labelClass}>One of them is</label>
+                      <label className={labelClass}>{formData.unit} per {formats.draft.label.trim() || 'pack'}</label>
                       <input
                         {...numberField({
                           value: formats.draft.factor,
@@ -583,8 +584,7 @@ export default function ProductForm({
                   </div>
 
                   <div className="flex flex-wrap items-center gap-3 mt-3">
-                    <button
-                      type="button"
+                    <AddButton
                       disabled={!formats.draft.label.trim()
                         || !(parseFloat(formats.draft.factor) > 0)
                         || formats.packs.some(x => x.label === formats.draft.label.trim())}
@@ -596,10 +596,9 @@ export default function ProductForm({
                         }],
                         draft: { label: '', factor: '' },
                       })}
-                      className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-semibold text-gray-800 shadow-sm hover:bg-gray-50 disabled:opacity-50"
                     >
                       Add pack
-                    </button>
+                    </AddButton>
 
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input
@@ -628,11 +627,12 @@ export default function ProductForm({
             tone="allergens"
             title="Allergens"
             summary={(() => {
+              if (allergensUnread) return 'Could not be read'
               const set = declaredCount(allergens)
               if (set > 0) return `${set} of 14`
               return allergensAnswered ? 'None of the 14' : 'Not answered'
             })()}
-            action={!allergensAnswered && declaredCount(allergens) === 0 && (
+            action={!allergensUnread && !allergensAnswered && declaredCount(allergens) === 0 && (
               <button type="button" onClick={onNoAllergens} className={sectionBarAction}>
                 Declare the product has no allergens
               </button>
@@ -642,12 +642,22 @@ export default function ProductForm({
           />}
           {showAllergens && openExtra === 'allergens' && (
             <div className="mb-4">
-              <p className="text-xs text-muted mb-3">
-                The fourteen the law names. Not Present is the answer for most of them, so
-                only change the ones that apply. This is what the public allergen page shows
-                customers, and every dish the product goes into inherits it.
-              </p>
-              <AllergenPicker values={allergens} onChange={onAllergenChange} />
+              {/* A failed read is not a product nobody answered, so there is
+                  nothing here to answer it with. Saving leaves the row alone. */}
+              {allergensUnread ? (
+                <p className="text-xs text-muted mb-3">
+                  The allergens could not be read. Close this and open it again to change them.
+                </p>
+              ) : (
+                <>
+                  <p className="text-xs text-muted mb-3">
+                    The 14 allergens listed by law. Most will be Not present, so only change the
+                    ones that apply. Customers see these on the allergen page, and every dish that
+                    uses this product includes them.
+                  </p>
+                  <AllergenPicker values={allergens} onChange={onAllergenChange} />
+                </>
+              )}
             </div>
           )}
         </div>
@@ -661,19 +671,20 @@ export default function ProductForm({
         <ErrorBanner className="mb-3">{problem}</ErrorBanner>
       )}
 
-      <div className="flex gap-3">
-        <button
-          type="submit"
-          className={primaryButton()}
-        >
-          {submitLabel}
-        </button>
+      <div className="flex flex-wrap justify-end gap-3">
         <button
           type="button"
           onClick={onCancel}
-          className="px-4 py-2 border border-border text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 bg-white transition-colors"
+          className={secondaryButton}
         >
           Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={saving}
+          className={primaryButton()}
+        >
+          {saving ? 'Saving...' : submitLabel}
         </button>
       </div>
     </form>

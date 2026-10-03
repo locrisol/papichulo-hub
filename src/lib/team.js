@@ -51,6 +51,30 @@ export function isWorkingOn(employee, date) {
     return true
 }
 
+// The rows of a week on the roster, in the manager's order.
+//
+// Everybody working any day of it, so somebody who left in June is not a row
+// on July's roster with nothing in it. And anybody with a shift in it as well,
+// whether they are working then or not. A week is often built before somebody
+// gives notice, and setting their last day took away the only row their
+// shifts could be opened from, while the shifts went on counting in the hours,
+// the cost and the headcount. The roster's checks say what is wrong with them.
+export function onTheRoster(employees, dates, shifts) {
+    return sortEmployees(employees).filter(e =>
+        (dates || []).some(d => isWorkingOn(e, d))
+        || (shifts || []).some(s => s.employee_id === e.id))
+}
+
+// Who a shift on one day can be given to.
+//
+// The people working here that day. The week's rows take in anybody with a
+// shift in it, so without this somebody who left last week was offered for
+// Saturday. Whoever the shift is already on stays in the list, working or not,
+// so one of their shifts can still be opened and given to somebody else.
+export function whoCanWorkOn(employees, date, keepId = null) {
+    return (employees || []).filter(e => isWorkingOn(e, date) || (!!keepId && e.id === keepId))
+}
+
 // What to show beside somebody's name.
 //
 // Three states rather than two, because somebody who starts next Monday is
@@ -154,7 +178,7 @@ export function employeeRow(form) {
 // Returns the first problem as a sentence, because a form with one field
 // wrong should say what is wrong, not colour four boxes red.
 export function employeeProblem({ fullName, startedOn, endedOn, dateOfBirth }, today) {
-    if (!fullName?.trim()) return 'Give them a name.'
+    if (!fullName?.trim()) return 'Enter a name.'
     if (endedOn && startedOn && endedOn < startedOn) {
         return 'The last day cannot be before the first day.'
     }
@@ -194,7 +218,7 @@ export function employeeNote({ dateOfBirth, startedOn }, today) {
             + 'so check it is right.'
     }
     if (age > 90) {
-        return `That date of birth makes them ${age}. Worth checking.`
+        return `That date of birth makes them ${age}. Check it is right.`
     }
     if (startedOn && yearsBetween(dateOfBirth, startedOn) < 14) {
         return 'That first day is before their fourteenth birthday.'

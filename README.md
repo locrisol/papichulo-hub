@@ -18,7 +18,7 @@ It is built for Papi Chulo, a Mexican Street Food business with currently two lo
 
 **Sales.** Allows to record one day at a time if the app is accessed from a phone, or a whole week at once on a laptop. The figures from the till receipt are what is used for the reconciliation. The sales from delivery platforms are saved separately for tracking, because they report delivery charges, commission, VAT and discounts differently, so the figures might be slightly different; forcing the calculation with these values would produce errors that are not real.
 
-**Invoices, labour and waste.** Invoices are handled by supplier and category. Labour hours are entered manually from Timesheet information until the stores upgrade their POS System, with information about the average cost of each day versus that day's sales. Waste is logged during work and cost calculated in real time as the employees type the quantities.
+**Invoices, labour and waste.** Invoices are handled by supplier and category. Labour comes from the Timesheet, where the hours are brought in from the till's clock in and clock out file and answered day by day, then mailed to the accountant with a PDF for each pay period. Waste is logged during work and cost calculated in real time as the employees type the quantities.
 
 **Cost dashboard.** Food, labour, packaging and cleaning, and waste as a percentage of net sales against their targets, with gross profit and the week day by day. Targets can be changed permanently or just for some specific weeks, so temporary changes won't affect past weeks or the rest of the year if it's not a permanent change.
 
@@ -56,11 +56,11 @@ Sign up at [supabase.com](https://supabase.com) and create a project.
 
 In the Supabase dashboard, open the SQL editor and run `supabase/schema.sql`. That creates every table, key, function, security policy and view in one go. It is the whole design in one file, written by hand and grouped by what each part is for, so it is also the thing to read if you want to understand the database rather than set one up.
 
-Then run `supabase/seed.sql`, which adds the two restaurants, the supplier list, the menu headings and the till receipt rows. Without at least one restaurant, nothing in the app will load. Nothing in `schema.sql` inserts a row and nothing in `seed.sql` creates a table, so the two never overlap.
+Then run `supabase/seed.sql`, which adds the two restaurants, the supplier list, the menu headings, the till receipt rows, the storage buckets and the two nightly jobs. Without at least one restaurant, nothing in the app will load. Nothing in `schema.sql` inserts a row and nothing in `seed.sql` creates a table, so the two never overlap.
 
 Neither file deletes anything, and both are safe to run twice. To change a database that already exists, add a numbered file to `supabase/migrations/`, starting at `001`, and fold the same change into `schema.sql` by hand in the same commit. That is two edits on purpose: `schema.sql` is the design and the migration is how a database that already exists catches up with it.
 
-`supabase/migrations/` is empty. It starts again at `001` and only for new work: the live database and `schema.sql` were compared object by object on 13 September and agree.
+`supabase/migrations/` is empty. It started again at `001` on 3 October 2026, after a backup, and only for new work: the live database and `schema.sql` were compared statement by statement that day and agree. Its README says how to check that again.
 
 If you have Docker, `npm run db:local` does all of this against a local database, which is the quickest way to find out whether a change to either file actually works.
 
@@ -123,34 +123,41 @@ They never create anything. Reads are harmless, and a write that is meant to be 
 
     src/
       components/
-        ui/              used everywhere: Modal, TimeField, DateStepper, ErrorBanner
-        auth/            the two route guards
-        layout/          the sidebar and page shell
-        roster/ team/ inventory/ settings/ reports/
-        costs/ forecast/ invoices/ allergens/ diary/ nearby/
-      context/           the signed-in user and the active restaurant
-      lib/               logic with no interface: costing, allergens, dates, formatting
+        ui/              used everywhere: Modal, TimeField, DateStepper, Notice, PageHeader
+        auth/            the route guards, the sign in card and the first password
+        layout/          the sidebar, its badges and the page shell
+        allergens/ checklists/ costs/ diary/ forecast/ inventory/ invoices/
+        nearby/ reports/ roster/ sales/ settings/ team/ timesheet/
+      context/           the signed-in user, the active restaurant, the confirm dialog
+      lib/               logic with no interface: costing, allergens, dates, badges, formatting
       pages/
-        auth/            login
-        inventory/       catalogue, menu, stock takes, allergens
+        auth/            sign in, choosing a password, not found, no access
+        checklists/      the lists, a round being done, editing, the report
+        costs/           the cost dashboard
         diary/           the calendar: the diary and what is on nearby
-        sales/           daily entry and the weekly grid
-        invoices/        entry, history, reading the documents, the review, delivery problems
-        costs/           labour and the cost dashboard
-        waste/           logging and the weekly summary
-        roster/          the week, and the staff view of it
-        team/            employees, availability and time off
-        reports/         the weekly report and the list of them
-        settings/        restaurant settings, users, the change log
+        inventory/       products, prices, recipes, menu items, stock takes, allergens
+        invoices/        entry, history, importing, the review, delivery problems
         public/          the allergen page a customer scans
+        reports/         the weekly report and the list of them
+        roster/          the week, and My shifts
+        sales/           daily entry and the weekly grid
+        settings/        restaurant, users, the change log, your account
+        team/            employees, availability and time off
+        timesheet/       the hours for the pay period
+        waste/           logging and the weekly summary
       test/              the setup, and the tests about the project's own shape
     tests/
-      rls/               the database access tests
+      rls/               the database access tests, run against a real project
+    docs/
+      building-screens.md  which shared piece to use, and what the checks catch
     supabase/
       schema.sql         the whole design, by hand, grouped by subject
-      seed.sql           the rows a new database cannot start without
+      seed.sql           the rows and nightly jobs a new database cannot start without
       migrations/        changes since, numbered from 001
-      functions/         the three edge functions
+      templates/         the sign in emails, pasted into the dashboard
+      functions/         the eight edge functions: weekly-report-email, roster-email,
+                         roster-calendar, diary-calendar, nearby-events, read-listings,
+                         checklist-photos, invite-user
     scripts/
       local-db.mjs       builds a local database from the two files above
 
@@ -173,9 +180,11 @@ There are four roles. The rules are stored directly in the database as row level
 | What is on nearby | See it on the calendar and the roster | Everything, including which places we watch and keeping what was found | Everything | Everything |
 | Sales, invoices, labour, costs | No access | Everything | Everything | Everything |
 | Restaurant settings | No | Yes | No | Yes |
-| Users | No | Employees at their restaurant | Managers and employees at their restaurants | Everyone, and restaurants |
+| Users | No | See the accounts at their restaurant | See the accounts at their restaurants | Everyone, and restaurants |
 
 An Owner sees their restaurants but does not configure one, which is why restaurant settings is a Store Manager job.
+
+Accounts are a Super Admin job. A manager links a login to somebody on Team, and switches it off by giving them a last day.
 
 An employee can start counting but cannot open or close a stock take session, and can modify their own count lines but not the ones other employees have created.
 
@@ -219,11 +228,11 @@ When you add a migration, fold the same change into `supabase/schema.sql` by han
 
 It used to be generated by a script that concatenated every migration, which is why it grew to 5,000 lines: 37 tables and 101 later alterations of them, with roughly a fifth of it overwritten by some later line. You could not read it to find out what a table looked like, only what had happened to it. It is written by hand now and the script is gone, because a script that overwrites the design is a loaded gun.
 
+Before building a screen, read [docs/building-screens.md](docs/building-screens.md): the shared styles and pieces every screen is made from, and the rules the structure test enforces.
+
 ## What is not built
 
 **AI invoice extraction** using Google Gemini. The documents from the supplier that is about 90% of what we buy are text and not scans, so they are read locally and deterministically and no AI is involved. That is the right answer for the other 10% one day, when somebody sends a photograph of a docket, and it earns nothing until then: building both at once would be two different ways for a price to end up wrong.
-
-**Importing the weekly report from the till.** The old POS System and tills will be replaced soon, so a parser created for the old Pixel Point export format would be obsolete before it was used.
 
 **Cash reconciliation.** The floats, cash banked and petty cash are in the database but disabled in the interface while the business changes how it handles cash. It can be turned back on without a migration, once we establish what will be the new procedure for this.
 

@@ -17,6 +17,10 @@
 //   GOOGLE_SERVICE_ACCOUNT        the whole key JSON, as one line
 //   GOOGLE_ALL_SITES_CALENDAR_ID  the group calendar
 //   GOOGLE_IMPERSONATE            hub@papichulo.ie, and see below
+//   APP_URL                       where the event's link back to the Hub
+//                                 points, the real site. The mail functions
+//                                 already read it, and function secrets are
+//                                 shared, so it is set already
 //
 // There are two ways to let this write to the calendars, and the difference is
 // what the key can reach if it ever leaks.
@@ -37,7 +41,9 @@
 // Either way it is never given a real person to impersonate.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { eventBody, calendarsFor, plan } from './google.js'
+import {
+    eventBody, calendarsFor, plan, idsFrom, reachOf, carryOut, GONE, callerRefusal,
+} from './google.js'
 
 const CORS = {
     'Access-Control-Allow-Origin': '*',
@@ -152,8 +158,6 @@ async function accessToken() {
 
 // ---------- the calendar ----------
 
-const API = 'https://www.googleapis.com/calendar/v3/calendars'
-
 async function callGoogle(token: string, url: string, method: string, body?: unknown) {
     const answer = await fetch(url, {
         method,
@@ -161,9 +165,9 @@ async function callGoogle(token: string, url: string, method: string, body?: unk
         body: body === undefined ? undefined : JSON.stringify(body),
     })
 
-    // A delete of something already gone is a success as far as we are
-    // concerned: the state we wanted is the state there is.
-    if (answer.status === 404 || answer.status === 410) return null
+    // Not there. What that means depends on what was asked, so it is said
+    // rather than decided here: see carryOut in google.js.
+    if (answer.status === 404 || answer.status === 410) return GONE
     if (!answer.ok) {
         const text = await answer.text()
         throw new Error(`Google said ${answer.status}: ${text.slice(0, 300)}`)
@@ -193,13 +197,14 @@ Deno.serve(async (request) => {
     const { data: { user } } = await caller.auth.getUser()
     if (!user) return json({ error: 'Not signed in' }, 401)
 
+    // Managers and above, with a login that is switched on. See callerRefusal
+    // in google.js.
     const { data: me } = await admin
-        .from('users').select('id, role, restaurant_id').eq('id', user.id).maybeSingle()
-    if (!me || !['super_admin', 'owner', 'store_manager'].includes(me.role)) {
-        return json({ error: 'Not allowed' }, 403)
-    }
+        .from('users').select('id, role, restaurant_id, is_active').eq('id', user.id).maybeSingle()
+    const refused = callerRefusal(me)
+    if (refused) return json({ error: refused }, 403)
 
-    let payload: { entryId?: string, origin?: string, clear?: boolean }
+    let payload: { entryId?: string, clear?: boolean }
     try { payload = await request.json() } catch { return json({ error: 'Bad request' }, 400) }
     if (!payload.entryId) return json({ error: 'No entry' }, 400)
 
@@ -230,7 +235,8 @@ Deno.serve(async (request) => {
     // have to come off the calendars while the row is still there to say which
     // ones they are on, because once it is gone nothing knows.
     const wanted = payload.clear ? [] : calendarsFor(entry, restaurants || [], allSites)
-    const jobs = plan(wanted, entry.google_event_ids || {})
+    const stored = idsFrom(entry.google_event_ids)
+    const jobs = plan(wanted, stored)
 
     // Nothing to do and nothing ever written. A private entry lands here every
     // time it is saved and there is no work, which is not a failure.
@@ -248,33 +254,21 @@ Deno.serve(async (request) => {
         return json({ ok: false, reason: String((e as Error).message), written: 0 }, 200)
     }
 
-    const body = eventBody(entry, payload.origin)
+    // The link on the event is the real site and nothing the app sends. The
+    // mails take a preview build's address when it is on APP_URL_ALSO, which
+    // suits a test mail read once. An event stays on a calendar everybody
+    // shares long after the dev server or the preview has gone, so it gets
+    // the address that lasts.
+    const body = eventBody(entry, Deno.env.get('APP_URL') || '')
 
-    const ids: Record<string, string> = { ...(entry.google_event_ids || {}) }
-    const failed: string[] = []
-    let written = 0
-
-    for (const job of jobs) {
-        const base = `${API}/${encodeURIComponent(job.calendarId)}/events`
-        try {
-            if (job.action === 'delete') {
-                await callGoogle(token, `${base}/${job.eventId}`, 'DELETE')
-                delete ids[job.calendarId]
-            } else if (job.action === 'update') {
-                await callGoogle(token, `${base}/${job.eventId}`, 'PUT', body)
-                written += 1
-            } else {
-                const made = await callGoogle(token, base, 'POST', body)
-                if (made?.id) ids[job.calendarId] = made.id
-                written += 1
-            }
-        } catch (e) {
-            // One calendar refusing is not the others failing. What worked is
-            // recorded, what did not is named, and nothing is reported as a
-            // success that was not one.
-            failed.push(`${job.calendarId}: ${(e as Error).message}`)
-        }
-    }
+    // Every job is checked against the calendars this person may change before
+    // Google hears of it, whatever the entry's stored ids say. See google.js.
+    const { ids, failed, written } = await carryOut(jobs, {
+        call: (address: string, method: string, sent?: unknown) => callGoogle(token, address, method, sent),
+        body,
+        ids: stored,
+        reach: reachOf(me, restaurants || [], allSites),
+    })
 
     await admin.from('diary_entries').update({
         google_event_ids: Object.keys(ids).length ? ids : null,

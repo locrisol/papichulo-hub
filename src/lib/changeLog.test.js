@@ -1,14 +1,14 @@
 import { describe, it, expect } from 'vitest'
 import {
-    tableWords, fieldWords, valueWords, changedFields, deletedFields,
+    tableWords, fieldWords, valueWords, changedFields,
     whoWords, throughTheApp, summarise, actionWords, actionTone, byDay,
-    aOrAn, dayOf,
+    aOrAn,
 } from '@/lib/changeLog'
 
 describe('tableWords', () => {
     it('uses the name the app calls it', () => {
         expect(tableWords('sales_records')).toBe('Daily sales')
-        expect(tableWords('shift_requests')).toBe('Time off request')
+        expect(tableWords('shift_requests')).toBe('Shift swap')
         expect(tableWords('users')).toBe('Account')
     })
 
@@ -45,6 +45,11 @@ describe('valueWords', () => {
         expect(valueWords('hourly_rate', 13.5)).toBe('€13.50')
         expect(valueWords('quantity', '12.00')).toBe('12.00')
         expect(valueWords('review_count', 41)).toBe('41')
+    })
+
+    it('puts the minus before the euro sign', () => {
+        expect(valueWords('net_sales', '-3.00')).toBe('-€3.00')
+        expect(valueWords('hourly_rate', -3)).toBe('-€3.00')
     })
 
     it('does not read a percentage as money', () => {
@@ -93,6 +98,24 @@ describe('changedFields', () => {
         // updated_at changes every time, so recording it would put a line in
         // every entry that says only that the entry exists.
         expect(changedFields(entry).map(f => f.field)).not.toContain('updated_at')
+    })
+
+    // The roster keeps the copy of a shift that went out on the row itself,
+    // eight values long. It moves on the first change after a week is
+    // published and again when it is published, and what changed is already
+    // said by the times and the published date beside it.
+    it('leaves out the copy of a shift that went out', () => {
+        const copy = {
+            employee_id: '8c1f2a44-1111-2222-3333-444455556666', shift_date: '2026-10-10',
+            starts_at: '09:00:00', ends_at: '17:00:00', position_id: null,
+            break_minutes: 30, note: null, published_at: '2026-10-01T09:00:00Z',
+        }
+        expect(changedFields({
+            changes: {
+                starts_at: { from: '09:00:00', to: '10:00:00' },
+                published_as: { from: null, to: copy },
+            },
+        }).map(f => f.field)).toEqual(['starts_at'])
     })
 
     it('opens up a column that holds a set of values', () => {
@@ -149,19 +172,6 @@ describe('changedFields', () => {
     it('gives nothing for an insert, which carries no payload', () => {
         expect(changedFields({ action: 'insert' })).toEqual([])
         expect(changedFields(null)).toEqual([])
-    })
-})
-
-describe('deletedFields', () => {
-    it('shows what was in the row, without the plumbing', () => {
-        const out = deletedFields({
-            deleted_row: {
-                id: 'x', invoice_number: 'SYS-99412', total_amount: '1284.55',
-                notes: null, created_at: '2026-09-02T08:00:00Z',
-            },
-        })
-        expect(out.map(f => f.field)).toEqual(['invoice_number', 'total_amount'])
-        expect(out[1].value).toBe('€1,284.55')
     })
 })
 
@@ -236,17 +246,17 @@ describe('actionWords and actionTone', () => {
     })
 })
 
-describe('dayOf and byDay', () => {
+describe('byDay', () => {
     it('files a change under the day the reader had, not the database', () => {
         // A change at half past midnight belongs to that morning. Slicing the
         // stored timestamp files it under the day before, which is the kind of
         // thing that makes somebody stop trusting the whole record.
         const local = new Date(2026, 8, 8, 0, 30)
-        expect(dayOf(local.toISOString())).toBe('2026-09-08')
+        expect(byDay([{ changed_at: local.toISOString() }])[0][0]).toBe('2026-09-08')
     })
 
-    it('gives nothing for a timestamp it cannot read', () => {
-        expect(dayOf('not a date')).toBe('')
+    it('skips a timestamp it cannot read', () => {
+        expect(byDay([{ changed_at: 'not a date' }])).toEqual([])
     })
 
     it('groups newest day first', () => {

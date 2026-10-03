@@ -7,10 +7,14 @@ import { useConfirm } from '@/context/confirm'
 import { can, MANAGERS } from '@/lib/access'
 import { stampDateTime } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
-import { badge, checkbox, primaryButton, rowButton } from '@/lib/controlStyles'
+import { badge, card, checkbox, hintClass, primaryButton, rowButton } from '@/lib/controlStyles'
+import { readStored, writeStored, forgetStored } from '@/lib/browserStore'
 import { doneDay, doneDayLong, elementDone, leftLastTime, listTree, placeOf, roundOutcome, tickable } from '@/lib/checklists'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import BackButton from '@/components/ui/BackButton'
+import CountingBar from '@/components/ui/CountingBar'
+import Notice from '@/components/ui/Notice'
+import PdfButton from '@/components/ui/PdfButton'
 import GuidePicture from '@/components/checklists/GuidePicture'
 import PhotoButton from '@/components/checklists/PhotoButton'
 import PhotoStrip from '@/components/checklists/PhotoStrip'
@@ -30,8 +34,10 @@ import { signer } from '@/components/checklists/signPhotos'
 // somebody else on another phone sees what has been submitted and nothing else.
 //
 // A photo is uploaded the moment it is taken, because that is where the waiting
-// is, and only joined to its tick on Submit. One taken and never submitted is
-// deleted by the nightly job after a day.
+// is, and only joined to its tick on Submit. The nightly job keeps it while the
+// round is open, however long that is, and deletes one never submitted once the
+// round has ended. A photo that went missing anyway is refused on Submit, with
+// the task named, so it can be taken again.
 export default function ChecklistRoundPage() {
     const { id } = useParams()
     const navigate = useNavigate()
@@ -115,15 +121,12 @@ export default function ChecklistRoundPage() {
         load()
     }, [load, version])
 
+    // If storage is off the ticks still work, they just do not survive the
+    // page closing.
     function keep(next) {
         setPending(next)
-        try {
-            if (Object.keys(next).length) localStorage.setItem(draftKey, JSON.stringify(next))
-            else localStorage.removeItem(draftKey)
-        } catch {
-            // Storage is off. The ticks still work, they just do not survive
-            // the page closing.
-        }
+        if (Object.keys(next).length) writeStored('local', draftKey, JSON.stringify(next))
+        else forgetStored('local', draftKey)
     }
 
     // What the round shows. For one still going, the list as it is now. For
@@ -171,7 +174,7 @@ export default function ChecklistRoundPage() {
         setPending(before => {
             const entry = before[task.id] || { at: new Date().toISOString(), photos: [] }
             const next = { ...before, [task.id]: { ...entry, photos: [...entry.photos, path] } }
-            try { localStorage.setItem(draftKey, JSON.stringify(next)) } catch { /* see keep */ }
+            writeStored('local', draftKey, JSON.stringify(next))
             return next
         })
     }
@@ -242,7 +245,7 @@ export default function ChecklistRoundPage() {
         const ok = await confirm({
             title: 'Delete this round?',
             message: 'Nothing on it has been ticked, so nothing is lost. Use this for a round started by mistake.',
-            confirmLabel: 'Delete it',
+            confirmLabel: 'Delete',
             tone: 'danger',
         })
         if (!ok) return
@@ -253,18 +256,11 @@ export default function ChecklistRoundPage() {
     }
 
     async function downloadPdf() {
-        setBusy(true)
-        try {
-            const { roundPdf, loadPictures } = await import('@/lib/checklistPdf')
-            const kept = saved.filter(t => !t.photos_gone_at).flatMap(t => t.photos || [])
-            const pictures = await loadPictures(kept, signer)
-            const restaurant = restaurants.find(r => r.id === round.restaurant_id) || activeRestaurant
-            await roundPdf({ restaurant, list, tree, round, ticks: saved, pictures, generatedBy: user?.full_name })
-        } catch (err) {
-            setError(friendlyError(err))
-        } finally {
-            setBusy(false)
-        }
+        const { roundPdf, loadPictures } = await import('@/lib/checklistPdf')
+        const kept = saved.filter(t => !t.photos_gone_at).flatMap(t => t.photos || [])
+        const pictures = await loadPictures(kept, signer)
+        const restaurant = restaurants.find(r => r.id === round.restaurant_id) || activeRestaurant
+        await roundPdf({ restaurant, list, tree, round, ticks: saved, pictures, generatedBy: user?.full_name })
     }
 
     return (
@@ -275,30 +271,23 @@ export default function ChecklistRoundPage() {
         // slid out under it. On a phone it is an ordinary tall page and the
         // bars stick to the top and bottom of the screen.
         <div className="-mx-4 md:-mx-7 -my-4 md:-my-7 flex flex-col md:h-[calc(100vh-4rem)]">
-            {/* The same bar the stock take counts under, sticky on a phone so
-                where you are up to never scrolls away. z-20, under the menu. */}
-            <div className="flex-shrink-0 sticky top-0 md:static z-20 bg-white border-b border-border shadow-sm px-4 md:px-7">
-                <div className="py-3 flex items-center gap-3">
-                    <button type="button" onClick={() => navigate('/checklists')} className="text-gray-500 hover:text-gray-700 flex-shrink-0" aria-label="Back to checklists">
-                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-                        </svg>
-                    </button>
-                    <div className="flex-1 min-w-0">
-                        <h1 className="font-semibold text-gray-900 truncate">{list.name}</h1>
-                        <p className="text-xs text-muted">
-                            {done} of {all.length} done
-                            {waiting.length > 0 && <span className="text-accent-ink font-semibold"> · {waiting.length} not saved yet</span>}
-                        </p>
-                    </div>
-                    {isManager && (
-                        <button type="button" onClick={downloadPdf} disabled={busy} className={`${rowButton('plain')} flex-shrink-0`}>PDF</button>
-                    )}
-                </div>
-                <div className="w-full bg-gray-200 h-1">
-                    <div className="bg-accent h-full transition-all" style={{ width: all.length ? `${(done / all.length) * 100}%` : '0%' }} />
-                </div>
-            </div>
+            <CountingBar
+                backTo="/checklists"
+                backLabel="Back to checklists"
+                title={list.name}
+                subtitle={(
+                    <>
+                        {done} of {all.length} done
+                        {waiting.length > 0 && <span className="text-accent-ink font-semibold"> · {waiting.length} not saved yet</span>}
+                    </>
+                )}
+                progress={all.length ? done / all.length : 0}
+                actions={isManager && (
+                    <PdfButton make={downloadPdf} onError={err => setError(friendlyError(err))} className={rowButton('plain')}>
+                        PDF
+                    </PdfButton>
+                )}
+            />
 
             {/* No padding on top of the scroller itself, for the same reason:
                 the category headings stick to its top edge. */}
@@ -308,12 +297,12 @@ export default function ChecklistRoundPage() {
                         Started {doneDayLong(round.started_at)}{round.started_by_name && ` by ${round.started_by_name}`}.
                     </p>
                     {!open && (
-                        <div className={`mt-3 text-sm px-4 py-3 rounded-lg border ${outcome === 'finished' ? 'bg-green-50 border-green-200 text-green-900' : 'bg-amber-50 border-amber-200 text-amber-900'}`}>
+                        <Notice tone={outcome === 'finished' ? 'good' : 'warn'} className="mt-3">
                             {outcome === 'finished'
                                 ? `Finished ${stampDateTime(round.ended_at)}. Everything on the list was done.`
                                 : `Ended ${stampDateTime(round.ended_at)}${round.ended_by_name ? ` by ${round.ended_by_name}` : ''} with ${all.length - done} not done.`}
                             {' '}Nothing on it can be changed now.
-                        </div>
+                        </Notice>
                     )}
                     {urgent.length > 0 && (
                         <div className="mt-4 rounded-xl border-2 border-red-300 bg-red-50 p-4" role="note">
@@ -338,13 +327,13 @@ export default function ChecklistRoundPage() {
                         </div>
                     )}
                     {open && (
-                        <p className="text-xs text-muted mt-1">
+                        <p className={hintClass}>
                             Tick things as you do them, then press Submit. Once submitted, a tick cannot be changed.
                         </p>
                     )}
 
                     <ErrorBanner className="mt-3">{error}</ErrorBanner>
-                    {notice && <p role="status" className="mt-3 text-sm text-green-900 bg-green-50 rounded-lg p-3">{notice}</p>}
+                    <Notice tone="good" className="mt-3">{notice}</Notice>
 
                     {all.length === 0 && (
                         <p className="text-sm text-muted mt-6">There is nothing on this list yet.</p>
@@ -356,11 +345,14 @@ export default function ChecklistRoundPage() {
                         const catDone = leaves.filter(t => byTask.has(t.id)).length
                         return (
                             <section key={category.id} className="pt-5">
-                                <div className="sticky top-[4.25rem] md:top-0 z-10 bg-sidebar rounded-lg px-3 py-2.5 mb-2 flex items-center justify-between shadow-md">
+                                {/* Under the counting bar on a phone: the back
+                                    button's 44px, its padding and the progress
+                                    strip. */}
+                                <div className="sticky top-[4.5rem] md:top-0 z-10 bg-sidebar rounded-lg px-3 py-2.5 mb-2 flex items-center justify-between shadow-md">
                                     <h2 className="font-serif text-base font-bold text-white">{category.name}</h2>
-                                    <span className="text-xs font-semibold text-white bg-white/20 px-2 py-0.5 rounded-full">{catDone}/{leaves.length}</span>
+                                    <span className={`${badge} bg-white/20 text-white`}>{catDone}/{leaves.length}</span>
                                 </div>
-                                <div className="bg-white border border-gray-300 rounded-xl overflow-hidden divide-y divide-border shadow-sm">
+                                <div className={`${card} overflow-hidden divide-y divide-border`}>
                                     {elements.map(element => {
                                         const { task, subs } = element
                                         const rowProps = t => ({
@@ -401,7 +393,7 @@ export default function ChecklistRoundPage() {
                             {saved.length === 0
                                 ? <button type="button" onClick={deleteRound} className={rowButton('danger')}>Delete this round</button>
                                 : <button type="button" onClick={endEarly} disabled={busy} className={rowButton('danger')}>End this round now</button>}
-                            <p className="text-xs text-muted basis-full">
+                            <p className={`${hintClass} basis-full`}>
                                 {saved.length === 0
                                     ? 'For a round started by mistake. Only a manager can do this.'
                                     : 'Ends it with what is left marked as not done, and that comes back as High priority next time. Only a manager can do this.'}
@@ -500,10 +492,10 @@ function TickRow({ task, tick, draft, lastDone, open, urgent, restaurantId, roun
 // Ticks this phone has not submitted yet, if it kept any.
 function readDraft(key) {
     try {
-        const kept = JSON.parse(localStorage.getItem(key) || '{}')
+        const kept = JSON.parse(readStored('local', key) || '{}')
         return kept && typeof kept === 'object' ? kept : {}
     } catch {
-        // Nothing kept, or storage is off in this browser. Starts empty.
+        // What was kept is not a draft. Starts empty.
         return {}
     }
 }

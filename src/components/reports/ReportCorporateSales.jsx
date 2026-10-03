@@ -1,6 +1,7 @@
 import { fmtMoney, fmtPct } from '@/lib/format'
 import { accountColour } from '@/lib/reportCharts'
 import AutoTextarea from '@/components/ui/AutoTextarea'
+import { denseField } from '@/lib/controlStyles'
 
 // Corporate sales.
 //
@@ -86,7 +87,7 @@ export default function ReportCorporateSales({ platforms, taken, notes, canEdit,
                                         if (text !== (note?.note || '')) onSaveNote(p, text)
                                     }}
                                     placeholder={`Add a comment for ${p.name}`}
-                                    className="w-full bg-white border border-gray-300 rounded-lg px-2 py-1.5 text-sm shadow-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
+                                    className={denseField}
                                 />
                             ) : note?.note ? (
                                 <p className="text-sm text-muted">{note.note}</p>

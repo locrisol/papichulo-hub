@@ -4,27 +4,26 @@ import { useRestaurant } from '@/context/restaurant'
 import { useAuth } from '@/context/auth'
 import { useConfirm } from '@/context/confirm'
 import { friendlyError } from '@/lib/errors'
-import { todayISO, weekStartOf, weekDates, addDays, shortDate, weekMonthLabel } from '@/lib/dates'
-import { DAY_NAMES, dayName } from '@/lib/events'
-import { nearbyRows, rowsOn, headlinePlaces, PAIRING_COLUMNS } from '@/lib/nearby'
+import { can, RESTAURANT_CONFIG } from '@/lib/access'
+import { todayISO, weekStartOf, weekDates, addDays, shortDate, weekMonthLabel, DAY_NAMES, dayName } from '@/lib/dates'
+import { rosterNearby, NEARBY_FAILED, rowsOn, PAIRING_COLUMNS } from '@/lib/nearby'
 import { fmtMoney } from '@/lib/format'
-import { secondaryButton, cardEdge, cardHeader, badge, segmentTrack, segmentButton } from '@/lib/controlStyles'
+import { primaryButton, secondaryButton, cardEdge, cardHeader, badge, segmentTrack, segmentButton } from '@/lib/controlStyles'
 import JumpButton from '@/components/ui/JumpButton'
 import DateStepper from '@/components/ui/DateStepper'
 import {
-    sortEmployees, isWorkingOn, nextSortOrder, employeeProblem, employeeNote, employeeRow, EMPTY_EMPLOYEE,
+    onTheRoster, whoCanWorkOn, nextSortOrder, employeeProblem, employeeNote, employeeRow, EMPTY_EMPLOYEE,
 } from '@/lib/team'
-import { fullDayRun, fullDayWords } from '@/lib/workRun'
+import { fullDayRun, fullDayWords, closedTheNightBefore } from '@/lib/workRun'
 import {
     hoursForDate, totals, publishState, findOverlaps, fmtHours, shortTime, breakFor, shiftHours,
-    shiftEdges,
 } from '@/lib/roster'
 import { checkWeek, findingsByEmployee, aboutThisWeek, overlapFindings } from '@/lib/workRules'
-import { openGaps, asCleared } from '@/lib/timeOff'
+import { openGaps, cannotAnswer } from '@/lib/timeOff'
 import { emailTheAnswer, emailTheShiftDecision } from '@/lib/rosterMail'
 import { absenceRange } from '@/lib/absences'
 import TimeOffDeskModal from '@/components/roster/TimeOffDeskModal'
-import { writesFor, requestsOnShift, shiftIdsOf, LIVE_STATES } from '@/lib/shiftRequests'
+import { writesFor, requestsOnShift, shiftIdsOf, windowsFit, LIVE_STATES } from '@/lib/shiftRequests'
 import RosterDay from '@/components/roster/RosterDay'
 import RosterWeek from '@/components/roster/RosterWeek'
 import ShareWeekButton from '@/components/roster/ShareWeekButton'
@@ -40,9 +39,13 @@ import DayNoteDialog from '@/components/roster/DayNoteDialog'
 import Modal from '@/components/ui/Modal'
 import EmployeeForm from '@/components/team/EmployeeForm'
 import ErrorBanner from '@/components/ui/ErrorBanner'
-import { atRestaurant } from '@/lib/diary'
+import Notice from '@/components/ui/Notice'
+import PageHeader from '@/components/ui/PageHeader'
+import FeedTrouble from '@/components/nearby/FeedTrouble'
+import { atRestaurant, canChangeEntry } from '@/lib/diary'
 import DiaryDialog from '@/components/diary/DiaryDialog'
 import DiaryEntryModal from '@/components/diary/DiaryEntryModal'
+import { useRecountBadges } from '@/context/badges'
 
 // Building the week.
 //
@@ -53,9 +56,15 @@ import DiaryEntryModal from '@/components/diary/DiaryEntryModal'
 // A week is a draft until it is published, and publishing is a week at a time,
 // never a shift on its own. Half a roster going out is worse than none.
 export default function RosterPage() {
+    const recountBadges = useRecountBadges()
     const { activeRestaurant } = useRestaurant()
     const { user } = useAuth()
     const confirm = useConfirm()
+    // Opening hours, the break and roster rules and the every week list are
+    // all kept on the restaurant row, and an owner cannot change that row. The
+    // four buttons only ever refused them, with a message about a setting
+    // that could not be found.
+    const configures = can(user, RESTAURANT_CONFIG)
 
     const [employees, setEmployees] = useState([])
     const [positions, setPositions] = useState([])
@@ -83,6 +92,12 @@ export default function RosterPage() {
     // Kept apart from the listings so a place with nothing on this week still
     // draws its row. See ownRows.
     const [nearbyPlaces, setNearbyPlaces] = useState([])
+    // The pairings themselves, for saying when a feed has stopped answering.
+    const [nearbyPairings, setNearbyPairings] = useState([])
+    // Whether the events nearby could not be read. Its own line rather than
+    // the page's error, which every save clears and the next failure writes
+    // over, and then the week has no Arena row and nothing saying why.
+    const [nearbyFailed, setNearbyFailed] = useState(false)
     const [diary, setDiary] = useState([])
     const [restaurants, setRestaurants] = useState([])
     const [editingDiary, setEditingDiary] = useState(null)
@@ -183,6 +198,9 @@ export default function RosterPage() {
     // genuinely nothing to look at. Everything after it swaps the data
     // underneath what is already on screen.
     async function load({ quiet = false } = {}) {
+        // A quiet load follows something done here, which the sidebar's
+        // Roster count may have to follow too.
+        if (quiet) recountBadges()
         if (!quiet) setLoading(true)
         setError('')
 
@@ -267,9 +285,14 @@ export default function RosterPage() {
         loadRequests(fetched.filter(s => s.shift_date >= weekStart && s.shift_date <= weekLast))
         setDayNotes(noteRes.data || [])
         // One pass, so the roster and the calendar cannot disagree about which
-        // listing belongs to which shop. See lib/nearby.
-        setNearbyOn(nearbyRows(eventRes.data, nearRes.data, activeRestaurant))
-        setNearbyPlaces(headlinePlaces(nearRes.data, activeRestaurant))
+        // listing belongs to which shop. See lib/nearby. A cancelled night
+        // comes off here, the way a cancelled diary job does, and a read that
+        // failed draws no Arena row rather than a quiet one.
+        const near = rosterNearby(eventRes, nearRes, activeRestaurant)
+        setNearbyOn(near.rows)
+        setNearbyPlaces(near.places)
+        setNearbyPairings(near.pairings)
+        setNearbyFailed(Boolean(near.failed))
         setDiary((diaryRes.data || []).filter(e => atRestaurant(e, restaurantId)))
         setRestaurants(placeRes.data || [])
         setAbsences(offRes.data || [])
@@ -302,13 +325,17 @@ export default function RosterPage() {
         }
     }
 
-    // Only the people actually working that week. Somebody who left in June is
-    // not a row on July's roster with nothing in it.
-    const roster = sortEmployees(employees).filter(e =>
-        dates.some(d => isWorkingOn(e, d)),
-    )
+    // The people working that week, and anybody else with a shift in it. See
+    // onTheRoster: a shift after somebody's last day used to have no row, so it
+    // counted in every total and nobody could open it. The checks below say
+    // what is wrong with it.
+    const roster = onTheRoster(employees, dates, shifts)
 
     const employeesById = Object.fromEntries(employees.map(e => [e.id, e]))
+    // Whoever is signed in, as somebody on the team list, when they are on it.
+    // A store manager on the roster does not answer their own time off. See
+    // cannotAnswer.
+    const meEmployeeId = employees.find(e => e.user_id && e.user_id === user?.id)?.id || null
     const noteFor = d => dayNotes.find(n => n.note_date === d) || null
     const hoursOn = d => hoursForDate(activeRestaurant?.opening_hours, noteFor(d), d)
 
@@ -334,39 +361,16 @@ export default function RosterPage() {
         weekHoursByEmployee[s.employee_id] = (weekHoursByEmployee[s.employee_id] || 0) + shiftHours(s)
     }
 
-    // Who closed the night before.
-    //
-    // Said quietly and nothing more. Closing at eleven and opening at half
-    // eight is legal and sometimes it is what somebody wants, so this does not
-    // block it, warn about it or make it any harder to do. It just means you
-    // are not deciding it blind.
-    //
-    // Both lists, because the day before the first day of the week is in the
-    // week before, which is why those are fetched at all.
-    const yesterday = addDays(date, -1)
-    const yesterdayHours = hoursOn(yesterday)
-    // Whether they closed, and the whole of what they did yesterday.
+    // Who closed the night before, and the whole of what they did yesterday.
     //
     // The row says only that they closed. The hover says the shift, because
     // "closed last night" is a different weight of fact depending on whether it
     // was four hours or twelve, and that is the bit you want before deciding to
     // open them this morning.
-    const closedLastNight = {}
-    for (const s of [...shifts, ...nearbyShifts]) {
-        if (s.shift_date !== yesterday) continue
-        if (!shiftEdges(s, yesterdayHours).closing) continue
-        closedLastNight[s.employee_id] = { starts_at: s.starts_at, ends_at: s.ends_at }
-    }
-
-    // Their whole day, for somebody on twice: the first start and the last
-    // finish, so a split day reads as the day it was rather than as its second
-    // half.
-    for (const s of [...shifts, ...nearbyShifts]) {
-        const closed = closedLastNight[s.employee_id]
-        if (!closed || s.shift_date !== yesterday) continue
-        if (s.starts_at < closed.starts_at) closed.starts_at = s.starts_at
-        if (s.ends_at > closed.ends_at) closed.ends_at = s.ends_at
-    }
+    //
+    // Both lists, because the day before the first day of the week is in the
+    // week before, which is why those are fetched at all.
+    const closedLastNight = closedTheNightBefore([...shifts, ...nearbyShifts], date, hoursOn)
     // How many full days in a row each of them is on, said as a finding rather
     // than as another line under their name.
     //
@@ -416,49 +420,47 @@ export default function RosterPage() {
         })
     }
 
-    // Approving with shifts to clear takes them off and writes down what they
-    // were, so the week can go on asking for cover until somebody is on them.
-    async function approveTimeOff(request, clearing) {
-        setSavingOff(true)
+    // Answering a request, in one call to the database.
+    //
+    // It was two from here: take the shifts off, then mark the request. If
+    // they had taken the request back after this page loaded, the second
+    // write matched nothing and said nothing, so the shifts were gone with no
+    // record of what they were. Two managers answering the same request was
+    // last write wins, and a no could quietly become a yes.
+    //
+    // answer_time_off locks the request, refuses one that is no longer
+    // waiting, and takes the shifts off and writes the answer together or not
+    // at all. Approving with shifts to clear writes down what they were, so the
+    // week can go on asking for cover until somebody is on them.
+    async function answerTimeOff(request, answer, clearing = []) {
         setError('')
-
-        if (clearing.length > 0) {
-            const { error: delErr } = await supabase.from('roster_shifts')
-                .delete().in('id', clearing.map(s => s.id))
-            if (delErr) { setSavingOff(false); setError(friendlyError(delErr)); return }
+        // The strip does not offer it, and the database refuses it too.
+        if (cannotAnswer(request, meEmployeeId, user?.role)) {
+            setError('You cannot answer your own request. An owner has to.')
+            return
         }
 
-        const { error: updErr } = await supabase.from('absences').update({
-            status: 'approved',
-            decided_by: user.id,
-            decided_at: new Date().toISOString(),
-            cleared_shifts: clearing.length > 0 ? clearing.map(asCleared) : null,
-        }).eq('id', request.id)
+        setSavingOff(true)
+
+        const { data, error: err } = await supabase.rpc('answer_time_off', {
+            request_id: request.id,
+            answer,
+            clear_shift_ids: clearing.map(s => s.id),
+        })
 
         setSavingOff(false)
-        if (updErr) { setError(friendlyError(updErr)); return }
-
-        told(request, 'approved', clearing.map(asCleared))
         setAnswering(null)
         load({ quiet: true })
-    }
-
-    async function declineTimeOff(request) {
-        setSavingOff(true)
-        setError('')
-        const { error: err } = await supabase.from('absences').update({
-            status: 'declined',
-            decided_by: user.id,
-            decided_at: new Date().toISOString(),
-        }).eq('id', request.id)
-
-        setSavingOff(false)
+        // After load, which clears the message as it starts. Answered by
+        // somebody else or taken back is the usual reason, and the list it
+        // came from is out of date either way.
         if (err) { setError(friendlyError(err)); return }
 
-        told(request, 'declined', [])
-        setAnswering(null)
-        load({ quiet: true })
+        told(request, answer, data?.cleared_shifts || [])
     }
+
+    const approveTimeOff = (request, clearing) => answerTimeOff(request, 'approved', clearing)
+    const declineTimeOff = request => answerTimeOff(request, 'declined')
 
     const findings = checkWeek({
         shifts,
@@ -512,10 +514,26 @@ export default function RosterPage() {
     // now, and dropping the week back to a draft would tell everybody the thing
     // they just agreed had been undone.
     async function approveRequest(request) {
-        setSaving(true)
         setError('')
+        // The desk does not offer Approve for this, and this is the last
+        // place to stop it: the writes below keep whatever sits either side of
+        // the hours named, so hours outside the shift would be hours invented.
+        if (!windowsFit(request, id => shifts.find(s => s.id === id) || null)) {
+            setError('The hours asked for are no longer within the shift, so this cannot be approved.')
+            return
+        }
+
+        setSaving(true)
         const plan = writesFor(request, shifts, activeRestaurant?.break_rules)
-        const fail = problem => { setSaving(false); setError(friendlyError(problem)) }
+        // The writes go one at a time, so a refusal can come after some of
+        // them have landed. Fetching again shows the week as it now is rather
+        // than as it was planned. The message is set after, because load
+        // clears it as it starts.
+        const fail = problem => {
+            setSaving(false)
+            load({ quiet: true })
+            setError(friendlyError(problem))
+        }
 
         if (plan.removes.length > 0) {
             const { error: err } = await supabase.from('roster_shifts')
@@ -537,18 +555,7 @@ export default function RosterPage() {
 
         if (plan.inserts.length > 0) {
             const { error: err } = await supabase.from('roster_shifts').insert(
-                plan.inserts.map(row => ({
-                    restaurant_id: restaurantId,
-                    employee_id: row.employee_id,
-                    shift_date: row.shift_date,
-                    starts_at: row.starts_at,
-                    ends_at: row.ends_at,
-                    break_minutes: row.break_minutes,
-                    break_is_manual: row.break_is_manual,
-                    notes: row.notes || null,
-                    published_at: row.published_at || null,
-                    created_by: user?.id,
-                })),
+                plan.inserts.map(row => ({ ...row, restaurant_id: restaurantId, created_by: user?.id })),
             )
             if (err) return fail(err)
         }
@@ -558,9 +565,9 @@ export default function RosterPage() {
             decided_at: new Date().toISOString(),
             decided_by: user?.id,
         }).eq('id', request.id)
+        if (err) return fail(err)
 
         setSaving(false)
-        if (err) { setError(friendlyError(err)); return }
         // Last, after every write above has gone through. Both of them are
         // being told the roster has changed, and it has to have changed first.
         emailTheShiftDecision(request.id)
@@ -579,6 +586,7 @@ export default function RosterPage() {
         // A no is worth as much as a yes here. Two people agreed something
         // between them and are both waiting to find out whether it counts.
         emailTheShiftDecision(request.id)
+        recountBadges()
         loadRequests(shifts)
     }
 
@@ -684,12 +692,14 @@ export default function RosterPage() {
         // It can still be got past, deliberately and by somebody who has read
         // what they are getting past.
         if (blocks.length > 0) {
+            // The sentence is the red line under the dialog, never notice.
+            // A notice is one button with no way back.
             const past = await confirm({
-                title: 'This week cannot go out as it is',
+                title: 'Fix these before publishing',
                 message: blocks.map(b => b.text).join('\n\n'),
-                notice: 'These are limits on the company rather than on the person. Publishing anyway is a decision, not a shortcut.',
-                confirmLabel: 'Publish it anyway',
-                cancelLabel: 'Go back and fix it',
+                dangerNote: 'These are legal limits for the business. Only publish if you are sure.',
+                confirmLabel: 'Publish anyway',
+                cancelLabel: 'Go back',
                 tone: 'danger',
             })
             if (!past) return
@@ -697,15 +707,19 @@ export default function RosterPage() {
 
         const ok = await confirm({
             title: `Publish ${weekMonthLabel(weekStart)}?`,
-            message: 'Every shift in the week goes out together. Change anything afterwards and the week will say it has unpublished changes.',
+            message: 'Every shift in the week is published together. If you change anything afterwards, the week will show Unpublished changes.',
             details: [
                 { label: 'Week', value: `${shortDate(weekStart)} to ${shortDate(weekEnd)}` },
                 { label: 'Shifts', value: String(shifts.length) },
                 { label: 'Hours', value: `${fmtHours(week.hours)}` },
             ],
             confirmLabel: 'Publish the week',
-            notice: clashes.length
-                ? `${clashes.length} ${clashes.length === 1 ? 'person is' : 'people are'} double booked. Worth fixing first.`
+            // A double booking turns it red and says so under the details,
+            // with Cancel still there. Without one there is no red line at
+            // all, since the week can still be changed after it goes out.
+            tone: clashes.length > 0 ? 'danger' : 'default',
+            dangerNote: clashes.length > 0
+                ? `${clashes.length} ${clashes.length === 1 ? 'person is' : 'people are'} double booked. Check this before publishing.`
                 : undefined,
         })
         if (!ok) return
@@ -726,7 +740,7 @@ export default function RosterPage() {
     const stateBadge = {
         empty: { text: 'Nothing rostered', cls: 'bg-gray-100 text-gray-600' },
         draft: { text: 'Draft', cls: 'bg-amber-50 text-amber-700' },
-        changed: { text: 'Changed since it went out', cls: 'bg-red-50 text-red-700' },
+        changed: { text: 'Unpublished changes', cls: 'bg-red-50 text-red-700' },
         published: { text: 'Published', cls: 'bg-green-50 text-green-700' },
     }[state]
 
@@ -734,12 +748,14 @@ export default function RosterPage() {
 
     return (
         <div className="w-full">
-            <div className="mb-4">
-                <h2 className="font-serif text-2xl font-bold text-gray-900">Roster</h2>
-                <p className="text-sm text-muted mt-1">{weekMonthLabel(weekStart)}</p>
-            </div>
+            <PageHeader title="Roster" subtitle={weekMonthLabel(weekStart)} />
 
-            {error && <div className="bg-amber-50 text-amber-700 text-sm rounded-lg p-3 mb-4">{error}</div>}
+            <ErrorBanner className="mb-4">{error}</ErrorBanner>
+
+            {/* A feed that has stopped answering, said here because this is
+                where its silence would pass for a quiet week. */}
+            <FeedTrouble pairings={nearbyPairings} restaurant={activeRestaurant} className="mb-4" />
+            <ErrorBanner className="mb-4">{nearbyFailed ? NEARBY_FAILED : null}</ErrorBanner>
 
             {/* Week picker and what the week comes to. */}
             <div className={`${cardEdge} bg-white p-3 mb-4 flex flex-wrap items-center gap-3`}>
@@ -748,17 +764,14 @@ export default function RosterPage() {
                     onNext={() => setWeekStart(addDays(weekStart, 7))}
                     backLabel="Previous week"
                     nextLabel="Next week"
+                    weekStart={weekStart}
                     jump={(
                         <JumpButton
                             isCurrent={weekStart === weekStartOf(today)}
                             onClick={() => setWeekStart(weekStartOf(today))}
                         />
                     )}
-                >
-                    <span className="text-sm font-semibold text-gray-800 whitespace-nowrap">
-                        {shortDate(weekStart)} to {shortDate(weekEnd)}
-                    </span>
-                </DateStepper>
+                />
 
                 {/* Wraps on a phone, and only pushed to the far right once
                     there is a far right to push it to. ml-auto on a row that
@@ -778,7 +791,7 @@ export default function RosterPage() {
                         type="button"
                         onClick={publish}
                         disabled={saving || state === 'empty' || state === 'published'}
-                        className="px-4 py-2 bg-accent text-white text-sm font-semibold rounded-lg hover:bg-orange-600 disabled:opacity-40 whitespace-nowrap"
+                        className={`${primaryButton('md')} whitespace-nowrap`}
                     >
                         Publish
                     </button>
@@ -788,7 +801,7 @@ export default function RosterPage() {
             {blocks.length > 0 && (
                 <div className="bg-red-50 border border-red-200 text-red-800 text-sm rounded-lg p-3 mb-3">
                     <p className="font-semibold mb-1">
-                        {blocks.length === 1 ? 'One thing has to be fixed' : `${blocks.length} things have to be fixed`} before this week goes out
+                        {blocks.length === 1 ? 'One thing has to be fixed' : `${blocks.length} things have to be fixed`} before this week can be published
                     </p>
                     <ul className="list-disc pl-5 space-y-0.5">
                         {blocks.map((b, i) => <li key={i}>{b.text}</li>)}
@@ -797,20 +810,20 @@ export default function RosterPage() {
             )}
 
             {warnings.length > 0 && (
-                <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-lg p-3 mb-3">
-                    <p className="font-semibold mb-1">Worth a look</p>
+                <Notice tone="warn" className="mb-3">
+                    <p className="font-semibold mb-1">Warnings</p>
                     <ul className="list-disc pl-5 space-y-0.5">
                         {warnings.map((w, i) => <li key={i}>{w.text}</li>)}
                     </ul>
-                </div>
+                </Notice>
             )}
 
             {/* Somebody is waiting on an answer. Above the roster rather than
                 on a page of its own, because the answer depends on the week and
                 this is the week. */}
             {timeOffWaiting.length > 0 && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3">
-                    <p className="text-sm font-semibold text-amber-900 mb-1.5">
+                <Notice tone="warn" className="mb-3">
+                    <p className="font-semibold mb-1.5">
                         {timeOffWaiting.length === 1
                             ? 'One time off request is waiting'
                             : `${timeOffWaiting.length} time off requests are waiting`}
@@ -830,28 +843,37 @@ export default function RosterPage() {
                                             onClick={() => setWeekStart(weekStartOf(a.starts_on))}
                                             className="px-3 py-1.5 rounded-lg border border-amber-300 bg-white text-xs font-semibold text-amber-900 hover:bg-amber-50"
                                         >
-                                            Go to that week
+                                            Open that week
                                         </button>
                                     )}
-                                    <button
-                                        type="button"
-                                        onClick={() => openTimeOff(a)}
-                                        className="px-3 py-1.5 rounded-lg bg-accent text-white text-xs font-semibold hover:bg-accent/90"
-                                    >
-                                        Answer it
-                                    </button>
+                                    {/* Their own, for a store manager on the
+                                        roster. The owners were mailed it,
+                                        because it is theirs to answer. */}
+                                    {cannotAnswer(a, meEmployeeId, user?.role) ? (
+                                        <span className="px-3 py-1.5 text-xs font-semibold text-amber-900">
+                                            Waiting for an owner to approve
+                                        </span>
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            onClick={() => openTimeOff(a)}
+                                            className={primaryButton('sm')}
+                                        >
+                                            Review
+                                        </button>
+                                    )}
                                 </span>
                             </div>
                         ))}
                     </div>
-                </div>
+                </Notice>
             )}
 
             {/* Hours a freed day left behind. Each line goes as soon as anybody
                 is rostered over it, so there is nothing to tick off. */}
             {gaps.length > 0 && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3">
-                    <p className="text-sm font-semibold text-amber-900 mb-1">
+                <Notice tone="warn" className="mb-3">
+                    <p className="font-semibold mb-1">
                         {gaps.length === 1 ? 'One shift needs covering' : `${gaps.length} shifts need covering`}
                     </p>
                     <ul className="text-xs text-amber-800 space-y-0.5">
@@ -862,7 +884,7 @@ export default function RosterPage() {
                             </li>
                         ))}
                     </ul>
-                </div>
+                </Notice>
             )}
 
             {clashes.length > 0 && (
@@ -911,7 +933,7 @@ export default function RosterPage() {
                     <span className="flex items-center gap-3 normal-case tracking-normal">
                         <span className="text-white/80 text-xs">
                             {noteFor(date)?.is_closed
-                                ? 'Store closed'
+                                ? 'Restaurant closed'
                                 : dayHours
                                     ? `Open ${shortTime(dayHours.open)} to ${shortTime(dayHours.close)}`
                                     : 'No hours set'}
@@ -927,7 +949,7 @@ export default function RosterPage() {
                 </div>
                 <div className="px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs border-b border-border">
                     <span className="text-muted">
-                        <b className="text-gray-900">{fmtHours(day.hours)}</b> hours today
+                        <b className="text-gray-900">{fmtHours(day.hours)}</b> hours
                     </span>
                     <span className="text-muted">
                         <b className="text-gray-900">{fmtMoney(day.cost)}</b>
@@ -966,9 +988,9 @@ export default function RosterPage() {
                         <button
                             type="button"
                             onClick={() => setDeskOpen(true)}
-                            className="px-4 py-2 bg-accent text-white rounded-lg text-sm font-semibold shadow-sm hover:brightness-95 whitespace-nowrap"
+                            className={`${primaryButton()} whitespace-nowrap`}
                         >
-                            {agreed.length} {agreed.length === 1 ? 'change' : 'changes'} to approve
+                            {agreed.length} {agreed.length === 1 ? 'shift swap' : 'shift swaps'} to approve
                         </button>
                     )}
                     <button type="button" onClick={() => { setPersonForm(EMPTY_EMPLOYEE); setAddingPerson(true) }} className={secondaryButton}>
@@ -981,18 +1003,22 @@ export default function RosterPage() {
                     <button type="button" onClick={() => setSettingsOpen('timeOff')} className={secondaryButton}>
                         Time off
                     </button>
-                    <button type="button" onClick={() => setSettingsOpen('hours')} className={secondaryButton}>
-                        Opening hours
-                    </button>
-                    <button type="button" onClick={() => setSettingsOpen('breaks')} className={secondaryButton}>
-                        Break rules
-                    </button>
-                    <button type="button" onClick={() => setSettingsOpen('rules')} className={secondaryButton}>
-                        Roster rules
-                    </button>
-                    <button type="button" onClick={() => setSettingsOpen('weekly')} className={secondaryButton}>
-                        Every week
-                    </button>
+                    {configures && (
+                        <>
+                            <button type="button" onClick={() => setSettingsOpen('hours')} className={secondaryButton}>
+                                Opening hours
+                            </button>
+                            <button type="button" onClick={() => setSettingsOpen('breaks')} className={secondaryButton}>
+                                Break rules
+                            </button>
+                            <button type="button" onClick={() => setSettingsOpen('rules')} className={secondaryButton}>
+                                Roster rules
+                            </button>
+                            <button type="button" onClick={() => setSettingsOpen('weekly')} className={secondaryButton}>
+                                Every week
+                            </button>
+                        </>
+                    )}
                 </div>
             </div>
 
@@ -1013,10 +1039,10 @@ export default function RosterPage() {
                         {state === 'published'
                             ? 'This week is published. Send it out.'
                             : state === 'changed'
-                                ? 'Changed since it went out. Publish again and you can share it.'
+                                ? 'This week has unpublished changes. Publish again to share it.'
                                 : state === 'empty'
                                     ? 'Nothing on this week yet.'
-                                    : 'Not published yet. Publish it and you can share it.'}
+                                    : 'Not published yet. Publish the week to share it.'}
                     </p>
                     <ShareWeekButton
                         dates={dates}
@@ -1100,7 +1126,7 @@ export default function RosterPage() {
                 <ShiftDialog
                     shift={editingShift.shift}
                     date={date}
-                    employees={roster}
+                    employees={whoCanWorkOn(roster, date, editingShift.shift?.employee_id)}
                     dayHours={dayHours}
                     breakRules={activeRestaurant?.break_rules}
                     onSave={saveShift}
@@ -1119,7 +1145,7 @@ export default function RosterPage() {
                         onChange={(field, value) => setPersonForm(f => ({ ...f, [field]: value }))}
                         onSubmit={addPerson}
                         onCancel={() => setAddingPerson(false)}
-                        submitLabel="Add them"
+                        submitLabel="Add"
                         saving={saving}
                         problem={employeeProblem(personForm, todayISO())}
                         note={employeeNote(personForm, todayISO())}
@@ -1224,9 +1250,11 @@ export default function RosterPage() {
                 <DiaryEntryModal
                     entry={viewingDiary}
                     restaurants={restaurants}
-                    canEdit
-                    /* The route is managers and above, so anybody who can
-                       reach this page can change it. */
+                    /* The route is managers and above, but that is not the
+                       same as being able to change every entry drawn here. An
+                       owner's group promotion is on every roster and is not a
+                       store manager's to change; the database refuses it. */
+                    canEdit={canChangeEntry(user, viewingDiary)}
                     onEdit={() => { setEditingDiary(viewingDiary); setViewingDiary(null) }}
                     onClose={() => setViewingDiary(null)}
                 />

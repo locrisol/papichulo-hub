@@ -1,7 +1,9 @@
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
-import { secondaryButton, card, pageTitle } from '@/lib/controlStyles'
+import { primaryButton, secondaryButton, card, pageTitle } from '@/lib/controlStyles'
+import { friendlyError, isConnectionError } from '@/lib/errors'
 import { NO_ACCESS } from '@/context/auth'
+import { NO_RESTAURANT } from '@/context/restaurant'
 
 // You are signed in and the app cannot work out what to show you.
 //
@@ -14,12 +16,35 @@ import { NO_ACCESS } from '@/context/auth'
 // that has outlived the account it was made for. That is why the button is the
 // main thing on the screen and the reason is underneath it.
 //
-// Except for a login that is switched off, after a last day or by a manager.
-// Signing in again changes nothing for them, so the screen says what happened
-// and who to ask instead, and shows no reason from the database.
+// Except for two cases that signing in again changes nothing for, so the
+// screen says what happened and who to ask instead, and shows no reason from
+// the database: a login that is switched off, after a last day or by a
+// manager, and a new account nobody has linked to a restaurant yet.
+//
+// And no connection, where signing out cannot help and would only mean typing
+// the password again once the signal is back: Try again reloads instead.
+const SAID = {
+    [NO_ACCESS]: {
+        title: 'Your account is deactivated',
+        words: 'This happens after your last day, or when a manager deactivates it. '
+            + 'If you think it is a mistake, ask your manager.',
+    },
+    [NO_RESTAURANT]: {
+        title: 'Your account is not linked to a restaurant',
+        words: 'You are signed in, but your account has not been linked to a restaurant yet. '
+            + 'Ask your manager to get it set up.',
+    },
+}
+
 export default function CannotContinue({ reason }) {
     const navigate = useNavigate()
-    const switchedOff = reason === NO_ACCESS
+    const offline = isConnectionError(reason)
+    const known = offline
+        ? {
+            title: 'Could not reach the Hub',
+            words: 'Check your connection, then try again.',
+        }
+        : SAID[reason]
 
     async function signOutAndStartAgain() {
         await supabase.auth.signOut()
@@ -30,34 +55,43 @@ export default function CannotContinue({ reason }) {
         <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
             <div className={`${card} p-6 max-w-md w-full`}>
                 <h1 className={pageTitle}>
-                    {switchedOff ? 'Your login is switched off' : 'We cannot open the Hub for you'}
+                    {known ? known.title : 'We cannot open the Hub for you'}
                 </h1>
 
                 <p className="text-sm text-gray-700 mt-3">
-                    {switchedOff
-                        ? 'This happens after your last day, or when a manager switches it off. '
-                            + 'If you think it is a mistake, ask your manager.'
+                    {known
+                        ? known.words
                         : 'You are signed in, but we could not work out which account this is. '
                             + 'Signing out and in again usually fixes it.'}
                 </p>
 
-                {reason && !switchedOff && (
+                {reason && !known && (
                     <p className="text-xs text-muted mt-3">
-                        {reason}
+                        {friendlyError({ message: reason })}
                     </p>
                 )}
 
-                <button
-                    type="button"
-                    onClick={signOutAndStartAgain}
-                    className={`${secondaryButton} mt-5`}
-                >
-                    {switchedOff ? 'Sign out' : 'Sign out and start again'}
-                </button>
+                {offline ? (
+                    <button
+                        type="button"
+                        onClick={() => window.location.reload()}
+                        className={`${primaryButton()} mt-5`}
+                    >
+                        Try again
+                    </button>
+                ) : (
+                    <button
+                        type="button"
+                        onClick={signOutAndStartAgain}
+                        className={`${secondaryButton} mt-5`}
+                    >
+                        {known ? 'Sign out' : 'Sign out and start again'}
+                    </button>
+                )}
 
-                {!switchedOff && (
+                {!known && (
                     <p className="text-xs text-muted mt-4">
-                        If it keeps happening, tell whoever set your account up.
+                        If it keeps happening, ask your manager.
                     </p>
                 )}
             </div>

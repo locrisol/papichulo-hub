@@ -15,7 +15,7 @@
 // per case that was entered wrong, which otherwise quietly moves the cost of
 // every dish the product goes into.
 import { fmtUnitCost } from '@/lib/format'
-import { labelClass, primaryButton } from '@/lib/controlStyles'
+import { labelClass, fieldClass, fieldError, primaryButton, secondaryButton } from '@/lib/controlStyles'
 import { numberField } from '@/lib/numberInput'
 import { perUnitPreview } from '@/lib/productPrice'
 import ErrorBanner from '@/components/ui/ErrorBanner'
@@ -38,18 +38,18 @@ export function PriceFields({ formData, onChange, errors = {}, suppliers, unit }
           <select
             value={formData.supplier_id}
             onChange={e => onChange('supplier_id', e.target.value)}
-            className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+            className={fieldClass}
           >
-            <option value="">Select a supplier...</option>
+            <option value="">Pick a supplier</option>
             {suppliers.map(s => (
               <option key={s.id} value={s.id}>{s.name}</option>
             ))}
           </select>
-          {errors.supplier_id && <p className="text-xs text-red-600 mt-1">{errors.supplier_id}</p>}
+          {errors.supplier_id && <p className={fieldError}>{errors.supplier_id}</p>}
         </div>
 
         <div>
-          <label className={labelClass}>Purchase Type</label>
+          <label className={labelClass}>Purchase type</label>
           <div className="flex gap-4 mt-2">
             <label className="flex items-center gap-2 cursor-pointer">
               <input
@@ -74,47 +74,47 @@ export function PriceFields({ formData, onChange, errors = {}, suppliers, unit }
       </div>
 
       <div className="mb-4">
-        <label className={labelClass}>Supplier Code (optional)</label>
+        <label className={labelClass}>Supplier code (optional)</label>
         <input
           type="text"
           value={formData.supplier_code}
           onChange={e => onChange('supplier_code', e.target.value)}
           placeholder="e.g. CHKN-BRS-5KG"
-          className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+          className={fieldClass}
         />
         {errors.supplier_code && (
-          <p className="text-xs text-red-600 mt-1">{errors.supplier_code}</p>
+          <p className={fieldError}>{errors.supplier_code}</p>
         )}
       </div>
 
       {isCase ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
           <div>
-            <label className={labelClass}>Price per Case (€)</label>
+            <label className={labelClass}>Price per case (€)</label>
             <input
               {...numberField({
                 value: formData.price_per_case,
                 onChange: v => onChange('price_per_case', v),
               })}
-              className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+              className={fieldClass}
             />
-            {errors.price_per_case && <p className="text-xs text-red-600 mt-1">{errors.price_per_case}</p>}
+            {errors.price_per_case && <p className={fieldError}>{errors.price_per_case}</p>}
           </div>
           <div>
             <label className={labelClass}>
-              Units per Case ({unit || '...'})
+              Units per case ({unit || '...'})
             </label>
             <input
               {...numberField({
                 value: formData.units_per_case,
                 onChange: v => onChange('units_per_case', v),
               })}
-              className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+              className={fieldClass}
             />
-            {errors.units_per_case && <p className="text-xs text-red-600 mt-1">{errors.units_per_case}</p>}
+            {errors.units_per_case && <p className={fieldError}>{errors.units_per_case}</p>}
           </div>
-          <div className="col-span-2">
-            <p className="text-xs text-gray-500">
+          <div className="sm:col-span-2">
+            <p className="text-xs text-muted">
               {previewPerUnit !== null
                 ? `Calculated cost per ${unit}: ${fmtUnitCost(previewPerUnit)}`
                 : `Cost per ${unit || 'unit'} will be calculated automatically when you fill both fields.`}
@@ -131,9 +131,9 @@ export function PriceFields({ formData, onChange, errors = {}, suppliers, unit }
               value: formData.price_per_unit,
               onChange: v => onChange('price_per_unit', v),
             })}
-            className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+            className={fieldClass}
           />
-          {errors.price_per_unit && <p className="text-xs text-red-600 mt-1">{errors.price_per_unit}</p>}
+          {errors.price_per_unit && <p className={fieldError}>{errors.price_per_unit}</p>}
         </div>
       )}
 
@@ -147,7 +147,7 @@ export function PriceFields({ formData, onChange, errors = {}, suppliers, unit }
 // loose, and the arithmetic behind both lives in lib/productPrice.
 export default function PriceForm({
   problem,
-  formData, onChange, onSubmit, onCancel, submitLabel, errors, suppliers, unit,
+  formData, onChange, onSubmit, onCancel, submitLabel, errors, suppliers, unit, saving = false,
 }) {
   return (
     <form onSubmit={onSubmit}>
@@ -167,19 +167,20 @@ export default function PriceForm({
         <ErrorBanner className="mb-3">{problem}</ErrorBanner>
       )}
 
-      <div className="flex gap-3">
-        <button
-          type="submit"
-          className={primaryButton()}
-        >
-          {submitLabel}
-        </button>
+      <div className="flex flex-wrap justify-end gap-3">
         <button
           type="button"
           onClick={onCancel}
-          className="px-4 py-2 border border-border text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 bg-white transition-colors"
+          className={secondaryButton}
         >
           Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={saving}
+          className={primaryButton()}
+        >
+          {saving ? 'Saving...' : submitLabel}
         </button>
       </div>
     </form>

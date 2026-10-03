@@ -240,7 +240,7 @@ export function kindGoogleColour(kind) {
 // on the day there is only one restaurant left ticked.
 
 export function scopeLabel(entry, restaurants) {
-    if (entry?.scope === 'all_sites') return 'All sites'
+    if (entry?.scope === 'all_sites') return 'All restaurants'
     if (entry?.scope === 'private') return 'Just me'
 
     const ids = entry?.restaurant_ids || []
@@ -383,24 +383,6 @@ export function datesBetween(from, to) {
     return out
 }
 
-// The map every view reads: a date to what is on it.
-//
-// A promotion running five days appears under all five, because a month cell
-// asking "what is on this day" wants the true answer. Drawing it as one band
-// rather than five chips is the view's business, and bandsForWeek is what does
-// that.
-export function entriesByDate(entries) {
-    const out = {}
-    for (const entry of entries || []) {
-        for (const date of datesBetween(entry.starts_on, entry.ends_on)) {
-            if (!out[date]) out[date] = []
-            out[date].push(entry)
-        }
-    }
-    for (const date of Object.keys(out)) out[date] = sortEntries(out[date])
-    return out
-}
-
 // -- Bands across a week ------------------------------------------------
 
 // Where a multi day entry starts in a week and how many columns it covers.
@@ -494,12 +476,43 @@ export function atRestaurant(entry, restaurantId) {
     return true
 }
 
+// -- Who may change it -------------------------------------------------
+//
+// The same lines diary_entries_write draws in schema.sql, so the screen offers
+// only what the database will let through. It is not what protects the rows,
+// the policy does that; it is the screen being honest. Found by the audit of 28
+// September: a store manager was offered All sites, and Edit on an owner's
+// group entry, and both were refused on Save.
+
+const GROUP_ROLES = ['owner', 'super_admin']
+const DIARY_WRITERS = ['store_manager', 'owner', 'super_admin']
+
+// Only an owner or a super admin speaks for the whole group, because a
+// discount week is not one restaurant's decision.
+export function canWriteAllSites(user) {
+    return GROUP_ROLES.includes(user?.role)
+}
+
+// A private entry is its author's alone, from a super admin too. A group entry
+// is an owner's or a super admin's. An entry for restaurants is a super
+// admin's, or an owner's or store manager's when every restaurant on it is
+// their own, so one a super admin put on both restaurants is changed by
+// neither restaurant.
+export function canChangeEntry(user, entry) {
+    if (!entry || !DIARY_WRITERS.includes(user?.role)) return false
+    if (entry.scope === 'private') return entry.created_by === user.id
+    if (entry.scope === 'all_sites') return canWriteAllSites(user)
+    if (user.role === 'super_admin') return true
+    const ids = entry.restaurant_ids || []
+    return ids.length > 0 && ids.every(id => id === user.restaurant_id)
+}
+
 // -- What is wrong with it before it is saved --------------------------
 
 export function entryProblem(form) {
-    if (!String(form?.title || '').trim()) return 'It needs a name.'
-    if (!KINDS.includes(form?.kind)) return 'Say what kind of thing it is.'
-    if (!form?.starts_on) return 'It needs a date.'
+    if (!String(form?.title || '').trim()) return 'Enter a name.'
+    if (!KINDS.includes(form?.kind)) return 'Pick what kind of entry it is.'
+    if (!form?.starts_on) return 'Pick a date.'
 
     if (form.ends_on && form.ends_on < form.starts_on) {
         return 'It cannot finish before it starts.'
@@ -509,10 +522,10 @@ export function entryProblem(form) {
     }
     if (form.starts_at && form.ends_at && !form.ends_on
         && toMinutes(shortTime(form.ends_at)) <= toMinutes(shortTime(form.starts_at))) {
-        return 'It finishes before it starts. Put a finishing date on it if it runs past midnight.'
+        return 'It finishes before it starts. If it runs past midnight, enter a finishing date.'
     }
     if (form.mode === 'sites' && !(form.restaurantIds || []).length) {
-        return 'Say which restaurant it is for.'
+        return 'Pick a restaurant.'
     }
     return ''
 }
@@ -590,6 +603,10 @@ export function calendarItems({ entries, nearby, dayNotes, from, to }) {
                 time: event.event_time ? shortTime(event.event_time) : '',
                 allDay: !event.event_time,
                 checked: row.checked !== false,
+                // A cancelled night stays here, struck through, and the
+                // roster drops it; this is where somebody finds out why. One
+                // the feed stopped listing is on neither. See nearbyRows.
+                off: row.off || '',
                 place: row.place,
                 entry: event,
             })

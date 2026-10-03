@@ -104,8 +104,9 @@ const NOT_FOOD = ['Cleaning', 'Packaging']
 // the save nagging about it forever.
 //
 // Nothing has to be written for these. A product with no allergen record
-// already derives as Not Present for all fourteen, everywhere it is read, so
-// not asking and answering none come to exactly the same thing.
+// already derives as Not Present for all fourteen, and for these alone that is
+// not a gap: neverEntered in lib/allergens passes them, where a food product
+// with no record sends the customer to ask staff.
 export function declaresAllergens(product) {
     if (!product) return false
     return !NOT_FOOD.includes(product.section)
@@ -171,10 +172,6 @@ export function compareForCount(a, b) {
     return String(a?.name || '').localeCompare(String(b?.name || ''))
 }
 
-export function inCountOrder(products) {
-    return (products || []).slice().sort(compareForCount)
-}
-
 // Starting a product somewhere else and finishing it on the catalogue screen.
 //
 // The invoice review meets a supplier code nobody has ever bought under, and
@@ -185,8 +182,9 @@ export function inCountOrder(products) {
 //
 // A link and not a store, because the catalogue screen is reached by URL from
 // the review and the thing carried is four fields, and because a link can be
-// looked at.
-export function prefillLink(base, { name, section, unit, supplierId, code, pricePerCase, unitsPerCase }) {
+// looked at. `back` is where saving it goes, so the review gets the line back
+// to decide.
+export function prefillLink(base, { name, section, unit, supplierId, code, pricePerCase, unitsPerCase, back }) {
     const bits = new URLSearchParams()
     bits.set('new', '1')
     if (name) bits.set('name', name)
@@ -196,6 +194,7 @@ export function prefillLink(base, { name, section, unit, supplierId, code, price
     if (code) bits.set('code', code)
     if (pricePerCase != null) bits.set('perCase', String(pricePerCase))
     if (unitsPerCase != null) bits.set('perPack', String(unitsPerCase))
+    if (back) bits.set('back', back)
     return `${base}?${bits.toString()}`
 }
 
@@ -226,8 +225,13 @@ export function prefillFrom(params) {
             units_per_case: perPack || '',
             price_per_unit: '',
         },
+        // Only somewhere the Hub sends people from, never an address off a
+        // link somebody typed.
+        back: BACK_TO.includes(params.get('back')) ? params.get('back') : null,
     }
 }
+
+const BACK_TO = ['/invoices/review']
 
 // Both lists are check constraints in the database, so anything outside them is
 // refused rather than saved as a typo, and a link carrying a stray word must

@@ -264,7 +264,7 @@ describe('what the cells say', () => {
                 { id: 't2', employee_id: 'e1', work_date: MON, starts_at: '11:55:41', ends_at: '20:31:09', kind: 'worked' },
             ],
         })
-        expect(screen.queryAllByText('for 12:00–20:00')).toHaveLength(1)
+        expect(screen.queryAllByText('for 12:00 to 20:00')).toHaveLength(1)
     })
 
     it('carries a typed comment under the times', () => {

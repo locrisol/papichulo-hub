@@ -14,6 +14,11 @@
 // The primary action on a page keeps its accent orange and is not in here. These
 // are only for the secondary controls that sit beside it.
 
+// The ring the buttons here share when the keyboard lands on them.
+// focus-visible rather than focus, so a tap or a click does not leave a ring
+// sitting on the button afterwards.
+const focusRing = 'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1'
+
 // The one button on a screen that does the thing: Save, Publish, Add, Log it.
 //
 // This was typed out sixty three times and came in eight spellings. The
@@ -39,30 +44,49 @@
 // is the accent and stays the default: it is the colour of the one action on a
 // screen, and having two colours of primary button in one dialog is only right
 // where the second one is a different kind of act.
+//
+// Danger is the red one for a dialog whose whole point is taking something
+// away, so a caller does not have to lay a red background over the orange.
+//
+// The hover goes darker, to accent-ink. It used to go to orange-600, which is
+// lighter than the accent itself, so pointing at the button dropped the white
+// lettering to about 3.6 to 1. accent-ink is about 6.2.
+//
+// Semibold to match the secondary button that usually sits beside it. Two
+// weights side by side read as two kinds of button when they are one family.
 export function primaryButton(size = 'md', tone = 'accent') {
     const pad = { sm: 'px-3 py-1.5', md: 'px-4 py-2', lg: 'px-6 py-2.5', xl: 'px-6 py-3' }[size]
         || 'px-4 py-2'
 
-    const colour = tone === 'good'
-        ? 'bg-green-700 hover:bg-green-800'
-        : 'bg-accent hover:bg-orange-600'
+    const colour = {
+        accent: 'bg-accent hover:bg-accent-ink',
+        good: 'bg-green-700 hover:bg-green-800',
+        danger: 'bg-red-600 hover:bg-red-700',
+    }[tone] || 'bg-accent hover:bg-accent-ink'
 
-    return `${pad} ${colour} text-white text-sm font-medium rounded-lg `
-        + 'transition-colors disabled:opacity-50'
+    return `${pad} ${colour} text-white text-sm font-semibold rounded-lg `
+        + `transition-colors disabled:opacity-50 ${focusRing}`
 }
 
 // Ordinary secondary button: Log waste, Week view, Day view, Manage Categories,
 // Check for new events.
+//
+// A string and not a function like primaryButton. It is used as a string in
+// well over a hundred places and it has no size or tone to take.
 export const secondaryButton =
-    'px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-semibold text-gray-800 shadow-sm transition-colors hover:bg-gray-50 hover:border-gray-400 disabled:opacity-50 whitespace-nowrap'
+    'px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-semibold text-gray-800 shadow-sm transition-colors hover:bg-gray-50 hover:border-gray-400 disabled:opacity-50 whitespace-nowrap '
+    + focusRing
 
 // The arrows that step through weeks and days used to live here. They belong to
 // DateStepper now, which is the only thing that drew them and the only thing
 // that knows how big a thumb is.
 
 // Date pickers sitting next to those arrows.
+//
+// 16px on a phone and the smaller size only with a mouse, for the reason
+// given at compactField: an iPhone zooms in on a date box under 16px too.
 export const dateField =
-    'bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 shadow-sm cursor-pointer transition-colors hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent'
+    'bg-white border border-gray-300 rounded-lg px-3 py-2 text-base pointer-fine:text-sm text-gray-800 shadow-sm cursor-pointer transition-colors hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent'
 
 // A box you type in, and the label over it.
 //
@@ -78,23 +102,63 @@ export const dateField =
 //
 // text-base rather than text-sm on purpose: an iPhone zooms the whole page in
 // when you focus a box whose text is under 16px, and then leaves you there.
-export const fieldClass =
-    'w-full bg-white border border-border rounded-lg px-3 py-2.5 text-base text-gray-900 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent'
+//
+// fieldBase has no background and no border colour, so each box below picks
+// exactly one of each. A caller laying a second bg- over fieldClass would be
+// two classes for one property, settled by stylesheet order.
+export const fieldBase =
+    'w-full border rounded-lg px-3 py-2.5 text-base text-gray-900 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent'
 
-// The same box at the smaller size, for a control that opens a list rather than
-// a keyboard.
+export const fieldClass = `${fieldBase} bg-white border-border`
+
+// A sales box that has a figure in it. Green 50 is the colour a filled cell
+// already has in the sales tables.
+export const filledField = `${fieldBase} bg-green-50 border-border`
+
+// A box still waiting on an answer, like a till line nobody has matched yet.
+// The orange edge is what says so before anything is typed.
+export const askField = `${fieldBase} bg-white border-accent`
+
+// The edit box inside a table row, and the boxes in the weekly report, where
+// a full size box would make every row twice as tall.
+//
+// The small text is for a mouse only, through pointer-fine, and not for a
+// wide screen through sm. An iPhone held sideways is wider than sm and would
+// still zoom in on a box under 16px.
+export const denseField =
+    'w-full bg-white border border-border rounded-lg px-2 py-1.5 text-base pointer-fine:text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent'
+
+// The same box with less padding, for a row that already has a day name and a
+// remove on it.
+//
+// Not for a select in an ordinary form. There it sits beside fieldClass boxes
+// and takes fieldClass too, or the two come out at different heights.
 //
 // TimeField had this written inside it and the availability dialog had a third
 // copy of its own, a tenth of a rem shorter, which is why that dialog could put
 // two boxes doing the same job side by side at two different heights.
 //
-// text-sm is safe here where it would not be on a text box: a phone zooms the
-// whole page in when you focus something under 16px, and it is a keyboard that
-// brings that on. A select opens a list instead, so there is no keyboard and no
-// zoom.
+// 16px on a phone, like every other box. This used to say a select was safe at
+// text-sm because it opens a list rather than a keyboard, and that was wrong:
+// iPhone Safari zooms in on a select, a date or a time box under 16px just the
+// same. A computer keeps the smaller size, through pointer-fine, so it looks
+// as it did there.
 export const compactField =
-    'w-full bg-white border border-border rounded-lg px-2 py-2 text-sm text-gray-900 '
+    'w-full bg-white border border-border rounded-lg px-2 py-2 text-base pointer-fine:text-sm text-gray-900 '
     + 'focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent'
+
+// A box that is filled in and cannot be typed in: a field locked until Edit is
+// pressed, or a figure that comes from somewhere else, like the total of an
+// invoice read in from the supplier's document.
+//
+// The same box greyed, rather than the value as loose text, so it reads as the
+// field it is. LockedField and the invoice form each had this written out and
+// each said it matched the other, which is the second copy.
+//
+// No width, padding or text size. The caller adds those to match the boxes
+// beside it, and two classes for one property on an element are settled by
+// stylesheet order, not by the order they are written.
+export const lockedField = 'border border-border rounded-lg bg-app-bg text-muted cursor-not-allowed'
 
 // Something went wrong.
 //
@@ -109,7 +173,44 @@ export const compactField =
 // sixty five hand written ones were missing.
 export const errorBanner = 'text-sm text-red-700 bg-red-50 rounded-lg p-3'
 
-export const labelClass = 'text-xs text-gray-500 mb-1 block'
+// Something to know before carrying on that is not an error, like unsaved
+// changes that were not brought back.
+//
+// Amber with an amber edge, which is what most of the hand written ones already
+// are. There are over a dozen of those and they differ in text size and
+// padding. They move over through the Notice component, which picks this or
+// one of the notes beside it by tone. No margin, for the same reason as
+// errorBanner.
+export const warningNote = 'text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-lg p-3'
+
+// The same note in green, for something that went right and is worth saying,
+// like a week that is all in. The same family as the amber one, so a good
+// note and a warning differ only in colour. Green 900 on the pale green is
+// well over 7 to 1.
+export const goodNote = 'text-sm text-green-900 bg-green-50 border border-green-200 rounded-lg p-3'
+
+// The same note in red, for something already wrong that a customer could be
+// told, like products with allergens not set. Not an error: nothing failed,
+// so it is not errorBanner and carries no alert. Red 800 on the pale red is
+// about 7.7 to 1.
+//
+// The roster and the invoice documents each have one of these written out by
+// hand. They can move over when those screens are next worked on.
+export const urgentNote = 'text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg p-3'
+
+// The same note in blue, for a question or a sum to check before going ahead,
+// like which price a claim should have been or which invoice line its money
+// comes off. Nothing is wrong yet, so it is not warningNote. Blue 900 on the
+// pale blue is well over 7 to 1.
+//
+// The invoice document card and the fill-in form each have one written out by
+// hand, with less padding. They can move over when those screens are next
+// worked on.
+export const infoNote = 'text-sm text-blue-900 bg-blue-50 border border-blue-200 rounded-lg p-3'
+
+// The label over a box. Muted, which is the app's one quiet text colour.
+// gray-500 was a second grey doing the same job.
+export const labelClass = 'text-xs text-muted mb-1 block'
 
 // The small caps line over a figure: "Waste this week", "Margin", "Net sales".
 //
@@ -121,7 +222,9 @@ export const labelClass = 'text-xs text-gray-500 mb-1 block'
 // Which mattered on a phone, because uppercase with tracking-wider is the
 // widest way there is to write a word: "Price per case (€)" fits on one line
 // and "PRICE PER CASE (€)" does not.
-export const captionClass = 'text-xs font-semibold text-gray-500 uppercase tracking-wider'
+//
+// Muted rather than gray-500, for the same reason as labelClass.
+export const captionClass = 'text-xs font-semibold text-muted uppercase tracking-wider'
 
 // The sentence under a box, where anything longer than two or three words
 // belongs.
@@ -136,6 +239,11 @@ export const captionClass = 'text-xs font-semibold text-gray-500 uppercase track
 // gray-400 on white is 2.6 to 1, so the sentence explaining the box was the
 // hardest thing on the form to read.
 export const hintClass = 'text-xs text-muted mt-1'
+
+// The line under a box that says what is wrong with what was typed in it.
+// The same size and place as the hint, in the red errorBanner uses, so it
+// reads as being about that box and not about the whole form.
+export const fieldError = 'text-xs text-red-700 mt-1'
 
 // A tick box.
 //
@@ -261,7 +369,7 @@ export const modalFooter =
 export function rowButton(tone = 'plain') {
     const base =
         'px-3 py-1.5 rounded-lg border bg-white text-xs font-semibold shadow-sm '
-        + 'whitespace-nowrap transition-colors focus:outline-none focus:ring-2 focus:ring-accent '
+        + 'whitespace-nowrap transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent '
 
     return base + ({
         plain: 'border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-gray-400',
@@ -284,6 +392,78 @@ export function rowButton(tone = 'plain') {
 // top, since what the colour means is different every time.
 export const badge =
     'inline-block px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap'
+
+// The two badges that mean the same thing on every screen, so they are here
+// with their colours rather than added on by each use.
+//
+// mixBadge is dark amber lettering on pale amber. The white on amber-500 it
+// replaces was about 2.1 to 1.
+//
+// inactiveBadge is the strong red the products list already used for a
+// switched off row. It is darker than the pale red row behind it, so it still
+// shows there.
+export const mixBadge = `${badge} bg-amber-100 text-amber-800`
+export const inactiveBadge = `${badge} bg-red-200 text-red-800`
+
+// The little count at the end of an item in the sidebar: requests waiting on
+// Roster, products with allergens not set on Products.
+//
+// The roster's was written inside AppLayout, and a second one was coming, with
+// more planned after it. Here so they are one size and one shape, and only the
+// colour says which kind it is.
+//
+//   waiting   amber, something waiting on you. The number is in the sidebar
+//             green, about 6.7 to 1 on amber-500; the white it had was 2.1 and
+//             failed. The disc is about 6.7 to 1 on the sidebar and 5.3 on the
+//             highlighted row.
+//   urgent    red, something already wrong that a customer could be told.
+//             red-600 is the one that works both ways: the white number on it
+//             is 4.8 to 1, and the disc is 3 to 1 against the sidebar green.
+//             red-700 makes a better number and a disc that sinks into the
+//             green at 2.2.
+//
+// relative because the count carries words for a screen reader beside the
+// number, and those are absolutely placed. Without a positioned parent they
+// are placed against the whole page, and a sidebar item low enough down can
+// stretch it.
+export function navBadge(tone = 'waiting') {
+    const colour = {
+        waiting: 'bg-amber-500 text-sidebar',
+        urgent: 'bg-red-600 text-white',
+    }[tone] || 'bg-amber-500 text-sidebar'
+
+    return `relative ${colour} text-[0.65rem] font-bold min-w-[1.15rem] h-[1.15rem] px-1 `
+        + 'rounded-full grid place-items-center flex-shrink-0'
+}
+
+// A badge that is one state rather than a number of jobs (a sheet to print, a
+// count left open), on its sidebar item. The same colours as navBadge, which
+// pass against the sidebar green as shapes, and relative for the same reason:
+// the words for a screen reader sit inside it.
+export function navDot(tone = 'waiting') {
+    const colour = { waiting: 'bg-amber-500', urgent: 'bg-red-600' }[tone] || 'bg-amber-500'
+    return `relative ${colour} w-2.5 h-2.5 rounded-full flex-shrink-0`
+}
+
+// The same counts as a dot on the menu button, for a phone. The sidebar is a
+// drawer there, so none of its counts show until it is opened, and this says
+// there is something in it. The tones are navBadge's, and the most urgent one
+// present wins.
+//
+// A shape with no number, so it needs 3 to 1 against what is around it, which
+// is the white ring. red-600 is 4.8. The roster count's own amber-500 is about
+// 2.1, so waiting is one step darker here: amber-600 is 3.2 and still reads as
+// the same amber. The ring keeps it apart from the lines of the icon under it.
+//
+// The button it sits on has to be relative, and carries the words for it.
+export function menuDot(tone = 'waiting') {
+    const colour = {
+        waiting: 'bg-amber-600',
+        urgent: 'bg-red-600',
+    }[tone] || 'bg-amber-600'
+
+    return `absolute top-1 right-1 w-2.5 h-2.5 rounded-full ring-2 ring-white ${colour}`
+}
 
 // "This week" and "Today", which jump back to now. They read as selected when
 // you are already there, so they need an on and an off state.
@@ -314,9 +494,25 @@ export function jumpLabel(isCurrent, unit = 'week') {
 // in the app already uses it, including on this background. This was the one
 // that was missed.
 export function jumpButton(isCurrent) {
-    return isCurrent
-        ? 'px-4 py-2 bg-accent-light border border-accent rounded-lg text-sm font-semibold text-accent-ink shadow-sm whitespace-nowrap'
-        : 'px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-semibold text-gray-800 shadow-sm transition-colors hover:bg-gray-50 hover:border-gray-400 whitespace-nowrap'
+    return (isCurrent
+        ? 'px-4 py-2 bg-accent-light border border-accent rounded-lg text-sm font-semibold text-accent-ink shadow-sm whitespace-nowrap '
+        : 'px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-semibold text-gray-800 shadow-sm transition-colors hover:bg-gray-50 hover:border-gray-400 whitespace-nowrap ')
+        + focusRing
+}
+
+// An on and off switch in a row of them: a label on a diary entry, an extra on
+// a roster day, a product filter. Each one is its own switch, so several can be
+// on at once, which is what makes it a chip and not a segment. On is the
+// accent orange the product filters already use.
+//
+// The caller adds aria-pressed, because the colour alone does not tell a
+// screen reader whether it is on.
+export function chip(isOn) {
+    return 'px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors whitespace-nowrap '
+        + 'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent '
+        + (isOn
+            ? 'bg-accent border-accent text-white'
+            : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-gray-400')
 }
 
 // A switch between two or three ways of looking at the same thing: Day or
@@ -342,8 +538,12 @@ export function jumpButton(isCurrent) {
 export const segmentTrack =
     'grid grid-flow-col auto-cols-fr w-full sm:w-auto sm:inline-flex bg-gray-100 rounded-lg p-1 gap-1'
 
-export function segmentButton(isOn) {
-    return 'px-2 sm:px-4 py-1.5 text-xs font-semibold rounded-md transition-colors capitalize text-center whitespace-nowrap '
+// keepCase is for a label that is already written the way it should read,
+// like a name or "1 month", where capitalize would make "1 Month". The labels
+// that come straight from a value, like "day" and "week", still want it.
+export function segmentButton(isOn, keepCase = false) {
+    return 'px-2 sm:px-4 py-1.5 text-xs font-semibold rounded-md transition-colors text-center whitespace-nowrap '
+        + (keepCase ? '' : 'capitalize ')
         + (isOn ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900')
 }
 
@@ -373,10 +573,14 @@ export function segmentButton(isOn) {
 // which the tightest of them, the Opening hours week, has been measured
 // against: the two time boxes still have eighty nine pixels each and need
 // seventy seven.
+//
+// The ring here and on rowButton and closeButton is focus-visible, for the
+// keyboard only. With focus, a tapped × kept its ring until something else
+// was touched.
 export const removeButton =
     'flex-shrink-0 min-w-[2.25rem] min-h-[2.25rem] inline-flex items-center justify-center '
     + 'rounded-full bg-gray-100 text-lg leading-none text-gray-600 transition-colors '
-    + 'hover:bg-red-100 hover:text-red-700 focus:outline-none focus:ring-2 focus:ring-accent'
+    + 'hover:bg-red-100 hover:text-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent'
 
 // The same control on a dark heading bar, which is only ever the close on a
 // dialog. Same size and shape, different colours.
@@ -387,7 +591,23 @@ export const removeButton =
 export const closeButton =
     'flex-shrink-0 -m-1.5 p-1.5 min-w-[2.25rem] min-h-[2.25rem] inline-flex items-center justify-center '
     + 'rounded-full bg-white/10 text-lg leading-none text-white/80 transition-colors '
-    + 'hover:bg-white/25 hover:text-white focus:outline-none focus:ring-2 focus:ring-white/60'
+    + 'hover:bg-white/25 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60'
+
+// A control that is only a picture, with no words: the back arrow in a sticky
+// bar, the + on a diary week, the up and down arrows that rearrange a list.
+//
+// Forty four pixels square at the least, a thumb's width, since a glyph alone
+// is a small thing to aim at. No border or ground until it is pointed at, so a
+// row of them does not read as a row of buttons fighting the content. Dimmed
+// when disabled, the way the arrange arrows already show the end of a list.
+//
+// The caller gives it an aria-label, because there are no words on it for a
+// screen reader to read.
+export const iconButton =
+    'flex-shrink-0 min-w-[2.75rem] min-h-[2.75rem] inline-flex items-center justify-center '
+    + 'rounded-lg text-gray-700 transition-colors hover:bg-gray-100 '
+    + 'disabled:opacity-30 disabled:hover:bg-transparent '
+    + 'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent'
 
 // The title at the top of a page.
 //
@@ -400,3 +620,8 @@ export const closeButton =
 // text-lg semibold a page title was the same weight and nearly the same size as
 // the heading on a card inside it, so the page did not read as having a name.
 export const pageTitle = 'font-serif text-2xl font-bold text-gray-900'
+
+// The line under a page title that says what the page is for. The same muted
+// text as a hint, a size up, with the gap to the title built in so each page
+// does not pick its own.
+export const pageSubtitle = 'text-sm text-muted mt-1'

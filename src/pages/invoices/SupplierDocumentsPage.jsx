@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { supabase } from '@/lib/supabase'
+import { supabase, everyRow } from '@/lib/supabase'
 import { useRestaurant } from '@/context/restaurant'
 import { fmtMoney, fmtPct } from '@/lib/format'
 import { shortDate, fullDate, todayISO, addDays } from '@/lib/dates'
@@ -10,10 +10,12 @@ import {
     LIST_READERS, listReaderFor, portalSummary, compareDocuments, pairCredits, creditDelays,
 } from '@/lib/supplierDocuments'
 import {
-    card, cardHeader, pageTitle, primaryButton, secondaryButton, labelClass,
+    card, cardEdge, cardHeader, primaryButton, secondaryButton, labelClass,
     fieldClass, hintClass, badge, captionClass, tableCard, tableHeadRow, tableHeadCell,
 } from '@/lib/controlStyles'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import Notice from '@/components/ui/Notice'
+import PageHeader from '@/components/ui/PageHeader'
 import AutoTextarea from '@/components/ui/AutoTextarea'
 import StillMissing from '@/components/invoices/StillMissing'
 
@@ -53,11 +55,15 @@ export default function SupplierDocumentsPage() {
 
         async function load() {
             setError('')
+            // Every invoice held, a page at a time, since there are more than
+            // one read hands back. One missing would show a document the Hub
+            // has as not downloaded.
             const [sup, inv] = await Promise.all([
                 supabase.from('suppliers').select('id, name').eq('is_active', true),
-                supabase.from('invoices')
+                everyRow(() => supabase.from('invoices')
                     .select('id, invoice_number, invoice_date, total_amount, supplier_id, document_type')
-                    .eq('restaurant_id', restaurantId),
+                    .eq('restaurant_id', restaurantId)
+                    .order('id')),
             ])
             if (!alive) return
             if (sup.error || inv.error) { setError(friendlyError(sup.error || inv.error)); return }
@@ -128,22 +134,16 @@ export default function SupplierDocumentsPage() {
 
     return (
         <>
-            <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
-                <div>
-                    <h2 className={pageTitle}>What the supplier says it sent</h2>
-                    <p className="text-sm text-gray-500 mt-1">{activeRestaurant?.name}</p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                    <Link to="/invoices/import" className={secondaryButton}>Import invoices</Link>
-                    <Link to="/invoices" className={secondaryButton}>Invoices</Link>
-                </div>
-            </div>
+            <PageHeader title="Supplier documents" subtitle={activeRestaurant?.name}>
+                <Link to="/invoices/import" className={secondaryButton}>Import invoices</Link>
+                <Link to="/invoices" className={secondaryButton}>Invoices</Link>
+            </PageHeader>
 
-            {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
-            {said && <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{said}</div>}
+            <ErrorBanner className="mb-4">{error}</ErrorBanner>
+            <Notice tone="good" className="mb-4">{said}</Notice>
 
             <div className={`${card} mb-6 overflow-hidden`}>
-                <div className={cardHeader}>The list off their portal</div>
+                <div className={cardHeader}>Paste the supplier's list</div>
                 <div className="p-5">
                     <div className="grid gap-4 sm:grid-cols-[minmax(0,14rem)_1fr]">
                         <div>
@@ -177,12 +177,11 @@ export default function SupplierDocumentsPage() {
                                 minRows={4}
                                 value={paste}
                                 onChange={e => setPaste(e.target.value)}
-                                className={`${fieldClass} font-mono text-xs`}
+                                className={`${fieldClass} font-mono`}
                                 placeholder={'2017891\t45448455\t\t2026-08-23\tInvoice\t€163.03\tView'}
                             />
                             <p className={hintClass}>
-                                The column titles can come with it. A month is about eighty rows and
-                                pasting one you have already pasted is safe.
+                                Column headings can be included. Pasting the same list again is safe.
                             </p>
                         </div>
                     </div>
@@ -224,13 +223,13 @@ export default function SupplierDocumentsPage() {
                     )}
 
                     {summary.accounts.length > 1 && (
-                        <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-6 text-xs text-amber-900">
+                        <Notice tone="warn" className="mb-6">
                             <strong className="font-bold">
                                 There are {summary.accounts.length} account numbers in this paste.
                             </strong>{' '}
                             One account is one restaurant, so this is either two shops copied
                             together or a page that was not the document list.
-                        </div>
+                        </Notice>
                     )}
 
                     {/* Every credit over the month this was designed against came
@@ -247,7 +246,36 @@ export default function SupplierDocumentsPage() {
                         </p>
                     )}
 
-                    <div className={`${tableCard} mb-6`}>
+                    {/* A card a document on a phone, where five columns would
+                        scroll sideways. The number and its value are the pair
+                        anybody is matching against the paper. */}
+                    <div className="md:hidden space-y-3 mb-6">
+                        {read.rows.map(row => {
+                            const where = against.status.get(row.document_id) || { status: 'missing' }
+                            return (
+                                <div
+                                    key={row.document_id}
+                                    className={`${cardEdge} p-4 ${where.status === 'missing' ? 'bg-amber-50' : 'bg-white'}`}
+                                >
+                                    <div className="flex items-baseline justify-between gap-3">
+                                        <span className="text-sm font-mono text-gray-900 min-w-0 break-all">{row.document_id}</span>
+                                        <span className="text-sm font-semibold tabular-nums text-gray-900 whitespace-nowrap">
+                                            {fmtMoney(row.value)}
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-muted mt-1">
+                                        {shortDate(row.document_date)}
+                                        {row.order_reference && <> &#183; against <span className="font-mono">{row.order_reference}</span></>}
+                                    </p>
+                                    <div className="mt-2">
+                                        <Held where={where} />
+                                    </div>
+                                </div>
+                            )
+                        })}
+                    </div>
+
+                    <div className={`${tableCard} hidden md:block mb-6`}>
                         <table className="w-full">
                             <thead>
                                 <tr className={tableHeadRow}>
@@ -261,7 +289,6 @@ export default function SupplierDocumentsPage() {
                             <tbody className="divide-y divide-border">
                                 {read.rows.map(row => {
                                     const where = against.status.get(row.document_id) || { status: 'missing' }
-                                    const look = HELD[where.status]
                                     return (
                                         <tr key={row.document_id} className={where.status === 'missing' ? 'bg-amber-50/60' : ''}>
                                             <td className="px-4 py-2 text-sm font-mono text-gray-900">
@@ -277,12 +304,7 @@ export default function SupplierDocumentsPage() {
                                                 {fmtMoney(row.value)}
                                             </td>
                                             <td className="px-4 py-2">
-                                                <span className={`${badge} border ${look.tint}`}>{look.words}</span>
-                                                {where.differs ? (
-                                                    <span className="block text-xs text-muted mt-0.5 whitespace-nowrap">
-                                                        typed as {fmtMoney(where.invoice.total_amount)}
-                                                    </span>
-                                                ) : null}
+                                                <Held where={where} />
                                             </td>
                                         </tr>
                                     )
@@ -342,10 +364,26 @@ export default function SupplierDocumentsPage() {
 // for. A credit taken off a total before it was typed is not missing either:
 // its money is already in the Hub, inside that total.
 const HELD = {
-    held: { words: 'Have it', tint: 'bg-green-50 text-green-800 border-green-200' },
+    held: { words: 'In the Hub', tint: 'bg-green-50 text-green-800 border-green-200' },
     by_hand: { words: 'Typed in by hand', tint: 'bg-blue-50 text-blue-800 border-blue-200' },
     in_hand_total: { words: 'In a typed total', tint: 'bg-blue-50 text-blue-800 border-blue-200' },
     missing: { words: 'Not in the Hub', tint: 'bg-amber-50 text-amber-800 border-amber-200' },
+}
+
+// Whether the Hub has it, and what it was typed as when that differs. The
+// same on a phone card and in the table.
+function Held({ where }) {
+    const look = HELD[where.status]
+    return (
+        <>
+            <span className={`${badge} border ${look.tint}`}>{look.words}</span>
+            {where.differs ? (
+                <span className="block text-xs text-muted mt-0.5 whitespace-nowrap">
+                    typed as {fmtMoney(where.invoice.total_amount)}
+                </span>
+            ) : null}
+        </>
+    )
 }
 
 function linkedTo(where) {

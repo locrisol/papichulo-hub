@@ -43,7 +43,7 @@ const toneOf = n => (n > 0.004 ? 'up' : n < -0.004 ? 'down' : 'quiet')
 
 const WHY = {
     weight: 'Recipes count it by weight and it is sold one at a time, so nothing on the invoice says what one weighs.',
-    units: 'The price the Hub has and the invoice are not counted the same way. Worth checking the price on the product.',
+    units: 'The price the Hub has and the invoice are not counted the same way. Check the price on the product.',
 }
 
 export default function ReportPrices({
@@ -117,6 +117,7 @@ export default function ReportPrices({
                 back={section.back}
                 reasons={section.reasons}
                 owed={section.owed}
+                earlier={section.earlier || []}
                 total={t.back}
                 canEdit={canEdit}
                 jobs={jobs}
@@ -189,7 +190,7 @@ function Decision({ item, busy, onCostFrom, onMakeUsual, onRenumber, onGiveReaso
             <>
                 <b>{item.name}.</b> The last three deliveries were {item.bought} (code {item.code}), not the
                 one recipes cost from. {item.renumbered && renumberPlan(item)
-                    ? 'It reads like the same thing under a new number.'
+                    ? 'It looks like a code update.'
                     : `Is it the usual one now? The Hub has it at ${fmtMoney(item.rowPer)} ${item.unit}.`}
             </>
         )
@@ -218,8 +219,8 @@ function Decision({ item, busy, onCostFrom, onMakeUsual, onRenumber, onGiveReaso
     } else if (item.kind === 'renumbered') {
         words = (
             <>
-                <b>{item.name}.</b> {item.bought} (code {item.code}) reads like {item.usualName}
-                {item.usualCode ? ` (code ${item.usualCode})` : ''} under {item.newer ? 'a new' : 'an old'} number
+                <b>{item.name}.</b> {item.bought} (code {item.code}) looks like {item.usualName}
+                {item.usualCode ? ` (code ${item.usualCode})` : ''} under {item.newer ? 'a newer' : 'an older'} code
                 {item.change == null ? '.' : item.change === 0 ? ', at the same price.' : `, ${pct(item.change)} ${item.unit}.`}
             </>
         )
@@ -246,19 +247,21 @@ function Decision({ item, busy, onCostFrom, onMakeUsual, onRenumber, onGiveReaso
         buttons = (
             <>
                 <label className="sr-only" htmlFor={`reason-${item.id}`}>Why it came back</label>
-                <select
-                    id={`reason-${item.id}`}
-                    value={reason}
-                    onChange={e => setReason(e.target.value)}
-                    className={`${compactField} w-auto`}
-                >
-                    <option value="">Why?</option>
-                    {/* Something else says what in a note at the door, and there
-                        is no note here, so it would be no reason at all. */}
-                    {CLAIM_KINDS.filter(kind => kind.value !== 'something_else').map(kind => (
-                        <option key={kind.value} value={kind.value}>{kind.label}</option>
-                    ))}
-                </select>
+                <div>
+                    <select
+                        id={`reason-${item.id}`}
+                        value={reason}
+                        onChange={e => setReason(e.target.value)}
+                        className={compactField}
+                    >
+                        <option value="">Why?</option>
+                        {/* Something else says what in a note at the door, and
+                            there is no note here, so it would be no reason at all. */}
+                        {CLAIM_KINDS.filter(kind => kind.value !== 'something_else').map(kind => (
+                            <option key={kind.value} value={kind.value}>{kind.label}</option>
+                        ))}
+                    </select>
+                </div>
                 <button
                     type="button"
                     disabled={!!busy || !reason}
@@ -323,6 +326,8 @@ function WeekInShort({ section }) {
     const recipes = section.recipes || []
     const reasons = section.reasons || []
     const owed = section.owed || []
+    // Absent on a report frozen before 1 October.
+    const earlier = section.earlier || []
 
     const movesKind = !moves.length ? 'grey' : t.movesUp && t.movesDown ? 'grey' : t.movesUp ? 'up' : 'down'
     const movesLabel = !moves.length ? 'Same code'
@@ -376,19 +381,27 @@ function WeekInShort({ section }) {
             <ShortRow
                 kind={section.back.length ? 'back' : 'grey'}
                 label="Came back"
-                quiet={reasons.length || owed.length ? null : 'Nothing came back this week'}
+                quiet={reasons.length || owed.length || earlier.length ? null : 'Nothing came back this week'}
                 money={fmtMoney(t.back)}
                 under={`${section.back.length} credit ${section.back.length === 1 ? 'note' : 'notes'}`}
             >
                 {reasons.map(r => (
-                    <span key={r.kind} className={`${badge} border bg-white text-gray-700 border-gray-300 inline-flex items-center gap-1.5`}>
-                        <i className="inline-block w-2 h-2 rounded-sm" style={{ background: r.colour }} />
+                    <span key={r.kind} className={`${badge} border bg-white text-gray-700 border-gray-300`}>
+                        <i className="inline-block w-2 h-2 mr-1.5 rounded-sm" style={{ background: r.colour }} />
                         {r.label} <b className="tabular-nums">{fmtMoney(r.money)}</b>
                     </span>
                 ))}
                 {owed.length > 0 && (
                     <span className={`${badge} border ${KIND.warn}`}>
                         {t.owed ? `${fmtMoney(t.owed)} still owed` : `${owed.length} still owed`}
+                    </span>
+                )}
+                {/* Off, as the card says, not back: an open claim comes off
+                    before anything is credited, and in this row beside the
+                    credit notes it read as money received. */}
+                {earlier.length > 0 && (
+                    <span className={`${badge} border ${KIND.grey}`}>
+                        {fmtMoney(t.earlier)} off for an earlier week
                     </span>
                 )}
             </ShortRow>
@@ -426,7 +439,7 @@ function Chip({ name, change, note, tone }) {
 }
 
 function More({ count }) {
-    return <span className={`${badge} border border-dashed border-gray-300 text-muted font-medium`}>+ {count} more</span>
+    return <span className={`${badge} border border-dashed border-gray-300 text-muted`}>+ {count} more</span>
 }
 
 // ---------------------------------------------------------------------------
@@ -511,7 +524,7 @@ function Moves({ moves, doubtful }) {
                         {' '}on {shortDate(m.on)}{m.invoice ? `, ${m.invoice}` : ''}.
                     </p>
                     <p className="text-xs text-muted">
-                        More likely a pack read wrong on one of the two than a real price. Worth checking the invoice.
+                        More likely a pack read wrong on one of the two than a real price. Check the invoice.
                     </p>
                 </div>
             ))}
@@ -611,8 +624,8 @@ function Recipes({ recipes, checkedOn, threshold }) {
     )
 }
 
-function Back({ back, reasons, owed, total, canEdit, jobs, busy, onPutOnList }) {
-    const listed = back.length + owed.length
+function Back({ back, reasons, owed, earlier = [], total, canEdit, jobs, busy, onPutOnList }) {
+    const listed = back.length + owed.length + earlier.length
     return (
         <Card
             title="Came back, and why"
@@ -672,7 +685,7 @@ function Back({ back, reasons, owed, total, canEdit, jobs, busy, onPutOnList }) 
             {owed.length > 0 && (
                 <>
                     <p className="px-3 py-2 bg-app-bg border-y border-border text-xs font-bold text-muted uppercase tracking-wider">
-                        Still waiting on a credit
+                        Still waiting for a credit
                     </p>
                     {owed.map(o => (
                         <Row key={o.id}>
@@ -692,15 +705,47 @@ function Back({ back, reasons, owed, total, canEdit, jobs, busy, onPutOnList }) 
                             </p>
                         </Row>
                     ))}
-                    {canEdit && jobs && (jobs.add.length > 0 || jobs.tick.length > 0) && (
+                    {canEdit && jobs && (jobs.add.length + jobs.tick.length + jobs.reopen.length + jobs.relabel.length > 0) && (
                         <div className="px-3 py-2.5 flex flex-wrap items-center gap-2 border-t border-border">
+                            {/* Says what it does: with nothing to add it only
+                                crosses off, puts back and brings words up to date. */}
                             <button type="button" disabled={!!busy} onClick={() => onPutOnList(jobs)} className={rowButton('good')}>
-                                {busy === 'list' ? 'Adding...' : 'Put these on the support list'}
+                                {jobs.add.length
+                                    ? (busy === 'list' ? 'Adding...' : 'Put these on the support list')
+                                    : (busy === 'list' ? 'Saving...' : 'Update the support list')}
                             </button>
                             {jobs.add.length > 0 && <Pill tone="warn">{jobs.add.length} to add</Pill>}
+                            {jobs.reopen.length > 0 && <Pill tone="warn">{jobs.reopen.length} to put back</Pill>}
                             {jobs.tick.length > 0 && <Pill tone="down">{jobs.tick.length} to cross off</Pill>}
+                            {jobs.relabel.length > 0 && <Pill tone="grey">{jobs.relabel.length} to update</Pill>}
                         </div>
                     )}
+                </>
+            )}
+
+            {/* Taken off this week for a delivery in an earlier one, because
+                that week's report had already gone out. Each says which
+                delivery it is from, or the food cost here is lower with
+                nothing saying why. */}
+            {earlier.length > 0 && (
+                <>
+                    <p className="px-3 py-2 bg-app-bg border-y border-border text-xs font-bold text-muted uppercase tracking-wider">
+                        From an earlier week
+                    </p>
+                    {earlier.map(e => (
+                        <Row key={e.id}>
+                            <div className="min-w-0">
+                                <p className="text-sm font-semibold text-gray-900">{e.what}</p>
+                                <p className="text-xs text-muted">From the delivery in the week of {shortDate(e.delivered)}</p>
+                            </div>
+                            <div>
+                                <span className={`${badge} border bg-white text-gray-800`} style={{ borderColor: e.colour }}>
+                                    {e.label}
+                                </span>
+                            </div>
+                            <p className="text-sm font-bold tabular-nums text-gray-900 sm:text-right">{fmtMoney(e.money)} off</p>
+                        </Row>
+                    ))}
                 </>
             )}
         </Card>
@@ -752,9 +797,13 @@ function Ledger({ section }) {
             key: b.id, name: b.what, what: `${b.number || ''} of ${shortDate(b.date)}`,
             before: '', now: '', change: b.parts.map(p => p.label).join(', '), money: fmtMoney(b.money),
         }))],
-        ['Still waiting on a credit', section.owed.map(o => ({
+        ['Still waiting for a credit', section.owed.map(o => ({
             key: o.id, name: o.what, what: `since ${shortDate(o.since)}`,
             before: '', now: '', change: o.label, money: o.money == null ? '' : fmtMoney(o.money),
+        }))],
+        ['From an earlier week', (section.earlier || []).map(e => ({
+            key: e.id, name: e.what, what: `delivery in the week of ${shortDate(e.delivered)}`,
+            before: '', now: '', change: e.label, money: fmtMoney(e.money),
         }))],
     ].filter(([, rows]) => rows.length)
 

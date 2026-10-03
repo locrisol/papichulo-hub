@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { num, tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord, sameLabel, trackedCopy } from '@/lib/salesTenders'
+import { num, tendersToShow, tenderVariance, mergeTenderSales, keyedPlatforms, platformsToShow, mergePlatformSales, tenderValuesFromRecord, sameLabel, trackedCopy, sameStoredDay } from '@/lib/salesTenders'
 
 // The five rows the till printed before August 2026, and the ones it prints now.
 const t = (key, label, sort_order, extra = {}) => ({
@@ -147,9 +147,8 @@ describe('mergeTenderSales', () => {
         expect(out.cash).toBe(0)
     })
 
-    // sales_platforms rebuilds its field from the active list, so re-saving an
-    // old week silently wipes any platform retired since. Money that reconciles
-    // cannot work that way, so anything not on screen is left alone.
+    // Re-saving an old week must not wipe a row retired since, so anything not
+    // on screen is left alone. The delivery platforms work the same way now.
     it('keeps a figure belonging to no row on screen', () => {
         const stored = { cash: 100, some_old_row: 42.50 }
         const out = mergeTenderSales(stored, { cash: '120' }, [t('cash', 'Cash', 0)])
@@ -162,6 +161,77 @@ describe('mergeTenderSales', () => {
         const shown = [t('outside_catering', 'Outside Catering', 0, { is_active: false })]
         const out = mergeTenderSales(stored, { outside_catering: '300' }, shown)
         expect(out.outside_catering).toBe(300)
+    })
+})
+
+// The delivery platforms. Their figures are stored under a key that never
+// changes, the way the till rows are, so a platform can be renamed or retired
+// without its past weeks losing anything. Found by the audit of 28 September.
+describe('the delivery platforms', () => {
+    const p = (key, name, sort_order, extra = {}) => ({
+        id: key, key, name, bucket: 'online_platform', sort_order, is_active: true, ...extra,
+    })
+    const PLATFORMS = [
+        p('Deliveroo', 'Deliveroo', 0),
+        // Renamed in settings: the name moved on, the key did not.
+        p('Just Eat', 'JustEat', 1),
+        p('Manna', 'Manna', 2, { is_active: false }),
+    ]
+
+    // A database from before platforms had a key column.
+    describe('keyedPlatforms', () => {
+        it('gives a platform with no key its name as the key', () => {
+            const [old] = keyedPlatforms([{ id: 'p1', name: 'Deliveroo' }])
+            expect(old.key).toBe('Deliveroo')
+        })
+
+        it('leaves a key that is there alone, whatever the name is now', () => {
+            expect(keyedPlatforms(PLATFORMS).map(x => x.key)).toEqual(['Deliveroo', 'Just Eat', 'Manna'])
+        })
+
+        it('copes with nothing at all', () => {
+            expect(keyedPlatforms(null)).toEqual([])
+        })
+    })
+
+    describe('platformsToShow', () => {
+        it('shows the active ones in the order they are set', () => {
+            expect(platformsToShow(PLATFORMS, [{}]).map(x => x.name)).toEqual(['Deliveroo', 'JustEat'])
+        })
+
+        it('brings back a retired one any of the days has a figure for', () => {
+            const shown = platformsToShow(PLATFORMS, [{ Deliveroo: 10 }, { Manna: 40 }])
+            expect(shown.map(x => x.name)).toEqual(['Deliveroo', 'JustEat', 'Manna'])
+        })
+
+        it('finds a figure by the key, not the name it goes by now', () => {
+            const renamedAway = [p('Manna', 'Manna Eats', 2, { is_active: false })]
+            expect(platformsToShow(renamedAway, [{ Manna: 40 }])).toHaveLength(1)
+            expect(platformsToShow(renamedAway, [{ 'Manna Eats': 40 }])).toHaveLength(0)
+        })
+    })
+
+    describe('mergePlatformSales', () => {
+        const shown = PLATFORMS.slice(0, 2)
+
+        it('writes each figure under the key', () => {
+            expect(mergePlatformSales({}, { Deliveroo: '120.5', 'Just Eat': '60' }, shown))
+                .toEqual({ Deliveroo: 120.5, 'Just Eat': 60 })
+        })
+
+        // What used to be lost: Manna retired, then a March week corrected
+        // and saved again.
+        it('keeps a figure belonging to no row on screen', () => {
+            const out = mergePlatformSales({ Deliveroo: 100, Manna: 40 }, { Deliveroo: '110' }, shown)
+            expect(out).toEqual({ Deliveroo: 110, Manna: 40 })
+        })
+
+        // Unlike the till rows, a nought is dropped. A cleared box has to take
+        // its old figure with it, or clearing a mistyped figure would keep it.
+        it('takes a figure away when its box is cleared or set to nought', () => {
+            expect(mergePlatformSales({ Deliveroo: 100, 'Just Eat': 60 }, { Deliveroo: '', 'Just Eat': '0' }, shown))
+                .toEqual({})
+        })
     })
 })
 
@@ -217,5 +287,34 @@ describe('tenderValuesFromRecord', () => {
 
     it('copes with nothing stored', () => {
         expect(tenderValuesFromRecord(null)).toEqual({})
+    })
+})
+
+// Whether a day was saved somewhere else since a screen read it. Both sales
+// screens ask this just before they write.
+describe('sameStoredDay', () => {
+    const DAY = {
+        id: 'r1', sale_date: '2026-09-07', is_closed: false,
+        gross_sales: 500, net_sales: 450, staff_food: 12,
+        tender_sales: { cash: 100, card: 400 }, platform_sales: { Deliveroo: 60 },
+        created_at: '2026-09-07T22:00:00Z',
+    }
+
+    it('agrees with itself read again', () => {
+        expect(sameStoredDay(DAY, { ...DAY, tender_sales: { card: 400, cash: 100.0 } })).toBe(true)
+    })
+
+    it('sees any figure the screens write change', () => {
+        expect(sameStoredDay(DAY, { ...DAY, gross_sales: 520 })).toBe(false)
+        expect(sameStoredDay(DAY, { ...DAY, staff_food: null })).toBe(false)
+        expect(sameStoredDay(DAY, { ...DAY, is_closed: true })).toBe(false)
+        expect(sameStoredDay(DAY, { ...DAY, tender_sales: { cash: 100, card: 400, kiosk: 0 } })).toBe(false)
+        expect(sameStoredDay(DAY, { ...DAY, platform_sales: {} })).toBe(false)
+    })
+
+    it('knows a day added or taken away since', () => {
+        expect(sameStoredDay(null, DAY)).toBe(false)
+        expect(sameStoredDay(DAY, null)).toBe(false)
+        expect(sameStoredDay(null, undefined)).toBe(true)
     })
 })

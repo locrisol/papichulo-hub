@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
     INVOICE_CATEGORIES, invoiceCategory, groupByDay, spendOn, FOOD, PACKAGING,
-    mainCategory, storedTotals, invoiceSplit, spentIn,
+    mainCategory, storedTotals, invoiceSplit, spentIn, costedByLine,
 } from '@/lib/invoiceCategories'
 
 describe('invoiceCategory', () => {
@@ -172,5 +172,22 @@ describe('what an invoice was spent on', () => {
     it('adds a list of both kinds up by category', () => {
         expect(spentIn([typed, read], ['packaging', 'cleaning'])).toBeCloseTo(191.03, 2)
         expect(spentIn([typed, read], ['food'])).toBe(0)
+    })
+})
+
+// The same question the cost view asks before it reads a header: does this
+// invoice have a line with a category on it.
+describe('costedByLine', () => {
+    it('is true for a document read in line by line', () => {
+        expect(costedByLine({ invoice_lines: [{ category: 'food', line_total: 10 }] })).toBe(true)
+    })
+
+    it('is false for a total typed in by hand', () => {
+        expect(costedByLine({ total_amount: 58.2, invoice_lines: [] })).toBe(false)
+        expect(costedByLine({ total_amount: 58.2 })).toBe(false)
+    })
+
+    it('is false when no line has a category, since the view then reads the header', () => {
+        expect(costedByLine({ invoice_lines: [{ category: null, line_total: 10 }] })).toBe(false)
     })
 })

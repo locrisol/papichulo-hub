@@ -4,7 +4,7 @@ import ModalSection from '@/components/ui/ModalSection'
 import { supabase } from '@/lib/supabase'
 import { friendlyError } from '@/lib/errors'
 import { useConfirm } from '@/context/confirm'
-import { modalFooter, secondaryButton } from '@/lib/controlStyles'
+import { modalFooter, primaryButton, secondaryButton } from '@/lib/controlStyles'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // The link somebody subscribes their phone's calendar to.
@@ -64,7 +64,7 @@ export default function CalendarLinkDialog({ employee, onClose, onChanged }) {
         const ok = await confirm({
             title: `Make a new link for ${employee.full_name}?`,
             message: 'The one they have now stops working straight away and their calendar goes empty until they subscribe to the new one. This is what to do if a phone has been lost.',
-            confirmLabel: 'Make a new one',
+            confirmLabel: 'Make new link',
             tone: 'danger',
         })
         if (ok) save(makeToken())
@@ -96,7 +96,7 @@ export default function CalendarLinkDialog({ employee, onClose, onChanged }) {
                         type="button"
                         onClick={() => save(makeToken())}
                         disabled={busy}
-                        className="px-5 py-2.5 bg-accent text-white text-sm font-semibold rounded-lg hover:bg-orange-600 disabled:opacity-50"
+                        className={primaryButton('lg')}
                     >
                         {busy ? 'Making it...' : 'Make a link'}
                     </button>
@@ -114,12 +114,12 @@ export default function CalendarLinkDialog({ employee, onClose, onChanged }) {
                             <button
                                 type="button"
                                 onClick={() => copy(webcal, 'subscribe')}
-                                className="px-4 py-2 bg-accent text-white text-sm font-semibold rounded-lg hover:bg-orange-600"
+                                className={primaryButton()}
                             >
-                                {copied === 'subscribe' ? 'Copied' : 'Copy for a phone'}
+                                {copied === 'subscribe' ? 'Copied' : 'Copy for iPhone'}
                             </button>
                             <button type="button" onClick={() => copy(url, 'plain')} className={secondaryButton}>
-                                {copied === 'plain' ? 'Copied' : 'Copy the plain address'}
+                                {copied === 'plain' ? 'Copied' : 'Copy for Google Calendar'}
                             </button>
                         </div>
                     </ModalSection>
@@ -132,19 +132,18 @@ export default function CalendarLinkDialog({ employee, onClose, onChanged }) {
                             </li>
                             <li>
                                 <b className="text-gray-900">On Android.</b> Google Calendar on a computer,
-                                Other calendars, then From URL, and paste the plain address. Phones cannot
-                                add one, only the website can.
+                                Other calendars, then From URL, and paste the link from the Copy for
+                                Google Calendar button. Phones cannot add one, only the website can.
                             </li>
                             <li>
                                 <b className="text-gray-900">Google will call it by its address.</b> It
                                 ignores the name the calendar gives itself, so it turns up in the list as a
-                                long link. Click the three dots beside it, Settings, and rename it. Once,
+                                long link. Press the three dots beside it, Settings, and rename it. Once,
                                 and it stays. Apple picks the name up on its own.
                             </li>
                             <li>
-                                <b className="text-gray-900">It is not instant.</b> Their calendar re-reads it
-                                on its own, but Apple checks more often than Google and Google can take most
-                                of a day. Worth saying so once, or somebody will think it is broken.
+                                <b className="text-gray-900">It is not instant.</b> Their calendar updates by
+                                itself, and Google Calendar can take up to a day.
                             </li>
                         </ul>
                     </ModalSection>
@@ -160,14 +159,10 @@ export default function CalendarLinkDialog({ employee, onClose, onChanged }) {
                 </>
             )}
 
-            {error && <ErrorBanner className="mx-6 mb-4">{error}</ErrorBanner>}
+            <ErrorBanner className="mx-6 mb-4">{error}</ErrorBanner>
 
             <div className={modalFooter}>
-                <button
-                    type="button"
-                    onClick={onClose}
-                    className="px-4 py-2 border border-border text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 bg-white"
-                >
+                <button type="button" onClick={onClose} className={secondaryButton}>
                     Done
                 </button>
             </div>

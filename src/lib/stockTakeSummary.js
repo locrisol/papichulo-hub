@@ -20,6 +20,7 @@
 
 import { sectionRank, sectionColour } from '@/lib/sections'
 import { heldFor, compareForCount } from '@/lib/products'
+import { fmtQty } from '@/lib/format'
 
 // The three the accountant adds together. Packaging and cleaning are stock but
 // they are not food cost, and that split is the first thing anybody does to
@@ -28,9 +29,69 @@ export const FOOD_SECTIONS = ['Freezer', 'Cold Room', 'Dry']
 
 const byCountedAt = (a, b) => new Date(a.counted_at) - new Date(b.counted_at)
 
+// The products a count is read against: everything still stocked, and
+// anything counted on it, whatever has happened to it since.
+//
+// A product switched off after the count is still on the count. Left out, its
+// lines dropped out of every section, the food subtotal and the grand total, on
+// the screen and on the PDF, while the total saved at close still had them in.
+// One switched off and never counted is not part of it, or the Counted figure
+// would be out of every product ever retired.
+export function onThisCount(products, lines) {
+    const counted = new Set((lines || []).map(l => l.product_id))
+    return (products || []).filter(p => p && (p.is_active !== false || counted.has(p.id)))
+}
+
+// A line counted while its product had no price. It adds nothing to any total,
+// which is not the same as being worth nothing, so the screens say so rather
+// than leave the total to be read as complete. A line of none is not one: none
+// on the shelf is worth nothing whatever it costs.
+export function noPrice(line) {
+    return line.unit_cost == null && Number(line.quantity_counted || 0) > 0
+}
+
+// How a line was counted, as the parts a person typed in: "6 Box", "15 Bag",
+// "2.25 KG". Each is { key, text, factor, isLoose }, biggest pack first and
+// loose always last. Null for a line with no breakdown, which is how lines
+// were saved before packs could be counted.
+//
+// The count screen, the finished stock take and the PDF each had a copy, and
+// the PDF's had already drifted from the screens once. Here so they read the
+// same line the same way.
+export function breakdownParts(line, product) {
+    const b = line?.unit_breakdown
+    if (!b || typeof b !== 'object') return null
+    const parts = []
+    for (const [label, info] of Object.entries(b)) {
+        const qty = info?.qty
+        if (qty == null) continue
+        const factor = Number(info.factor ?? 1)
+        if (label === 'loose') {
+            parts.push({ key: 'loose', text: `${fmtQty(qty)} ${product.unit}`, factor, isLoose: true })
+        } else {
+            parts.push({ key: label, text: `${fmtQty(qty)} ${label}`, factor, isLoose: false })
+        }
+    }
+    if (parts.length === 0) return null
+
+    parts.sort((a, b) => {
+        if (a.isLoose && !b.isLoose) return 1
+        if (!a.isLoose && b.isLoose) return -1
+        return b.factor - a.factor
+    })
+    return parts
+}
+
+// One loose entry is its own total, so "4.27 KG = 4.27 KG" says the same number
+// twice. The equals sign is there to show the arithmetic when somebody counted
+// in packs, and with a single loose entry there is no arithmetic to show.
+export function justLoose(parts) {
+    return Boolean(parts) && parts.length === 1 && parts[0].isLoose
+}
+
 // Every place that was counted, with the products counted there.
 //
-// [{ section, ink, items: [{ product, lines, qty, value, unitCost }] }]
+// [{ section, ink, items: [{ product, lines, qty, value, unitCost, unpriced }] }]
 //
 // Only places with something in them. A section nobody opened does not appear,
 // which is not the same as a section that came to zero.
@@ -60,6 +121,7 @@ export function bySection(products, lines) {
                     value: own.reduce((s, l) => s + Number(l.line_total || 0), 0),
                     // The cost the line saved on the day, not today's price.
                     unitCost: own.find(l => l.unit_cost != null)?.unit_cost ?? null,
+                    unpriced: own.some(noPrice),
                 }))
                 .sort((a, b) => compareForCount(a.product, b.product)),
         }))

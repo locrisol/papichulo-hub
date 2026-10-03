@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { friendlyError } from '@/lib/errors'
-import { fieldClass } from '@/lib/controlStyles'
+import { fieldClass, hintClass, labelClass, modalFooter, primaryButton, secondaryButton } from '@/lib/controlStyles'
 import Modal from '@/components/ui/Modal'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 
@@ -81,81 +81,79 @@ export default function StartStockTakeModal({ onClose, onCreated, restaurantId, 
   // only one Escape would not close.
   return (
     <Modal title="Start a stock take" onClose={onClose} width="max-w-md">
-        <p className="px-5 pt-4 text-sm text-muted">
-          Once started, you and your team can begin counting.
-        </p>
-
-        <form onSubmit={handleSubmit} className="p-5 space-y-5">
-          {/* Type */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-900 mb-2">
-              Type
-            </label>
-            <div className="space-y-2">
-              {TYPE_OPTIONS.map(opt => (
-                <label
-                  key={opt.value}
-                  className={`flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${
-                    type === opt.value
-                      ? 'border-accent bg-accent/5'
-                      : 'border-border hover:bg-gray-50'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="type"
-                    value={opt.value}
-                    checked={type === opt.value}
-                    onChange={() => setType(opt.value)}
-                    className="mt-0.5 accent-accent"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900">{opt.label}</p>
-                    <p className="text-xs text-muted mt-0.5">{opt.description}</p>
-                  </div>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          {/* Notes (optional) */}
-          <div>
-            <label htmlFor="notes" className="block text-sm font-semibold text-gray-900 mb-1">
-              Notes <span className="font-normal text-muted">(optional)</span>
-            </label>
-            <input
-              id="notes"
-              type="text"
-              value={notes}
-              onChange={e => setNotes(e.target.value)}
-              placeholder="e.g. End of May 2026"
-              maxLength={200}
-              className={fieldClass}
-            />
-            <p className="text-xs text-muted mt-1">
-              A short label to help identify this session later.
+        <form onSubmit={handleSubmit}>
+          <div className="px-6 py-4 space-y-5">
+            <p className="text-sm text-muted">
+              Once started, you and your team can begin counting.
             </p>
+
+            {/* Type */}
+            <div role="radiogroup" aria-labelledby="start-type">
+              <p id="start-type" className={labelClass}>
+                Type
+              </p>
+              <div className="space-y-2">
+                {TYPE_OPTIONS.map(opt => (
+                  <label
+                    key={opt.value}
+                    className={`flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${
+                      type === opt.value
+                        ? 'border-accent bg-accent/5'
+                        : 'border-border hover:bg-gray-50'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="type"
+                      value={opt.value}
+                      checked={type === opt.value}
+                      onChange={() => setType(opt.value)}
+                      className="mt-0.5 accent-accent"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900">{opt.label}</p>
+                      <p className="text-xs text-muted mt-0.5">{opt.description}</p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Notes (optional) */}
+            <div>
+              <label htmlFor="notes" className={labelClass}>
+                Notes (optional)
+              </label>
+              <input
+                id="notes"
+                type="text"
+                value={notes}
+                onChange={e => setNotes(e.target.value)}
+                placeholder="e.g. End of May 2026"
+                maxLength={200}
+                className={fieldClass}
+              />
+              <p className={hintClass}>
+                A name to help you find this stock take later.
+              </p>
+            </div>
+
+            <ErrorBanner>{error}</ErrorBanner>
           </div>
 
-          {error && (
-            <ErrorBanner>
-              {error}
-            </ErrorBanner>
-          )}
-
-          <div className="flex gap-2 justify-end pt-2">
+          <div className={modalFooter}>
             <button
               type="button"
               onClick={onClose}
               disabled={submitting}
-              className="px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
+              className={secondaryButton}
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={submitting}
-              className="px-5 py-2 text-sm font-semibold bg-accent hover:bg-accent/90 disabled:opacity-50 text-white rounded-lg transition-colors"
+              className={primaryButton('lg')}
             >
               {submitting ? 'Starting...' : 'Start stock take'}
             </button>

@@ -78,7 +78,7 @@ export function isScript(agent) {
 //
 // Rounded down and deliberately vague past a week. "Last used 34 days ago" is a
 // figure nobody checks against a calendar; a date is what you want by then.
-export function agoWords(at, now = new Date()) {
+export function lastSeenWords(at, now = new Date()) {
     if (!at) return 'Never'
     const then = new Date(at)
     if (isNaN(then)) return 'Never'

@@ -15,7 +15,8 @@
 import { supabase } from '@/lib/supabase'
 import { functionError, friendlyError } from '@/lib/errors'
 
-// Private. See migration 009 for why this one is not public and report-charts is.
+// Private. See the timesheet-hours bucket in seed.sql for why this one is not
+// public and report-charts is.
 export const HOURS_BUCKET = 'timesheet-hours'
 
 export async function sendTimesheet({
@@ -25,7 +26,10 @@ export async function sendTimesheet({
     //
     // The browser draws the PDF, because that is where jsPDF and the logo are,
     // and the function attaches it, because that is where the mail is sent. So
-    // it is put down in a bucket in between and the function is told where.
+    // it is put down in a bucket in between. The function works out the same
+    // path for itself from the restaurant and the period, and only takes
+    // `attachment` as a yes: a path from a browser is not something it reads
+    // with the service key.
     //
     // The bucket is private and the function reads it with the service role.
     // Nothing ever fetches it by url: the bytes travel inside the mail. A
@@ -41,7 +45,7 @@ export async function sendTimesheet({
         // asked for the hours and the paper together, and a mail that quietly
         // arrives without it is the kind of thing nobody notices until the
         // accountant asks.
-        if (failed) throw new Error(`The hours went nowhere: ${friendlyError(failed)}`)
+        if (failed) throw new Error(`The hours were not sent, because the PDF could not be saved: ${friendlyError(failed)}`)
     }
 
     const { data, error } = await supabase.functions.invoke('weekly-report-email', {
@@ -67,7 +71,7 @@ export function sentWords(result, { test = false } = {}) {
     if (sent === 0) {
         words = 'Nobody is on the list, so nothing was sent.'
     } else if (test) {
-        words = `Test sent to ${sent} ${sent === 1 ? 'address' : 'addresses'}. Nothing has been filed.`
+        words = `Test sent to ${sent} ${sent === 1 ? 'address' : 'addresses'}. The pay period is not marked as sent.`
     } else {
         words = `Sent to ${sent} ${sent === 1 ? 'address' : 'addresses'}.`
     }

@@ -1,6 +1,6 @@
 import Modal from '@/components/ui/Modal'
-import { fullDate } from '@/lib/dates'
-import { describeAgent, isScript, agoWords, usedForWords, lastUsed } from '@/lib/loginEvents'
+import { stampDateTime } from '@/lib/dates'
+import { describeAgent, isScript, lastSeenWords, usedForWords, lastUsed } from '@/lib/loginEvents'
 
 // One person's sign ins.
 //
@@ -11,15 +11,10 @@ import { describeAgent, isScript, agoWords, usedForWords, lastUsed } from '@/lib
 // Newest first, because the question is nearly always about the last time
 // rather than the first.
 
+// The time as well as the day. On a record of who was where, the hour is
+// usually the part being asked about.
 function when(at) {
-    if (!at) return '—'
-    const d = new Date(at)
-    if (isNaN(d)) return '—'
-    // The time as well as the day. On a record of who was where, the hour is
-    // usually the part being asked about.
-    return `${fullDate(at.slice(0, 10))}, ${d.toLocaleTimeString('en-IE', {
-        hour: '2-digit', minute: '2-digit',
-    })}`
+    return stampDateTime(at) || '—'
 }
 
 export default function SignInHistory({ person, events, onClose }) {
@@ -45,7 +40,7 @@ export default function SignInHistory({ person, events, onClose }) {
 
                         <div className="space-y-2">
                             {mine.map(e => {
-                                const ago = agoWords(lastUsed(e))
+                                const ago = lastSeenWords(lastUsed(e))
                                 const used = usedForWords(e)
                                 return (
                                     <div

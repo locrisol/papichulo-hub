@@ -4,8 +4,11 @@ import {
     kindWords, kindTitle, hoursWords, noticeWords,
     requestEmail, answerEmail,
     swapHalves, halfWords, swapAskEmail, swapAnswerEmail, swapDeskEmail, swapDecisionEmail,
-    deliverable, isJustTheGoodbye, replyToFor,
+    deliverable, isJustTheGoodbye, replyToFor, recordName, switchedOff,
+    fresh, tooLate, FRESH_MINUTES,
 } from '../../supabase/functions/roster-email/email'
+import { readFileSync } from 'node:fs'
+import { recordName as appRecordName } from '@/lib/timeOffPdf'
 
 // The words in the emails. It lives in the function's own folder because only
 // what is inside that folder gets deployed with it, and it is tested from here
@@ -56,7 +59,14 @@ describe('the small words', () => {
     it('says how far ahead it was asked, as a fact and not a telling off', () => {
         expect(noticeWords(holiday(), NOW)).toBe('Asked 38 days ahead')
         expect(noticeWords(holiday({ starts_on: '2026-09-05' }), NOW)).toBe('Asked 1 day ahead')
-        expect(noticeWords(holiday({ starts_on: '2026-09-04' }), NOW)).toBe('Asked for today')
+        expect(noticeWords(holiday({ starts_on: '2026-09-04' }), NOW)).toBe('Asked the same day')
+    })
+
+    // Half twelve at night in Dublin is still the day before in UTC, and
+    // counted from that day it said a day more than the app does.
+    it('counts from the day it was asked in Ireland', () => {
+        const late = holiday({ created_at: '2026-09-27T23:30:00Z', starts_on: '2026-10-28' })
+        expect(noticeWords(late, NOW)).toBe('Asked 30 days ahead')
     })
 })
 
@@ -85,15 +95,25 @@ describe('somebody asked', () => {
             ...base,
             clashes: [shift('2026-10-13', '08:30:00', '15:00:00'), shift('2026-10-15', '08:30:00', '23:00:00')],
         })
-        expect(mail.html).toContain('is rostered on 2 of these days')
+        expect(mail.html).toContain('has 2 shifts on these days')
         expect(mail.html).toContain('08:30 to 15:00')
-        expect(mail.text).toContain('is rostered on 2 of these days')
+        expect(mail.text).toContain('has 2 shifts on these days')
     })
 
     it('says nothing about the roster when they are not on it', () => {
         const mail = requestEmail({ ...base, clashes: [] })
         expect(mail.html).not.toContain('rostered on')
         expect(mail.text).not.toContain('rostered on')
+    })
+
+    // Changing a shift after the week went out takes it back to a draft, and
+    // the function only looked at published shifts, so moving somebody's
+    // Saturday an hour told the managers they were not rostered that day.
+    it('counts a shift changed since the week went out', () => {
+        const source = readFileSync('supabase/functions/roster-email/index.ts', 'utf8')
+        const clashes = source.slice(source.indexOf('const { data: clashes }'), source.indexOf('const mail = requestEmail('))
+        expect(clashes).toContain(".or('published_at.not.is.null,published_as.not.is.null')")
+        expect(clashes).not.toContain(".not('published_at', 'is', null)")
     })
 
     it('carries their note through escaped', () => {
@@ -128,24 +148,128 @@ describe('somebody answered', () => {
 
     it('says what came off the roster, and only when something did', () => {
         expect(answerEmail({ ...base, absence: holiday({ status: 'approved' }), freedCount: 3 }).text)
-            .toContain('3 shifts have been taken off your roster')
+            .toContain('3 shifts have been removed from your roster')
         expect(answerEmail({ ...base, absence: holiday({ status: 'approved' }), freedCount: 1 }).text)
-            .toContain('1 shift has been taken off your roster')
+            .toContain('1 shift has been removed from your roster')
         expect(answerEmail({ ...base, absence: holiday({ status: 'approved' }), freedCount: 0 }).text)
-            .not.toContain('taken off your roster')
+            .not.toContain('removed from your roster')
     })
 
     it('never gives a reason', () => {
         // A reason belongs in a conversation. A sentence written by an app is
         // the wrong place to have one, and there is nowhere to type it anyway.
         const mail = answerEmail({ ...base, absence: holiday({ status: 'declined' }), freedCount: 0 })
-        expect(mail.html).toContain('Have a word with your manager')
+        expect(mail.html).toContain('Talk to your manager if you have any questions')
         expect(mail.text).not.toContain('because')
     })
 
     it('names the person who answered it', () => {
         expect(answerEmail({ ...base, absence: holiday({ status: 'approved' }), freedCount: 0 }).html)
             .toContain('Leandro Presti')
+    })
+})
+
+// The record's file name goes into two header lines of the mail as it is, so
+// it is made here from the employee and the date, and never taken from the
+// request, where it could carry a line break.
+describe('the name of the record attached to an answer', () => {
+    it('is the same name the app gives it', () => {
+        for (const name of ['Ana Ferreira', 'María José', "O'Brien", '', null]) {
+            expect(recordName(holiday(), name)).toBe(appRecordName(holiday(), name))
+        }
+    })
+
+    it('holds nothing a header could trip on', () => {
+        expect(recordName(holiday(), 'Majo\r\nContent-Type: text/html'))
+            .toMatch(/^[a-z0-9-]+$/)
+    })
+
+    it('is what the function uses, whatever the request says', () => {
+        const source = readFileSync('supabase/functions/roster-email/index.ts', 'utf8')
+        expect(source).toContain('recordName(absence, employee.full_name)')
+        expect(source).not.toMatch(/pdfName \|\|/)
+        // And the record that goes is the one checked for base64, never the
+        // raw value from the request, which could end the mail early.
+        expect(source).toContain('const record = base64Pdf(pdf)')
+        expect(source).toContain('content: record')
+        expect(source).not.toMatch(/content: pdf\b/)
+    })
+})
+
+// Posting the same id again used to send the same mail again, as often as
+// anybody liked: a loop of those would use up the Gmail account's daily limit
+// and stop every mail the Hub sends. The three mails anybody can set off now go
+// out right after the change they are about, or not at all.
+describe('the same mail again', () => {
+    const NOW_ = '2026-09-30T10:00:00.000Z'
+    const ago = minutes => new Date(Date.parse(NOW_) - minutes * 60000).toISOString()
+
+    it('goes out while the change is fresh, either side, for the clocks', () => {
+        expect(FRESH_MINUTES).toBe(10)
+        expect(fresh(ago(0), NOW_)).toBe(true)
+        expect(fresh(ago(9), NOW_)).toBe(true)
+        expect(fresh(ago(-2), NOW_)).toBe(true)
+        expect(fresh('2026-09-30T09:55:00.123456+00:00', NOW_)).toBe(true)
+    })
+
+    it('does not once the change is old, or when it cannot tell when it was', () => {
+        expect(fresh(ago(11), NOW_)).toBe(false)
+        expect(fresh(ago(-11), NOW_)).toBe(false)
+        expect(fresh(null, NOW_)).toBe(false)
+        expect(fresh('not a time', NOW_)).toBe(false)
+    })
+
+    it('times a request from when it was made, and an answer from when it was answered', () => {
+        expect(tooLate('asked', { created_at: ago(1) }, NOW_)).toBe(false)
+        expect(tooLate('asked', { created_at: ago(60) }, NOW_)).toBe(true)
+        expect(tooLate('swap-asked', { created_at: ago(1) }, NOW_)).toBe(false)
+        expect(tooLate('swap-asked', { created_at: ago(60) }, NOW_)).toBe(true)
+        expect(tooLate('swap-answered', { created_at: ago(3000), answered_at: ago(1) }, NOW_)).toBe(false)
+        expect(tooLate('swap-answered', { created_at: ago(1), answered_at: ago(60) }, NOW_)).toBe(true)
+        expect(tooLate('swap-answered', { created_at: ago(1), answered_at: null }, NOW_)).toBe(true)
+    })
+
+    // Only a manager can set these off, and a manager who changes an answer
+    // has to be able to tell the person again.
+    it('leaves the two a manager sends alone', () => {
+        expect(tooLate('answered', { created_at: ago(9000) }, NOW_)).toBe(false)
+        expect(tooLate('swap-decided', { created_at: ago(9000) }, NOW_)).toBe(false)
+    })
+
+    it('is asked by the function, and a time off request has to be waiting', () => {
+        const source = readFileSync('supabase/functions/roster-email/index.ts', 'utf8')
+        expect(source.match(/tooLate\(event, /g)).toHaveLength(2)
+        expect(source).toContain("absence.status !== 'requested'")
+        // The swap row has to be read with the two times the rule needs.
+        expect(source).toMatch(/\.from\('shift_requests'\)\s*\.select\([^)]*created_at[^)]*answered_at/)
+    })
+})
+
+// Switching somebody off only sets users.is_active. Their password still signs
+// them in, and this function reads users with the service key, which row level
+// security does not stop, so it has to ask for itself.
+describe('a login that is switched off', () => {
+    it('is refused, whatever its role', () => {
+        for (const role of ['employee', 'store_manager', 'owner', 'super_admin']) {
+            expect(switchedOff({ role, is_active: false })).toBe(true)
+        }
+    })
+
+    it('lets an active one through', () => {
+        expect(switchedOff({ role: 'employee', is_active: true })).toBe(false)
+    })
+
+    it('refuses when it cannot tell, rather than letting it through', () => {
+        expect(switchedOff({ role: 'employee' })).toBe(true)
+        expect(switchedOff(null)).toBe(true)
+    })
+
+    it('is asked off a row that carries is_active, before anything is read', () => {
+        const source = readFileSync('supabase/functions/roster-email/index.ts', 'utf8')
+        expect(source).toMatch(/\.from\('users'\)\.select\('[^']*\bis_active\b[^']*'\)\s*\.eq\('id', user\.id\)/)
+        const asked = source.indexOf('switchedOff(me)')
+        expect(asked).toBeGreaterThan(-1)
+        expect(asked).toBeLessThan(source.indexOf('await request.json()'))
     })
 })
 
@@ -367,6 +491,46 @@ describe('one half, read out', () => {
     })
 })
 
+// The roster never prints a closing shift's finishing time, because somebody
+// would leave on it. The mail printed it.
+describe('a closing shift in a swap mail', () => {
+    const closing = { ...SAT, starts_at: '17:00:00', ends_at: '23:40:00' }
+    const saturday = { open: '12:00', close: '23:00' }
+    const hoursOn = () => saturday
+
+    it('says Closing rather than the time, the same as the roster', () => {
+        const [half] = swapHalves(cover(), [closing], hoursOn)
+        expect(halfWords(half, nameOf, 'geo'))
+            .toBe('You take Sat 26 Sept 2026, 17:00 to Closing, from Majo')
+    })
+
+    it('is still the whole shift and not part of it', () => {
+        const [half] = swapHalves(cover(), [closing], hoursOn)
+        expect(half.whole).toBe(true)
+    })
+
+    it('says Closing for the end of a shift given in part', () => {
+        const [half] = swapHalves(cover({ give_from: '20:00', give_to: '23:40' }), [closing], hoursOn)
+        expect(halfWords(half, nameOf))
+            .toBe("Georgiana takes Sat 26 Sept 2026, 20:00 to Closing, part of Majo's shift")
+    })
+
+    it('reads a shift to midnight as closing too', () => {
+        const [half] = swapHalves(cover(), [{ ...closing, ends_at: '00:00:00' }], hoursOn)
+        expect(halfWords(half, nameOf, 'geo')).toContain('17:00 to Closing')
+    })
+
+    it('prints the time of a shift that finishes before closing', () => {
+        const [half] = swapHalves(cover(), [{ ...closing, ends_at: '22:00:00' }], hoursOn)
+        expect(halfWords(half, nameOf, 'geo')).toContain('17:00 to 22:00')
+    })
+
+    it('prints the time when it does not know the hours', () => {
+        const [half] = swapHalves(cover(), [closing])
+        expect(halfWords(half, nameOf, 'geo')).toContain('17:00 to 23:40')
+    })
+})
+
 describe('the mail to the person being asked', () => {
     const words = () => ({
         request: ask(), halves: swapHalves(ask(), [SAT, THU]), nameOf,
@@ -410,6 +574,15 @@ describe('the mail to the person being asked', () => {
         expect(mail.html).toContain('&lt;b&gt;please&lt;/b&gt; &amp; thanks')
         expect(mail.html).not.toContain('<b>please</b>')
     })
+
+    // HTML reads a line break as a space, so a note typed over two lines
+    // arrived as one.
+    it('keeps the line breaks they typed', () => {
+        const request = ask({ message: 'Saturday? \nThanks' })
+        const mail = swapAskEmail({ ...words(), request })
+        expect(mail.html).toContain('Saturday?<br />Thanks')
+        expect(mail.text).toContain('Their note: "Saturday?\nThanks"')
+    })
 })
 
 describe('the mail back to whoever asked', () => {
@@ -423,18 +596,18 @@ describe('the mail back to whoever asked', () => {
 
     it('says yes plainly', () => {
         expect(swapAnswerEmail(words('accepted')).subject)
-            .toBe('Georgiana said yes to your shift swap')
+            .toBe('Georgiana accepted your shift swap')
     })
 
     it('says no plainly', () => {
         expect(swapAnswerEmail(words('declined')).subject)
-            .toBe('Georgiana said no to your shift swap')
+            .toBe('Georgiana declined your shift swap')
     })
 
     // A yes is the step people think is the last one.
     it('says a yes is now with a manager', () => {
         expect(swapAnswerEmail(words('accepted')).text)
-            .toContain('It is with a manager now')
+            .toContain('A manager now has to approve it')
     })
 
     // A no that leaves somebody wondering whether their shifts changed is a no
@@ -468,6 +641,13 @@ describe('the mail to the managers', () => {
     it('carries what they said to each other', () => {
         expect(swapDeskEmail(words()).text).toContain('English class')
     })
+
+    it('keeps the line breaks in what they said', () => {
+        const request = ask({ status: 'accepted', message: 'English class \r\non Saturdays' })
+        const mail = swapDeskEmail({ ...words(), request })
+        expect(mail.html).toContain('English class<br />on Saturdays')
+        expect(mail.text).toContain('Their note: "English class\non Saturdays"')
+    })
 })
 
 describe('the mail after a manager decided', () => {
@@ -490,7 +670,7 @@ describe('the mail after a manager decided', () => {
 
     it('says the roster has already moved', () => {
         expect(swapDecisionEmail(words('approved')).text)
-            .toContain('The roster has already been changed')
+            .toContain('The roster has been updated')
     })
 
     it('says nothing moved when it was refused', () => {
@@ -551,4 +731,53 @@ describe('no line ends in a space', () => {
             expect(bad).toEqual([])
         })
     }
+})
+
+// Every mail this function sends, for the checks that hold for all of them.
+const everyMail = () => [
+    requestEmail({
+        absence: holiday(), employeeName: 'Majo', restaurantName: 'Point Campus',
+        clashes: [shift('2026-10-12', '09:00', '17:00')], appUrl: 'https://hub.ie', now: NOW,
+    }),
+    answerEmail({
+        absence: holiday({ status: 'refused' }), employeeName: 'Majo',
+        restaurantName: 'Point Campus', answeredBy: 'Leandro', appUrl: 'https://hub.ie',
+    }),
+    swapAnswerEmail({
+        request: ask({ status: 'declined' }), halves: swapHalves(ask(), [SAT, THU]), nameOf,
+        restaurantName: 'Point Campus', appUrl: 'https://hub.ie',
+    }),
+    swapDeskEmail({
+        request: ask({ status: 'accepted', message: 'Thanks' }), halves: swapHalves(ask(), [SAT, THU]), nameOf,
+        restaurantName: 'Point Campus', appUrl: 'https://hub.ie',
+    }),
+]
+
+// Classic Outlook drops a see-through colour, and the line over the name on
+// the band was white at three quarters.
+describe('only solid colours', () => {
+    it('has no see-through colour in any style', () => {
+        const styles = everyMail().flatMap(mail => [...mail.html.matchAll(/style="([^"]*)"/g)].map(m => m[1]))
+        expect(styles.length).toBeGreaterThan(20)
+        expect(styles.filter(st => /#[0-9a-f]{8}\b|rgba?\(|hsla?\(/i.test(st))).toEqual([])
+    })
+
+    it('gives the line over the name a pale colour of its own band', () => {
+        const [green, , red] = everyMail()
+        expect(green.html).toContain('color:#CBDED4;font-weight:700;">PAPI CHULO')
+        expect(red.html).toContain('color:#EEC6C6;font-weight:700;">PAPI CHULO')
+    })
+})
+
+describe('the head of every mail', () => {
+    it('says its language, its characters and how wide a phone is', () => {
+        for (const { html } of everyMail()) {
+            expect(html).toContain('<html lang="en"><head>')
+            expect(html).toContain('<meta charset="utf-8" />')
+            expect(html).toContain('<meta name="viewport" content="width=device-width,initial-scale=1" />')
+            expect(html).toContain('<meta name="x-apple-disable-message-reformatting" />')
+            expect(html).toContain('<meta name="format-detection" content="telephone=no,date=no,address=no,email=no" />')
+            expect(html).toContain('</head><body ')
+        }
+    })
 })

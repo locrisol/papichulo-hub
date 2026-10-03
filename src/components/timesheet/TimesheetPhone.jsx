@@ -1,4 +1,4 @@
-import { DAY_NAMES } from '@/lib/events'
+import { DAY_NAMES } from '@/lib/dates'
 import { fmtMoney } from '@/lib/format'
 import { weekTotals, cellColour } from '@/lib/timesheet'
 import { kindLabel as absenceLabel } from '@/lib/absences'
@@ -73,7 +73,7 @@ function DayChip({ cell, onOpen }) {
             aria-label={`${cell.date}${cell.absence ? `, ${absenceLabel(cell.absence.kind)}` : ''}${worked ? `, ${cell.hours.toFixed(2)} hours` : ''}`}
             className={`w-8 h-9 rounded text-[0.58rem] font-bold tabular-nums flex items-center justify-center
                 border transition-colors focus:outline-none focus:ring-2 focus:ring-accent
-                ${cell.unanswered ? 'border-accent border-dashed' : 'border-transparent'}
+                ${cell.unanswered || cell.open ? 'border-accent border-dashed' : 'border-transparent'}
                 ${worked || colour ? '' : 'text-gray-300'}`}
             style={{
                 backgroundColor: colour ? `${colour}22` : (cell.bankHoliday ? '#FBF4E2' : '#F4F1EB'),

@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { friendlyError } from '@/lib/errors'
 import { useConfirm } from '@/context/confirm'
 import { POSITION_COLOURS, nextColour } from '@/lib/team'
-import { badge, rowButton, fieldClass } from '@/lib/controlStyles'
+import { inactiveBadge, rowButton, primaryButton, fieldClass } from '@/lib/controlStyles'
 import { ModalSectionBar } from '@/components/ui/ModalSection'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 
@@ -63,7 +63,7 @@ export default function PositionsModal({ positions, restaurantId, onClose, onCha
             const ok = await confirm({
                 title: `Retire ${position.name}?`,
                 message: 'It stays on every roster that already used it and cannot be given to anybody new.',
-                confirmLabel: 'Retire it',
+                confirmLabel: 'Retire',
             })
             if (!ok) return
         }
@@ -123,14 +123,14 @@ export default function PositionsModal({ positions, restaurantId, onClose, onCha
                                             <button
                                                 type="button"
                                                 onClick={() => setEditing(null)}
-                                                className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900"
+                                                className={rowButton('plain')}
                                             >
                                                 Cancel
                                             </button>
                                             <button
                                                 type="button"
                                                 onClick={() => rename(p)}
-                                                className="px-4 py-1.5 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600"
+                                                className={primaryButton('sm')}
                                             >
                                                 Save
                                             </button>
@@ -148,7 +148,7 @@ export default function PositionsModal({ positions, restaurantId, onClose, onCha
                                             {p.name}
                                         </span>
                                         {!p.is_active && (
-                                            <span className={`${badge} bg-gray-100 text-gray-600`}>Retired</span>
+                                            <span className={inactiveBadge}>Retired</span>
                                         )}
                                         <button
                                             type="button"
@@ -185,7 +185,7 @@ export default function PositionsModal({ positions, restaurantId, onClose, onCha
                         <button
                             type="submit"
                             disabled={saving || !name.trim()}
-                            className="px-5 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 disabled:opacity-50"
+                            className={primaryButton('lg')}
                         >
                             {saving ? 'Saving...' : 'Add'}
                         </button>

@@ -207,9 +207,65 @@ describe('what reading it in does to the week', () => {
             tenderValues: { cash: '20', card: '110', kiosk: '' },
         }
         const p = plan({ days: week })
-        expect(p.changed).toEqual([
-            { date: '2026-09-08', diffs: [{ label: 'Card', was: 110, now: 100 }] },
-        ])
+        expect(p.changed).toEqual([{
+            date: '2026-09-08',
+            diffs: [{ label: 'Card', was: 110, now: 100 }],
+            follows: [],
+            handMade: false,
+            keep: false,
+        }])
+    })
+
+    // His answer of 30 September: reading a week in again must not quietly
+    // undo a correction made by hand. The import is by hand and nothing
+    // connects the Hub to the till, so a day can be put right here after the
+    // till's report was read. A day that still comes to the till's gross and
+    // net, and still adds up, with money moved between rows, is what that
+    // looks like, so it is kept unless he says otherwise.
+    describe('a day corrected by hand since', () => {
+        // Tuesday as the till has it is Cash 20, Card 100 and Kiosk 412.5.
+        // Here, 12.50 of the kiosk money was moved to cash.
+        function corrected(over = {}) {
+            const week = blankWeek()
+            week['2026-09-08'] = {
+                ...week['2026-09-08'],
+                gross: '532.50', net: '488.40',
+                tenderValues: { cash: '32.5', card: '100', kiosk: '400', online_sales: '0', feedr: '0' },
+                ...over,
+            }
+            return week
+        }
+
+        it('is kept, with the tick box ticked, when it still comes to the till\'s gross and net', () => {
+            const p = plan({ days: corrected() })
+            expect(p.changed).toEqual([expect.objectContaining({ date: '2026-09-08', handMade: true, keep: true })])
+            expect(p.days).not.toHaveProperty('2026-09-08')
+        })
+
+        it('is filled in once the tick is taken off', () => {
+            const p = plan({ days: corrected(), keep: { '2026-09-08': false } })
+            expect(p.changed[0].keep).toBe(false)
+            expect(p.days['2026-09-08'].tenderValues).toMatchObject({ cash: '20', kiosk: '412.5' })
+        })
+
+        it('is not ticked when the gross is not the till\'s', () => {
+            const p = plan({ days: corrected({ gross: '540' }) })
+            expect(p.changed[0]).toMatchObject({ handMade: false, keep: false })
+            expect(p.days).toHaveProperty('2026-09-08')
+        })
+
+        it('is not ticked when its rows do not add up to its gross', () => {
+            const p = plan({
+                days: corrected({ tenderValues: { cash: '30', card: '100', kiosk: '400', online_sales: '0', feedr: '0' } }),
+            })
+            expect(p.changed[0]).toMatchObject({ handMade: false, keep: false })
+        })
+
+        it('is kept when he ticks it, whatever it adds up to', () => {
+            const p = plan({ days: corrected({ gross: '540' }), keep: { '2026-09-08': true } })
+            expect(p.days).not.toHaveProperty('2026-09-08')
+            expect(p.outBy).toEqual([])
+        })
     })
 
     it('knows a day that already matches', () => {
@@ -256,7 +312,7 @@ describe('what reading it in does to the week', () => {
     })
 
     describe('the Corporate rows', () => {
-        const feedr = [{ name: 'Feedr', bucket: 'catering' }]
+        const feedr = [{ key: 'Feedr', name: 'Feedr', bucket: 'catering' }]
 
         it('follow their till row the way typing does', () => {
             const p = plan({ trackingPlatforms: feedr })
@@ -269,6 +325,42 @@ describe('what reading it in does to the week', () => {
             week['2026-09-07'].platformValues = { Feedr: '180' }
             const p = plan({ days: week, trackingPlatforms: feedr })
             expect(p.days['2026-09-07'].platformValues.Feedr).toBe('180')
+        })
+
+        // A Corporate row still following its till row goes back to the
+        // till's figure with it, and the screen has to say so, because that
+        // may be a figure somebody meant.
+        it('say when one would go back to the till\'s figure', () => {
+            const week = blankWeek()
+            week['2026-09-07'] = {
+                ...week['2026-09-07'],
+                gross: '800', net: '740',
+                tenderValues: { cash: '10', card: '100', kiosk: '500', online_sales: '0', feedr: '190' },
+                platformValues: { Feedr: '190' },
+            }
+            const p = plan({ days: week, trackingPlatforms: feedr })
+            expect(p.changed[0].follows).toEqual([{ label: 'Feedr', was: 190, now: 200 }])
+            expect(p.days['2026-09-07'].platformValues.Feedr).toBe('200')
+        })
+
+        it('say nothing about one somebody gave its own figure', () => {
+            const week = blankWeek()
+            week['2026-09-07'] = {
+                ...week['2026-09-07'],
+                gross: '800', net: '740',
+                tenderValues: { cash: '10', card: '100', kiosk: '500', online_sales: '0', feedr: '190' },
+                platformValues: { Feedr: '180' },
+            }
+            const p = plan({ days: week, trackingPlatforms: feedr })
+            expect(p.changed[0].follows).toEqual([])
+        })
+
+        // Matched to the till row by the name it goes by now, and written
+        // under the key its figures have always been kept under.
+        it('fill a renamed row under its key', () => {
+            const renamed = [{ key: 'Feedr Lunches', name: 'Feedr', bucket: 'catering' }]
+            const p = plan({ trackingPlatforms: renamed })
+            expect(p.days['2026-09-07'].platformValues).toEqual({ 'Feedr Lunches': '200' })
         })
     })
 })

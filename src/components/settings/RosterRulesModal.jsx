@@ -5,7 +5,7 @@ import { useRestaurant } from '@/context/restaurant'
 import { friendlyError } from '@/lib/errors'
 import { numberField } from '@/lib/numberInput'
 import { NOTICE_DEFAULT } from '@/lib/timeOff'
-import { modalFooter, checkbox, primaryButton } from '@/lib/controlStyles'
+import { modalFooter, checkbox, primaryButton, secondaryButton, denseField, compactField, hintClass } from '@/lib/controlStyles'
 import ModalSection from '@/components/ui/ModalSection'
 import { DEFAULT_RULES } from '@/lib/workRules'
 import ErrorBanner from '@/components/ui/ErrorBanner'
@@ -57,9 +57,6 @@ export default function RosterRulesModal({ onClose }) {
         onClose()
     }
 
-    const numCls =
-        'w-16 border border-border rounded-lg px-2 py-1.5 text-sm text-right bg-white focus:outline-none focus:ring-2 focus:ring-accent'
-
     const row = ({ key, title, blurb, unit, field = 'hours' }) => (
         <div key={key} className="py-3 border-b border-border last:border-b-0">
             <label className="flex items-start gap-3 cursor-pointer">
@@ -71,19 +68,21 @@ export default function RosterRulesModal({ onClose }) {
                 />
                 <span className="flex-1 min-w-0">
                     <span className="block text-sm font-medium text-gray-900">{title}</span>
-                    <span className="block text-xs text-gray-500 mt-0.5">{blurb}</span>
+                    <span className="block text-xs text-muted mt-0.5">{blurb}</span>
                 </span>
             </label>
             {rules[key]?.on && (
                 <div className="flex items-center gap-2 mt-2 ml-7">
-                    <input
-                        {...numberField({
-                            value: String(rules[key][field] ?? ''),
-                            onChange: v => set(key, { [field]: Number(v) || 0 }),
-                        })}
-                        className={numCls}
-                    />
-                    <span className="text-sm text-gray-500">{unit}</span>
+                    <div className="w-16 flex-shrink-0">
+                        <input
+                            {...numberField({
+                                value: String(rules[key][field] ?? ''),
+                                onChange: v => set(key, { [field]: Number(v) || 0 }),
+                            })}
+                            className={`${denseField} text-right`}
+                        />
+                    </div>
+                    <span className="text-sm text-muted">{unit}</span>
                 </div>
             )}
         </div>
@@ -96,20 +95,20 @@ export default function RosterRulesModal({ onClose }) {
 
                 <ModalSection
                     title="Warnings"
-                    description="These say something is worth a second look. None of them stop a week going out."
+                    description="These show a warning on the roster. None of them stop the week being published."
                 >
                 <div>
                     {[
                         {
                             key: 'dailyRest',
                             title: 'Enough rest between two shifts',
-                            blurb: 'Closing at eleven and opening at eight is nine hours, and it is the shift pattern people leave over. The Irish rule is eleven hours.',
+                            blurb: 'Closing at 23:00 and opening at 08:00 the next day leaves only 9 hours. The legal minimum in Ireland is 11 hours.',
                             unit: 'hours between shifts',
                         },
                         {
                             key: 'weeklyRest',
                             title: 'One long break in the week',
-                            blurb: 'The Irish rule is twenty four hours in a row on top of the daily eleven, so thirty five in practice.',
+                            blurb: 'The legal minimum in Ireland is 24 hours in a row on top of the daily 11, so 35 in practice.',
                             unit: 'hours in a row, once a week',
                         },
                         {
@@ -122,7 +121,7 @@ export default function RosterRulesModal({ onClose }) {
                         {
                             key: 'maxWeek',
                             title: 'The long term average',
-                            blurb: 'Forty eight hours averaged over four months rather than a ceiling on any one week, which is what the law actually says. A single busy week is not a breach, so warning on one would cry wolf every time somebody covered a holiday.',
+                            blurb: 'The legal limit is 48 hours a week averaged over four months, not in any single week. One busy week is not a breach, so this only warns when the average is over.',
                             unit: 'hours a week on average',
                         },
                     ].map(row)}
@@ -147,11 +146,10 @@ export default function RosterRulesModal({ onClose }) {
                                 <span className="block text-sm font-medium text-gray-900">
                                     When somebody said they can work
                                 </span>
-                                <span className="block text-xs text-gray-500 mt-0.5">
-                                    Says so when a shift lands on a day or at an hour somebody said they
-                                    cannot do. Only ever about people with availability set on the team
-                                    list, and it never holds a week back: if you know something the roster
-                                    does not, roster it.
+                                <span className="block text-xs text-muted mt-0.5">
+                                    Warns when a shift falls on a day or time someone said they cannot
+                                    work. Only applies to people with availability set on the Team page.
+                                    It never stops the week being published.
                                 </span>
                             </span>
                         </label>
@@ -167,14 +165,12 @@ export default function RosterRulesModal({ onClose }) {
                             />
                             <span>
                                 <span className="block text-sm font-medium text-gray-900">
-                                    Days somebody is down as away
+                                    Days someone is marked as away
                                 </span>
-                                <span className="block text-xs text-gray-500 mt-0.5">
-                                    Holidays, days off, sick, anything on their time off. Like the one above
-                                    it, it starts on and can only ever say something about a day somebody has
-                                    actually been marked away for. Somebody back early from a holiday or
-                                    coming in for one shift is a real thing, so it says it and lets you get
-                                    on with it.
+                                <span className="block text-xs text-muted mt-0.5">
+                                    Warns when a shift falls on a day someone is marked as away, such as a
+                                    holiday, a day off or sick leave. It still lets you roster them, for
+                                    example if someone is back early.
                                 </span>
                             </span>
                         </label>
@@ -184,20 +180,22 @@ export default function RosterRulesModal({ onClose }) {
 
                 <ModalSection
                     title="Time off"
-                    description="How far ahead somebody should ask for a holiday. A day off and part of a day are not covered: something coming up next week is the ordinary case."
+                    description="How far ahead someone should ask for a holiday. A day off or part of a day does not need notice."
                 >
                 <div className="py-1">
                     <div className="flex items-center gap-2">
-                        <input
-                            {...numberField({
-                                value: String(rules.holidayNoticeDays ?? NOTICE_DEFAULT),
-                                onChange: v => setRules(r => ({ ...r, holidayNoticeDays: Number(v) || 0 })),
-                            })}
-                            className={numCls}
-                        />
-                        <span className="text-sm text-gray-500">days' notice for a holiday</span>
+                        <div className="w-16 flex-shrink-0">
+                            <input
+                                {...numberField({
+                                    value: String(rules.holidayNoticeDays ?? NOTICE_DEFAULT),
+                                    onChange: v => setRules(r => ({ ...r, holidayNoticeDays: Number(v) || 0 })),
+                                })}
+                                className={`${denseField} text-right`}
+                            />
+                        </div>
+                        <span className="text-sm text-muted">days' notice for a holiday</span>
                     </div>
-                    <p className="text-xs text-gray-500 mt-1">Set it to 0 and no notice is asked for.</p>
+                    <p className={hintClass}>Set it to 0 and no notice is asked for.</p>
 
                     <label className="flex items-start gap-3 cursor-pointer mt-3 pt-3 border-t border-border">
                         <input
@@ -210,7 +208,7 @@ export default function RosterRulesModal({ onClose }) {
                             <span className="block text-sm font-medium text-gray-900">
                                 Do not let anyone send a request with less notice than this
                             </span>
-                            <span className="block text-xs text-gray-500 mt-0.5">
+                            <span className="block text-xs text-muted mt-0.5">
                                 Off, they are warned and can send it anyway. On, they cannot send it at all.
                                 Either way you see the short notice on the request before you answer it.
                             </span>
@@ -220,8 +218,8 @@ export default function RosterRulesModal({ onClose }) {
                 </ModalSection>
 
                 <ModalSection
-                    title="Stops a week going out"
-                    description="These two are the law about the employer rather than guidance about the employee. Going over them is the company's problem and not the person's, so they hold the week until something is changed."
+                    title="Stops the week being published"
+                    description="These are legal limits on the employer. By default, breaking one stops the week being published until it is fixed."
                 >
 
                 <div>
@@ -237,10 +235,10 @@ export default function RosterRulesModal({ onClose }) {
                                 <span className="block text-sm font-medium text-gray-900">
                                     Hours allowed by somebody's permission
                                 </span>
-                                <span className="block text-xs text-gray-500 mt-0.5">
+                                <span className="block text-xs text-muted mt-0.5">
                                     A student on Stamp 2 may work twenty hours a week in term time and forty
                                     during the holiday periods. Only applies to people whose permission has
-                                    been recorded on the team list.
+                                    been recorded on the Team page.
                                 </span>
                             </span>
                         </label>
@@ -252,18 +250,19 @@ export default function RosterRulesModal({ onClose }) {
                             over it holds the week or only says so. */}
                         {rules.visaCap?.on && (
                             <div className="ml-7 mt-2">
-                                <select
-                                    value={rules.visaCap.blocks === false ? 'warn' : 'block'}
-                                    onChange={e => set('visaCap', { blocks: e.target.value === 'block' })}
-                                    className="w-full sm:w-auto border border-border rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
-                                >
-                                    <option value="block">Hold the week back until it is fixed</option>
-                                    <option value="warn">Say it, but let the week go out</option>
-                                </select>
+                                <div className="sm:w-fit">
+                                    <select
+                                        value={rules.visaCap.blocks === false ? 'warn' : 'block'}
+                                        onChange={e => set('visaCap', { blocks: e.target.value === 'block' })}
+                                        className={compactField}
+                                    >
+                                        <option value="block">Stop the week being published</option>
+                                        <option value="warn">Only show a warning</option>
+                                    </select>
+                                </div>
                                 {rules.visaCap.blocks === false && (
                                     <p className="text-xs text-amber-700 mt-1.5">
-                                        Going over is the company's offence rather than the person's, so this
-                                        will keep saying it every week rather than going quiet.
+                                        The roster will keep showing this warning every week until it is fixed.
                                     </p>
                                 )}
                             </div>
@@ -284,13 +283,13 @@ export default function RosterRulesModal({ onClose }) {
                             />
                             <span>
                                 <span className="block text-sm font-medium text-gray-900">
-                                    Waiting on a renewal
+                                    Waiting for a renewal
                                 </span>
-                                <span className="block text-xs text-gray-500 mt-0.5">
-                                    Somebody who applied to renew before their permission ran out may keep
+                                <span className="block text-xs text-muted mt-0.5">
+                                    Someone who applied to renew before their permission expired may keep
                                     working while it is processed. Only applies where the date they applied
-                                    is on the team list and is before the day it ran out. Somebody with no
-                                    renewal recorded still holds the week back.
+                                    is on the Team page and is on or before the expiry date. Someone with no
+                                    renewal recorded still stops the week being published.
                                 </span>
                             </span>
                         </label>
@@ -302,27 +301,31 @@ export default function RosterRulesModal({ onClose }) {
                         {rules.permissionGrace?.on && (
                             <div className="ml-7 mt-2 flex flex-wrap items-center gap-2">
                                 <span className="text-sm text-gray-700">They may keep working for</span>
-                                <input
-                                    {...numberField({
-                                        value: String(rules.permissionGrace.weeks ?? 12),
-                                        onChange: v => set('permissionGrace', { weeks: parseInt(v) || 0 }),
-                                        whole: true,
-                                    })}
-                                    className="w-20 border border-border rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
-                                />
-                                <span className="text-sm text-gray-700">weeks after it ran out,</span>
-                                <select
-                                    value={rules.permissionGrace.afterBlocks ? 'block' : 'warn'}
-                                    onChange={e => set('permissionGrace', { afterBlocks: e.target.value === 'block' })}
-                                    className="w-full sm:w-auto border border-border rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
-                                >
-                                    <option value="warn">then keep saying it every week</option>
-                                    <option value="block">then hold the week back</option>
-                                </select>
-                                <p className="w-full text-xs text-gray-500 mt-1">
+                                <div className="w-20 flex-shrink-0">
+                                    <input
+                                        {...numberField({
+                                            value: String(rules.permissionGrace.weeks ?? 12),
+                                            onChange: v => set('permissionGrace', { weeks: parseInt(v) || 0 }),
+                                            whole: true,
+                                        })}
+                                        className={`${denseField} text-right`}
+                                    />
+                                </div>
+                                <span className="text-sm text-gray-700">weeks after it expired,</span>
+                                <div className="w-full sm:w-auto">
+                                    <select
+                                        value={rules.permissionGrace.afterBlocks ? 'block' : 'warn'}
+                                        onChange={e => set('permissionGrace', { afterBlocks: e.target.value === 'block' })}
+                                        className={compactField}
+                                    >
+                                        <option value="warn">then keep warning every week</option>
+                                        <option value="block">then stop the week being published</option>
+                                    </select>
+                                </div>
+                                <p className={`w-full ${hintClass}`}>
                                     Twelve is the figure in the Department's notice, but renewals have been
-                                    running past seventeen weeks. Whichever you pick, the roster keeps saying
-                                    it rather than going quiet.
+                                    taking more than seventeen weeks. Whichever you pick, the roster keeps
+                                    showing it every week.
                                 </p>
                             </div>
                         )}
@@ -340,10 +343,11 @@ export default function RosterRulesModal({ onClose }) {
                                 <span className="block text-sm font-medium text-gray-900">
                                     Under 18 limits
                                 </span>
-                                <span className="block text-xs text-gray-500 mt-0.5">
-                                    Eight hours a day, forty a week, nothing after ten at night, and twelve
-                                    hours rest rather than eleven. Only applies to somebody with a date of
-                                    birth on the team list showing they are under 18.
+                                <span className="block text-xs text-muted mt-0.5">
+                                    Eight hours a day, forty a week and nothing after ten at night. Less
+                                    than twelve hours rest between shifts only shows a warning. Only
+                                    applies to somebody with a date of birth on the Team page showing
+                                    they are under 18.
                                 </span>
                             </span>
                         </label>
@@ -363,27 +367,27 @@ export default function RosterRulesModal({ onClose }) {
                             />
                             <span>
                                 <span className="block text-sm font-medium text-gray-900">
-                                    Food safety training running out
+                                    Food safety training expiring
                                 </span>
-                                <span className="block text-xs text-gray-500 mt-0.5">
-                                    A certificate nobody is watching is one that has quietly run out, and
-                                    finding that out during an inspection is the expensive way. This warns
-                                    rather than holds the week: an expired certificate is a course to book,
-                                    not a reason the roster cannot go out.
+                                <span className="block text-xs text-muted mt-0.5">
+                                    Warns when someone's food safety certificate is about to expire or has
+                                    expired. It never stops the week being published.
                                 </span>
                             </span>
                         </label>
                         {rules.foodSafety?.on && (
                             <div className="flex items-center gap-2 mt-2 ml-7">
-                                <input
-                                    {...numberField({
-                                        value: String(rules.foodSafety.warnDays ?? ''),
-                                        onChange: v => set('foodSafety', { warnDays: Number(v) || 0 }),
-                                        whole: true,
-                                    })}
-                                    className={numCls}
-                                />
-                                <span className="text-sm text-gray-500">days notice before it runs out</span>
+                                <div className="w-16 flex-shrink-0">
+                                    <input
+                                        {...numberField({
+                                            value: String(rules.foodSafety.warnDays ?? ''),
+                                            onChange: v => set('foodSafety', { warnDays: Number(v) || 0 }),
+                                            whole: true,
+                                        })}
+                                        className={`${denseField} text-right`}
+                                    />
+                                </div>
+                                <span className="text-sm text-muted">days' notice before it expires</span>
                             </div>
                         )}
                     </div>
@@ -392,27 +396,31 @@ export default function RosterRulesModal({ onClose }) {
 
                 <ModalSection
                     title="The grid"
-                    description="How much of the day the roster draws either side of the opening hours. Enough to see a delivery at six in the morning and a clean down at midnight, without the grid being mostly empty. The hours the store is shut are shaded."
+                    description="How much of the day the roster shows either side of the opening hours, so an early delivery or a late clean down still fits. The hours the restaurant is closed are shaded."
                 >
                 <div className="flex flex-wrap items-center gap-2">
-                    <input
-                        {...numberField({
-                            value: String(rules.gridHours?.before ?? 3),
-                            onChange: v => set('gridHours', { before: Number(v) || 0 }),
-                            whole: true,
-                        })}
-                        className={numCls}
-                    />
-                    <span className="text-sm text-gray-500">hours before opening, and</span>
-                    <input
-                        {...numberField({
-                            value: String(rules.gridHours?.after ?? 3),
-                            onChange: v => set('gridHours', { after: Number(v) || 0 }),
-                            whole: true,
-                        })}
-                        className={numCls}
-                    />
-                    <span className="text-sm text-gray-500">after closing</span>
+                    <div className="w-16 flex-shrink-0">
+                        <input
+                            {...numberField({
+                                value: String(rules.gridHours?.before ?? 3),
+                                onChange: v => set('gridHours', { before: Number(v) || 0 }),
+                                whole: true,
+                            })}
+                            className={`${denseField} text-right`}
+                        />
+                    </div>
+                    <span className="text-sm text-muted">hours before opening, and</span>
+                    <div className="w-16 flex-shrink-0">
+                        <input
+                            {...numberField({
+                                value: String(rules.gridHours?.after ?? 3),
+                                onChange: v => set('gridHours', { after: Number(v) || 0 }),
+                                whole: true,
+                            })}
+                            className={`${denseField} text-right`}
+                        />
+                    </div>
+                    <span className="text-sm text-muted">after closing</span>
                 </div>
 
                 </ModalSection>
@@ -420,8 +428,8 @@ export default function RosterRulesModal({ onClose }) {
                 <ModalSection>
                     <p className="text-xs text-muted">
                         The holiday periods a student may work full time in are June to September and
-                        15 December to 15 January. Immigration rules change, so these are worth checking
-                        against current guidance rather than taken as final.
+                        15 December to 15 January. Immigration rules change, so check these against
+                        current guidance.
                     </p>
                 </ModalSection>
 
@@ -429,7 +437,7 @@ export default function RosterRulesModal({ onClose }) {
                     <button
                         type="button"
                         onClick={onClose}
-                        className="px-4 py-2 border border-border text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 bg-white"
+                        className={secondaryButton}
                     >
                         Cancel
                     </button>

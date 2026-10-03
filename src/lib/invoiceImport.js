@@ -14,9 +14,9 @@
 // spent, so the week's figure follows the document the moment it is imported,
 // while what a portion costs only moves when he says so.
 
-import { num } from '@/lib/format'
+import { num, round2, fmtMoney } from '@/lib/format'
 import { weekStartOf, addDays } from '@/lib/dates'
-import { recognisesSysco, readSyscoInvoice, readPackSize } from '@/lib/invoiceSysco'
+import { recognisesSysco, readSyscoInvoice, readPackSize, packItems } from '@/lib/invoiceSysco'
 import { documentStatus } from '@/lib/supplierDocuments'
 
 // Every format the Hub can read.
@@ -76,7 +76,13 @@ export function whereItGoes(accountNo, accounts) {
 // **A hand entered total is net, and a document is gross.** He deducts a
 // shortage by hand before typing it, so matching on the total to the cent would
 // miss exactly the invoices that most need filling in. The day is the match and
-// the candidates come back nearest total first.
+// the candidates come back nearest total first, every one of them: two typed
+// in for one day is the usual pattern, so the card offers each, and a way to
+// say this is a different delivery.
+//
+// **A credit note is never one of them.** Every invoice typed by hand is an
+// invoice, and a credit dated the same day was offered only as that invoice, to
+// be overwritten with a negative total.
 export function placeDocument(doc, held) {
     const rows = held || []
 
@@ -85,7 +91,9 @@ export function placeDocument(doc, held) {
         : null
     if (same) return { what: 'already_here', invoice: same }
 
-    const sameDay = rows.filter(h => !h.invoice_number && h.invoice_date === doc?.date)
+    const sameDay = doc?.kind === 'credit'
+        ? []
+        : rows.filter(h => !h.invoice_number && h.invoice_date === doc?.date)
     if (sameDay.length) {
         const wanted = documentTotal(doc)
         const near = [...sameDay].sort((a, b) => (
@@ -396,8 +404,22 @@ export function unitsPatch(row) {
     return {
         units_per_case: units,
         unit_price: to(num(row.line.price_per_case) / units, 4),
-        quantity: to(num(row.line.cases) * units + num(row.line.units), 3),
+        quantity: lineQuantity(row.line, units),
     }
+}
+
+// The whole line in the product's own unit: what is stored as its quantity.
+//
+// Their UNIT column counts items of the pack, a bag of a "4X500 GM" case, and
+// cases are in the product's unit, so the two cannot simply be added. For
+// Chorizo counted in kilos a loose bag went in as a kilo, and the credit for
+// three bags as 3 rather than 1.5. Each item is its share of a case. Where the
+// pack does not say how many items it holds, the sum it always was. Nothing
+// reads this yet; anything that costs from it later starts right.
+function lineQuantity(line, units) {
+    const items = packItems(line.pack_size)
+    const each = items ? units / items : 1
+    return to(num(line.cases) * units + num(line.units) * each, 3)
 }
 
 // Every line, with what the Hub already knows about it.
@@ -413,8 +435,14 @@ export function matchLines({ lines = [], codes = [], prices = [], supplier = nul
     return lines.map(line => {
         const codeRow = byCode.get(line.code) || null
 
+        // Not stock stops the question, not the money. The line gets the
+        // category any line with no product gets. Stored with none, the cost
+        // view counted it nowhere as soon as the invoice had other lines on it.
         if (codeRow?.ignored) {
-            return { line, codeRow, price: null, product: null, pile: 'ignored' }
+            return {
+                line, codeRow, price: null, product: null, pile: 'ignored',
+                category: lineCategory(null, supplier, line),
+            }
         }
 
         // **A number somebody said is the same thing as another still means
@@ -569,7 +597,7 @@ export function linePayload(row, invoiceId) {
         units: line.units,
         // The whole line in units, where the pack size can be read. Null rather
         // than a confident guess where it cannot.
-        quantity: units != null ? to(num(line.cases) * units + num(line.units), 3) : null,
+        quantity: units != null ? lineQuantity(line, units) : null,
         price_per_case: line.price_per_case,
         unit_price: perUnit,
         line_total: line.value,
@@ -659,10 +687,10 @@ export function documentBlocks(doc) {
         const said = doc.deposits === null
             ? `the container deposit on it could not be read`
             : doc.deposits
-                ? `the goods come to ${fixed(doc.checks?.values?.expected)} before the `
-                    + `${fixed(doc.deposits)} container deposit`
-                : `the goods total says ${fixed(doc.checks?.values?.expected)}`
-        out.push(`The lines come to ${fixed(doc.checks?.values?.got)} and ${said}, `
+                ? `the goods come to ${euros(doc.checks?.values?.expected)} before the `
+                    + `${euros(doc.deposits)} container deposit`
+                : `the goods total says ${euros(doc.checks?.values?.expected)}`
+        out.push(`The lines come to ${euros(doc.checks?.values?.got)} and ${said}, `
             + `so something on it was not read.`)
     }
     // Only a reader that reads VAT has this check at all.
@@ -674,19 +702,23 @@ export function documentBlocks(doc) {
             out.push('The VAT codes on the lines do not add up to the VAT table at the foot, '
                 + 'so the VAT would go on the wrong lines.')
         } else {
-            out.push(`With VAT and deposit the lines come to ${fixed(payable.got)} and the amount `
-                + `payable says ${fixed(payable.expected)}, so the VAT was not read right.`)
+            out.push(`With VAT and deposit the lines come to ${euros(payable.got)} and the amount `
+                + `payable says ${euros(payable.expected)}, so the VAT was not read right.`)
         }
     }
     if (!doc.checks?.cases?.ok) {
-        out.push(`The lines come to ${fixed(doc.checks?.cases?.got)} cases and the header says `
-            + `${fixed(doc.checks?.cases?.expected)}, so a line is missing or doubled.`)
+        out.push(`The lines come to ${caseCount(doc.checks?.cases?.got)} cases and the case total says `
+            + `${caseCount(doc.checks?.cases?.expected)}, so a line is missing or counted twice.`)
     }
     return out
 }
 
-function fixed(n) {
-    return n == null ? 'nothing' : Number(n).toFixed(2)
+function caseCount(n) {
+    return n == null ? 'nothing' : String(round2(n))
+}
+
+function euros(n) {
+    return n == null ? 'nothing' : fmtMoney(n)
 }
 
 // ---------------------------------------------------------------------------
@@ -710,9 +742,9 @@ function fixed(n) {
 export function fillInPlan(doc, invoice) {
     // Both on the same footing: what was typed was the amount payable, and so
     // is what the document costs.
-    const gross = round(documentTotal(doc))
-    const net = round(num(invoice?.total_amount))
-    const difference = round(gross - net)
+    const gross = round2(documentTotal(doc))
+    const net = round2(num(invoice?.total_amount))
+    const difference = round2(gross - net)
 
     return {
         gross,
@@ -720,7 +752,7 @@ export function fillInPlan(doc, invoice) {
         difference,
         same: Math.abs(difference) < 0.005,
         deducted: difference > 0.005 ? difference : 0,
-        over: difference < -0.005 ? round(-difference) : 0,
+        over: difference < -0.005 ? round2(-difference) : 0,
     }
 }
 
@@ -734,6 +766,20 @@ export function fillInPayload(doc, { createdBy }) {
         total_amount: documentTotal(doc),
         entry_method: 'parsed',
         created_by: createdBy || null,
+    }
+}
+
+// What the invoice row goes back to when a fill in does not finish: exactly
+// as it was typed, so pressing again starts clean rather than putting the
+// lines in twice.
+export function typedAgain(invoice) {
+    return {
+        invoice_number: invoice.invoice_number ?? null,
+        document_type: invoice.document_type || 'invoice',
+        invoice_date: invoice.invoice_date,
+        total_amount: invoice.total_amount,
+        entry_method: invoice.entry_method || 'manual',
+        created_by: invoice.created_by ?? null,
     }
 }
 
@@ -759,13 +805,9 @@ export function fillInClaim(plan, { invoice, doc, restaurantId, supplierId, rais
         raised_on: doc.date,
         raised_by: raisedBy || null,
         counted_week: weekStartOf(doc.date),
-        note: `The total typed in was ${plan.net.toFixed(2)} and the document says `
-            + `${plan.gross.toFixed(2)}.`,
+        note: `The total typed in was ${fmtMoney(plan.net)} and the invoice says `
+            + `${fmtMoney(plan.gross)}.`,
     }
-}
-
-function round(n) {
-    return Math.round(num(n) * 100) / 100
 }
 
 // ---------------------------------------------------------------------------

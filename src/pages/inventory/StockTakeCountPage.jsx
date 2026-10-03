@@ -1,5 +1,5 @@
-import { monthYearOf } from '@/lib/dates'
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { stampDate } from '@/lib/dates'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
@@ -11,10 +11,14 @@ import { matches } from '@/lib/search'
 import { countName, compareForCount } from '@/lib/products'
 import { countedLine } from '@/lib/countedAt'
 import { orderFormats } from '@/lib/countUnits'
-import { card } from '@/lib/controlStyles'
+import { badge, captionClass, card, chip, fieldClass, labelClass, primaryButton, rowButton } from '@/lib/controlStyles'
 import SearchBox from '@/components/ui/SearchBox'
 import { sectionColour, sectionRank } from '@/lib/sections'
+import { breakdownParts, justLoose } from '@/lib/stockTakeSummary'
 import BackButton from '@/components/ui/BackButton'
+import CountingBar from '@/components/ui/CountingBar'
+import Notice from '@/components/ui/Notice'
+import CountedAs from '@/components/inventory/CountedAs'
 import { can, MANAGERS } from '@/lib/access'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 
@@ -23,6 +27,16 @@ import ErrorBanner from '@/components/ui/ErrorBanner'
 // defrosting, so they appear under both headings and are counted separately
 // under each. Nearly everything appears once.
 const placeKey = (productId, section) => `${productId}|${section}`
+
+// How often an open count reads everybody's lines again, on top of whenever the
+// page comes back into view. A minute is quick enough that two people splitting
+// the shelves do not walk to the same one, and slow enough to cost nothing.
+const REFRESH_EVERY = 60 * 1000
+
+// This phone's own new line, unless a refresh has brought it back already. A
+// refresh read while the save is still on its way is kept, and the line may be
+// in it, so adding it again counted it twice.
+const withLine = line => prev => (prev.some(l => l.id === line.id) ? prev : [...prev, line])
 
 function placesOf(product) {
     const main = product.section || 'Other'
@@ -47,13 +61,6 @@ function group(list) {
             items: items.sort(compareForCount),
         }))
         .sort((a, b) => sectionRank(a.section) - sectionRank(b.section))
-}
-
-// One loose entry is its own total, so "4.27 KG = 4.27 KG" says the same number
-// twice. The equals sign is there to show the arithmetic when somebody counted
-// in packs, and with a single loose entry there is no arithmetic to show.
-function justLoose(parts) {
-    return parts.length === 1 && parts[0].isLoose
 }
 
 export default function StockTakeCountPage() {
@@ -111,14 +118,17 @@ export default function StockTakeCountPage() {
             .single()
 
         if (sessionErr || !sessionData) {
-            setError('Stock take session not found.')
+            setError('This stock take could not be found.')
             setLoading(false)
             return
         }
         setSession(sessionData)
 
+        // Through staff_products, for a manager too, since a count needs
+        // nothing the view leaves out: the notes, the weight loss and the rest
+        // of what only the Products page uses. Staff cannot read the table.
         const { data: productsData, error: productsErr } = await supabase
-            .from('products')
+            .from('staff_products')
             .select('*')
             .eq('is_active', true)
             .order('name')
@@ -130,28 +140,40 @@ export default function StockTakeCountPage() {
         }
         setProducts(productsData || [])
 
-        const { data: linesData } = await supabase
+        // Each read below stops the page if it fails, rather than carrying on
+        // with an empty list. No lines showed every product as uncounted, and
+        // no prices saved every line counted after it with no value, for good.
+        const { data: linesData, error: linesErr } = await supabase
             .from('stock_take_lines')
             .select('*')
             .eq('stock_take_id', id)
+        if (linesErr) { setError(friendlyError(linesErr)); setLoading(false); return }
         setLines(linesData || [])
 
-        const { data: pricesData } = await supabase
+        // Prices belong to a restaurant and products do not, and a super admin
+        // can read every restaurant's. So it is the stock take's own
+        // restaurant, not the switcher's: a count can be opened by its address
+        // whatever the switcher says, and the value and the cases have to be
+        // the ones bought where the shelf is.
+        const { data: pricesData, error: pricesErr } = await supabase
             .from('product_supplier_prices')
             .select('*')
+            .eq('restaurant_id', sessionData.restaurant_id)
             .eq('is_preferred', true)
+        if (pricesErr) { setError(friendlyError(pricesErr)); setLoading(false); return }
         setPreferredPrices(pricesData || [])
 
         // Fetch pack formats for the preferred prices, build a per-product lookup.
         const preferredPriceIds = (pricesData || []).map(p => p.id)
         let countUnitsData = []
         if (preferredPriceIds.length > 0) {
-            const { data: cuData } = await supabase
+            const { data: cuData, error: cuErr } = await supabase
                 .from('price_count_units')
                 .select('*')
                 .in('price_id', preferredPriceIds)
                 .eq('is_active', true)
                 .order('sort_order', { ascending: true })
+            if (cuErr) { setError(friendlyError(cuErr)); setLoading(false); return }
             countUnitsData = cuData || []
         }
 
@@ -168,22 +190,13 @@ export default function StockTakeCountPage() {
         }
         setFormatsByProductId(formatsMap)
 
-        const { data: recipesData } = await supabase
-            .from('mix_recipes')
+        // What goes into each MIX and how much, without the notes, which is
+        // what staff are given of the recipes.
+        const { data: recipesData, error: recipesErr } = await supabase
+            .from('staff_mix_recipes')
             .select('*')
+        if (recipesErr) { setError(friendlyError(recipesErr)); setLoading(false); return }
         setRecipeLines(recipesData || [])
-
-        // The names behind counted_by. Its own query rather than a join,
-        // because a count has to keep working for somebody who cannot read the
-        // users table, and then the line simply says the time and no name.
-        const who = [...new Set((linesData || []).map(l => l.counted_by).filter(Boolean))]
-        if (who.length > 0) {
-            const { data: people } = await supabase
-                .from('users')
-                .select('id, full_name')
-                .in('id', who)
-            setCounters(Object.fromEntries((people || []).map(p => [p.id, p.full_name])))
-        }
 
         setLoading(false)
         }, [id])
@@ -196,6 +209,87 @@ export default function StockTakeCountPage() {
         // eslint-disable-next-line react-hooks/set-state-in-effect
         fetchEverything()
     }, [fetchEverything])
+
+    // Everybody's lines, read again while the count is open.
+    //
+    // A count is often split between two people, and each of them only ever saw
+    // their own lines: the page read them once and after that only added what
+    // this phone wrote. So Uncounted only sent both of them to the same shelves,
+    // and a product counted by both was in the total twice. It reads them again
+    // when the page comes back into view and once a minute while it is on
+    // screen. Only the lines, because reading the whole page blanks it to
+    // Loading and loses your place.
+    //
+    // A refresh that fails keeps what is on screen, and the next one tries
+    // again. One that crossed a save of this phone's own is thrown away, since
+    // it may have been read before that line went in; writes counts the saves
+    // in and out so that can be told. One that started and finished inside a
+    // save is kept, so the save adds its line only if it is not there yet.
+    // See withLine.
+    const writes = useRef(0)
+    async function writing(work) {
+        writes.current += 1
+        try { return await work() } finally { writes.current += 1 }
+    }
+
+    // A refresh asks whether the count is still open as well. A manager can
+    // close it while somebody is still counting, and an employee cannot read a
+    // closed count or its lines, so without that the refresh came back empty
+    // and every product went back to uncounted. It keeps what is on screen
+    // and says the count is closed instead.
+    const refreshLines = useCallback(async () => {
+        const before = writes.current
+        const [{ data, error: readErr }, { data: now, error: nowErr }] = await Promise.all([
+            supabase.from('stock_take_lines').select('*').eq('stock_take_id', id),
+            supabase.from('stock_takes').select('status').eq('id', id).maybeSingle(),
+        ])
+        if (readErr || nowErr || writes.current !== before) return
+        if (now?.status !== 'in_progress') {
+            setSession(s => ({ ...s, status: now?.status || 'completed' }))
+            return
+        }
+        setLines(data || [])
+    }, [id])
+
+    const isOpen = session?.status === 'in_progress'
+    useEffect(() => {
+        if (!isOpen) return
+        const again = () => { if (document.visibilityState !== 'hidden') refreshLines() }
+        window.addEventListener('focus', again)
+        document.addEventListener('visibilitychange', again)
+        const timer = setInterval(again, REFRESH_EVERY)
+        return () => {
+            window.removeEventListener('focus', again)
+            document.removeEventListener('visibilitychange', again)
+            clearInterval(timer)
+        }
+    }, [isOpen, refreshLines])
+
+    // The names behind counted_by, for the lines the page opened with and for
+    // anybody whose lines arrive with a refresh. Its own query rather than a
+    // join, because a count has to keep working for somebody who cannot read
+    // the users table, and then the line simply says the time and no name. A
+    // name that cannot be read is remembered as nobody, so it is asked for
+    // once and not every minute.
+    useEffect(() => {
+        const missing = [...new Set(lines.map(l => l.counted_by).filter(Boolean))]
+            .filter(who => !(who in counters))
+        if (missing.length === 0) return
+        let alive = true
+        supabase
+            .from('users')
+            .select('id, full_name')
+            .in('id', missing)
+            .then(({ data: people }) => {
+                if (!alive) return
+                setCounters(prev => ({
+                    ...prev,
+                    ...Object.fromEntries(missing.map(who => [who, null])),
+                    ...Object.fromEntries((people || []).map(p => [p.id, p.full_name])),
+                }))
+            })
+        return () => { alive = false }
+    }, [lines, counters])
 
     // Every line carries the place it was counted in, so asking by place never
     // counts the same box twice however many headings a product appears under.
@@ -217,12 +311,11 @@ export default function StockTakeCountPage() {
         // If the user gave a custom note, use it as-is.
         if (session.notes && session.notes.trim()) return session.notes.trim()
 
-        // Otherwise build "Monthly Stock Take (June 2026)" from type + start date.
+        // Otherwise build "Monthly stock take, 12/06/2026" from type + start date.
         const typeWord = session.type
-            ? session.type.charAt(0).toUpperCase() + session.type.slice(1)
-            : 'Stock'
-        const monthYear = monthYearOf(session.started_at)
-        return `${typeWord} Stock Take (${monthYear})`
+            ? `${session.type.charAt(0).toUpperCase()}${session.type.slice(1)} stock take`
+            : 'Stock take'
+        return `${typeWord}, ${stampDate(session.started_at)}`
     }
 
     function getProductLines(productId, section) {
@@ -237,7 +330,7 @@ export default function StockTakeCountPage() {
     // landed on the wrong row. It only asks when there is a real quantity in
     // there, so it is never in the way of somebody just looking around.
     //
-    // Add it is the main button because it is what you meant nine times out of
+    // Add is the main button because it is what you meant nine times out of
     // ten. Both answers carry on to wherever you were going: the question is
     // what to do with the number, not whether to move.
     async function keepOrDropDraft() {
@@ -252,8 +345,8 @@ export default function StockTakeCountPage() {
         const ok = await confirm({
             title: `Add the ${fmtQty(total)} ${product.unit} first?`,
             message: `You typed a quantity for ${countName(product)} and have not added it. Leaving now loses it.`,
-            confirmLabel: 'Add it',
-            cancelLabel: 'Discard it',
+            confirmLabel: 'Add',
+            cancelLabel: 'Discard',
         })
         if (ok) await handleAddLine(product, section)
     }
@@ -279,7 +372,7 @@ export default function StockTakeCountPage() {
         const unitCost = resolveUnitCost(product, products, recipeLines, preferredPrices)
         const lineTotal = unitCost != null ? total * unitCost : null
 
-        const { data, error: insertErr } = await supabase
+        const { data, error: insertErr } = await writing(() => supabase
             .from('stock_take_lines')
             .insert({
                 stock_take_id: id,
@@ -297,12 +390,12 @@ export default function StockTakeCountPage() {
                 unit_breakdown: Object.keys(breakdown).length > 0 ? breakdown : null,
             })
             .select()
-            .single()
+            .single())
 
         setSavingLine(false)
         if (insertErr) { setError(friendlyError(insertErr)); return }
 
-        setLines(prev => [...prev, data])
+        setLines(withLine(data))
         if (user?.id && !counters[user.id]) {
             setCounters(prev => ({ ...prev, [user.id]: user.full_name || 'you' }))
         }
@@ -332,7 +425,7 @@ export default function StockTakeCountPage() {
         setSavingLine(true)
         const unitCost = resolveUnitCost(product, products, recipeLines, preferredPrices)
 
-        const { data, error: noneErr } = await supabase
+        const { data, error: noneErr } = await writing(() => supabase
             .from('stock_take_lines')
             .insert({
                 stock_take_id: id,
@@ -344,12 +437,12 @@ export default function StockTakeCountPage() {
                 counted_by: user.id,
             })
             .select()
-            .single()
+            .single())
 
         setSavingLine(false)
         if (noneErr) { setError(friendlyError(noneErr)); return }
 
-        setLines(prev => [...prev, data])
+        setLines(withLine(data))
         setJustNoned({ key: placeKey(product.id, section), lineId: data.id })
         if (user?.id && !counters[user.id]) {
             setCounters(prev => ({ ...prev, [user.id]: user.full_name || 'you' }))
@@ -360,10 +453,10 @@ export default function StockTakeCountPage() {
     // not asking in the first place.
     async function undoNone(lineId) {
         setJustNoned(null)
-        const { error: undoErr } = await supabase
+        const { error: undoErr } = await writing(() => supabase
             .from('stock_take_lines')
             .delete()
-            .eq('id', lineId)
+            .eq('id', lineId))
 
         if (undoErr) { setError(friendlyError(undoErr)); return }
         setLines(prev => prev.filter(l => l.id !== lineId))
@@ -372,18 +465,18 @@ export default function StockTakeCountPage() {
     async function handleDeleteLine(line, product, section) {
         const rest = getProductTotal(product.id, section) - Number(line.quantity_counted || 0)
         const ok = await confirm({
-            title: `Delete this count of ${fmtQty(line.quantity_counted)} ${product.unit}?`,
+            title: `Delete the ${fmtQty(line.quantity_counted)} ${product.unit} entry?`,
             message: `${product.name} drops to ${fmtQty(rest)} ${product.unit} in ${section}.`,
-            confirmLabel: 'Delete it',
-            cancelLabel: 'Keep it',
+            confirmLabel: 'Delete entry',
+            cancelLabel: 'Keep entry',
             tone: 'danger',
         })
         if (!ok) return
 
-        const { error: delErr } = await supabase
+        const { error: delErr } = await writing(() => supabase
             .from('stock_take_lines')
             .delete()
-            .eq('id', line.id)
+            .eq('id', line.id))
 
         if (delErr) {
             setError(friendlyError(delErr))
@@ -404,35 +497,6 @@ export default function StockTakeCountPage() {
             setFilterSnapshot(uncounted)
             setShowUncountedOnly(true)
         }
-    }
-
-    // Return the breakdown as an array of { key, text, factor } parts, sorted
-    // by factor descending (biggest format left), with loose always last.
-    function breakdownParts(line, product) {
-        const b = line.unit_breakdown
-        if (!b || typeof b !== 'object') return null
-        const parts = []
-        for (const [label, info] of Object.entries(b)) {
-            const qty = info?.qty
-            if (qty == null) continue
-            const factor = Number(info.factor ?? 1)
-            if (label === 'loose') {
-                parts.push({ key: 'loose', text: `${fmtQty(qty)} ${product.unit}`, factor, isLoose: true })
-            } else {
-                parts.push({ key: label, text: `${fmtQty(qty)} ${label}`, factor, isLoose: false })
-            }
-        }
-        if (parts.length === 0) return null
-
-        parts.sort((a, b) => {
-            // Loose always goes last
-            if (a.isLoose && !b.isLoose) return 1
-            if (!a.isLoose && b.isLoose) return -1
-            // Otherwise biggest factor first
-            return b.factor - a.factor
-        })
-
-        return parts
     }
 
     // Given a product's format config and the draft inputs, compute the base-unit
@@ -472,6 +536,19 @@ export default function StockTakeCountPage() {
     // it goes on, so a product does not vanish from under you the moment you
     // count it. The search is live and does the opposite job: you are holding a
     // box and you want that one product, not the hundred either side of it.
+    //
+    // A place somebody else has counted since comes off the snapshot, or the
+    // filter goes on sending you to a shelf they have already done. Never the
+    // row you have open, which would be the same vanishing from under you the
+    // snapshot is there to stop.
+    const stillToCount = useMemo(() => {
+        if (!filterSnapshot) return null
+        const theirs = new Set(lines
+            .filter(l => l.counted_by && l.counted_by !== user?.id)
+            .map(l => placeKey(l.product_id, l.section || 'Other')))
+        return new Set([...filterSnapshot].filter(key => key === expandedKey || !theirs.has(key)))
+    }, [filterSnapshot, lines, user, expandedKey])
+
     const sections = useMemo(() => {
         const term = search.trim()
         return group(products)
@@ -482,11 +559,11 @@ export default function StockTakeCountPage() {
                     // pita finds the Pita Pit bags and searching carrier
                     // finds them too.
                     matches(countName(p), term)
-                    && (!showUncountedOnly || !filterSnapshot
-                        || filterSnapshot.has(placeKey(p.id, section)))),
+                    && (!showUncountedOnly || !stillToCount
+                        || stillToCount.has(placeKey(p.id, section)))),
             }))
             .filter(entry => entry.items.length > 0)
-    }, [products, search, showUncountedOnly, filterSnapshot])
+    }, [products, search, showUncountedOnly, stillToCount])
 
     // The value card at the top is about the whole count and not about what is
     // on screen. Searching for one product should not make it look as though
@@ -527,7 +604,7 @@ export default function StockTakeCountPage() {
     if (loading) {
         return (
             <div className="p-6">
-                <p className="text-sm text-gray-500">Loading stock take...</p>
+                <p className="text-sm text-muted">Loading stock take...</p>
             </div>
         )
     }
@@ -555,45 +632,31 @@ export default function StockTakeCountPage() {
     // list scrolling inside it.
     return (
         <div className="-mx-4 md:-mx-7 -my-4 md:-my-7 flex flex-col md:h-[calc(100vh-4rem)]">
-            {/* Fixed top bar (non-scrolling flex child).
-
-                z-20 keeps it above the section headings below, which are z-10,
-                while staying under the sidebar and its overlay. See the note in
-                AppLayout: this bar used to be level with the sidebar and so it
-                sat on top of the open menu instead of being blurred behind it. */}
-            <div className="flex-shrink-0 sticky top-0 md:static z-20 bg-white border-b border-border shadow-sm px-4 md:px-7">
-                <div className="py-3 flex items-center gap-3">
+            {/* The bar stays put while the list scrolls under it. CountingBar
+                keeps it above the section headings and under the menu. */}
+            <CountingBar
+                backTo="/inventory/stock-takes"
+                backLabel="Back to stock takes"
+                title={sessionTitle()}
+                subtitle={(
+                    <>
+                        {progress.counted}/{progress.total} products counted
+                        {isManager && (
+                            <span className="text-gray-700 font-semibold"> · {fmtMoney(totalValue)} counted</span>
+                        )}
+                    </>
+                )}
+                actions={isManager && !isClosed && (
                     <button
                         type="button"
-                        onClick={() => navigate('/inventory/stock-takes')}
-                        className="text-gray-500 hover:text-gray-700 flex-shrink-0"
-                        aria-label="Back"
+                        onClick={() => navigate(`/inventory/stock-takes/${id}/review`)}
+                        className={`${rowButton('plain')} flex-shrink-0`}
                     >
-                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-                        </svg>
+                        Review
                     </button>
-                    <div className="flex-1 min-w-0">
-                        <h1 className="font-semibold text-gray-900 truncate">
-                            {sessionTitle()}
-                        </h1>
-                        <p className="text-xs text-muted">
-                            {progress.counted}/{progress.total} products counted
-                            {isManager && (
-                                <span className="text-gray-700 font-semibold"> · {fmtMoney(totalValue)} counted</span>
-                            )}
-                        </p>
-                    </div>
-                    {isManager && !isClosed && (
-                        <button
-                            type="button"
-                            onClick={() => navigate(`/inventory/stock-takes/${id}/review`)}
-                            className="text-sm font-semibold text-accent-ink flex-shrink-0"
-                        >
-                            Review
-                        </button>
-                    )}
-                </div>
+                )}
+                progress={progress.total > 0 ? progress.counted / progress.total : 0}
+            >
                 {!isClosed && (
                     <div className="pb-2 flex flex-col sm:flex-row sm:items-center gap-2">
                         {/* Its own line on a phone and beside the filter on
@@ -609,30 +672,22 @@ export default function StockTakeCountPage() {
                         <button
                             type="button"
                             onClick={toggleUncountedFilter}
-                            className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${showUncountedOnly
-                                ? 'bg-accent text-white border-accent'
-                                : 'bg-white text-gray-700 border-border hover:bg-gray-50'
-                                }`}
+                            aria-pressed={showUncountedOnly}
+                            className={`${chip(showUncountedOnly)} inline-flex items-center gap-1.5`}
                         >
-                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
                             </svg>
                             {showUncountedOnly ? 'Showing uncounted' : 'Show uncounted only'}
                         </button>
-                        {showUncountedOnly && filterSnapshot && (
+                        {showUncountedOnly && stillToCount && (
                             <span className="text-xs text-muted whitespace-nowrap">
-                                {filterSnapshot.size} to count
+                                {stillToCount.size} to count
                             </span>
                         )}
                     </div>
                 )}
-                <div className="w-full bg-gray-200 h-1">
-                    <div
-                        className="bg-accent h-full transition-all"
-                        style={{ width: progress.total > 0 ? `${(progress.counted / progress.total) * 100}%` : '0%' }}
-                    />
-                </div>
-            </div>
+            </CountingBar>
 
             {/* Scrolling body */}
             <div className="flex-1 md:overflow-y-auto px-4 md:px-7 pb-20">
@@ -640,7 +695,7 @@ export default function StockTakeCountPage() {
                     <div className="pt-4">
                         <div className={`${card} p-4`}>
                             <div className="flex items-center justify-between gap-3 mb-3">
-                                <p className="text-xs font-bold uppercase tracking-widest text-muted">Value counted</p>
+                                <p className={captionClass}>Value counted</p>
                                 <p className="text-lg font-bold text-gray-900">{fmtMoney(totalValue)}</p>
                             </div>
                             <div className="space-y-1.5">
@@ -663,9 +718,9 @@ export default function StockTakeCountPage() {
                     </div>
                 )}
                 {isClosed && (
-                    <div className="mt-4 bg-amber-50 border border-amber-200 text-amber-800 text-sm px-4 py-3 rounded-lg">
-                        This stock take is closed. Counts are read-only.
-                    </div>
+                    <Notice tone="warn" className="mt-4">
+                        This stock take is closed, so the entries cannot be changed.
+                    </Notice>
                 )}
 
                 {sections.length === 0 && (
@@ -692,12 +747,12 @@ export default function StockTakeCountPage() {
                                     {isManager && (() => {
                                         const sectionValue = items.reduce((s, p) => s + getProductValue(p.id, section), 0)
                                         return sectionValue > 0 ? (
-                                            <span className="text-xs font-semibold text-white bg-white/20 px-2 py-0.5 rounded-full">
+                                            <span className={`${badge} text-white bg-white/20`}>
                                                 {fmtMoney(sectionValue)}
                                             </span>
                                         ) : null
                                     })()}
-                                    <span className="text-xs font-semibold text-white bg-white/20 px-2 py-0.5 rounded-full">
+                                    <span className={`${badge} text-white bg-white/20`}>
                                         {sectionCounted}/{items.length}
                                     </span>
                                 </span>
@@ -775,7 +830,7 @@ export default function StockTakeCountPage() {
                                                                 // been counted, and saying it twice is
                                                                 // what pushed the words off the card.
                                                                 !canSayNone && (
-                                                                    <p className="text-sm font-medium text-amber-600">Not counted</p>
+                                                                    <p className="text-sm font-medium text-amber-700">Not counted</p>
                                                                 )
                                                             )}
                                                         </div>
@@ -806,7 +861,7 @@ export default function StockTakeCountPage() {
                                                 <button
                                                     type="button"
                                                     onClick={() => undoNone(undoable)}
-                                                    className="flex-shrink-0 self-center mr-3 px-3 py-2 rounded-lg bg-accent text-white text-xs font-bold shadow-sm hover:brightness-95"
+                                                    className={`${primaryButton('sm')} flex-shrink-0 self-center mr-3`}
                                                 >
                                                     Undo
                                                 </button>
@@ -816,7 +871,6 @@ export default function StockTakeCountPage() {
                                             {/* Expanded section */}
                                             {isExpanded && (
                                                 <div className="px-4 pb-4 bg-white">
-                                                    {/* Existing lines */}
                                                     {/* Existing lines */}
                                                     {productLines.length > 0 && (
                                                         <div className="space-y-2 mb-3">
@@ -833,14 +887,7 @@ export default function StockTakeCountPage() {
                                                                                 if (parts) {
                                                                                     return (
                                                                                         <div className="flex flex-wrap items-center gap-1.5">
-                                                                                            {parts.map(part => (
-                                                                                                <span
-                                                                                                    key={part.key}
-                                                                                                    className="inline-block bg-gray-100 border border-border rounded-md px-2 py-0.5 text-xs font-medium text-gray-700"
-                                                                                                >
-                                                                                                    {part.text}
-                                                                                                </span>
-                                                                                            ))}
+                                                                                            <CountedAs parts={parts} />
                                                                                             {!justLoose(parts) && (
                                                                                                 <span className="text-xs text-muted">
                                                                                                     = {fmtQty(line.quantity_counted)} {product.unit}
@@ -870,9 +917,9 @@ export default function StockTakeCountPage() {
                                                                             <button
                                                                                 type="button"
                                                                                 onClick={() => handleDeleteLine(line, product, section)}
-                                                                                className="flex-shrink-0 inline-flex items-center gap-1 text-xs font-semibold text-red-600 hover:text-white hover:bg-red-600 border border-red-200 hover:border-red-600 px-2.5 py-1.5 rounded-md transition-colors"
+                                                                                className={`${rowButton('danger')} flex-shrink-0 inline-flex items-center gap-1`}
                                                                             >
-                                                                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                                                                <svg className="w-3.5 h-3.5" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                                                                                     <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                                                                                 </svg>
                                                                                 Delete
@@ -894,33 +941,35 @@ export default function StockTakeCountPage() {
                                                                 <div className="flex flex-wrap gap-2">
                                                                     {config.formats.map(fmt => (
                                                                         <div key={fmt.id} className="flex-1 min-w-[120px]">
-                                                                            <label className="block text-xs font-medium text-muted mb-1">
-                                                                                {fmt.label} <span className="font-normal">({fmtQty(fmt.factor)} {product.unit})</span>
+                                                                            <label htmlFor={`count-pack-${fmt.id}`} className={labelClass}>
+                                                                                {fmt.label} ({fmtQty(fmt.factor)} {product.unit})
                                                                             </label>
                                                                             <input
+                                                                                id={`count-pack-${fmt.id}`}
                                                                                 type="text"
                                                                                 inputMode="decimal"
                                                                                 onFocus={e => e.target.select()}
                                                                                 value={draftCounts[fmt.id] || ''}
                                                                                 onChange={e => setDraftCounts(prev => ({ ...prev, [fmt.id]: e.target.value.replace(/[^0-9.]/g, '') }))}
                                                                                 placeholder="0"
-                                                                                className="w-full px-3 py-2.5 border border-border rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
+                                                                                className={fieldClass}
                                                                             />
                                                                         </div>
                                                                     ))}
                                                                     {looseAllowed && (
                                                                         <div className="flex-1 min-w-[120px]">
-                                                                            <label className="block text-xs font-medium text-muted mb-1">
-                                                                                {config.formats.length > 0 ? 'Loose' : 'Quantity'} <span className="font-normal">({product.unit})</span>
+                                                                            <label htmlFor="count-loose" className={labelClass}>
+                                                                                {config.formats.length > 0 ? 'Loose' : 'Quantity'} ({product.unit})
                                                                             </label>
                                                                             <input
+                                                                                id="count-loose"
                                                                                 type="text"
                                                                                 inputMode="decimal"
                                                                                 onFocus={e => e.target.select()}
                                                                                 value={draftCounts['loose'] || ''}
                                                                                 onChange={e => setDraftCounts(prev => ({ ...prev, loose: e.target.value.replace(/[^0-9.]/g, '') }))}
                                                                                 placeholder="0"
-                                                                                className="w-full px-3 py-2.5 border border-border rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
+                                                                                className={fieldClass}
                                                                             />
                                                                         </div>
                                                                     )}
@@ -928,22 +977,23 @@ export default function StockTakeCountPage() {
 
                                                                 <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
                                                                     <div className="flex-1">
-                                                                        <label className="block text-xs font-medium text-muted mb-1">
-                                                                            Location <span className="font-normal">(optional)</span>
+                                                                        <label htmlFor="count-location" className={labelClass}>
+                                                                            Location (optional)
                                                                         </label>
                                                                         <input
+                                                                            id="count-location"
                                                                             type="text"
                                                                             value={draftLocation}
                                                                             onChange={e => setDraftLocation(e.target.value)}
                                                                             placeholder="e.g. back cold room"
-                                                                            className="w-full px-3 py-2.5 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
+                                                                            className={fieldClass}
                                                                         />
                                                                     </div>
                                                                     <button
                                                                         type="button"
                                                                         onClick={() => handleAddLine(product, section)}
                                                                         disabled={savingLine || !hasAny}
-                                                                        className="bg-accent hover:bg-accent/90 disabled:opacity-40 text-white font-semibold px-4 py-2.5 rounded-lg transition-colors"
+                                                                        className={primaryButton('md')}
                                                                         style={{ minHeight: '44px' }}
                                                                     >
                                                                         Add

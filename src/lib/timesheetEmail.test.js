@@ -1,15 +1,17 @@
 import { describe, it, expect } from 'vitest'
 import {
     timesheetEmail, personPeriod, holidayHoursInWeek, bankHolidays, bankHolidayOn,
-    clock, hours, dayWords, weekWords, periodWords, addDays,
-    AWAY_LOOK, KIND_LOOK, BANK_LOOK, COUNTED_DAYS,
+    clock, hours, dayWords, weekWords, periodWords, addDays, hoursPdfPath,
+    AWAY_LOOK, KIND_LOOK, BANK_LOOK, COUNTED_DAYS, awayWords,
 } from '../../supabase/functions/weekly-report-email/timesheet'
+import { heldNotice } from '../../supabase/functions/weekly-report-email/email'
+import { readFileSync } from 'node:fs'
 import { bankHolidays as appBankHolidays } from '@/lib/bankHolidays'
 import { ABSENCE_KINDS } from '@/lib/absences'
 import {
     KINDS, personPeriod as appPersonPeriod,
     AWAY_LOOK as appAway, KIND_LOOK as appKind, BANK_LOOK as appBank,
-    COUNTED_DAYS as appCounted,
+    COUNTED_DAYS as appCounted, awayWords as appAwayWords,
 } from '@/lib/timesheet'
 
 // The pay period the design was drawn against: Sunday 25 October to Saturday
@@ -129,7 +131,7 @@ describe('a day off does not disappear any more', () => {
     })
 
     it('ignores an absence nobody approved', () => {
-        const pending = off('sick', '2026-10-28').map(a => ({ ...a, status: 'pending' }))
+        const pending = off('sick', '2026-10-28').map(a => ({ ...a, status: 'requested' }))
         const [first] = personPeriod({
             people: [aoife], entries, absences: pending, dates: DATES,
         })
@@ -142,6 +144,122 @@ describe('a day off does not disappear any more', () => {
     // would be noise.
     it('counts only the two that change what somebody is paid', () => {
         expect(COUNTED_DAYS).toEqual(['sick', 'unpaid'])
+    })
+})
+
+// Worked nine to three and went home sick, put in as off sick with "can work
+// until 15:00". The six hours are worked hours, and the sick part is part of a
+// day. It used to reach the accountant as a whole day sick beside six worked
+// hours, and no day in the breakdown said which one it was.
+describe('going home sick part way through a day', () => {
+    const homeSick = (over = {}) => ([{
+        employee_id: 'e1', kind: 'sick', status: 'approved',
+        starts_on: '2026-11-03', ends_on: '2026-11-03', can_work_to: '15:00:00', ...over,
+    }])
+
+    it('is not counted as a whole day sick', () => {
+        const [first] = personPeriod({ people: [aoife], entries, absences: homeSick(), dates: DATES })
+        expect(first.sickDays).toBe(0)
+        expect(first.sickParts).toBe(1)
+        expect(first.worked).toBeCloseTo(19.38, 2)
+    })
+
+    it('marks the day it happened, beside the times', () => {
+        const [first] = personPeriod({ people: [aoife], entries, absences: homeSick(), dates: DATES })
+        const day = first.days.find(d => d.date === '2026-11-03')
+        expect(day.away).toBe('sick')
+        expect(day.part).toBe(true)
+        expect(day.spans).toHaveLength(1)
+    })
+
+    // The day must not vanish just because it is only part of one: that is the
+    // 23 September bug coming back by another door.
+    it('keeps a part day with no times on it', () => {
+        const [first] = personPeriod({
+            people: [aoife], entries: [], dates: DATES,
+            absences: homeSick({ can_work_to: null, can_work_from: '15:00:00' }),
+        })
+        expect(first.days.find(d => d.date === '2026-11-03')).toBeTruthy()
+        expect(first.sickParts).toBe(1)
+        expect(first.sickDays).toBe(0)
+    })
+
+    it('counts part of a day of unpaid leave the same way', () => {
+        const [first] = personPeriod({
+            people: [aoife], entries, absences: homeSick({ kind: 'unpaid' }), dates: DATES,
+        })
+        expect(first.unpaidDays).toBe(0)
+        expect(first.unpaidParts).toBe(1)
+    })
+
+    it('says part of a day in the mail, never a whole one', () => {
+        const mail = timesheetEmail({
+            restaurantName: 'Point Campus',
+            periodStart: PERIOD,
+            people: personPeriod({ people: [aoife], entries, absences: homeSick(), dates: DATES }),
+        })
+        expect(mail.html).toContain('1&nbsp;part&nbsp;day</span>&#32;sick')
+        expect(mail.html).not.toContain('1&nbsp;day</span>&#32;sick')
+        expect(mail.html).toMatch(/>Off sick<\/span>&#32;<span[^>]*>part of the day<\/span>/)
+        expect(mail.text).toContain('off sick, part of the day')
+    })
+
+    // A mark cannot break. "At the other restaurant, part of the day" in one
+    // piece is wider than his phone gives the mail, and one line too wide is
+    // what makes the Gmail app shrink every box in it.
+    it('never makes a mark longer than the longest label', () => {
+        const looks = [...Object.values(AWAY_LOOK), ...Object.values(KIND_LOOK), BANK_LOOK]
+        const longest = Math.max(...looks.map(look => look.label.length))
+        const mail = timesheetEmail({
+            restaurantName: 'Point Campus',
+            periodStart: PERIOD,
+            people: personPeriod({
+                people: [aoife], entries, dates: DATES,
+                absences: [...homeSick(), {
+                    employee_id: 'e1', kind: 'lent', status: 'approved',
+                    starts_on: '2026-10-29', ends_on: '2026-10-29', can_work_from: '15:00:00',
+                }],
+            }),
+        })
+        const marks = [...mail.html.matchAll(/<span style="display:inline-block;[^"]*">([^<]*)<\/span>/g)]
+            .map(found => found[1])
+        expect(marks).toContain('At the other restaurant')
+        for (const words of marks) expect(words.length).toBeLessThanOrEqual(longest)
+    })
+
+    // The parity test hands both copies the same rows, so it cannot see this:
+    // the function reads its own, and without these two columns every part
+    // day it read would be a whole one.
+    it('is read with the hours it covers', () => {
+        const source = readFileSync('supabase/functions/weekly-report-email/index.ts', 'utf8')
+        const read = /from\('absences'\)\s*\.select\('([^']*)'\)/.exec(source)
+        expect(read?.[1]).toContain('can_work_from')
+        expect(read?.[1]).toContain('can_work_to')
+    })
+})
+
+// The send is held while one of these is on the period, but a test can still go,
+// and the mail is never the place a day quietly goes missing. It used to keep
+// only spans with both ends, so the day dropped out as if nobody had worked.
+describe('a clock in with no clock out', () => {
+    const half = [shift({ employee_id: 'e1', work_date: '2026-10-28', starts_at: '09:00:00', ends_at: null, hours: null })]
+
+    it('keeps the day, with the clock in it has', () => {
+        const [first] = personPeriod({ people: [aoife], entries: half, absences: [], dates: DATES })
+        const day = first.days.find(d => d.date === '2026-10-28')
+        expect(day.open).toEqual(['09:00:00'])
+        expect(day.spans).toEqual([])
+        expect(day.hours).toBe(0)
+    })
+
+    it('says so in the mail', () => {
+        const mail = timesheetEmail({
+            restaurantName: 'Point Campus',
+            periodStart: PERIOD,
+            people: personPeriod({ people: [aoife], entries: [...entries, ...half], absences: [], dates: DATES }),
+        })
+        expect(mail.html).toContain('Clock in 09:00:00, no clock out')
+        expect(mail.text).toContain('clock in 09:00:00, no clock out')
     })
 })
 
@@ -192,6 +310,15 @@ describe('the marks match the ones on the screen', () => {
         expect(COUNTED_DAYS).toEqual(appCounted)
     })
 
+    it('words a day the same way the paper does, part day or whole', () => {
+        for (const away of Object.keys(AWAY_LOOK)) {
+            for (const part of [false, true]) {
+                expect(awayWords({ away, part })).toBe(appAwayWords({ away, part }))
+            }
+        }
+        expect(awayWords({ away: 'sick', part: true })).toBe('Off sick, part of the day')
+    })
+
     it('calls a trial and a training day what the app calls them', () => {
         for (const kind of KINDS.filter(k => k.value !== 'worked')) {
             expect(KIND_LOOK[kind.value], kind.value).toBeTruthy()
@@ -231,7 +358,7 @@ describe('what a holiday is worth inside the period', () => {
     })
 
     it('ignores a holiday nobody has approved', () => {
-        const pending = away(21).map(a => ({ ...a, status: 'pending' }))
+        const pending = away(21).map(a => ({ ...a, status: 'requested' }))
         expect(holidayHoursInWeek(pending, 'e1', DATES)).toBe(0)
     })
 })
@@ -309,7 +436,7 @@ describe('the mail itself', () => {
     it('marks a test in the subject and on the page', () => {
         const mail = built({ test: true })
         expect(mail.subject.startsWith('[Test] ')).toBe(true)
-        expect(mail.html).toContain('nothing has been filed by sending it')
+        expect(mail.html).toContain('sending this test does not mark the pay period as sent')
     })
 
     // The rule the whole mail is built around.
@@ -344,10 +471,10 @@ describe('the mail itself', () => {
         expect(built().text).toContain('Pay period, two weeks')
     })
 
-    it('gives the summary a column for each week', () => {
+    it('puts week one over week two on a bank holiday fortnight', () => {
         const html = built().html
-        expect(html).toContain('Week 1')
-        expect(html).toContain('Week 2')
+        expect(html).toContain('Week&nbsp;1<br />Week&nbsp;2')
+        expect(html).toMatch(/>13\.38<br \/>6\.00</)
         expect(html).toContain('Everybody')
     })
 
@@ -380,14 +507,66 @@ describe('the mail itself', () => {
         expect(html).not.toMatch(/width="\d{3}"/)
     })
 
-    it('says who it is held for while the redirect is set', () => {
-        expect(built({ held: 'It was for payroll@example.ie' }).html)
-            .toContain('It was for payroll@example.ie')
+    // The send puts the held band in with heldNotice, which looks for the
+    // body tag. The hours mail had none, so a held one looked like a real one.
+    it('takes the held band while the redirect is set', () => {
+        const held = heldNotice(built(), ['payroll@example.ie'])
+        expect(held.html).toContain('Held. This did not go to anyone else.')
+        expect(held.html).toContain('It was for payroll@example.ie')
+    })
+
+    it('is a whole page with the head a phone needs', () => {
+        const html = built().html
+        expect(html.startsWith('<!doctype html><html lang="en"><head><meta charset="utf-8" />')).toBe(true)
+        expect(html).toContain('<meta name="viewport" content="width=device-width,initial-scale=1" />')
+        expect(html).toContain('<title>Hours, 25 October to 7 November 2026, Point Campus</title>')
+        expect(html).toMatch(/<body[^>]*><div style="display:none;[^"]*">25 October to 7 November 2026(&#847;&zwnj;&nbsp;)+<\/div>/)
+        expect(html.endsWith('</body></html>')).toBe(true)
+    })
+
+    // Set on the card alone, a table inside it can fall back to the client's
+    // own font.
+    it('names the font on every table inside the card', () => {
+        const tables = built().html.match(/<table[^>]*>/g).slice(1)
+        expect(tables.length).toBeGreaterThan(3)
+        for (const table of tables) expect(table).toContain('font-family:')
+    })
+
+    // Classic Outlook drops a see-through colour, so every colour is solid.
+    it('has no see-through colour anywhere', () => {
+        const styles = [...built({ test: true }).html.matchAll(/style="([^"]*)"/g)].map(m => m[1])
+        expect(styles.length).toBeGreaterThan(20)
+        expect(styles.filter(st => /#[0-9a-f]{8}\b|rgba?\(|hsla?\(/i.test(st))).toEqual([])
     })
 
     it('carries a note he typed with the send', () => {
         expect(built({ comment: 'Two corrections in week two' }).html)
             .toContain('Two corrections in week two')
+    })
+
+    // HTML reads a line break as a space, so a note typed over two lines
+    // arrived as one.
+    it('keeps the line breaks he typed', () => {
+        const mail = built({ comment: 'Two corrections \r\nin week two' })
+        expect(mail.html).toContain('Two corrections<br />in week two')
+        expect(mail.text).toContain('Two corrections\nin week two')
+    })
+
+    it('keeps the line breaks in a comment on a day', () => {
+        const said = [{ employee_id: 'e1', work_date: '2026-10-28', note: 'Swapped late \nwith Cathal' }]
+        const mail = built({ people: period({ entries: [...entries, ...said] }) })
+        expect(mail.html).toContain('Swapped late<br />with Cathal')
+        expect(mail.text).toContain('      Swapped late\n      with Cathal')
+    })
+
+    // A pasted link is one word that cannot break, and it would hold the mail
+    // wider than a phone the same way a figure that cannot wrap does.
+    it('lets a long typed word break', () => {
+        const url = 'https://example.test/' + 'a'.repeat(99)
+        const cell = built({ comment: url }).html.match(new RegExp(`<div style="([^"]*)"> ?${url} ?</div>`))
+        expect(cell).not.toBeNull()
+        expect(cell[1]).toContain('word-break:break-word;')
+        expect(cell[1]).toContain('overflow-wrap:anywhere;')
     })
 
     it('adds the period up across everybody', () => {
@@ -408,8 +587,123 @@ describe('the mail itself', () => {
             }),
         })
         expect(mail.html).toContain('Off sick')
-        expect(mail.html).toContain('1 day sick')
+        expect(mail.html).toContain('1&nbsp;day</span>&#32;sick')
         expect(mail.text).toContain('off sick')
+    })
+})
+
+// His phone gives the mail 307px, and a mail any wider is one the Gmail app
+// scrambles from top to bottom. A name and five columns of figures came to
+// 362px with a team's three figure totals. The bank holiday column only comes
+// when somebody has bank holiday hours, and only then do the two weeks share a
+// column.
+describe('the summary fits a phone', () => {
+    const summaryOf = html => {
+        const at = html.indexOf('>Name</th>')
+        return html.slice(html.lastIndexOf('<table', at), html.indexOf('</table>', at))
+    }
+    const headCells = html => summaryOf(html).match(/<th[^>]*>/g) || []
+
+    // The longest piece of a cell that cannot break: a cell that cannot wrap
+    // is one piece a line, and in any other only a space or a line breaks it.
+    const longestPiece = (style, inner) => {
+        const lines = inner
+            .replace(/<span style="white-space:nowrap;">([^<]*)<\/span>/g, (_, words) => words.replace(/ /g, '&nbsp;'))
+            .replace(/<br \/>|<div[^>]*>|<\/div>/g, '\n')
+            .replace(/&#32;/g, ' ')
+            .replace(/<[^>]*>/g, '')
+            .replace(/&nbsp;/g, '_')
+            .replace(/&[a-z0-9#]+;/gi, 'x')
+            .split('\n')
+        const pieces = style.includes('white-space:nowrap')
+            ? lines.map(line => line.trim())
+            : lines.flatMap(line => line.split(/\s+/))
+        return Math.max(0, ...pieces.map(piece => piece.length))
+    }
+
+    // A column is as wide as the widest thing anywhere in it, so the table
+    // is the sum of each column's widest piece.
+    const across = html => {
+        const widest = []
+        for (const tr of summaryOf(html).split('<tr>').slice(1)) {
+            const cells = [...tr.matchAll(/<t([hd])[^>]*style="([^"]*)"[^>]*>([\s\S]*?)<\/t\1>/g)]
+            cells.forEach(([, , style, inner], i) => {
+                widest[i] = Math.max(widest[i] || 0, longestPiece(style, inner))
+            })
+        }
+        return widest
+    }
+
+    const trained = [
+        ...entries,
+        shift({ employee_id: 'e1', work_date: '2026-10-29', kind: 'training', starts_at: '09:00:00', ends_at: '21:30:00', hours: 12.5 }),
+    ]
+    // Three figure totals for the team, the way a real fortnight adds up.
+    const busy = Array.from({ length: 12 }, (_, i) => shift({
+        employee_id: i % 2 ? 'e2' : 'e1', work_date: DATES[i], starts_at: '09:00:00', ends_at: '23:59:59', hours: 14.99,
+    }))
+    const mail = (rows, periodStart = PERIOD) => timesheetEmail({
+        restaurantName: 'Point Campus',
+        periodStart,
+        people: personPeriod({
+            people: [aoife, cathal], entries: rows, absences: [],
+            dates: Array.from({ length: 14 }, (_, i) => addDays(periodStart, i)),
+        }),
+    }).html
+
+    // Off the bank holiday, so nobody has bank holiday hours.
+    const offTheDay = rows => rows.map(e => ({ ...e, work_date: e.work_date === '2026-10-26' ? '2026-10-27' : e.work_date }))
+
+    it('leaves the bank holiday column out when nobody has bank holiday hours', () => {
+        const plain = mail(offTheDay(entries))
+        expect(plain).not.toContain('Bank hol.')
+    })
+
+    it('keeps the two weeks side by side when there is no bank holiday column', () => {
+        const plain = mail(offTheDay(entries))
+        expect(headCells(plain)).toHaveLength(5)
+        expect(plain).toContain('Week&nbsp;1</th>')
+        expect(plain).toContain('Week&nbsp;2</th>')
+        expect(plain).not.toContain('Week&nbsp;1<br />Week&nbsp;2')
+    })
+
+    it('has the bank holiday column on a fortnight with bank holiday hours', () => {
+        const html = mail(entries)
+        expect(headCells(html)).toHaveLength(5)
+        expect(html).toContain('Bank hol.')
+    })
+
+    // Measured in headless Chrome, 34 characters across came to 300px with
+    // Training marks, a bank holiday and three figure totals, against the
+    // 307px his phone gives. The report's own rule is the model: sixteen
+    // characters for one figure that cannot wrap.
+    it('is never more than 34 characters across', () => {
+        const html = mail([...trained, ...busy])
+        expect(html).toContain('Bank hol.')
+        expect(html).toContain('Training&#32;<span style="white-space:nowrap;">12.50&nbsp;h</span>')
+        const widest = across(html)
+        // Found something before saying anything about what was found.
+        expect(widest).toHaveLength(5)
+        expect(Math.min(...widest)).toBeGreaterThan(0)
+        expect(widest.reduce((t, n) => t + n, 0)).toBeLessThanOrEqual(34)
+    })
+
+    // The other shape: no bank holiday, so the two weeks get a column each.
+    it('is never more than 34 characters across without a bank holiday', () => {
+        const html = mail(offTheDay([...trained, ...busy]))
+        expect(html).not.toContain('Bank hol.')
+        expect(html).toContain('Training&#32;<span style="white-space:nowrap;">12.50&nbsp;h</span>')
+        const widest = across(html)
+        expect(widest).toHaveLength(5)
+        expect(Math.min(...widest)).toBeGreaterThan(0)
+        expect(widest.reduce((t, n) => t + n, 0)).toBeLessThanOrEqual(34)
+    })
+
+    it('lets a mark break between its words and its figure', () => {
+        const html = mail(trained)
+        const marks = [...summaryOf(html).matchAll(/<span style="display:inline-block;([^"]*)">/g)].map(m => m[1])
+        expect(marks.length).toBeGreaterThan(0)
+        for (const style of marks) expect(style).not.toContain('white-space:nowrap')
     })
 })
 
@@ -431,6 +725,17 @@ describe('the browser and the function agree about a period', () => {
             employee_id: 'e1', kind: 'unpaid', status: 'approved',
             starts_on: '2026-11-04', ends_on: '2026-11-04',
         },
+        // A holiday a manager put hours on before answering it. The mail
+        // leaves it out, so the PDF attached to the mail has to as well.
+        {
+            employee_id: 'e1', kind: 'holiday', status: 'requested',
+            starts_on: '2026-11-05', ends_on: '2026-11-05', hours: 8,
+        },
+        // Went home sick at three, on a day with a shift on it.
+        {
+            employee_id: 'e1', kind: 'sick', status: 'approved',
+            starts_on: '2026-11-03', ends_on: '2026-11-03', can_work_to: '15:00:00',
+        },
     ]
     const withKinds = [
         ...entries,
@@ -441,6 +746,10 @@ describe('the browser and the function agree about a period', () => {
         shift({
             employee_id: 'e1', work_date: '2026-11-06', kind: 'training',
             starts_at: '09:00:00', ends_at: '13:00:00', hours: 4,
+        }),
+        // A clock in nobody gave a clock out.
+        shift({
+            employee_id: 'e2', work_date: '2026-11-01', starts_at: '12:00:00', ends_at: null, hours: null,
         }),
     ]
 
@@ -460,5 +769,39 @@ describe('the browser and the function agree about a period', () => {
         const nobody = { ...args, people: [...args.people, { id: 'e9', full_name: 'Nobody' }] }
         expect(appPersonPeriod(nobody).map(p => p.name))
             .toEqual(personPeriod(nobody).map(p => p.name))
+    })
+})
+
+// The PDF is read with the service key, which no bucket rule stops, so where it
+// is read from has to be built by the function out of what it has already
+// checked. A path taken from the request walked out of the restaurant's folder
+// with '..' and could read another restaurant's hours, or any file at all.
+describe('where the hours PDF is read from', () => {
+    const PLACE = '0b6f7c2e-3d4a-4f1b-9c8d-2e5a6b7c8d9e'
+
+    it('is the restaurant folder and the period, the same path the app uploads to', () => {
+        // src/lib/timesheetMail.js puts it at `${restaurantId}/${periodStart}.pdf`.
+        expect(hoursPdfPath(PLACE, '2026-10-25')).toBe(`${PLACE}/2026-10-25.pdf`)
+    })
+
+    it('refuses a restaurant that is not an id', () => {
+        expect(hoursPdfPath(`${PLACE}/../other`, '2026-10-25')).toBeNull()
+        expect(hoursPdfPath('..', '2026-10-25')).toBeNull()
+        expect(hoursPdfPath('', '2026-10-25')).toBeNull()
+        expect(hoursPdfPath(null, '2026-10-25')).toBeNull()
+    })
+
+    it('refuses a period that is not a date', () => {
+        expect(hoursPdfPath(PLACE, '../../rest/v1/users')).toBeNull()
+        expect(hoursPdfPath(PLACE, '2026-10-25/../x')).toBeNull()
+        expect(hoursPdfPath(PLACE, '')).toBeNull()
+    })
+
+    // The rule above is only half of it. The function has to read the path it
+    // built, and never the one that came in the request.
+    it('is the path the function reads, whatever the request says', () => {
+        const source = readFileSync('supabase/functions/weekly-report-email/index.ts', 'utf8')
+        expect(source).toContain('.download(pdfPath)')
+        expect(source).not.toMatch(/\.download\(attachment\)/)
     })
 })

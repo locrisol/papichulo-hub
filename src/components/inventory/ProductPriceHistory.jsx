@@ -18,7 +18,11 @@ import PriceHistoryChart from '@/components/inventory/PriceHistoryChart'
 // A voided invoice is left out. A delivery that was reversed in full the next
 // day is not evidence of what anything costs, and three of those turned up in
 // the one month this was designed against.
-export default function ProductPriceHistory({ productId, restaurantId, product, suppliers }) {
+//
+// refresh is bumped by the page whenever it moves a price, so the chart above
+// the rows follows the change straight away. What is drawn stays until the new
+// answer replaces it, so the chart does not blink out and back.
+export default function ProductPriceHistory({ productId, restaurantId, product, suppliers, refresh = 0 }) {
     const [data, setData] = useState(null)
     const [error, setError] = useState('')
 
@@ -74,7 +78,7 @@ export default function ProductPriceHistory({ productId, restaurantId, product, 
 
         load()
         return () => { alive = false }
-    }, [productId, restaurantId])
+    }, [productId, restaurantId, refresh])
 
     const series = useMemo(
         () => (data ? seriesFor({ ...data, suppliers }) : null),
@@ -90,10 +94,10 @@ export default function ProductPriceHistory({ productId, restaurantId, product, 
             <div className="p-4 sm:p-5">
                 <PriceHistoryChart series={series} unit={product?.unit || 'unit'} />
                 <p className={hintClass}>
-                    Per {product?.unit || 'unit'}, so two suppliers selling different pack sizes can
-                    be read against each other. A filled dot is a document. A hollow one is a price
-                    somebody typed. The heavy line is what the Hub costs from, which steps when the
-                    preferred price moves as well as when a supplier puts its price up.
+                    Prices are per {product?.unit || 'unit'}, so suppliers with different case sizes
+                    can be compared. A filled dot is from an invoice and a hollow dot is a change
+                    made in the Hub. The thick line is the cost the Hub uses. It moves when a
+                    supplier's price changes or when a different price is set as preferred.
                 </p>
             </div>
         </div>

@@ -1,11 +1,11 @@
-import { addDays, fullDate, dayMonth } from '@/lib/dates'
-import { DAY_NAMES, dayName } from '@/lib/events'
+import { addDays, fullDate, dayMonth, DAY_NAMES, dayName } from '@/lib/dates'
 import {
     bankHolidayOn, BANK_HOLIDAY_INK, BANK_HOLIDAY_WASH, BANK_HOLIDAY_LABEL,
 } from '@/lib/bankHolidays'
 import { card, closeButton } from '@/lib/controlStyles'
-import { bandsForWeek, kindChip, kindDot, kindRing, scopeLabel, timeLabel } from '@/lib/diary'
-import DiaryChip from './DiaryChip'
+import { bandsForWeek, kindDot, kindRing, scopeLabel, timeLabel } from '@/lib/diary'
+import DiaryChip from '@/components/diary/DiaryChip'
+import DiaryBand from '@/components/diary/DiaryBand'
 
 // The month, as six weeks that do not change height as you step through them.
 //
@@ -34,13 +34,7 @@ function BandRow({ bands, onOpen, canEdit }) {
                 <div key={entry.id} className="grid grid-cols-7 py-0.5">
                     {start > 0 && <div style={{ gridColumn: `span ${start}` }} />}
                     <div style={{ gridColumn: `span ${span}` }} className="px-0.5">
-                        {(() => {
-                            const look = `block w-full text-left truncate rounded-md border-l-[3px] px-1.5 py-0.5 text-[0.6875rem] font-bold ${kindChip(entry.kind)} ${runsIn ? 'rounded-l-none' : ''} ${runsOn ? 'rounded-r-none' : ''}`
-                            const inside = <>{runsIn && '‹ '}{entry.title}{runsOn && ' ›'}</>
-                            return canEdit
-                                ? <button type="button" onClick={() => onOpen(entry)} className={look}>{inside}</button>
-                                : <span className={look}>{inside}</span>
-                        })()}
+                        <DiaryBand entry={entry} runsIn={runsIn} runsOn={runsOn} canEdit={canEdit} onOpen={onOpen} compact />
                     </div>
                 </div>
             ))}

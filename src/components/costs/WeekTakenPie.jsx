@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { fmtMoney } from '@/lib/format'
+import { fmtMoney, fmtPct } from '@/lib/format'
 import { slicePath } from '@/lib/weekTaken'
 
 // The pie half of the week taken panel, kept in its own file because it is the
@@ -52,7 +52,7 @@ export default function WeekTakenPie({ slices, taken, share }) {
                         onMouseEnter={() => setOver(s.label)}
                         onMouseLeave={() => setOver(null)}
                     >
-                        <title>{`${s.label}: ${fmtMoney(s.amount)}, ${share(s.amount).toFixed(1)}%`}</title>
+                        <title>{`${s.label}: ${fmtMoney(s.amount)}, ${fmtPct(share(s.amount))}`}</title>
                     </path>
                 ))}
                 <text
@@ -95,7 +95,7 @@ export default function WeekTakenPie({ slices, taken, share }) {
                             {fmtMoney(s.amount)}
                         </span>
                         <span className="w-12 text-right text-xs text-muted whitespace-nowrap">
-                            {share(s.amount).toFixed(1)}%
+                            {fmtPct(share(s.amount))}
                         </span>
                     </li>
                 ))}

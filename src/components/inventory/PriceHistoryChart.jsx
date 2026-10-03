@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { fmtUnitCost } from '@/lib/format'
-import { shortDate, todayISO, addDays } from '@/lib/dates'
+import { shortDate, todayISO, addDays, daysBetween } from '@/lib/dates'
 import { ticks } from '@/lib/reportChart'
 import {
-    rangesFor, defaultRange, stepCorners, withinWindow, priceScale, daysBetween,
+    rangesFor, defaultRange, stepCorners, withinWindow, priceScale,
 } from '@/lib/priceHistory'
 import { segmentTrack, segmentButton, hintClass } from '@/lib/controlStyles'
 
@@ -50,8 +50,8 @@ export default function PriceHistoryChart({ series, unit = 'unit', height = 220 
     if (!chosen) {
         return (
             <p className="text-sm text-muted italic">
-                Nothing to draw yet. A price appears here the first time it is set, and the graph
-                fills in as the invoices come through.
+                No prices yet. A price appears here the first time it is set, and the chart
+                fills in as invoices are imported.
             </p>
         )
     }
@@ -119,7 +119,7 @@ export default function PriceHistoryChart({ series, unit = 'unit', height = 220 
                                 type="button"
                                 onClick={() => { setRange(r.key); setAt(null) }}
                                 aria-pressed={chosen.key === r.key}
-                                className={`${segmentButton(chosen.key === r.key)} normal-case`}
+                                className={segmentButton(chosen.key === r.key, true)}
                             >
                                 <span className="sm:hidden">{r.short}</span>
                                 <span className="hidden sm:inline">{r.label}</span>
@@ -259,8 +259,7 @@ export default function PriceHistoryChart({ series, unit = 'unit', height = 220 
             {series.dropped.length > 0 && (
                 <p className={hintClass}>
                     {series.dropped.join(', ')} {series.dropped.length === 1 ? 'is' : 'are'} not
-                    drawn. Three lines is as many as can be told apart by somebody who is colour
-                    blind, so the three most recent suppliers are the ones on the chart.
+                    shown. The chart shows only the three most recent suppliers.
                 </p>
             )}
         </figure>

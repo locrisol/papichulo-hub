@@ -1,8 +1,7 @@
 import { useState } from 'react'
 import { cardEdge, tableHeadRow } from '@/lib/controlStyles'
 import { NO_COLOUR } from '@/lib/team'
-import { DAY_NAMES } from '@/lib/events'
-import { fullDate } from '@/lib/dates'
+import { fullDate, DAY_NAMES } from '@/lib/dates'
 import { dayState, windowsFor, windowsLabel, availabilityOn } from '@/lib/availability'
 import { AlertBadge, AlertStrip } from '@/components/roster/RosterAlerts'
 import { hasWarnings } from '@/lib/workRules'
@@ -232,7 +231,7 @@ export default function RosterWeek({
                         Only the people rows are on white. */}
                     <tr className="bg-slate-100 border-b border-slate-200">
                         <td className="px-3 py-1.5 text-xs font-semibold text-slate-700 border-r border-slate-200 sticky left-0 z-10 bg-slate-100">
-                            Store hours
+                            Opening hours
                         </td>
                         {dates.map(d => {
                             const note = noteFor(d)
@@ -551,11 +550,11 @@ export default function RosterWeek({
                                         <td
                                             key={day.date}
                                             title={asked
-                                                ? `${row.employee.full_name} has asked for this day off and is waiting on an answer`
+                                                ? `${row.employee.full_name} has requested this day off (waiting for approval)`
                                                 : part
                                                 ? `${row.employee.full_name} ${partWords(part)} this day`
                                                 : offKind
-                                                ? `${row.employee.full_name} is ${staff ? 'not available' : `down as ${offKind.label.toLowerCase()}`}`
+                                                ? `${row.employee.full_name} is ${staff ? 'not available' : kindOf(off.kind).phrase}`
                                                 : away === 'none'
                                                     ? `${row.employee.full_name} is not available this day`
                                                     : away === 'windows'
@@ -612,7 +611,7 @@ export default function RosterWeek({
                                                     // somebody is not in, which
                                                     // is what an empty cell
                                                     // should look like.
-                                                    <span className="block py-0.5 text-muted text-xs">-</span>
+                                                    <span className="block py-0.5 text-muted text-xs">—</span>
                                                 ) : (
                                                     <button
                                                         type="button"
@@ -707,7 +706,7 @@ export default function RosterWeek({
                                     <td className="px-2 py-1.5 text-center align-middle font-semibold border-l border-border whitespace-nowrap">
                                         {holidayFor(row.employee) > 0
                                             ? <span className="text-blue-700">{fmtHours(holidayFor(row.employee))}</span>
-                                            : <span className="text-muted">-</span>}
+                                            : <span className="text-muted">—</span>}
                                     </td>
                                 )}
                                 <td className="px-2 py-1.5 text-center align-middle font-semibold text-gray-900 border-l border-border whitespace-nowrap">

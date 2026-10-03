@@ -4,15 +4,18 @@
  * Only this file needs a browser, for localStorage. Everything else in src/lib
  * is plain functions and runs faster without one.
  */
+import { readFileSync } from 'node:fs'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
     mapEvent, discoveryUrl, eventsFrom, isServiceRole, roleOf,
     geohash, venuesUrl, venuesFrom, suggestions, geocodeUrl, pointFrom,
     distanceKm, walkMinutesFor, WALKABLE_MINUTES, sourceKeyFor, pointTyped,
+    irishDate, stillToCome, feedError, feedProblem, emptyProblem, wholeAnswer, goneBetween,
+    endsMoved, superseded, notOverBy, refusedWords,
 } from '../../supabase/functions/nearby-events/discovery'
 import {
     distanceKm as browserDistanceKm, walkMinutesFor as browserWalkMinutesFor,
-    sourceKeyFor as browserSourceKeyFor,
+    sourceKeyFor as browserSourceKeyFor, offFor,
 } from '@/lib/nearby'
 import { syncEvents, syncIsDue, markSynced } from '@/lib/nearbySync'
 
@@ -97,18 +100,29 @@ describe('syncIsDue', () => {
     })
 
     it('is due when nothing has ever been fetched', () => {
-        expect(syncIsDue()).toBe(true)
+        expect(syncIsDue('pc')).toBe(true)
     })
 
     it('is not due straight after a fetch', () => {
-        markSynced()
-        expect(syncIsDue()).toBe(false)
+        markSynced('pc')
+        expect(syncIsDue('pc')).toBe(false)
     })
 
     it('is due again after twelve hours', () => {
-        const thirteenHoursAgo = Date.now() - 13 * 60 * 60 * 1000
-        localStorage.setItem('eventsLastSync', String(thirteenHoursAgo))
-        expect(syncIsDue()).toBe(true)
+        markSynced('pc')
+        const later = Date.now() + 13 * 60 * 60 * 1000
+        const spy = vi.spyOn(Date, 'now').mockReturnValue(later)
+        expect(syncIsDue('pc')).toBe(true)
+        spy.mockRestore()
+    })
+
+    // One stamp per browser covered every restaurant, so a super admin who
+    // opened Point Campus's calendar and then switched to Dun Laoghaire gave
+    // Dun Laoghaire no check from that browser for twelve hours.
+    it('keeps a stamp for each restaurant', () => {
+        markSynced('pc')
+        expect(syncIsDue('pc')).toBe(false)
+        expect(syncIsDue('dl')).toBe(true)
     })
 })
 
@@ -454,5 +468,195 @@ describe('a point typed rather than looked up', () => {
         expect(pointTyped('153.3, -6.2')).toBe(null)
         expect(pointTyped('53.3, -186.2')).toBe(null)
         expect(pointTyped('53.3486')).toBe(null)
+    })
+})
+
+// A key that was revoked, or a venue id Ticketmaster retired, used to leave
+// nothing anywhere but a line in the function log. The listings stopped
+// changing and every screen looked like a quiet fortnight.
+describe('how a feed went', () => {
+    // Summer time. UTC still says the day before at half midnight in Dublin.
+    it('knows the date in Ireland, not in UTC', () => {
+        expect(irishDate(new Date('2026-09-30T23:30:00Z'))).toBe('2026-10-01')
+        expect(irishDate(new Date('2026-12-31T23:30:00Z'))).toBe('2026-12-31')
+    })
+
+    it('counts what we hold that is still to come and still on', () => {
+        const held = [
+            { event_date: '2026-10-01', status: 'onsale' },
+            { event_date: '2026-10-02', status: 'onsale' },
+            { event_date: '2026-10-03', status: 'canceled' },
+            { event_date: '2026-10-04', status: null },
+        ]
+        expect(stillToCome(held, '2026-10-01')).toBe(2)
+        expect(stillToCome([...held, { event_date: '2026-10-05', status: 'withdrawn' }], '2026-10-01')).toBe(2)
+        expect(stillToCome(null, '2026-10-01')).toBe(0)
+    })
+
+    // An empty answer is a quiet venue, unless we already hold nights there
+    // that Ticketmaster itself listed. Then the venue id has stopped working.
+    it('calls an empty answer a problem only when it contradicts what we hold', () => {
+        expect(emptyProblem(0)).toBe(null)
+        expect(emptyProblem(12)).toBe('Ticketmaster returned no events, but 12 were still coming up.')
+        expect(emptyProblem(1)).toBe('Ticketmaster returned no events, but 1 was still coming up.')
+    })
+
+    // The function keeps its own list of what counts as off, because it
+    // deploys on its own and cannot reach lib/nearby. The two have to agree,
+    // or a night the roster calls off counts here as still coming up.
+    it('agrees with the app about which nights are off', () => {
+        const statuses = ['onsale', 'offsale', 'postponed', 'rescheduled', 'cancelled', 'canceled', 'Canceled', 'withdrawn', null]
+        for (const status of statuses) {
+            const counted = stillToCome([{ event_date: '2026-10-05', status }], '2026-10-01') === 1
+            expect(counted, String(status)).toBe(offFor({ status }) === '')
+        }
+    })
+
+    it('keeps the sentence a failure was made with', () => {
+        expect(feedProblem(feedError(refusedWords(401)))).toBe(refusedWords(401))
+    })
+
+    // Kept on the place and shown on the roster and the calendar, to owners
+    // too, who cannot open the settings. A bare status said nothing about
+    // whether anybody had to do anything, so it goes to the log instead.
+    it('says a refused key needs somebody, and anything else will be tried again', () => {
+        for (const status of [401, 403]) {
+            expect(refusedWords(status)).toBe("Ticketmaster did not accept the Hub's key. Whoever set up the Hub needs to check it.")
+        }
+        expect(refusedWords(429)).toBe('Ticketmaster is busy. It will try again at the next check.')
+        expect(refusedWords(500)).toBe('Ticketmaster had a problem. It will try again at the next check.')
+    })
+
+    it('keeps no status on the place, only the sentence', () => {
+        const source = readFileSync('supabase/functions/nearby-events/index.ts', 'utf8')
+        expect(source).not.toMatch(/feedError\(`Ticketmaster said no/)
+        expect(source).toContain('throw feedError(refusedWords(res.status))')
+    })
+
+    // A fetch that fails names the address it was fetching, and the address
+    // carries the key. Places can be read by every manager, so what
+    // is kept on one is never the error itself.
+    it('never keeps the error itself', () => {
+        const leak = new TypeError('error sending request for url (https://app.ticketmaster.com/x?apikey=SECRET)')
+        expect(feedProblem(leak)).not.toContain('SECRET')
+        expect(feedProblem(leak)).toBe('Something went wrong getting the events from Ticketmaster.')
+        expect(feedProblem(null)).toBe('Something went wrong getting the events from Ticketmaster.')
+    })
+})
+
+// A show Ticketmaster withdrew, or moved somewhere we do not watch, stayed on
+// its old date as on sale for ever: last_seen_at was written and read by
+// nothing. A night missing from a whole answer is marked, and comes back by
+// itself the next time Ticketmaster lists it.
+describe('a night the feed no longer lists', () => {
+    const event = id => ({ id, name: 'A night', dates: { start: { localDate: '2026-11-05' } } })
+    const answer = (n, total) => ({
+        _embedded: { events: Array.from({ length: n }, (_, i) => event(`e${i}`)) },
+        page: { size: 200, totalElements: total, totalPages: 1, number: 0 },
+    })
+
+    it('trusts only an answer that holds everything Ticketmaster has', () => {
+        expect(wholeAnswer(answer(92, 92))).toBe(true)
+        // Cut short at two hundred: everything after the last one would read
+        // as taken down.
+        expect(wholeAnswer(answer(200, 240))).toBe(false)
+    })
+
+    // A refusal is caught before this, but an empty answer is a venue id that
+    // stopped working as often as a quiet venue, so it never takes anything down.
+    it('takes nothing down on an empty answer, or one with no count on it', () => {
+        expect(wholeAnswer(answer(0, 0))).toBe(false)
+        expect(wholeAnswer({ _embedded: { events: [event('e1')] } })).toBe(false)
+        expect(wholeAnswer(null)).toBe(false)
+    })
+
+    // The window starts at this minute, so tonight's show can be missing from
+    // an evening sync because it has started. Only from tomorrow on, in Irish
+    // dates, and never past the end of what was asked for.
+    it('looks only from tomorrow to the end of the window', () => {
+        const at = new Date('2026-09-30T23:30:00Z')
+        expect(goneBetween(answer(5, 5), at)).toEqual({ after: '2026-10-01', before: '2027-03-30' })
+        expect(goneBetween(answer(200, 240), at)).toBe(null)
+    })
+})
+
+// "Runs until" can be set on a feed listing. When Ticketmaster then moved the
+// show past that date, the sync wrote the new start beside the old end, the
+// database refused it, and the one statement carrying the whole venue failed
+// on every sync after that.
+describe('a run of days on a show that moves', () => {
+    const held = [
+        { id: 'a', ticketmaster_id: 't1', event_date: '2026-10-05', ends_on: '2026-10-07' },
+        { id: 'b', ticketmaster_id: 't2', event_date: '2026-10-05', ends_on: null },
+        { id: 'c', ticketmaster_id: 't3', event_date: '2026-10-05', ends_on: '2026-10-06' },
+    ]
+
+    // The length somebody gave it is kept. A three day conference moved to
+    // November is still three days.
+    it('moves the end with the start', () => {
+        expect(endsMoved(held, [{ ticketmaster_id: 't1', event_date: '2026-11-10' }]))
+            .toEqual([{ id: 'a', event_date: '2026-11-10', ends_on: '2026-11-12' }])
+    })
+
+    // Earlier as well. Left alone the band would quietly grow by a month.
+    it('moves it earlier too', () => {
+        expect(endsMoved(held, [{ ticketmaster_id: 't1', event_date: '2026-10-01' }]))
+            .toEqual([{ id: 'a', event_date: '2026-10-01', ends_on: '2026-10-03' }])
+    })
+
+    // Across the end of summer time, which a local date sum gets an hour out.
+    it('counts in days, not hours', () => {
+        expect(endsMoved(
+            [{ id: 'a', ticketmaster_id: 't1', event_date: '2026-10-20', ends_on: '2026-10-22' }],
+            [{ ticketmaster_id: 't1', event_date: '2026-11-02' }],
+        )).toEqual([{ id: 'a', event_date: '2026-11-02', ends_on: '2026-11-04' }])
+    })
+
+    it('leaves alone a show with no end, one that has not moved, and one not in the answer', () => {
+        expect(endsMoved(held, [
+            { ticketmaster_id: 't2', event_date: '2026-11-10' },
+            { ticketmaster_id: 't3', event_date: '2026-10-05' },
+        ])).toEqual([])
+        expect(endsMoved(null, [])).toEqual([])
+    })
+})
+
+// The feed supersedes a reading of the same night, so it does not land twice.
+// It was dismissing readings somebody had already kept as well, and the name
+// they gave it and the run of days they set went with it, with nothing said.
+describe('which readings the feed supersedes', () => {
+    const feed = [{ ticketmaster_id: 't1', name: 'An Evening with Fran Lebowitz', event_date: '2026-10-09' }]
+    const reading = (id, review, extra = {}) => ({
+        id, review, name: 'An Evening with Fran Lebowitz', event_date: '2026-10-09', ...extra,
+    })
+
+    it('dismisses a reading of the same night nobody has looked at', () => {
+        expect(superseded([reading('r1', 'found')], feed)).toEqual(['r1'])
+    })
+
+    it('leaves alone one somebody kept', () => {
+        expect(superseded([reading('r2', 'kept', { display_name: 'Fran Lebowitz', ends_on: '2026-10-10' })], feed))
+            .toEqual([])
+    })
+
+    it('leaves alone a reading of another night', () => {
+        expect(superseded([reading('r3', 'found', { event_date: '2026-10-10' })], feed)).toEqual([])
+        expect(superseded(null, feed)).toEqual([])
+    })
+
+    // The page still listing a night Ticketmaster called off is the reading
+    // read-listings saves again on purpose, for somebody to look at.
+    it('leaves alone a reading of a night the feed has called off', () => {
+        for (const status of ['canceled', 'cancelled', 'Canceled']) {
+            expect(superseded([reading('r4', 'found')], [{ ...feed[0], status }])).toEqual([])
+        }
+        expect(superseded([reading('r5', 'found')], [{ ...feed[0], status: 'onsale' }])).toEqual(['r5'])
+    })
+
+    // A page read now keeps a run of days that began before the day it was
+    // read and is still on. Asking only for readings that start today or later
+    // left those out, so the feed could never retire one.
+    it('looks at every reading still on today, a run that began earlier included', () => {
+        expect(notOverBy('2026-10-05')).toBe('event_date.gte.2026-10-05,ends_on.gte.2026-10-05')
     })
 })

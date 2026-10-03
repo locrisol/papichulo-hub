@@ -5,15 +5,16 @@ import { useRestaurant } from '@/context/restaurant'
 import { friendlyError, functionError } from '@/lib/errors'
 import { todayISO } from '@/lib/dates'
 import {
-    modalFooter, secondaryButton, fieldClass, labelClass, checkbox, checkRow, primaryButton,
+    modalFooter, secondaryButton, fieldClass, labelClass, hintClass, checkbox, checkRow, primaryButton, rowButton,
 } from '@/lib/controlStyles'
 import { ModalSectionBar } from '@/components/ui/ModalSection'
 import Modal from '@/components/ui/Modal'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import Notice from '@/components/ui/Notice'
 import {
     CITY_CAPACITY, CITY_RADIUS_KM, WALKABLE_MINUTES,
-    walkWords, sourceWords, placeTag, readWords, pastWalking, cityProblem, samePlace,
-    couldBeSamePlace, placeName, PAIRING_COLUMNS,
+    walkWords, sourceWords, placeTag, readWords, feedWords, pastWalking, cityProblem,
+    couldBeSamePlace, placeName, placeToFill, PAIRING_COLUMNS,
 } from '@/lib/nearby'
 
 const BLANK = {
@@ -57,6 +58,9 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
     const [address, setAddress] = useState('')
     const [searching, setSearching] = useState(false)
     const [candidates, setCandidates] = useState(null)
+    // Every place in the Hub, which is what Add fills in from. The note
+    // under each venue reads the same list, so it says what the button does.
+    const [everyPlace, setEveryPlace] = useState(null)
     // Where it searched from. Shown because a lookup can succeed and be wrong:
     // "Papi Chulo Dublin" finds the Dun Laoghaire shop and "Papi Chulo" finds
     // one in Montreal, and neither of those announces itself as a mistake.
@@ -146,8 +150,8 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
 
             if (clash && clash.id !== mine) {
                 setBusy(false)
-                setError(`${clash.name} already has that venue id. Clear it from there first, `
-                    + 'or take that place off the list.')
+                setError(`${clash.name} already has that venue ID. Clear it from there first, `
+                    + 'or remove that place from the list.')
                 return
             }
         }
@@ -203,10 +207,10 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
     // right for "not this year"; this is for "that is not us at all".
     async function stopWatching(row) {
         if (!await confirm({
-            title: `Take ${row.place.name} off the list?`,
+            title: `Remove ${row.place.name} from the list?`,
             message: 'It stops appearing on the roster and the calendar. Anything already read '
                 + 'from it is kept, and you can add it again from the search.',
-            confirmLabel: 'Take it off',
+            confirmLabel: 'Remove',
             tone: 'danger',
         })) return
 
@@ -225,14 +229,23 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
         // Both guards matter. A place another restaurant watches is theirs, and
         // a place with listings against it would take them with it, since
         // events cascade from a place. Either one and it stays.
-        const [{ count: watchers }, { count: listings }] = await Promise.all([
+        //
+        // **Only when both counts came back, and both are exactly none.** A
+        // count that fails comes back as nothing, and nothing read as none:
+        // a dropped signal on a phone between the two steps deleted the Arena
+        // and every listing ever read from it. A place left behind costs
+        // nothing, since save names whichever place holds a venue id, so when
+        // in doubt it stays. The take off itself has worked either way.
+        const [watching, listed] = await Promise.all([
             supabase.from('restaurant_places')
                 .select('id', { count: 'exact', head: true }).eq('place_id', row.place.id),
             supabase.from('events')
                 .select('id', { count: 'exact', head: true }).eq('place_id', row.place.id),
         ])
 
-        if (!watchers && !listings) {
+        const surelyUnused = !watching.error && !listed.error
+            && watching.count === 0 && listed.count === 0
+        if (surelyUnused) {
             await supabase.from('places').delete().eq('id', row.place.id)
         }
 
@@ -320,6 +333,9 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
 
         if (failed) { setError(await functionError(failed)); return }
         if (data?.error) { setError(data.error); return }
+
+        const { data: every } = await supabase.from('places').select('id, name, ticketmaster_venue_id')
+        setEveryPlace(every || null)
         setCandidates(data?.places || [])
         setLookedFrom(data?.point || null)
     }
@@ -340,10 +356,10 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
             .select('id, name, ticketmaster_venue_id, latitude, longitude')
         if (e0) { setBusy(false); setError(friendlyError(e0)); return }
 
-        const already = (all || []).find(p => (
-            (p.ticketmaster_venue_id && p.ticketmaster_venue_id === found.ticketmaster_venue_id)
-            || samePlace(p.name, found.name)
-        ))
+        // Never one with a different venue id: that is a different venue, and
+        // filling it in would move the place we have over to it. See
+        // placeToFill.
+        const already = placeToFill(all, found)
 
         const patch = {
             ticketmaster_venue_id: found.ticketmaster_venue_id || null,
@@ -402,7 +418,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                     <form onSubmit={save} className="grid gap-3 sm:grid-cols-2 py-3">
                         <div className="sm:col-span-2">
                             <label className={labelClass} htmlFor="place-relation">
-                                Would somebody at this walk to us?
+                                Would people at this place walk to us?
                             </label>
                             <select
                                 id="place-relation"
@@ -415,9 +431,9 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                             </select>
                             {/* The one judgement in the whole feature,
                                 and no API can make it. */}
-                            <p className="text-xs text-muted mt-1">
-                                The second one shows nothing until you type how many it
-                                holds, and only counts over{' '}
+                            <p className={hintClass}>
+                                If not, it only shows once you enter how many people it
+                                holds, and only if that is over{' '}
                                 {CITY_CAPACITY.toLocaleString('en-IE')}.
                             </p>
                         </div>
@@ -452,7 +468,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                                 inputMode="numeric"
                                 value={form.capacity}
                                 onChange={e => setForm({ ...form, capacity: e.target.value })}
-                                placeholder="Only for the city rule"
+                                placeholder="Only needed if it is not a walk away"
                             />
                         </div>
                         <div className="sm:col-span-2">
@@ -466,7 +482,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                                 onChange={e => setForm({ ...form, page_url: e.target.value })}
                                 placeholder="https://paviliontheatre.ie/events"
                             />
-                            <p className="text-xs text-muted mt-1">
+                            <p className={hintClass}>
                                 Read once a week. Anything found waits on the calendar for
                                 somebody to keep it.
                             </p>
@@ -474,7 +490,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                                 because where the month or the page
                                 number goes is part of the address and
                                 only the address knows where. */}
-                            <p className="text-xs text-muted mt-1">
+                            <p className={hintClass}>
                                 Some sites hand over one month or a few events at a time.
                                 Put <code className="font-mono">{'{month}'}</code> or{' '}
                                 <code className="font-mono">{'{page}'}</code> in the address
@@ -492,10 +508,10 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                                 value={form.page_depth}
                                 onChange={e => setForm({ ...form, page_depth: e.target.value })}
                             />
-                            <p className="text-xs text-muted mt-1">
-                                Only does anything when the address has{' '}
-                                <code className="font-mono">{'{page}'}</code> in it. One
-                                unless the site is stingy.
+                            <p className={hintClass}>
+                                Only used when the address has{' '}
+                                <code className="font-mono">{'{page}'}</code> in it. Leave it at 1
+                                unless the site spreads its events over several pages.
                             </p>
                         </div>
                         <div className="sm:col-span-2">
@@ -517,7 +533,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                                 roster is unreadable; read as a
                                 programme it is one row per film, kept
                                 the first time it appears. */}
-                            <p className="text-xs text-muted mt-1">
+                            <p className={hintClass}>
                                 A programme keeps each thing once, the first time it turns
                                 up, so a film showing all month is one line rather than
                                 thirty.
@@ -525,7 +541,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                         </div>
                         <div className="sm:col-span-2">
                             <label className={labelClass} htmlFor="place-venue">
-                                Ticketmaster venue id
+                                Ticketmaster venue ID
                             </label>
                             <input
                                 id="place-venue"
@@ -559,7 +575,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                         </label>
                         <div className="sm:col-span-2 flex flex-wrap gap-2">
                             <button type="submit" disabled={busy} className={primaryButton()}>
-                                {editingId ? 'Save' : 'Add it'}
+                                {editingId ? 'Save' : 'Add place'}
                             </button>
                             <button
                                 type="button"
@@ -577,9 +593,9 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                                     type="button"
                                     disabled={busy}
                                     onClick={() => stopWatching(rows.find(r => r.id === editingId))}
-                                    className="ml-auto text-sm font-medium text-red-700 hover:text-red-800 px-3 py-2"
+                                    className={`${rowButton('danger')} ml-auto disabled:opacity-50`}
                                 >
-                                    Take it off the list
+                                    Remove place
                                 </button>
                             )}
                         </div>
@@ -601,8 +617,8 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                         <ModalSectionBar title="Within walking distance" />
                         {walkers.length === 0 && (
                             <p className="text-sm text-muted py-3">
-                                Nothing yet. Add one below, or type the address and let the Hub
-                                look.
+                                Nothing yet. Add one below, or search from the restaurant's
+                                address.
                             </p>
                         )}
                         {walkers.map(row => (
@@ -616,7 +632,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                             />
                         ))}
 
-                        <ModalSectionBar title="Big things in the city" />
+                        <ModalSectionBar title="Large venues in the city" />
                         <label className="flex items-start gap-3 py-3 cursor-pointer">
                             <input
                                 type="checkbox"
@@ -635,9 +651,9 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                                     affected by things that drag visitors in,
                                     and those guests eat near where they sleep. */}
                                 <span className="block text-xs text-muted mt-0.5">
-                                    Nobody walks from these. They are here because they fill the
-                                    hotels beside us. A capacity has to be typed once per place,
-                                    because no API publishes it.
+                                    Nobody walks from these, but they fill the hotels near us. Enter
+                                    how many people each place holds. You only need to do this once
+                                    for each place.
                                 </span>
                             </span>
                         </label>
@@ -676,9 +692,9 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                                 calendar until somebody keeps it.
                             </p>
                         </div>
-                        {read && <p className="text-sm text-green-700 bg-green-50 rounded-lg p-3 mb-3">{read}</p>}
+                        <Notice tone="good" className="mb-3">{read}</Notice>
 
-                        <ModalSectionBar title="Look for what is near us" />
+                        <ModalSectionBar title="Find places near us" />
                         <form onSubmit={findNearby} className="py-3 flex flex-wrap gap-2 items-end">
                             <div className="flex-1 min-w-[12rem]">
                                 <label className={labelClass} htmlFor="place-address">
@@ -693,7 +709,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                                 />
                             </div>
                             <button type="submit" disabled={searching} className={secondaryButton}>
-                                {searching ? 'Looking...' : 'Look'}
+                                {searching ? 'Searching...' : 'Search'}
                             </button>
                             {/* The address lookup is the one part of this that
                                 can refuse us and say nothing useful, so the box
@@ -703,7 +719,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                                 An Eircode, an address, or coordinates in any of the shapes
                                 Google gives them:{' '}
                                 <code className="font-mono">53.3486&deg; N, 6.2285&deg; W</code>.
-                                Whatever you give it is remembered, so this is asked once.
+                                The Hub remembers this, so you only enter it once.
                             </p>
                         </form>
 
@@ -713,20 +729,20 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                             point over it. */}
                         {lookedFrom && (
                             <p className="text-xs text-muted pb-3">
-                                Looked from{' '}
+                                Searched from{' '}
                                 <code className="font-mono">
                                     {lookedFrom.latitude}, {lookedFrom.longitude}
                                 </code>
                                 . If that is not where this restaurant is, paste the right
-                                coordinates above and look again.
+                                coordinates above and search again.
                             </p>
                         )}
 
                         {candidates && candidates.length === 0 && (
                             <p className="text-sm text-muted pb-3">
-                                Nothing selling tickets within a walk of there. Add anything else
-                                by hand above: a cinema, a park, a harbour, a college, a shopping
-                                centre, the council&apos;s events page.
+                                No more venues selling tickets were found near that address. You can
+                                add other places by hand above, such as a cinema, a park or a
+                                shopping centre.
                             </p>
                         )}
 
@@ -746,18 +762,14 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                                         thing that differs between two real
                                         venues in one complex. So it is said
                                         rather than decided. */}
-                                    {rows.some(r => couldBeSamePlace(r.place.name, found.name)) && (
-                                        <span className="block text-xs text-amber-800 font-medium">
-                                            Looks like{' '}
-                                            {placeName(rows.find(
-                                                r => couldBeSamePlace(r.place.name, found.name),
-                                            ).place)}
-                                            , which you already watch. Adding it makes a second one.
-                                        </span>
-                                    )}
+                                    <SameAs
+                                        found={found}
+                                        watched={rows.map(r => r.place)}
+                                        places={everyPlace || rows.map(r => r.place)}
+                                    />
                                     <span className="block text-xs text-muted">
                                         {found.relation === 'city'
-                                            ? `${found.km} km away, big enough for the city rule`
+                                            ? `${found.km} km away, big enough to count`
                                             : `${walkWords(found.walkMinutes)} · ${found.km} km`}
                                         {found.listed != null && ` · ${found.listed} listed`}
                                     </span>
@@ -766,9 +778,9 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                                     type="button"
                                     disabled={busy}
                                     onClick={() => takeOn(found)}
-                                    className={`${secondaryButton} py-1 px-3 text-xs`}
+                                    className={`${rowButton()} disabled:opacity-50`}
                                 >
-                                    Watch it
+                                    Add
                                 </button>
                             </div>
                         ))}
@@ -783,11 +795,48 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
     )
 }
 
+// What pressing Add on a venue from the search will do, when that is not
+// simply adding a place.
+//
+// It fills in a place already on the list when that place is the same
+// building and has no feed yet, and says so. A name that only looks like one
+// already watched gets a second place, and says that, because no rule can
+// safely tell "Odeon Point Square" from "Odeon Point Village". It used to say
+// "makes a second one" in both cases, while the button filled in the place
+// that was there.
+//
+// **From every place in the Hub**, the list the button fills in from, and not
+// only this restaurant's. A place only another restaurant watches was filled
+// in with nothing here saying so.
+function SameAs({ found, watched, places }) {
+    const where = p => (watched.some(w => w?.id === p?.id) ? 'which you already watch' : 'which is already in the Hub')
+
+    const fills = placeToFill(places, found)
+    if (fills) {
+        if (fills.ticketmaster_venue_id) return null
+        return (
+            <span className="block text-xs text-amber-800 font-medium">
+                This adds Ticketmaster to {placeName(fills)}, {where(fills)}.
+            </span>
+        )
+    }
+
+    const like = places.find(p => couldBeSamePlace(p?.name, found.name))
+    if (!like) return null
+    return (
+        <span className="block text-xs text-amber-800 font-medium">
+            Looks like {placeName(like)}, {where(like)}. Adding it makes a second place.
+        </span>
+    )
+}
+
 // One place, the way the settings screen reads it: a name, how far somebody
 // would walk, and where its listings come from.
 function PlaceRow({ row, today, busy, onToggle, onEdit }) {
     const tag = placeTag(row.place, row)
     const read = readWords(row.place, today)
+    // And how the feed last went, which is the only sign a refused key gives.
+    const synced = feedWords(row.place, today)
     // A city place that is showing nothing says why, right here. Silence is
     // the worst thing a rule can do: somebody who ticks Croke Park and sees
     // nothing for a fortnight cannot tell whether it is quiet, broken, or
@@ -810,7 +859,7 @@ function PlaceRow({ row, today, busy, onToggle, onEdit }) {
             <button type="button" onClick={onEdit} className="flex-1 min-w-0 text-left">
                 <span className="block text-sm font-semibold text-gray-900">{row.place.name}</span>
                 <span className="block text-xs text-muted">
-                    {[far, sourceWords(row.place), read].filter(Boolean).join(' · ')}
+                    {[far, sourceWords(row.place), synced, read].filter(Boolean).join(' · ')}
                 </span>
             </button>
             <span

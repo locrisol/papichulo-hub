@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { timeOptions, onTheGrid, END_OF_DAY } from '@/lib/timeOptions'
+import { timeOptions, END_OF_DAY } from '@/lib/timeOptions'
 
 const values = opts => opts.map(o => o.value)
 
@@ -106,24 +106,6 @@ describe('timeOptions', () => {
             const opts = timeOptions({ value: END_OF_DAY, endOfDay: true })
             expect(values(opts).filter(v => v === END_OF_DAY)).toHaveLength(1)
         })
-    })
-})
-
-describe('onTheGrid', () => {
-    it('is true for a quarter hour', () => {
-        expect(onTheGrid('15:00')).toBe(true)
-        expect(onTheGrid('15:45')).toBe(true)
-    })
-
-    it('is false for anything between', () => {
-        expect(onTheGrid('15:07')).toBe(false)
-        expect(onTheGrid('15:01')).toBe(false)
-    })
-
-    it('counts the end of the day and a blank as nothing to worry about', () => {
-        expect(onTheGrid(END_OF_DAY)).toBe(true)
-        expect(onTheGrid('')).toBe(true)
-        expect(onTheGrid(null)).toBe(true)
     })
 })
 

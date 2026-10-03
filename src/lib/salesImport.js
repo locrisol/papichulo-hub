@@ -11,7 +11,7 @@
 // checked every day before anything is written.
 
 import { weekStartOf, addDays } from '@/lib/dates'
-import { num } from '@/lib/format'
+import { num, round2 } from '@/lib/format'
 import { longDate, sameShop } from '@/lib/timesheetImport'
 import { sameLabel, trackedCopy, tenderVariance } from '@/lib/salesTenders'
 
@@ -50,10 +50,6 @@ function textOf(node) {
 function valueOf(field) {
     const n = Number(textOf(field.querySelector('Value')))
     return Number.isFinite(n) ? n : 0
-}
-
-function round2(n) {
-    return Math.round(n * 100) / 100
 }
 
 export function readWeeklySales(text) {
@@ -232,8 +228,21 @@ export function matchTillLines({ lines = [], tenders = [], remembered = [] }) {
 //
 // Every box that had a figure and is getting a different one is listed, so the
 // screen can say exactly what changes before anything does.
+//
+// **A day that would change can be kept as it is.** His answer of 30
+// September. The file is read in by hand and nothing connects the Hub to the
+// till, so a day can be put right here after the till's report was read, and
+// reading the week in again used to put the mistake back without a word. Each
+// day that would change says whether to keep it. The answer starts as yes when
+// the day still comes to the till's gross and net and its rows add up: then
+// only the split between the rows differs, which is what a correction made by
+// hand looks like. `keep` is what he has said since, by date.
+//
+// A Corporate row still following its till row would go back to the till's
+// figure with it, and that is listed on the day as well, because it may be a
+// figure somebody meant.
 export function planSalesImport({
-    read, places = {}, days = {}, shownTenders = [], trackingPlatforms = [], today,
+    read, places = {}, days = {}, shownTenders = [], trackingPlatforms = [], today, keep = {},
 }) {
     const active = shownTenders.filter(t => t.is_active)
 
@@ -297,17 +306,24 @@ export function planSalesImport({
 
         // The Corporate rows follow their till row exactly as they do when a
         // figure is typed, and stop following the same way: once one says
-        // something the till row did not, it is somebody's figure.
+        // something the till row did not, it is somebody's figure. Matched to
+        // the till row by name, and kept under the platform's key.
         const platformValues = { ...(here.platformValues || {}) }
+        const follows = []
         for (const p of trackingPlatforms) {
             const tender = active.find(t => sameLabel(t.label, p.name))
             if (!tender) continue
+            const was = here.isClosed ? '' : platformValues[p.key]
             const copy = trackedCopy({
                 typed: incoming.tenders[tender.key],
                 previousTillValue: here.isClosed ? '' : here.tenderValues?.[tender.key],
-                trackedValue: here.isClosed ? '' : platformValues[p.name],
+                trackedValue: was,
             })
-            if (copy != null) platformValues[p.name] = copy
+            if (copy == null) continue
+            platformValues[p.key] = copy
+            if (was !== '' && was != null && Math.abs(num(was) - num(copy)) >= 0.005) {
+                follows.push({ label: p.name, was: num(was), now: num(copy) })
+            }
         }
 
         // A day that already says exactly what the file says is left as it
@@ -315,6 +331,15 @@ export function planSalesImport({
         if (!here.isClosed && !diffs.length && sameEverywhere(here, incoming, active)) {
             same.push(date)
             continue
+        }
+
+        if (!here.isClosed && diffs.length) {
+            const handMade = sameFigure(here.gross, incoming.gross)
+                && sameFigure(here.net, incoming.net)
+                && tenderVariance(here.gross, here.tenderValues, shownTenders) === 0
+            const keeping = keep[date] ?? handMade
+            changed.push({ date, diffs, follows, handMade, keep: keeping })
+            if (keeping) continue
         }
 
         const tenderValues = { ...(here.tenderValues || {}), ...incoming.tenders }
@@ -328,8 +353,7 @@ export function planSalesImport({
         }
 
         if (here.isClosed) opened.push({ date, gross: num(incoming.gross) })
-        else if (diffs.length) changed.push({ date, diffs })
-        else filled.push(date)
+        else if (!diffs.length) filled.push(date)
 
         const out = tenderVariance(incoming.gross, tenderValues, shownTenders)
         if (out !== 0) outBy.push({ date, amount: out })
@@ -360,13 +384,18 @@ function hasFigures(day) {
         .some(v => v !== '' && v != null)
 }
 
+// A box with a figure in it that is the same, to the cent, as the other.
+function sameFigure(was, now) {
+    return was !== '' && was != null && Math.abs(num(was) - num(now)) < 0.005
+}
+
 function sameEverywhere(here, incoming, active) {
     const boxes = [
         [here.gross, incoming.gross],
         [here.net, incoming.net],
         ...active.map(t => [here.tenderValues?.[t.key], incoming.tenders[t.key]]),
     ]
-    return boxes.every(([was, now]) => was !== '' && was != null && Math.abs(num(was) - num(now)) < 0.005)
+    return boxes.every(([was, now]) => sameFigure(was, now))
 }
 
 // How much of a line's money is on each day, for the question about it.

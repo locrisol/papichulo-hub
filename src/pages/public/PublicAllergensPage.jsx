@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
-import { supabase } from '@/lib/supabase'
-import { sheetRows } from '@/lib/allergenSheet'
+import { supabase, everyRow } from '@/lib/supabase'
+import { sheetRows, everyReadArrived, productsWithARow } from '@/lib/allergenSheet'
 import AllergenList from '@/components/allergens/AllergenList'
-import { card } from '@/lib/controlStyles'
+import { card, primaryButton, warningNote } from '@/lib/controlStyles'
+import { allergenLook } from '@/lib/allergens'
 import { stampDate } from '@/lib/dates'
 
 
@@ -20,8 +21,8 @@ import { stampDate } from '@/lib/dates'
 // inside the manager's preview screen, which passes slugOverride instead of
 // reading the slug from the address.
 //
-// And it reads views rather than tables. Migration 065 closed the six tables
-// this used to read to anybody not signed in, because a policy can say yes to
+// And it reads views rather than tables. The six tables this used to read are
+// closed to anybody not signed in, because a policy can say yes to
 // a stranger asking for the menu but it cannot say which columns, and the same
 // yes covered every recipe quantity, every selling price and the restaurant's
 // pay rate. The public_ views carry the handful of columns this page actually
@@ -43,15 +44,34 @@ export default function PublicAllergensPage({ slugOverride }) {
   const [products, setProducts] = useState([])
   const [recipeLines, setRecipeLines] = useState([])
   const [allergens, setAllergens] = useState([])
+  const [changedAt, setChangedAt] = useState(null)
 
   const [expandedId, setExpandedId] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  // A read that failed, as against an address that leads nowhere. Kept apart
+  // from error because that one says Page not found, and a customer whose
+  // phone lost signal halfway through is standing in the restaurant.
+  const [loadFailed, setLoadFailed] = useState(false)
 
-  
+  // The tab and a saved bookmark said "Papi Chulo Hub" whatever restaurant it
+  // was, which on a customer's phone reads as somebody else's app. Not in the
+  // manager's preview, which sits inside the Hub and keeps the Hub's title.
+  useEffect(() => {
+    if (slugOverride || !restaurant?.name) return undefined
+    const before = document.title
+    document.title = `${restaurant.name} allergens`
+    return () => { document.title = before }
+  }, [slugOverride, restaurant?.name])
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
+    setError('')
+    setLoadFailed(false)
+    // The manager's preview changes restaurant on the same page, and the card
+    // below names whichever restaurant is held here. Kept, a failed read of
+    // the next one would carry the last one's name.
+    setRestaurant(null)
 
     // Find the restaurant by slug. Even though selling prices are uniform,
     // the page is keyed to a restaurant so the displayed name and any
@@ -62,8 +82,13 @@ export default function PublicAllergensPage({ slugOverride }) {
       .eq('slug', slug)
       .maybeSingle()
 
-    if (restRes.error || !restRes.data) {
-      setError('Restaurant not found')
+    if (restRes.error) {
+      setLoadFailed(true)
+      setLoading(false)
+      return
+    }
+    if (!restRes.data) {
+      setError('Please ask a member of staff for allergen information.')
       setLoading(false)
       return
     }
@@ -80,27 +105,51 @@ export default function PublicAllergensPage({ slugOverride }) {
     // the same thing to a customer and to a manager previewing it, without
     // having to ask for it twice.
     //
+    // Every row, a page at a time, each in an order that cannot tie. The
+    // database hands back a thousand rows at most and says nothing when it
+    // stops, and the lines of every dish ever set up, switched off ones too,
+    // pass that long before the menu does. A dish that lost one line past the
+    // thousandth kept the rest, and with those answered its row looked whole
+    // without the allergens the lost line carried.
+    //
     // Products are still deliberately unfiltered, and that is now true rather
     // than merely intended. They are not a list on screen, they are what the
     // allergens are worked out from, and a dish can contain a product that has
     // since been deactivated. The old policy required is_active and quietly
     // dropped exactly that product's allergens from the answer, which is the
     // one thing this page cannot get wrong.
-    const [categoriesRes, menuItemsRes, componentsRes, productsRes, recipesRes, allergensRes] = await Promise.all([
-      supabase.from('public_menu_categories').select('*').order('sort_order'),
-      supabase.from('public_menu_items').select('*').order('name'),
-      supabase.from('public_menu_item_components').select('*'),
-      supabase.from('public_products').select('*').order('name'),
-      supabase.from('public_mix_recipes').select('*'),
-      supabase.from('public_product_allergens').select('*'),
+    const [changedRes, ...reads] = await Promise.all([
+      // When anything on the sheet last changed, from the change log, which
+      // a customer cannot read. The view of the allergens has no date on it,
+      // and this used to print today's date on every visit instead.
+      supabase.rpc('allergens_changed_at'),
+      everyRow(() => supabase.from('public_menu_categories').select('*').order('sort_order').order('id')),
+      everyRow(() => supabase.from('public_menu_items').select('*').order('name').order('id')),
+      everyRow(() => supabase.from('public_menu_item_components').select('*').order('id')),
+      everyRow(() => supabase.from('public_products').select('*').order('name').order('id')),
+      everyRow(() => supabase.from('public_mix_recipes').select('*').order('id')),
+      everyRow(() => supabase.from('public_product_allergens').select('*').order('product_id')),
     ])
 
-    if (categoriesRes.data) setCategories(categoriesRes.data)
-    if (menuItemsRes.data) setMenuItems(menuItemsRes.data)
-    if (componentsRes.data) setComponents(componentsRes.data)
-    if (productsRes.data) setProducts(productsRes.data)
-    if (recipesRes.data) setRecipeLines(recipesRes.data)
-    if (allergensRes.data) setAllergens(allergensRes.data)
+    // All of them or none of them. A failed read of the allergens used to
+    // leave every product with none, and every dish said No declared
+    // allergens with nothing on the page to say anything had gone wrong.
+    if (!everyReadArrived(reads)) {
+      setLoadFailed(true)
+      setLoading(false)
+      return
+    }
+
+    const [categoriesRes, menuItemsRes, componentsRes, productsRes, recipesRes, allergensRes] = reads
+    setCategories(categoriesRes.data)
+    setMenuItems(menuItemsRes.data)
+    setComponents(componentsRes.data)
+    setProducts(productsRes.data)
+    setRecipeLines(recipesRes.data)
+    setAllergens(allergensRes.data)
+    // Not one of the reads the rows need. A date that would not come back
+    // is left off the page rather than guessed, and the dishes still show.
+    setChangedAt(changedRes.error ? null : changedRes.data)
 
     setLoading(false)
     }, [slug])
@@ -119,12 +168,9 @@ export default function PublicAllergensPage({ slugOverride }) {
   // to be three functions here, and the printed sheet had its own copy of the
   // same reasoning a few hundred lines away in another file.
   //
-  // The one worth keeping in mind: a customer is not signed in, so the database
-  // only hands an anonymous reader active products. An ingredient deactivated
-  // while the dish is still on sale simply does not arrive, and a list that
-  // looks whole is the worst way to be wrong on this page in particular. When
-  // that happens the row says to ask staff. A manager viewing this through the
-  // preview is signed in and gets everything, so it never fires for them.
+  // The one worth keeping in mind: a list that looks whole is the worst way to
+  // be wrong on this page in particular. So a row whose ingredients did not
+  // all arrive says to ask staff rather than showing what it could work out.
 
 
   // Build the grouped, ordered, filtered structure for rendering.
@@ -133,34 +179,30 @@ export default function PublicAllergensPage({ slugOverride }) {
   // something handed over beside it gets a row of its own. Worked out in
   // lib/allergenSheet so the printed sheet cannot come out saying anything
   // different from this.
-  const itemsByCategory = categories
-    // A category can be kept off the sheet: cans and bottled water carry none
-    // of the fourteen and fill it with rows saying so. Older rows have no
-    // answer here, and no answer means shown.
-    .filter(c => c.on_allergen_sheet !== false)
+  //
+  // A category can be kept off the sheet: cans and bottled water carry none
+  // of the fourteen and fill it with rows saying so. Older rows have no
+  // answer here, and no answer means shown.
+  const sheetCategories = categories.filter(c => c.on_allergen_sheet !== false)
+
+  // Which products already have a row of their own anywhere on the sheet,
+  // asked once of the whole sheet. An option on a dish reaches the sheet only
+  // through one of those, and a dish with an option that has none says ask
+  // staff rather than leaving that option's allergens off every row.
+  const withARow = productsWithARow(
+    menuItems.filter(i => sheetCategories.some(c => c.id === i.category_id)),
+    components, products,
+  )
+
+  const itemsByCategory = sheetCategories
     .map(c => ({
       category: c,
       rows: sheetRows(
         menuItems.filter(i => i.category_id === c.id),
-        components, products, recipeLines, allergens,
+        components, products, recipeLines, allergens, withARow,
       ),
     }))
     .filter(group => group.rows.length > 0)
-
-  // Find the most recent update across all allergen rows so we can show
-  // a "last updated" timestamp. If no allergens have ever been edited,
-  // we'll show today's date as a fallback so the page doesn't look stale.
-  const lastUpdated = allergens.reduce((latest, a) => {
-    if (!a.updated_at) return latest
-    if (!latest || a.updated_at > latest) return a.updated_at
-    return latest
-  }, null)
-
-  // The day the sheet was last touched. Falls back to today, because a sheet
-  // with no date on it reads as one nobody has checked.
-  function formatDate(iso) {
-    return stampDate(iso || new Date().toISOString())
-  }
 
   if (loading) {
     return (
@@ -170,11 +212,31 @@ export default function PublicAllergensPage({ slugOverride }) {
     )
   }
 
+  // No rows at all, and the reason is not the customer's to work out. Asking
+  // staff is the one answer that is right whatever did not arrive.
+  if (loadFailed) {
+    return (
+      <div className="min-h-screen bg-app-bg flex items-center justify-center p-4">
+        <div className={`${card} p-8 max-w-sm w-full text-center`} role="alert">
+          <p className="text-xs font-bold text-accent-ink uppercase tracking-widest mb-1">Allergen information</p>
+          {restaurant && (
+            <h1 className="font-serif text-2xl font-bold text-gray-900 mb-3">{restaurant.name}</h1>
+          )}
+          <p className="text-sm text-gray-700 mb-5">
+            We cannot show allergen information right now. Please ask a member of staff before ordering.
+          </p>
+          <button type="button" onClick={fetchAll} className={primaryButton()}>
+            Try again
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   if (error) {
     return (
       <div className="min-h-screen bg-app-bg flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl p-8 max-w-sm w-full text-center shadow">
-          <p className="text-4xl mb-3">🚫</p>
           <h1 className="text-lg font-semibold text-gray-900 mb-2">Page not found</h1>
           <p className="text-sm text-gray-500">{error}</p>
         </div>
@@ -186,26 +248,33 @@ export default function PublicAllergensPage({ slugOverride }) {
     <div className="min-h-screen bg-app-bg">
       <div className="max-w-2xl mx-auto p-4 sm:p-6">
         <header className="mb-6">
-          <p className="text-xs font-bold text-accent-ink uppercase tracking-widest mb-1">Allergen Information</p>
+          <p className="text-xs font-bold text-accent-ink uppercase tracking-widest mb-1">Allergen information</p>
           <h1 className="font-serif text-2xl sm:text-3xl font-bold text-gray-900">{restaurant.name}</h1>
-          <p className="text-xs text-gray-500 mt-2">Last updated: {formatDate(lastUpdated)}</p>
+          {/* The day anything on the sheet last changed, and nothing when
+              there is no such day to say. It used to fall back to today,
+              which is a freshness nobody vouched for. */}
+          {changedAt && (
+            <p className="text-xs text-gray-500 mt-2">Last updated: {stampDate(changedAt)}</p>
+          )}
         </header>
 
-        <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-xl p-4 mb-6">
+        <div className={`${warningNote} mb-6`}>
           <p className="font-semibold mb-1">Important</p>
-          <p>If you have a severe allergy, please speak to a member of staff before ordering. While we take great care, our kitchen handles many allergens and we cannot guarantee zero cross-contamination.</p>
+          <p>If you have a food allergy or intolerance, please speak to a member of staff before ordering. We take great care, but our kitchen handles many allergens and we cannot guarantee that any dish is completely free of them.</p>
         </div>
 
         <div className={`${card} p-4 mb-6 text-xs text-gray-600`}>
-          <p className="mb-2">Tap a dish to see its full allergen breakdown. The summary shows allergens that the dish either contains or may contain.</p>
+          <p className="mb-2">Press a dish to see its full allergen breakdown. The summary shows allergens that the dish either contains or may contain.</p>
           <div className="flex flex-wrap gap-3 text-xs">
+            {/* The colours and the ~ come from the same place as the
+                chips', so the key cannot say something they do not. */}
             <span className="inline-flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-red-500"></span>
+              <span className={`w-2.5 h-2.5 rounded-full ${allergenLook('contains').dot}`}></span>
               Contains
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
-              May contain
+              <span className={`w-2.5 h-2.5 rounded-full ${allergenLook('may_contain').dot}`}></span>
+              {allergenLook('may_contain').mark} May contain
             </span>
             <span className="inline-flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-full bg-gray-300"></span>
@@ -216,7 +285,7 @@ export default function PublicAllergensPage({ slugOverride }) {
 
         {itemsByCategory.length === 0 ? (
           <div className={`${card} p-8 text-center`}>
-            <p className="text-sm text-gray-500">No menu items available.</p>
+            <p className="text-sm text-gray-500">No dishes to show. Please ask a member of staff about allergens.</p>
           </div>
         ) : (
           <AllergenList
@@ -228,7 +297,7 @@ export default function PublicAllergensPage({ slugOverride }) {
 
         <footer className="mt-8 text-center">
           <p className="text-xs text-muted">
-            Allergen information provided by {restaurant.name}. For the most current information, please ask a member of staff.
+            If you have any questions about allergens, please ask a member of staff.
           </p>
         </footer>
       </div>

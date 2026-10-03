@@ -2,13 +2,12 @@ import { useState } from 'react'
 import TimeField from '@/components/ui/TimeField'
 import Modal from '@/components/ui/Modal'
 import { useConfirm } from '@/context/confirm'
-import { shortDate } from '@/lib/dates'
-import { dayName } from '@/lib/events'
+import { dayLabel } from '@/lib/dates'
 import {
-    shiftMinutes, breakFor, breakLabel, shortTime, fmtHours, shiftEdges,
+    shiftMinutes, breakFor, breakLabel, shortTime, fmtHours, shiftEdges, toMinutes,
 } from '@/lib/roster'
 import { canWorkAt, availabilityOn } from '@/lib/availability'
-import { modalFooter, labelClass, fieldClass, primaryButton } from '@/lib/controlStyles'
+import { modalFooter, labelClass, fieldClass, primaryButton, secondaryButton, rowButton } from '@/lib/controlStyles'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // One shift: making it, changing it, removing it.
@@ -61,20 +60,24 @@ export default function ShiftDialog({
     const problem = (() => {
         if (!form.employeeId) return 'Pick who is working it.'
         if (!form.startsAt || !form.endsAt) return 'A shift needs a start and a finish.'
-        if (minutes === 0) return 'That shift has no length.'
+        // Asked of the times, not the length. An end at or before the start
+        // is the next morning, so the same time at both ends measures 24
+        // hours, and this said it was over sixteen, which is the wrong thing
+        // to go and look at.
+        if (toMinutes(form.startsAt) === toMinutes(form.endsAt)) return 'The start and finish times are the same.'
         if (minutes > 16 * 60) return 'That is over sixteen hours. Check the finishing time.'
         return null
     })()
 
     async function remove() {
         const ok = await confirm({
-            title: 'Remove this shift?',
+            title: 'Delete this shift?',
             details: [
                 { label: 'Who', value: employees.find(e => e.id === form.employeeId)?.full_name || '' },
-                { label: 'Day', value: `${dayName(date)} ${shortDate(date)}` },
+                { label: 'Day', value: dayLabel(date) },
                 { label: 'Time', value: `${form.startsAt} to ${form.endsAt}` },
             ],
-            confirmLabel: 'Remove it',
+            confirmLabel: 'Delete',
             tone: 'danger',
         })
         if (ok) onRemove(shift)
@@ -96,7 +99,7 @@ export default function ShiftDialog({
 
     return (
         <Modal
-            title={`${dayName(date)} ${shortDate(date)}`}
+            title={dayLabel(date)}
             onClose={onClose}
         >
             <form onSubmit={submit}>
@@ -108,7 +111,7 @@ export default function ShiftDialog({
                         onChange={e => set('employeeId', e.target.value)}
                         className={fieldClass}
                     >
-                        <option value="">Pick somebody</option>
+                        <option value="">Pick a person</option>
                         {employees.map(e => (
                             <option key={e.id} value={e.id}>{e.full_name}</option>
                         ))}
@@ -149,14 +152,14 @@ export default function ShiftDialog({
                     <div className="bg-gray-50 rounded-lg px-4 py-3 mb-3 text-sm">
                         <div className="flex items-center justify-between">
                             <span className="text-gray-600">{fmtHours(hours)} hours</span>
-                            <span className="text-gray-500">{breakLabel(breakMinutes)}</span>
+                            <span className="text-muted">{breakLabel(breakMinutes)}</span>
                         </div>
                         {(edges.opening || edges.closing) && (
                             <p className="text-xs text-amber-700 mt-1.5">
                                 {edges.opening && edges.closing
-                                    ? 'Opens and closes the store.'
+                                    ? 'Opens and closes the restaurant.'
                                     : edges.opening
-                                        ? 'Starts before the store opens, so it is an opening shift.'
+                                        ? 'Starts before the restaurant opens, so it is an opening shift.'
                                         : 'Runs past closing, so it will print as Closing rather than a time.'}
                             </p>
                         )}
@@ -179,33 +182,22 @@ export default function ShiftDialog({
                 )}
                 </div>
 
-                <div className={`${modalFooter} justify-between`}>
-                    {editing ? (
-                        <button
-                            type="button"
-                            onClick={remove}
-                            className="px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 rounded-lg"
-                        >
-                            Remove
+                <div className={modalFooter}>
+                    {editing && (
+                        <button type="button" onClick={remove} className={`${rowButton('danger')} mr-auto`}>
+                            Delete
                         </button>
-                    ) : <span />}
-
-                    <div className="flex gap-3">
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className="px-4 py-2 border border-border text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 bg-white"
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            type="submit"
-                            disabled={saving || !!problem}
-                            className={primaryButton('lg')}
-                        >
-                            {saving ? 'Saving...' : editing ? 'Save' : 'Add it'}
-                        </button>
-                    </div>
+                    )}
+                    <button type="button" onClick={onClose} className={secondaryButton}>
+                        Cancel
+                    </button>
+                    <button
+                        type="submit"
+                        disabled={saving || !!problem}
+                        className={primaryButton('lg')}
+                    >
+                        {saving ? 'Saving...' : editing ? 'Save' : 'Add shift'}
+                    </button>
                 </div>
             </form>
         </Modal>

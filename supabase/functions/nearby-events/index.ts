@@ -52,15 +52,21 @@
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
-    discoveryUrl, eventsFrom, isServiceRole, roleOf, sourceKeyFor,
-    geocodeUrl, pointFrom, pointTyped, venuesUrl, venuesFrom, suggestions,
+    discoveryUrl, eventsFrom, isServiceRole, roleOf,
+    geocodeUrl, pointFrom, pointTyped, venuesUrl, venuesFrom, suggestions, refusalFor,
+    irishDate, stillToCome, emptyProblem, feedError, feedProblem, refusedWords, goneBetween, endsMoved,
+    superseded, notOverBy,
 } from './discovery.js'
-
-const MANAGERS = ['owner', 'store_manager']
 
 // Asked of OpenStreetMap once when somebody adds a restaurant. They ask for a
 // real name and a way to be contacted, and giving them one is the rent.
 const AGENT = 'PapiChuloHub/1.0 (hub@papichulo.ie)'
+
+// How long any one request to Ticketmaster or OpenStreetMap may take. Both
+// answer in a second or two on a normal day. Without a limit one that hung held
+// the schedule's whole run, and every restaurant after it went without, until
+// the platform stopped the function. Found by the audit of 28 September.
+const WAIT_MS = 15000
 
 function serviceKey() {
     for (const name of ['SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SECRET_KEY', 'SB_SECRET_KEY']) {
@@ -89,28 +95,59 @@ type Place = { id: string; name: string; ticketmaster_venue_id: string | null }
 //
 // Nothing ever deletes. An event that has dropped out of Ticketmaster because
 // it has happened is exactly the one worth keeping: the API forgets, so our
-// table has to be the memory.
+// table has to be the memory. One that drops out before it has happened is
+// marked rather than deleted, further down.
 //
 // The place is written onto every row, which is what decides who sees it: a
 // restaurant sees a listing if it is near the place the listing is at. Before
 // this the table was one flat list with no venue on it at all, and Dun Laoghaire
 // was shown the Arena's.
 async function syncOne(admin: Admin, place: Place, key: string) {
-    const res = await fetch(discoveryUrl(place.ticketmaster_venue_id as string, key))
+    const res = await fetch(discoveryUrl(place.ticketmaster_venue_id as string, key), {
+        signal: AbortSignal.timeout(WAIT_MS),
+    }).catch(() => null)
+    if (!res) throw feedError('Ticketmaster did not answer. It will try again at the next check.')
     if (!res.ok) {
         // Deliberately not the body. Ticketmaster puts the key back in its own
-        // error text, and this answer goes to a browser.
-        throw new Error(`Ticketmaster said no (${res.status}).`)
+        // error text. The status goes to the log, and the place gets a sentence
+        // saying whether anybody has to act. See refusedWords.
+        console.error('nearby-events', place.name, `Ticketmaster answered ${res.status}`)
+        throw feedError(refusedWords(res.status))
     }
 
-    const fetched = eventsFrom(await res.json())
-    if (fetched.length === 0) return { added: 0, total: 0 }
+    const payload = await res.json()
+    const fetched = eventsFrom(payload)
 
-    // Only to report how many are new. If this is racing another sync the count
-    // may be off, which does not matter: the upsert below is what is correct.
+    // Nothing is usually a quiet venue. It is a problem when we hold nights
+    // there that Ticketmaster itself listed and that are still to come, which
+    // is what a retired venue id looks like. See emptyProblem.
+    if (fetched.length === 0) {
+        const today = irishDate()
+        const { data: held } = await admin
+            .from('events').select('event_date, status')
+            .eq('place_id', place.id)
+            .eq('source', 'ticketmaster')
+            .gt('event_date', today)
+        return { added: 0, total: 0, problem: emptyProblem(stillToCome(held, today)) }
+    }
+
+    // To report how many are new, and to find a run of days that has to move
+    // with its show. If this is racing another sync the count may be off,
+    // which does not matter: the upsert below is what is correct.
     const { data: existing } = await admin
-        .from('events').select('ticketmaster_id')
+        .from('events').select('id, ticketmaster_id, event_date, ends_on')
         .in('ticketmaster_id', fetched.map(e => e.ticketmaster_id))
+
+    // **Before the upsert, one row at a time.** A moved show with an end date
+    // on it would otherwise fail the one statement that carries the whole
+    // venue. See endsMoved. Never by adding ends_on to the upsert below: a key
+    // on some rows of a batch is written on all of them, so every other run
+    // at the venue would lose its end.
+    for (const move of endsMoved(existing, fetched)) {
+        const { error: moved } = await admin.from('events')
+            .update({ event_date: move.event_date, ends_on: move.ends_on }).eq('id', move.id)
+        if (moved) console.error('nearby-events', place.name, 'could not move a run of days:', moved.message)
+    }
 
     const now = new Date().toISOString()
     const { error } = await admin
@@ -128,7 +165,38 @@ async function syncOne(admin: Admin, place: Place, key: string) {
             { onConflict: 'ticketmaster_id' },
         )
 
-    if (error) throw new Error(error.message)
+    if (error) {
+        console.error('nearby-events', place.name, error.message)
+        throw feedError('The events could not be saved.')
+    }
+
+    // **A night still to come that this answer no longer lists is marked.**
+    // See goneBetween for which nights and why only from a whole answer.
+    //
+    // By the ids that came back rather than by last_seen_at being older than
+    // this run, which reads the same and is not: a second sync running at the
+    // same moment writes its own time over ours, and every row it touched
+    // would have read as gone.
+    //
+    // Not a night already marked off, which keeps a cancellation saying
+    // cancelled once Ticketmaster stops listing it.
+    const gone = goneBetween(payload, new Date(now))
+    if (gone) {
+        const { data: taken, error: marking } = await admin
+            .from('events')
+            .update({ status: 'withdrawn' })
+            .eq('place_id', place.id)
+            .eq('source', 'ticketmaster')
+            .gt('event_date', gone.after)
+            .lt('event_date', gone.before)
+            .or('status.is.null,status.not.in.(canceled,cancelled,withdrawn)')
+            .not('ticketmaster_id', 'in', `(${fetched.map(e => `"${e.ticketmaster_id}"`).join(',')})`)
+            .select('id')
+        // Said, the same as a run of days that could not move. Otherwise a
+        // night taken down keeps its on sale status and nothing says why.
+        if (marking) console.error('nearby-events', place.name, 'could not mark nights no longer listed:', marking.message)
+        else if (taken?.length) console.log('nearby-events', place.name, `${taken.length} no longer listed`)
+    }
 
     // **A reading of a night this feed now covers is superseded by it.**
     //
@@ -146,29 +214,35 @@ async function syncOne(admin: Admin, place: Place, key: string) {
     //
     // Dismissed rather than deleted. The row is what was read and it stays,
     // which is also what stops next Monday's read offering it all over again.
-    const covers = new Set(fetched.map(e => sourceKeyFor(e.event_date, e.name)).filter(Boolean))
-
+    //
+    // Only a reading still waiting on somebody, never one they kept, and never
+    // by a night the feed has called off. See superseded.
     const { data: readings } = await admin
         .from('events')
-        .select('id, name, event_date')
+        .select('id, name, event_date, review')
         .eq('place_id', place.id)
         .eq('source', 'page')
-        .neq('review', 'dismissed')
-        .gte('event_date', new Date().toISOString().slice(0, 10))
+        .eq('review', 'found')
+        .or(notOverBy(irishDate()))
 
-    const stale = (readings || [])
-        .filter(r => covers.has(sourceKeyFor(r.event_date, r.name)))
-        .map(r => r.id)
+    const stale = superseded(readings, fetched)
 
+    let dismissed = 0
     if (stale.length) {
-        await admin.from('events').update({ review: 'dismissed' }).in('id', stale)
-        console.log('nearby-events', place.name, `${stale.length} readings superseded by the feed`)
+        const { error: dismissing } = await admin.from('events').update({ review: 'dismissed' }).in('id', stale)
+        if (dismissing) {
+            console.error('nearby-events', place.name, 'could not dismiss readings the feed covers:', dismissing.message)
+        } else {
+            dismissed = stale.length
+            console.log('nearby-events', place.name, `${dismissed} readings superseded by the feed`)
+        }
     }
 
     return {
         added: fetched.length - (existing || []).length,
         total: fetched.length,
-        ...(stale.length ? { superseded: stale.length } : {}),
+        problem: null,
+        ...(dismissed ? { superseded: dismissed } : {}),
     }
 }
 
@@ -177,16 +251,44 @@ async function syncOne(admin: Admin, place: Place, key: string) {
 // Switched off is switched off. Somebody who turns a place off has said they do
 // not want to hear about it, and spending a call to fill a table nothing reads
 // would be the sort of thing nobody notices until the quota runs out.
+//
+// A list that could not be read is said, not answered as "nothing ticketed
+// near this one", which is the reply for a restaurant that really is near
+// nothing and would have hidden a failure behind it.
 async function placesFor(admin: Admin, restaurantId: string): Promise<Place[]> {
-    const { data } = await admin
+    const { data, error } = await admin
         .from('restaurant_places')
         .select('place:places(id, name, ticketmaster_venue_id)')
         .eq('restaurant_id', restaurantId)
         .eq('is_active', true)
 
+    if (error) throw feedError('Could not read the places this restaurant watches.')
+
     return (data || [])
         .map(row => row.place as unknown as Place)
         .filter(p => p && p.ticketmaster_venue_id)
+}
+
+// What to write in the log about an error: what kind it was and the sentence
+// for it, and never the error itself.
+//
+// **The key is in the address of every request to Ticketmaster**, because the
+// Discovery API takes it nowhere else, and a fetch that fails names the
+// address it was fetching. Logged as it came, a dropped connection put the key
+// in the function log. The kind is enough to tell a timeout from a refusal.
+function said(err: unknown, problem: string) {
+    const kind = (err as { name?: string })?.name || 'Error'
+    return `${kind}: ${problem}`
+}
+
+// How the last sync of a place went, written where the roster, the calendar
+// and the settings row can read it. See places.feed_problem in schema.sql.
+//
+// A write that fails is let go. The listings are what matter, and before the
+// migration is run there are no columns to write to.
+async function noteOn(admin: Admin, place: Place, how: Record<string, unknown>) {
+    const { error } = await admin.from('places').update(how).eq('id', place.id)
+    if (error) console.warn('nearby-events', place.name, 'could not note how the sync went:', error.message)
 }
 
 async function syncRestaurant(admin: Admin, restaurantId: string, key: string) {
@@ -196,14 +298,19 @@ async function syncRestaurant(admin: Admin, restaurantId: string, key: string) {
     const failures: string[] = []
 
     for (const place of places) {
+        const at = new Date().toISOString()
         try {
             const out = await syncOne(admin, place, key)
             added += out.added
             total += out.total
+            await noteOn(admin, place, { feed_synced_at: at, feed_count: out.total, feed_problem: out.problem ?? null })
         } catch (err) {
-            // One place refusing must not stop the others. The log is the only
-            // place anybody will see this, so it says which.
-            console.error('nearby-events', place.name, err)
+            // One place refusing must not stop the others. It is written on
+            // the place as well as in the log, because the log is somewhere
+            // nobody looks and a broken feed otherwise looks like a quiet one.
+            const problem = feedProblem(err)
+            console.error('nearby-events', place.name, said(err, problem))
+            await noteOn(admin, place, { feed_problem: problem })
             failures.push(place.name)
         }
     }
@@ -242,9 +349,16 @@ Deno.serve(async (request) => {
 
         const done: Record<string, unknown>[] = []
         for (const shop of shops || []) {
-            const out = await syncRestaurant(admin, shop.id, key)
-            // A restaurant near nothing ticketed is not news and not a failure.
-            if (out.places > 0) done.push({ restaurant: shop.name, ...out })
+            // One restaurant whose list could not be read must not stop the
+            // next one being brought up to date.
+            try {
+                const out = await syncRestaurant(admin, shop.id, key)
+                // A restaurant near nothing ticketed is not news and not a failure.
+                if (out.places > 0) done.push({ restaurant: shop.name, ...out })
+            } catch (err) {
+                console.error('nearby-events', shop.name, said(err, feedProblem(err)))
+                done.push({ restaurant: shop.name, error: 'Could not read the places it watches.' })
+            }
         }
 
         console.log('nearby-events schedule', JSON.stringify(done))
@@ -268,7 +382,7 @@ Deno.serve(async (request) => {
     }
 
     const { data: me } = await admin
-        .from('users').select('id, role, restaurant_id')
+        .from('users').select('id, role, restaurant_id, is_active')
         .eq('id', user.id).maybeSingle()
     if (!me) return json({ error: 'Not signed in' }, 401)
 
@@ -278,13 +392,10 @@ Deno.serve(async (request) => {
     const restaurantId = payload.find?.restaurantId || payload.restaurantId
     if (!restaurantId) return json({ error: 'Bad request' }, 400)
 
-    // A manager at that restaurant, or a super admin. An employee has no reason
-    // to spend the quota and nobody outside the restaurant has any reason at
-    // all.
-    const isSuper = me.role === 'super_admin'
-    if (!isSuper && (me.restaurant_id !== restaurantId || !MANAGERS.includes(me.role))) {
-        return json({ error: 'Not yours' }, 403)
-    }
+    // A manager at that restaurant or a super admin, with a login that is
+    // switched on. See refusalFor in discovery.js.
+    const refused = refusalFor(me, restaurantId)
+    if (refused) return json({ error: refused.error }, refused.status)
 
     // ---------- what is near an address ----------
     //
@@ -318,8 +429,13 @@ Deno.serve(async (request) => {
         // in ten seconds.
         if (!point) {
             if (!address) return json({ error: 'No address to look up' }, 400)
-            const res = await fetch(geocodeUrl(address), { headers: { 'User-Agent': AGENT } })
-            if (!res.ok) {
+            // A lookup that took too long is the same answer as one that said
+            // no, and gets the same way round it.
+            const res = await fetch(geocodeUrl(address), {
+                headers: { 'User-Agent': AGENT },
+                signal: AbortSignal.timeout(WAIT_MS),
+            }).catch(() => null)
+            if (!res || !res.ok) {
                 return json({
                     error: 'The address lookup would not answer. Paste the coordinates instead, '
                         + 'for example 53.348071, -6.229920.',
@@ -341,10 +457,23 @@ Deno.serve(async (request) => {
                 .eq('id', restaurantId)
         }
 
-        const res = await fetch(venuesUrl(point.latitude, point.longitude, key))
-        if (!res.ok) return json({ error: `Ticketmaster said no (${res.status}).` }, 502)
+        const res = await fetch(venuesUrl(point.latitude, point.longitude, key), {
+            signal: AbortSignal.timeout(WAIT_MS),
+        }).catch(() => null)
+        if (!res) return json({ error: 'Ticketmaster did not answer. Try again in a minute.' }, 502)
+        // A refused key is said the way the roster says it, since trying
+        // again will not mend it. Anything else usually passes.
+        if (!res.ok) {
+            return json({
+                error: res.status === 401 || res.status === 403
+                    ? refusedWords(res.status)
+                    : `Ticketmaster could not search right now (error ${res.status}). Try again in a minute.`,
+            }, 502)
+        }
 
-        const found = suggestions(point, venuesFrom(await res.json()))
+        const answer = await res.json().catch(() => null)
+        if (!answer) return json({ error: 'Ticketmaster did not answer. Try again in a minute.' }, 502)
+        const found = suggestions(point, venuesFrom(answer))
 
         // The ones already on this restaurant's list are left out. Offering
         // somebody a place they are already watching is offering them a
@@ -374,7 +503,10 @@ Deno.serve(async (request) => {
         if (out.places === 0) return json({ added: 0, total: 0, why: 'nothing ticketed near this one' })
         return json(out)
     } catch (err) {
-        console.error('nearby-events', err)
-        return json({ error: String(err) }, 502)
+        // The sentence this function wrote, never the error as it came. See
+        // said.
+        const problem = feedProblem(err)
+        console.error('nearby-events', said(err, problem))
+        return json({ error: problem }, 502)
     }
 })

@@ -32,7 +32,7 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 
-const EXPECTED_TABLES = 53
+const EXPECTED_TABLES = 54
 
 for (const f of ['supabase/schema.sql', 'supabase/seed.sql']) {
     if (!existsSync(f)) {
@@ -99,6 +99,18 @@ if (tables < EXPECTED_TABLES) {
 }
 if (places < 1) {
     console.error('No restaurants. Nothing in the app would load against this database.')
+    process.exit(1)
+}
+
+// The two triggers on auth.users. A dump of public never shows them, so they
+// once went missing from schema.sql with nothing to say so: a database without
+// them builds perfectly well and only fails when somebody new signs in.
+const authTriggers = one(
+    "select count(*) from pg_trigger where tgrelid = 'auth.users'::regclass "
+    + "and tgname in ('on_auth_user_created', 'on_auth_user_deleted')",
+)
+if (authTriggers < 2) {
+    console.error('The triggers on auth.users are missing, so a new login would get no users row.')
     process.exit(1)
 }
 
