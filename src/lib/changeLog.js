@@ -8,6 +8,9 @@
 // it is shown as it was stored rather than guessed at, and a missing value says
 // so instead of reading as a zero.
 
+import { fmtMoney } from '@/lib/format'
+import { stampDay } from '@/lib/dates'
+
 // Tables by the name they go under in the app rather than in the database.
 // Anything not listed falls back to the column name tidied up, which is usually
 // close enough and is at least honest.
@@ -85,20 +88,6 @@ export function aOrAn(word) {
     return /^[aeiou]/i.test(word || '') ? `an ${word}` : `a ${word}`
 }
 
-// The day a change belongs to, in the reader's own time rather than the
-// database's. Without this a change made at half past midnight is filed under
-// the day before, which is exactly the sort of thing that makes somebody
-// distrust the whole record.
-export function dayOf(at) {
-    // new Date(null) is the first of January 1970 rather than an error, so a
-    // missing timestamp has to be caught before it becomes a day heading.
-    if (!at) return ''
-    const d = new Date(at)
-    if (isNaN(d)) return ''
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-        + `-${String(d.getDate()).padStart(2, '0')}`
-}
-
 // Columns nobody needs to see move.
 //
 // published_as is the roster's own copy of a shift as it went out, eight values
@@ -121,12 +110,6 @@ export function fieldWords(name) {
     return words.charAt(0).toUpperCase() + words.slice(1)
 }
 
-export function money(n) {
-    return `€${Number(n).toLocaleString('en-IE', {
-        minimumFractionDigits: 2, maximumFractionDigits: 2,
-    })}`
-}
-
 // A stored value as words.
 //
 // Null is the one that matters. It is not zero and it is not an empty box, it
@@ -137,12 +120,12 @@ export function valueWords(field, v) {
     if (typeof v === 'boolean') return v ? 'Yes' : 'No'
 
     if (typeof v === 'number') {
-        return isMoney(field) ? money(v) : String(v)
+        return isMoney(field) ? fmtMoney(v) : String(v)
     }
 
     if (typeof v === 'string') {
         // Postgres hands decimals back as strings so nothing is lost on the way.
-        if (/^-?\d+(\.\d+)?$/.test(v) && isMoney(field)) return money(v)
+        if (/^-?\d+(\.\d+)?$/.test(v) && isMoney(field)) return fmtMoney(v)
 
         // A timestamp reads as a date and a time; a plain date stays a date.
         const stamp = /^(\d{4})-(\d{2})-(\d{2})(T| )(\d{2}):(\d{2})/.exec(v)
@@ -295,11 +278,13 @@ export function actionWords(action) {
 }
 
 // Grouped under a day heading, newest first, for the views that show a run of
-// changes rather than one row's history.
+// changes rather than one row's history. The reader's own day rather than the
+// database's, so a change made at half past midnight is not filed under the day
+// before.
 export function byDay(entries) {
     const days = new Map()
     for (const e of entries || []) {
-        const day = dayOf(e.changed_at)
+        const day = stampDay(e.changed_at)
         if (!day) continue
         if (!days.has(day)) days.set(day, [])
         days.get(day).push(e)

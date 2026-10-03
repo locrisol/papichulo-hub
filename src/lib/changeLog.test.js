@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
     tableWords, fieldWords, valueWords, changedFields, deletedFields,
     whoWords, throughTheApp, summarise, actionWords, actionTone, byDay,
-    aOrAn, dayOf,
+    aOrAn,
 } from '@/lib/changeLog'
 
 describe('tableWords', () => {
@@ -45,6 +45,11 @@ describe('valueWords', () => {
         expect(valueWords('hourly_rate', 13.5)).toBe('€13.50')
         expect(valueWords('quantity', '12.00')).toBe('12.00')
         expect(valueWords('review_count', 41)).toBe('41')
+    })
+
+    it('puts the minus before the euro sign', () => {
+        expect(valueWords('net_sales', '-3.00')).toBe('-€3.00')
+        expect(valueWords('hourly_rate', -3)).toBe('-€3.00')
     })
 
     it('does not read a percentage as money', () => {
@@ -256,17 +261,17 @@ describe('actionWords and actionTone', () => {
     })
 })
 
-describe('dayOf and byDay', () => {
+describe('byDay', () => {
     it('files a change under the day the reader had, not the database', () => {
         // A change at half past midnight belongs to that morning. Slicing the
         // stored timestamp files it under the day before, which is the kind of
         // thing that makes somebody stop trusting the whole record.
         const local = new Date(2026, 8, 8, 0, 30)
-        expect(dayOf(local.toISOString())).toBe('2026-09-08')
+        expect(byDay([{ changed_at: local.toISOString() }])[0][0]).toBe('2026-09-08')
     })
 
-    it('gives nothing for a timestamp it cannot read', () => {
-        expect(dayOf('not a date')).toBe('')
+    it('skips a timestamp it cannot read', () => {
+        expect(byDay([{ changed_at: 'not a date' }])).toEqual([])
     })
 
     it('groups newest day first', () => {

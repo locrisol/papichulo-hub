@@ -35,7 +35,7 @@
 // so it is plain figures and words, nothing the mail would have to work out
 // again. The mail cannot import anything from the app.
 
-import { num, fmtMoney, fmtQty, namesList } from '@/lib/format'
+import { num, fmtMoney, fmtQty, namesList, round2, round4 } from '@/lib/format'
 import { renumberPlan } from '@/lib/priceEvents'
 import { addDays, dayMonth } from '@/lib/dates'
 import { samePrice, sameWords, SAME_WORDS, byPieceWeight } from '@/lib/invoiceImport'
@@ -75,8 +75,6 @@ export function outOfReason(a, b) {
     return x / y > PLAUSIBLE || y / x > PLAUSIBLE
 }
 
-const r2 = n => Math.round(num(n) * 100) / 100
-const r4 = n => Math.round(num(n) * 10000) / 10000
 const pctOf = (now, was) => (was ? Math.round(((now - was) / was) * 1000) / 10 : null)
 const versionKey = (supplierId, code) => `${supplierId}|${code}`
 
@@ -364,7 +362,7 @@ export function priceMoves(all, { weekStart, weekEnd, codes = [] }) {
 
         const samePack = from.units != null && to.units != null && Math.abs(from.units - to.units) < 0.0005
         const change = pctOf(to.perUnit, from.perUnit)
-        const effect = r2(week.reduce((t, d) => (
+        const effect = round2(week.reduce((t, d) => (
             t + (d.perUnit ? d.cost * (1 - from.perUnit / d.perUnit) : 0)
         ), 0))
 
@@ -388,7 +386,7 @@ export function priceMoves(all, { weekStart, weekEnd, codes = [] }) {
             quantity,
             each: quantity > 0 ? effect / quantity : null,
             unit: byCase ? 'a case' : unitOf(to),
-            mixed: new Set(moved.map(d => r4(d.perUnit))).size > 1,
+            mixed: new Set(moved.map(d => round4(d.perUnit))).size > 1,
         })
 
         out.push({
@@ -401,8 +399,8 @@ export function priceMoves(all, { weekStart, weekEnd, codes = [] }) {
             name: nameOf(to),
             pack: to.pack,
             per: samePack ? 'a case' : unitOf(to),
-            was: samePack ? r2(from.perCase) : r4(from.perUnit),
-            now: samePack ? r2(to.perCase) : r4(to.perUnit),
+            was: samePack ? round2(from.perCase) : round4(from.perUnit),
+            now: samePack ? round2(to.perCase) : round4(to.perUnit),
             change,
             up: change > 0,
             effect,
@@ -413,7 +411,7 @@ export function priceMoves(all, { weekStart, weekEnd, codes = [] }) {
             on: series[changedAt].date,
             invoice: series[changedAt].number,
             since: before?.date || null,
-            series: series.map(d => [d.date, r4(d.perUnit)]),
+            series: series.map(d => [d.date, round4(d.perUnit)]),
         })
     }
 
@@ -485,11 +483,11 @@ export function switchesIn(all, { weekStart, weekEnd, prices = [], codes = [] })
                 ? nameOf({ description: usual.description })
                 : 'the one recipes cost from',
             usualFrom: usualLast ? 'delivery' : 'recipes',
-            usualPer: usualPer == null ? null : r4(usualPer),
-            per: r4(last.perUnit),
+            usualPer: usualPer == null ? null : round4(usualPer),
+            per: round4(last.perUnit),
             unit: unitOf(last),
             change,
-            effect: cannot ? 0 : r2(list.reduce((t, d) => (
+            effect: cannot ? 0 : round2(list.reduce((t, d) => (
                 t + (d.perUnit ? d.cost * (1 - usualPer / d.perUnit) : 0)
             ), 0)),
             cannot,
@@ -564,7 +562,7 @@ export function usualSuggestions(all, { weekStart, weekEnd, prices = [], codes =
             usualReplaces: usual.replaces,
             group: codeRow.alternate_group || null,
             usualGroup: usual.group,
-            rowPer: r4(row.price_per_unit),
+            rowPer: round4(row.price_per_unit),
             renumbered: looksRenumbered(sample, usual),
             newer: isNewer(recent[0].items[0], usual, all, lineage, codes),
             usualPriceId: usual.row.id,
@@ -574,8 +572,8 @@ export function usualSuggestions(all, { weekStart, weekEnd, prices = [], codes =
             usualName: usual.description ? nameOf({ description: usual.description }) : null,
             priceId: row.id,
             fromPriceId: usual.row.id,
-            per: r4(sample.perUnit),
-            recipe: usual.row.price_per_unit == null ? null : r4(usual.row.price_per_unit),
+            per: round4(sample.perUnit),
+            recipe: usual.row.price_per_unit == null ? null : round4(usual.row.price_per_unit),
             unit: unitOf(sample),
         })
     }
@@ -637,8 +635,8 @@ export function recipeGaps(all, { weekStart, weekEnd, prices = [], codes = [], t
             paidOn: last.date,
             invoice: last.number,
             unit: unitOf(last),
-            recipe: r4(recipe),
-            paid: r4(averaged ?? last.perUnit),
+            recipe: round4(recipe),
+            paid: round4(averaged ?? last.perUnit),
             // How many deliveries the average is over, and since when, or
             // nothing when it is the last delivery on its own.
             averaged: averaged == null ? null : { deliveries: lately.length, since: lately[0].date },
@@ -658,7 +656,7 @@ export function recipeGaps(all, { weekStart, weekEnd, prices = [], codes = [], t
             ...base,
             state: gap > 0 ? 'behind' : 'high',
             gap,
-            effect: r2(thisWeek.reduce((t, d) => (
+            effect: round2(thisWeek.reduce((t, d) => (
                 t + (d.perUnit ? d.cost * (1 - recipe / d.perUnit) : 0)
             ), 0)),
             // What the price row becomes if recipes are to cost from this:
@@ -667,8 +665,8 @@ export function recipeGaps(all, { weekStart, weekEnd, prices = [], codes = [], t
             newCase: rowUnits <= 0
                 ? null
                 : averaged == null && last.units != null && Math.abs(last.units - rowUnits) < 0.0005
-                    ? r2(last.perCase)
-                    : r2(paid * rowUnits),
+                    ? round2(last.perCase)
+                    : round2(paid * rowUnits),
         })
     }
 
@@ -693,7 +691,7 @@ export function cameBack(credits, claims, { weekStart, weekEnd, invoices = [] })
         .sort((a, b) => String(a.invoice_date).localeCompare(String(b.invoice_date))
             || String(a.invoice_number).localeCompare(String(b.invoice_number)))
         .map(credit => {
-            const money = r2(Math.abs(num(credit.total_amount)))
+            const money = round2(Math.abs(num(credit.total_amount)))
             const logged = (claims || []).filter(c => (
                 c.credit_invoice_id === credit.id && c.status !== 'void' && c.kind !== NOT_LOGGED.value
             ))
@@ -703,13 +701,13 @@ export function cameBack(credits, claims, { weekStart, weekEnd, invoices = [] })
             for (const claim of logged) {
                 const got = Math.min(num(claim.credited_amount), money - explained)
                 if (got <= 0.004) continue
-                parts.set(claim.kind, r2(num(parts.get(claim.kind)) + got))
-                explained = r2(explained + got)
+                parts.set(claim.kind, round2(num(parts.get(claim.kind)) + got))
+                explained = round2(explained + got)
             }
-            const rest = r2(money - explained)
+            const rest = round2(money - explained)
             if (rest > 0.004) {
                 const kind = credit.credit_reason || NOT_LOGGED.value
-                parts.set(kind, r2(num(parts.get(kind)) + rest))
+                parts.set(kind, round2(num(parts.get(kind)) + rest))
             }
 
             const against = byId.get(credit.credit_of_invoice_id) || null
@@ -829,7 +827,7 @@ export function readFrom(documents = []) {
         const s = into.get(name) || { name, invoices: 0, credits: 0, money: 0 }
         if (d.document_type === 'credit') s.credits += 1
         else s.invoices += 1
-        s.money = r2(s.money + num(d.total_amount))
+        s.money = round2(s.money + num(d.total_amount))
         into.set(name, s)
     }
     const byMoney = (a, b) => Math.abs(b.money) - Math.abs(a.money) || a.name.localeCompare(b.name)
@@ -845,7 +843,7 @@ export function readFrom(documents = []) {
         const one = typedList.length === 1
         const invoices = typedList.reduce((t, s) => t + s.invoices, 0)
         const credits = typedList.reduce((t, s) => t + s.credits, 0)
-        const money = r2(typedList.reduce((t, s) => t + s.money, 0))
+        const money = round2(typedList.reduce((t, s) => t + s.money, 0))
         const single = invoices + credits === 1
         second = ` ${namesList(typedList.map(s => s.name))} ${one ? 'was' : 'were'} typed in as `
             + `${single ? 'a total' : 'totals'} (${docCount(invoices, credits)}, ${fmtMoney(money)}), `
@@ -892,16 +890,16 @@ export function priceWeek({
         newCodes: fresh,
         reasons: reasonsOf(back),
         totals: {
-            moves: r2(moves.reduce((t, m) => t + m.effect, 0)),
+            moves: round2(moves.reduce((t, m) => t + m.effect, 0)),
             movesUp: moves.filter(m => m.up).length,
             movesDown: moves.filter(m => !m.up).length,
-            switches: r2(switches.reduce((t, s) => t + s.effect, 0)),
+            switches: round2(switches.reduce((t, s) => t + s.effect, 0)),
             recipes: recipes.filter(r => r.state !== 'cannot').length,
             cannot: recipes.filter(r => r.state === 'cannot').length,
-            back: r2(back.reduce((t, b) => t + b.money, 0)),
-            owed: r2(owed.reduce((t, o) => t + num(o.money), 0)),
+            back: round2(back.reduce((t, b) => t + b.money, 0)),
+            owed: round2(owed.reduce((t, o) => t + num(o.money), 0)),
             owedCount: owed.length,
-            earlier: r2(earlier.reduce((t, e) => t + e.money, 0)),
+            earlier: round2(earlier.reduce((t, e) => t + e.money, 0)),
             earlierCount: earlier.length,
             newCodes: fresh.length,
         },
@@ -916,7 +914,7 @@ export function reasonsOf(back) {
     for (const row of back || []) {
         for (const part of row.parts) {
             const seen = by.get(part.kind) || { kind: part.kind, label: part.label, colour: part.colour, money: 0 }
-            seen.money = r2(seen.money + part.money)
+            seen.money = round2(seen.money + part.money)
             by.set(part.kind, seen)
         }
     }
@@ -1121,14 +1119,16 @@ export function claimActions(claims, items, weekStart) {
 // The words claimLabel writes, with or without the money on the end, and
 // nothing typed after them. The bracket has to be one of the reasons, any of
 // them because a claim's reason can be changed, so a remark typed in brackets
-// on the end, "(rang Tuesday)", is not taken for the Hub's own words.
+// on the end, "(rang Tuesday)", is not taken for the Hub's own words. The
+// money used to be written with no euro sign, and a job written that way is
+// still the Hub's to bring up to date.
 const KIND_WORDS = [...CLAIM_KINDS, NOT_LOGGED].map(k => k.label.toLowerCase()).join('|')
-const CLAIM_LABEL = new RegExp(String.raw`^Chase the credit for .+ \((?:${KIND_WORDS})\)( \(\d+\.\d{2}\))?$`)
+const CLAIM_LABEL = new RegExp(String.raw`^Chase the credit for .+ \((?:${KIND_WORDS})\)( \(€?[\d,]+\.\d{2}\))?$`)
 
 export function claimLabel(claim) {
     const kind = claimKind(claim.kind).label.toLowerCase()
     const balance = claimBalance(claim)
-    const worth = balance == null ? '' : ` (${balance.toFixed(2)})`
+    const worth = balance == null ? '' : ` (${fmtMoney(balance)})`
     return `Chase the credit for ${claim.what} (${kind})${worth}`
 }
 

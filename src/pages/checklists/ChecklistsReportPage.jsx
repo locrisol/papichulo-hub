@@ -3,11 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import { supabase, everyRow } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
-import { addDays, shortDate, todayISO, weekStartOf } from '@/lib/dates'
+import { addDays, shortDate, stampDay, todayISO, weekStartOf } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
 import { card, cardHeader, pageTitle, rowButton, secondaryButton, segmentButton, segmentTrack } from '@/lib/controlStyles'
 import {
-    busiestWords, dayOf, doneDay, doneDayLong, lastDoneRows, listTree, periodRecord, progressOf, repeatWords,
+    busiestWords, doneDay, doneDayLong, lastDoneRows, listTree, periodRecord, progressOf, repeatWords,
     roundOutcome, ticksByTimeOfDay, ticksByWeekday, weekdayName,
 } from '@/lib/checklists'
 import { BAR_COLOUR } from '@/lib/weekTaken'
@@ -139,7 +139,7 @@ export default function ChecklistsReportPage() {
         }
     }
 
-    const roundsShown = data.rounds.filter(r => dayOf(r.started_at) >= from || !r.ended_at)
+    const roundsShown = data.rounds.filter(r => stampDay(r.started_at) >= from || !r.ended_at)
     const listOf = new Map(data.lists.map(l => [l.id, l]))
 
     return (

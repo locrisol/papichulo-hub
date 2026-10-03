@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-    lastUsed, latestByUser, describeAgent, isScript, agoWords, usedForWords,
+    lastUsed, latestByUser, describeAgent, isScript, lastSeenWords, usedForWords,
 } from '@/lib/loginEvents'
 
 const CHROME_WIN = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
@@ -104,37 +104,37 @@ describe('isScript', () => {
     })
 })
 
-describe('agoWords', () => {
+describe('lastSeenWords', () => {
     const now = new Date('2026-09-07T22:00:00Z')
 
     it('rounds down and says it plainly', () => {
-        expect(agoWords('2026-09-07T21:00:00Z', now)).toBe('1 hour ago')
-        expect(agoWords('2026-09-07T19:30:00Z', now)).toBe('2 hours ago')
-        expect(agoWords('2026-09-07T21:35:00Z', now)).toBe('25 minutes ago')
+        expect(lastSeenWords('2026-09-07T21:00:00Z', now)).toBe('1 hour ago')
+        expect(lastSeenWords('2026-09-07T19:30:00Z', now)).toBe('2 hours ago')
+        expect(lastSeenWords('2026-09-07T21:35:00Z', now)).toBe('25 minutes ago')
     })
 
     it('says just now for anything inside a minute and a half', () => {
-        expect(agoWords('2026-09-07T21:59:30Z', now)).toBe('Just now')
+        expect(lastSeenWords('2026-09-07T21:59:30Z', now)).toBe('Just now')
     })
 
     it('names yesterday rather than counting hours', () => {
-        expect(agoWords('2026-09-06T20:00:00Z', now)).toBe('Yesterday')
+        expect(lastSeenWords('2026-09-06T20:00:00Z', now)).toBe('Yesterday')
     })
 
     it('gives nothing past a week, so the page shows a date instead', () => {
         // "Last used 34 days ago" is a figure nobody checks against a
         // calendar. By then a date is what you want.
-        expect(agoWords('2026-09-02T22:00:00Z', now)).toBe('5 days ago')
-        expect(agoWords('2026-08-20T22:00:00Z', now)).toBeNull()
+        expect(lastSeenWords('2026-09-02T22:00:00Z', now)).toBe('5 days ago')
+        expect(lastSeenWords('2026-08-20T22:00:00Z', now)).toBeNull()
     })
 
     it('says never rather than inventing something', () => {
-        expect(agoWords(null, now)).toBe('Never')
-        expect(agoWords('not a date', now)).toBe('Never')
+        expect(lastSeenWords(null, now)).toBe('Never')
+        expect(lastSeenWords('not a date', now)).toBe('Never')
     })
 
     it('does not go backwards on a clock that is slightly out', () => {
-        expect(agoWords('2026-09-07T22:00:30Z', now)).toBe('Just now')
+        expect(lastSeenWords('2026-09-07T22:00:30Z', now)).toBe('Just now')
     })
 })
 

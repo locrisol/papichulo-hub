@@ -5,8 +5,8 @@ import { useAuth } from '@/context/auth'
 import { canManageUser, ALL_ROLES } from '@/lib/access'
 import { friendlyError } from '@/lib/errors'
 import { tableHeadRow, tableCard, badge, rowButton, pageTitle, secondaryButton } from '@/lib/controlStyles'
-import { latestByUser, lastUsed, agoWords } from '@/lib/loginEvents'
-import { fullDate } from '@/lib/dates'
+import { latestByUser, lastUsed, lastSeenWords } from '@/lib/loginEvents'
+import { stampDate } from '@/lib/dates'
 import SignInHistory from '@/components/settings/SignInHistory'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import ArrangeList from '@/components/ui/ArrangeList'
@@ -207,7 +207,7 @@ export default function UsersPage() {
   function seenWords(person) {
     const at = lastUsed(lastSeen.get(person.id))
     if (!at) return 'Never'
-    return agoWords(at) || fullDate(at.slice(0, 10))
+    return lastSeenWords(at) || stampDate(at)
   }
 
   function getRestaurantName(restaurantId) {

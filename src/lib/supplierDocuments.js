@@ -22,7 +22,7 @@
 // reason: it is the only way to find an invoice that was never downloaded at
 // all. Comparing the documents we hold against the documents we hold cannot.
 
-import { num } from '@/lib/format'
+import { num, round2 } from '@/lib/format'
 
 // The word at the end of every row, which is a link on the page and nothing
 // once it has been copied.
@@ -197,8 +197,7 @@ export function portalSummary(rows) {
     }
 }
 
-const cents = n => Math.round(num(n) * 100) / 100
-const same = (a, b) => Math.abs(cents(a) - cents(b)) < 0.005
+const same = (a, b) => Math.abs(round2(a) - round2(b)) < 0.005
 
 // Where each document on the supplier's list stands in the Hub.
 //
@@ -254,7 +253,7 @@ export function documentStatus(portal, held) {
         for (const row of todays) {
             const credits = creditsOf.get(row.document_id) || []
             if (!credits.length) continue
-            const net = cents(row.value + credits.reduce((t, c) => t + num(c.value), 0))
+            const net = round2(row.value + credits.reduce((t, c) => t + num(c.value), 0))
             const hit = take(h => same(h.total_amount, net))
             if (!hit) continue
             out.set(row.document_id, { status: 'by_hand', invoice: hit, net: true })
@@ -275,7 +274,7 @@ export function documentStatus(portal, held) {
             pool.sort((a, b) => Math.abs(num(a.total_amount) - row.value) - Math.abs(num(b.total_amount) - row.value))
             const hit = pool.shift()
             out.set(row.document_id, {
-                status: 'by_hand', invoice: hit, differs: cents(num(hit.total_amount) - row.value),
+                status: 'by_hand', invoice: hit, differs: round2(num(hit.total_amount) - row.value),
             })
         }
     }

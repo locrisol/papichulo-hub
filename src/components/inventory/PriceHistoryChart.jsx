@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { fmtUnitCost } from '@/lib/format'
-import { shortDate, todayISO, addDays } from '@/lib/dates'
+import { shortDate, todayISO, addDays, daysBetween } from '@/lib/dates'
 import { ticks } from '@/lib/reportChart'
 import {
-    rangesFor, defaultRange, stepCorners, withinWindow, priceScale, daysBetween,
+    rangesFor, defaultRange, stepCorners, withinWindow, priceScale,
 } from '@/lib/priceHistory'
 import { segmentTrack, segmentButton, hintClass } from '@/lib/controlStyles'
 

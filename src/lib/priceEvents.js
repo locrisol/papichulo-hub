@@ -10,7 +10,7 @@
 // Nothing here writes anything. It works out the rows, and the screen sends
 // them, so all of this can be tested without a database.
 
-import { num } from '@/lib/format'
+import { num, round2, round4 } from '@/lib/format'
 
 export const REASONS = {
     invoice: 'An invoice said so',
@@ -19,8 +19,8 @@ export const REASONS = {
     created: 'First price we had',
 }
 
-const to4 = n => (n == null ? null : Math.round(num(n) * 10000) / 10000)
-const to2 = n => (n == null ? null : Math.round(num(n) * 100) / 100)
+const to4 = n => (n == null ? null : round4(n))
+const to2 = n => (n == null ? null : round2(n))
 
 // Accepting what an invoice charged.
 //

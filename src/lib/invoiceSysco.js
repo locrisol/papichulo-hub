@@ -37,7 +37,7 @@
 //   - There are two more columns, WEIGHT and VAT CODE, and the VAT code sits
 //     close enough to the value to be read as part of it.
 
-import { num } from '@/lib/format'
+import { num, round2 } from '@/lib/format'
 
 // Two rows of eight point lettering sit about ten points apart, so anything
 // within two and a bit of the same baseline is the same line.
@@ -747,10 +747,6 @@ export function readSyscoInvoice(items) {
         checks,
         problems,
     }
-}
-
-function round2(n) {
-    return Math.round(num(n) * 100) / 100
 }
 
 // A sum of money shared out in proportion, to the cent.

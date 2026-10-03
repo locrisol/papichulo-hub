@@ -29,7 +29,7 @@ import {
     sourceWords,
     placeTag,
     whenWords,
-    agoWords,
+    sinceWords,
     foundWords,
     readWords,
     distanceKm,
@@ -615,13 +615,13 @@ describe('when it is, in words', () => {
 
 describe('how long ago', () => {
     it('names today and yesterday and dates the rest', () => {
-        expect(agoWords('2026-11-19T09:00:00', '2026-11-19')).toBe('today')
-        expect(agoWords('2026-11-18T09:00:00', '2026-11-19')).toBe('yesterday')
-        expect(agoWords('2026-11-08T09:00:00', '2026-11-19')).toBe('on 8 Nov')
+        expect(sinceWords('2026-11-19T09:00:00', '2026-11-19')).toBe('today')
+        expect(sinceWords('2026-11-18T09:00:00', '2026-11-19')).toBe('yesterday')
+        expect(sinceWords('2026-11-08T09:00:00', '2026-11-19')).toBe('on 8 Nov')
     })
 
     it('says nothing when there is no stamp', () => {
-        expect(agoWords(null, '2026-11-19')).toBe('')
+        expect(sinceWords(null, '2026-11-19')).toBe('')
     })
 })
 

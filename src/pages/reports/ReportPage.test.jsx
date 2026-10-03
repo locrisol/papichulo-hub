@@ -315,7 +315,7 @@ describe('the support list kept from the claims', () => {
         renderReport()
         fireEvent.click((await screen.findAllByRole('button', { name: 'Update the support list' }))[0])
         await waitFor(() => expect(items.update).toHaveBeenCalledWith({
-            done_on: null, label: 'Chase the credit for Bowls charged 49.73 (price query) (24.75)',
+            done_on: null, label: 'Chase the credit for Bowls charged 49.73 (price query) (€24.75)',
         }))
         expect(items.eq).toHaveBeenCalledWith('id', 'a1')
         expect(items.insert).not.toHaveBeenCalled()
@@ -328,7 +328,7 @@ describe('the support list kept from the claims', () => {
         renderReport()
         fireEvent.click((await screen.findAllByRole('button', { name: 'Update the support list' }))[0])
         await waitFor(() => expect(items.update).toHaveBeenCalledWith({
-            label: 'Chase the credit for Bowls charged 49.73 (price query) (24.75)',
+            label: 'Chase the credit for Bowls charged 49.73 (price query) (€24.75)',
         }))
         expect(items.eq).toHaveBeenCalledWith('id', 'a1')
     })

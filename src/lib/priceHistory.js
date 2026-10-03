@@ -20,6 +20,7 @@
 // half on exactly the day worth looking at.
 
 import { num } from '@/lib/format'
+import { daysBetween, stampDay } from '@/lib/dates'
 import { niceMin, niceMax } from '@/lib/reportChart'
 
 // The blue every chart in this app uses for the whole of something, with the
@@ -47,10 +48,6 @@ export const PRICE_RANGES = [
     { key: '6m', label: '6 months', short: '6m', days: 183 },
     { key: '12m', label: '12 months', short: '12m', days: 365 },
 ]
-
-const DAY = 86400000
-const dayOf = date => Date.parse(`${date}T00:00:00Z`)
-export const daysBetween = (from, to) => Math.round((dayOf(to) - dayOf(from)) / DAY)
 
 // What each supplier charged, off the documents themselves.
 //
@@ -90,7 +87,9 @@ export function pointsFromLines(lines) {
 export function pointsFromEvents(events) {
     const byDate = new Map()
     for (const event of events || []) {
-        const date = String(event.at || '').slice(0, 10)
+        // The day here, so a price typed at half past midnight is drawn on that
+        // day and not the one before.
+        const date = event.at ? stampDay(event.at) : ''
         if (!date) continue
         byDate.set(date, {
             date,

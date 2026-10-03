@@ -921,7 +921,7 @@ describe('the claims that belong on the list of jobs', () => {
         expect(add).toEqual([])
         expect(tick).toEqual([])
         expect(reopen).toEqual([{
-            id: 'a1', patch: { done_on: null, label: 'Chase the credit for two trays of chicken (short) (49.98)' },
+            id: 'a1', patch: { done_on: null, label: 'Chase the credit for two trays of chicken (short) (€49.98)' },
         }])
     })
 
@@ -946,7 +946,7 @@ describe('the claims that belong on the list of jobs', () => {
             label: 'Chase the credit for 3 cases of chorizo (short)',
         }]
         expect(claimActions([claim({ what: 'Chorizo', amount: 21 })], items, '2026-09-13').relabel).toEqual([{
-            id: 'a1', patch: { label: 'Chase the credit for Chorizo (short) (21.00)' },
+            id: 'a1', patch: { label: 'Chase the credit for Chorizo (short) (€21.00)' },
         }])
     })
 
@@ -991,13 +991,23 @@ describe('the claims that belong on the list of jobs', () => {
             label: 'Chase the credit for Chorizo (sliced) (no reason logged) (41.99)',
         }]
         expect(claimActions([claim({ what: 'Chorizo (sliced)', amount: 21 })], items, '2026-09-13').relabel).toEqual([{
-            id: 'a1', patch: { label: 'Chase the credit for Chorizo (sliced) (short) (21.00)' },
+            id: 'a1', patch: { label: 'Chase the credit for Chorizo (sliced) (short) (€21.00)' },
+        }])
+    })
+
+    it('brings up to date words it wrote with the euro sign on', () => {
+        const items = [{
+            id: 'a1', kind: 'action', key: 'claim:c1', done_on: null,
+            label: 'Chase the credit for Chorizo (short) (€1,250.00)',
+        }]
+        expect(claimActions([claim({ what: 'Chorizo', amount: 21 })], items, '2026-09-13').relabel).toEqual([{
+            id: 'a1', patch: { label: 'Chase the credit for Chorizo (short) (€21.00)' },
         }])
     })
 
     it('says what is being chased and what it is worth', () => {
         expect(claimLabel(claim({ credited_amount: 20 }))).toBe(
-            'Chase the credit for two trays of chicken (short) (49.98)',
+            'Chase the credit for two trays of chicken (short) (€49.98)',
         )
     })
 

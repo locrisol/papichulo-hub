@@ -1,6 +1,7 @@
 import {
-    tableWords, changedFields, whoWords, throughTheApp, actionWords, actionTone, dayOf,
+    tableWords, changedFields, whoWords, throughTheApp, actionWords, actionTone,
 } from '@/lib/changeLog'
+import { stampDay } from '@/lib/dates'
 import { tableHeadRow, tableCard, card } from '@/lib/controlStyles'
 
 // The change log as a list.
@@ -14,7 +15,7 @@ import { tableHeadRow, tableCard, card } from '@/lib/controlStyles'
 // rather than worked across.
 
 function dayMonthDigits(at) {
-    const day = dayOf(at)
+    const day = stampDay(at)
     return `${day.slice(8, 10)}/${day.slice(5, 7)}`
 }
 

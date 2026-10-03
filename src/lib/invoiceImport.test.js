@@ -884,8 +884,8 @@ describe('what stops a document being written', () => {
             deposits: 21.6,
             checks: { values: { ok: false, got: 390, expected: 396.63 }, cases: { ok: true } },
         })
-        expect(out[0]).toBe('The lines come to 390.00 and the goods come to 396.63 before the '
-            + '21.60 container deposit, so something on it was not read.')
+        expect(out[0]).toBe('The lines come to €390.00 and the goods come to €396.63 before the '
+            + '€21.60 container deposit, so something on it was not read.')
     })
 
     it('says which part of the charges did not add up', () => {
