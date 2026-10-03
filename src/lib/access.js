@@ -61,3 +61,22 @@ export function canManageUser(actor, target) {
 
     return actor.role === 'super_admin'
 }
+
+// A role as a person reads it, for example Store manager.
+//
+// Seven screens wrote these out for themselves and did not agree on capitals:
+// two said Store Manager and five said store manager. Empty for no role, or
+// one this list does not know, rather than the raw database word.
+//
+// A Map rather than an object, so a word like toString finds nothing instead of
+// something every object carries.
+const ROLE_LABELS = new Map([
+    ['employee', 'Employee'],
+    ['store_manager', 'Store manager'],
+    ['owner', 'Owner'],
+    ['super_admin', 'Super admin'],
+])
+
+export function roleLabel(role) {
+    return ROLE_LABELS.get(role) || ''
+}

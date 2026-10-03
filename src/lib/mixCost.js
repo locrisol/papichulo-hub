@@ -243,3 +243,35 @@ export function menuItemCost(components, allProducts, allRecipeLines, prices) {
 
   return total
 }
+
+// Where a menu item's margin turns amber and where it turns red: green at 65%
+// or more, amber from 60% up to 65%, red below 60%. There is no recorded
+// reason for these two figures. They were written out on the menu items list
+// and on the menu item itself, and live here so the two screens colour a dish
+// the same.
+export const MARGIN_GREEN = 65
+export const MARGIN_AMBER = 60
+
+// What a dish sells for once VAT is taken off, what is left after its cost,
+// and that as a share of the net price.
+//
+// The menu items list and the menu item both worked this out. The list's way
+// is kept: a VAT rate that is missing counts as none rather than blanking the
+// net price. margin and marginPct are null when there is no cost, and
+// marginPct is null too when there is no net price to divide by.
+export function menuMargin(sellingPrice, vatRate, cost) {
+  const vat = parseFloat(vatRate) || 0
+  const net = parseFloat(sellingPrice) / (1 + vat / 100)
+  const margin = cost == null ? null : net - cost
+  const marginPct = margin !== null && net > 0 ? (margin / net) * 100 : null
+  return { net, margin, marginPct }
+}
+
+// The colour a margin percentage is written in, against the two lines above.
+// Muted when there is no margin to colour.
+export function marginTone(pct) {
+  if (pct == null) return 'text-muted'
+  if (pct >= MARGIN_GREEN) return 'text-green-700'
+  if (pct >= MARGIN_AMBER) return 'text-amber-700'
+  return 'text-red-600'
+}

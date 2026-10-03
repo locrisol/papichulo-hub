@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { toISODate, todayISO, weekStartOf, weekDates, shortDate, dayLabel, dayList, addDays, monthStart, addMonths, monthLabel, fullDate, weekMonthLabel, weekNumber, weekRange , stampDate, stampDateTime, monthYearOf } from '@/lib/dates'
+import { toISODate, todayISO, weekStartOf, weekDates, shortDate, dayLabel, dayList, addDays, monthStart, addMonths, monthLabel, fullDate, weekMonthLabel, weekNumber, weekRange , stampDate, stampDateTime, monthYearOf, clockTime, stampDay, WEEKDAY_NAMES, daysBetween } from '@/lib/dates'
 
 describe('toISODate', () => {
     it('formats a date as YYYY-MM-DD', () => {
@@ -302,5 +302,89 @@ describe('monthYearOf', () => {
 
     it('gives nothing for nothing', () => {
         expect(monthYearOf(undefined)).toBe('')
+    })
+})
+
+// Nothing pins the timezone the tests run in, so these build their stamps from
+// local parts and read the same in Dublin and on a UTC build machine.
+describe('clockTime', () => {
+    it('gives the time of a stamp', () => {
+        expect(clockTime(new Date(2026, 7, 23, 14, 5).toISOString())).toBe('14:05')
+    })
+
+    it('pads a single digit hour', () => {
+        expect(clockTime(new Date(2026, 7, 23, 9, 5))).toBe('09:05')
+    })
+
+    it('is the time stampDateTime prints', () => {
+        const stamp = new Date(2026, 7, 23, 22, 40).toISOString()
+        expect(stampDateTime(stamp).endsWith(`, ${clockTime(stamp)}`)).toBe(true)
+    })
+
+    it('gives nothing for nothing', () => {
+        expect(clockTime(null)).toBe('')
+        expect(clockTime('not a time')).toBe('')
+    })
+})
+
+describe('stampDay', () => {
+    // Quarter past midnight in summer is still the previous evening in UTC,
+    // so slicing the stamp would give the 27th.
+    it('gives the local day of an early morning stamp', () => {
+        expect(stampDay(new Date(2026, 8, 28, 0, 15).toISOString())).toBe('2026-09-28')
+    })
+
+    it('gives the local day of a late evening stamp', () => {
+        const lateEvening = new Date(2026, 8, 27, 23, 30)
+        expect(stampDay(lateEvening.toISOString())).toBe('2026-09-27')
+        expect(stampDay(lateEvening)).toBe('2026-09-27')
+    })
+
+    it('gives nothing for nothing rather than the first of January 1970', () => {
+        expect(stampDay(null)).toBe('')
+        expect(stampDay('')).toBe('')
+        expect(stampDay('not a date')).toBe('')
+    })
+})
+
+describe('WEEKDAY_NAMES', () => {
+    it('starts on Sunday, like the weeks', () => {
+        expect(WEEKDAY_NAMES).toHaveLength(7)
+        expect(WEEKDAY_NAMES[0]).toBe('Sunday')
+        expect(WEEKDAY_NAMES[6]).toBe('Saturday')
+    })
+
+    it('lines up with getDay', () => {
+        // 27 September 2026 is a Sunday.
+        expect(WEEKDAY_NAMES[new Date(2026, 8, 27).getDay()]).toBe('Sunday')
+        expect(WEEKDAY_NAMES[new Date(2026, 8, 30).getDay()]).toBe('Wednesday')
+    })
+})
+
+describe('daysBetween', () => {
+    it('counts whole days', () => {
+        expect(daysBetween('2026-09-27', '2026-10-11')).toBe(14)
+        expect(daysBetween('2026-09-27', '2026-09-27')).toBe(0)
+    })
+
+    it('is negative going backwards', () => {
+        expect(daysBetween('2026-10-11', '2026-09-27')).toBe(-14)
+    })
+
+    // The clocks go back on 25 October 2026. A day that long is still one day.
+    it('is not moved by the clocks changing', () => {
+        expect(daysBetween('2026-10-24', '2026-10-26')).toBe(2)
+        expect(daysBetween('2026-10-18', '2026-11-01')).toBe(14)
+        expect(daysBetween('2026-03-28', '2026-03-30')).toBe(2)
+    })
+
+    it('crosses the end of a month and a year', () => {
+        expect(daysBetween('2026-12-27', '2027-01-02')).toBe(6)
+        expect(daysBetween('2028-02-28', '2028-03-01')).toBe(2)
+    })
+
+    it('is null when a date is missing', () => {
+        expect(daysBetween(null, '2026-09-27')).toBeNull()
+        expect(daysBetween('2026-09-27', '')).toBeNull()
     })
 })

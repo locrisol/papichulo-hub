@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { bySection, summarise, onThisCount, noPrice, FOOD_SECTIONS } from '@/lib/stockTakeSummary'
+import { bySection, summarise, onThisCount, noPrice, breakdownParts, justLoose, FOOD_SECTIONS } from '@/lib/stockTakeSummary'
 
 const product = (id, name, section, extra = {}) =>
     ({ id, name, section, unit: 'KG', ...extra })
@@ -289,5 +289,49 @@ describe('noPrice', () => {
     // None on the shelf is worth nothing whatever it costs.
     it('is not a line of none', () => {
         expect(noPrice({ quantity_counted: 0, unit_cost: null, line_total: 0 })).toBe(false)
+    })
+})
+
+describe('breakdownParts', () => {
+    const cheese = product('p1', 'Cheese', 'Cold Room')
+
+    it('reads a single loose entry, which is its own total', () => {
+        const parts = breakdownParts({ unit_breakdown: { loose: { qty: 4.27, factor: 1 } } }, cheese)
+        expect(parts).toEqual([{ key: 'loose', text: '4.27 KG', factor: 1, isLoose: true }])
+        expect(justLoose(parts)).toBe(true)
+    })
+
+    it('puts the biggest pack first and loose last', () => {
+        const parts = breakdownParts({
+            unit_breakdown: {
+                loose: { qty: 2.25, factor: 1 },
+                Bag: { qty: 15, factor: 2 },
+                Box: { qty: 6, factor: '10' },
+            },
+        }, cheese)
+        expect(parts.map(p => p.text)).toEqual(['6 Box', '15 Bag', '2.25 KG'])
+        expect(parts[0]).toEqual({ key: 'Box', text: '6 Box', factor: 10, isLoose: false })
+        expect(justLoose(parts)).toBe(false)
+    })
+
+    // A single pack is arithmetic worth showing: 3 Box is not 30 KG at a glance.
+    it('does not treat a single pack as loose', () => {
+        const parts = breakdownParts({ unit_breakdown: { Box: { qty: 3, factor: 10 } } }, cheese)
+        expect(parts.map(p => p.text)).toEqual(['3 Box'])
+        expect(justLoose(parts)).toBe(false)
+    })
+
+    it('tidies the quantity the way the rest of the count does', () => {
+        const parts = breakdownParts({ unit_breakdown: { loose: { qty: 11.799999 } } }, cheese)
+        expect(parts[0].text).toBe('11.8 KG')
+        expect(parts[0].factor).toBe(1)
+    })
+
+    it('is null when nothing was counted in parts', () => {
+        expect(breakdownParts({ unit_breakdown: null }, cheese)).toBeNull()
+        expect(breakdownParts({}, cheese)).toBeNull()
+        expect(breakdownParts({ unit_breakdown: {} }, cheese)).toBeNull()
+        expect(breakdownParts({ unit_breakdown: { Box: { qty: null } } }, cheese)).toBeNull()
+        expect(justLoose(null)).toBe(false)
     })
 })

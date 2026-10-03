@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { can, homeFor, canManageUser, MANAGERS, RESTAURANT_CONFIG, ADMIN_ONLY } from '@/lib/access'
+import { can, homeFor, canManageUser, roleLabel, ALL_ROLES, MANAGERS, RESTAURANT_CONFIG, ADMIN_ONLY } from '@/lib/access'
 
 const at = (role, restaurant = 'pc', id = role) => ({ id, role, restaurant_id: restaurant })
 
@@ -54,5 +54,26 @@ describe('canManageUser', () => {
     it('says no when either side has no role', () => {
         expect(canManageUser(null, at('employee'))).toBe(false)
         expect(canManageUser(at('super_admin'), { id: 'x' })).toBe(false)
+    })
+})
+
+describe('roleLabel', () => {
+    it('names each role with only the first word capitalised', () => {
+        expect(roleLabel('employee')).toBe('Employee')
+        expect(roleLabel('store_manager')).toBe('Store manager')
+        expect(roleLabel('owner')).toBe('Owner')
+        expect(roleLabel('super_admin')).toBe('Super admin')
+    })
+
+    it('has a name for every role there is', () => {
+        for (const role of ALL_ROLES) expect(roleLabel(role)).not.toBe('')
+    })
+
+    it('says nothing for no role, or one it does not know', () => {
+        expect(roleLabel(null)).toBe('')
+        expect(roleLabel(undefined)).toBe('')
+        expect(roleLabel('manager')).toBe('')
+        // Not something off the object itself.
+        expect(roleLabel('toString')).toBe('')
     })
 })

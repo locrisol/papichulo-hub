@@ -210,9 +210,54 @@ export function stampDateTime(stamp) {
     if (!stamp) return ''
     const d = new Date(stamp)
     if (isNaN(d)) return ''
+    return `${stampDate(stamp)}, ${clockTime(stamp)}`
+}
+
+// Just the time of a timestamp, for example 14:05.
+//
+// The half of stampDateTime after the comma, so a "Saved at" line and a dated
+// row read the time the same way. Built by hand for the same reason the date
+// is: toLocaleTimeString follows the browser, and some say 2:05 pm.
+export function clockTime(stamp) {
+    if (!stamp) return ''
+    const d = new Date(stamp)
+    if (isNaN(d)) return ''
     const hours = String(d.getHours()).padStart(2, '0')
     const minutes = String(d.getMinutes()).padStart(2, '0')
-    return `${stampDate(stamp)}, ${hours}:${minutes}`
+    return `${hours}:${minutes}`
+}
+
+// The day a timestamp falls on here, as YYYY-MM-DD, so it can be compared with
+// a plain date or handed to dayLabel.
+//
+// The local day, not the UTC one. Something done just after midnight in
+// summer is on the database as the previous evening in UTC, and slicing the
+// first ten characters off it files it under the day before.
+export function stampDay(stamp) {
+    if (!stamp) return ''
+    const d = new Date(stamp)
+    if (isNaN(d)) return ''
+    return toISODate(d)
+}
+
+// The days of the week written out, Sunday first like DAY_NAMES in events.js
+// and like every week in the Hub.
+//
+// Not called WEEKDAYS, because availability.js already has a WEEKDAYS that is a
+// list of objects, and the same name meaning two things is how a wrong import
+// goes unnoticed.
+export const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+
+// Whole days from one YYYY-MM-DD to another. Negative when to is before from.
+//
+// Both are read as midnight UTC, so the clocks changing in between cannot turn
+// fourteen days into thirteen and a half. Null when either is missing, so a
+// caller decides what no date means rather than being handed a zero that looks
+// like the same day.
+export function daysBetween(from, to) {
+    if (!from || !to) return null
+    const [a, b] = [from, to].map(d => Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10)))
+    return Math.round((b - a) / 86400000)
 }
 
 // The month a timestamp falls in, written out. For example September 2026.
