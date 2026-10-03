@@ -14,11 +14,11 @@ import {
 import { wholeDayOn } from '@/lib/absences'
 
 export const REQUEST_STATES = {
-    asked: { label: 'Waiting on them', tone: 'wait' },
-    accepted: { label: 'Waiting on a manager', tone: 'wait' },
-    declined: { label: 'Turned down', tone: 'no' },
-    withdrawn: { label: 'Taken back', tone: 'no' },
-    approved: { label: 'Done', tone: 'yes' },
+    asked: { label: 'Waiting for a reply', tone: 'wait' },
+    accepted: { label: 'Waiting for approval', tone: 'wait' },
+    declined: { label: 'Declined', tone: 'no' },
+    withdrawn: { label: 'Cancelled', tone: 'no' },
+    approved: { label: 'Approved', tone: 'yes' },
     refused: { label: 'Not approved', tone: 'no' },
 }
 

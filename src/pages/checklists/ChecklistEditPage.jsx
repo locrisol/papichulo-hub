@@ -125,17 +125,19 @@ export default function ChecklistEditPage() {
     async function removeTasks(rows, what) {
         const ids = rows.map(r => r.id)
         const ticked = ids.some(i => used.has(i))
+        const pictures = rows.flatMap(r => r.guide_photos || [])
         const ok = await confirm({
-            title: `Take ${what} off the list?`,
+            title: ticked ? `Remove ${what} from the list?` : `Delete ${what}?`,
             message: ticked
-                ? 'It has been ticked before, so the rounds that ticked it keep it. It will not be on the list from now on.'
+                ? 'It has been ticked before, so past rounds keep it. It will not be on the list from now on.'
                 : 'It has never been ticked, so it is deleted.',
-            confirmLabel: ticked ? 'Take it off' : 'Delete it',
+            confirmLabel: ticked ? 'Remove' : 'Delete',
             tone: 'danger',
-            dangerNote: ticked ? 'Its guide picture is deleted tonight.' : 'This cannot be undone.',
+            dangerNote: !ticked ? 'This cannot be undone.'
+                : pictures.length === 1 ? 'Its guide picture is deleted tonight.'
+                    : pictures.length > 1 ? 'Its guide pictures are deleted tonight.' : '',
         })
         if (!ok) return false
-        const pictures = rows.flatMap(r => r.guide_photos || [])
         const { error: rmErr } = ticked
             ? await supabase.from('checklist_tasks').update({ is_active: false }).in('id', ids)
             : await supabase.from('checklist_tasks').delete().in('id', ids)
@@ -156,11 +158,11 @@ export default function ChecklistEditPage() {
         const inside = tasks.filter(t => t.category_id === category.id)
         const ticked = inside.some(t => used.has(t.id))
         const ok = await confirm({
-            title: `Take ${category.name} off the list?`,
+            title: ticked ? `Remove ${category.name} from the list?` : `Delete ${category.name}?`,
             message: ticked
-                ? 'Things in it have been ticked before, so the rounds that ticked them keep them. It will not be on the list from now on.'
+                ? 'Things in it have been ticked before, so past rounds keep them. It will not be on the list from now on.'
                 : `It is deleted, with ${inside.length === 1 ? 'the one thing' : `the ${inside.length} things`} in it.`,
-            confirmLabel: ticked ? 'Take it off' : 'Delete it',
+            confirmLabel: ticked ? 'Remove' : 'Delete',
             tone: 'danger',
         })
         if (!ok) return
@@ -187,7 +189,7 @@ export default function ChecklistEditPage() {
             const ok = await confirm({
                 title: `Delete ${list.name}?`,
                 message: 'It has never been started, so it is deleted with everything on it.',
-                confirmLabel: 'Delete it',
+                confirmLabel: 'Delete',
                 tone: 'danger',
             })
             if (!ok) return
@@ -199,9 +201,9 @@ export default function ChecklistEditPage() {
             return
         }
         const ok = await confirm({
-            title: `Take ${list.name} off?`,
-            message: 'Nobody will see it on their phone, and it leaves the weekly report. Its rounds are kept, with who did what. Its guide pictures are deleted tonight.',
-            confirmLabel: 'Take it off',
+            title: `Deactivate ${list.name}?`,
+            message: `Nobody will see it on their phone, and it leaves the weekly report. Its rounds are kept, with who did what.${tasks.some(t => (t.guide_photos || []).length > 0) ? ' Its guide pictures are deleted tonight.' : ''}`,
+            confirmLabel: 'Deactivate',
             tone: 'danger',
             dangerNote: '',
         })
@@ -343,16 +345,16 @@ export default function ChecklistEditPage() {
                         {list.is_active ? (
                             <>
                                 <button type="button" onClick={removeList} className={rowButton('danger')}>
-                                    {roundCount === 0 ? 'Delete this list' : 'Take this list off'}
+                                    {roundCount === 0 ? 'Delete list' : 'Deactivate list'}
                                 </button>
                                 <p className={hintClass}>
                                     {roundCount === 0
                                         ? 'It has never been started, so it can be deleted.'
-                                        : 'It has been worked through before, so it is taken off rather than deleted, and its rounds are kept.'}
+                                        : 'It has been used before, so it can only be deactivated. Its rounds are kept.'}
                                 </p>
                             </>
                         ) : (
-                            <button type="button" onClick={putBack} className={rowButton('good')}>Put this list back</button>
+                            <button type="button" onClick={putBack} className={rowButton('good')}>Reactivate list</button>
                         )}
                     </div>
                 </section>
@@ -450,7 +452,7 @@ function ListForm({ list, onSaved, restaurantId, userId, onError }) {
         <form onSubmit={save} className={`${card} p-5 space-y-4`}>
             <div>
                 <label htmlFor="list-name" className={labelClass}>Name</label>
-                <input id="list-name" className={fieldClass} value={name} onChange={e => setName(e.target.value)} placeholder="Weekly Deep Clean" required />
+                <input id="list-name" className={fieldClass} value={name} onChange={e => setName(e.target.value)} placeholder="Weekly deep clean" required />
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
                 <div>
@@ -584,7 +586,7 @@ function TaskDialog({ list, editing, restaurantId, onClose, onSaved }) {
                             >
                                 {pictures.length ? 'Add another picture' : 'Add picture'}
                             </PhotoButton>
-                            {pictures.length >= MAX_PICTURES && <span className="text-xs text-muted">That is the most a task can have.</span>}
+                            {pictures.length >= MAX_PICTURES && <span className="text-xs text-muted">That is the most allowed.</span>}
                         </div>
                         <p className={hintClass}>Staff see a button for them and open them only if they need to.</p>
                     </div>

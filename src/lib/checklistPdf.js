@@ -315,7 +315,7 @@ export async function roundPdf({ restaurant, list, tree, round, ticks, pictures 
         ? round.ended_by
             ? `Ended ${stampDateTime(round.ended_at)} by ${round.ended_by_name || 'a manager'}`
             : `Finished ${stampDateTime(round.ended_at)}`
-        : 'Still in progress'
+        : 'In progress'
 
     const sheet = await paper({
         label: 'CHECKLIST RECORD',
@@ -423,7 +423,7 @@ export async function reportPdf({ restaurant, fromLabel, toLabel, byDay, byTime,
     bars('Ticks by day of the week', byDay.map((count, i) => ({ label: WEEKDAY_NAMES[i], count })))
     bars('Ticks by time of day', byTime)
 
-    const OUTCOME = { done: 'Done', missed: 'Not done', ended: 'Ended early', current: 'Still going' }
+    const OUTCOME = { done: 'Done', missed: 'Not done', ended: 'Ended early', current: 'In progress' }
     for (const l of lists) {
         const rows = []
         if (l.record.length) {

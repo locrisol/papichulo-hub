@@ -62,16 +62,16 @@ export function dayName(dateStr) {
 export function statusNote(status) {
     switch (String(status ?? '').toLowerCase()) {
         case 'offsale':
-            return { text: 'No longer on sale, so it has probably sold out', tone: 'warn' }
+            return { text: 'No longer on sale, so it may have sold out', tone: 'warn' }
         // Ticketmaster sends canceled, the American way. Only this one was
         // known, so a show called off said nothing here either.
         case 'cancelled':
         case 'canceled':
-            return { text: 'Cancelled, so this is an ordinary night after all', tone: 'bad' }
+            return { text: 'Cancelled, so expect a normal night', tone: 'bad' }
         case 'postponed':
-            return { text: 'Postponed, so the date may still move', tone: 'warn' }
+            return { text: 'Postponed, so the date may change', tone: 'warn' }
         case 'rescheduled':
-            return { text: 'Rescheduled, so check the date is still this one', tone: 'warn' }
+            return { text: 'Rescheduled, so check the date', tone: 'warn' }
         default:
             return null
     }

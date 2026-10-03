@@ -544,8 +544,8 @@ export default function MyShiftsPage() {
                     Not on the team list yet
                 </h2>
                 <p className="text-sm text-muted">
-                    Your account is not joined up to anybody on the roster, so there are no shifts to
-                    show. Ask a manager to link it and this fills in.
+                    Your account is not linked to anyone on the roster yet, so there are no shifts to
+                    show. Ask a manager to link it.
                 </p>
             </div>
         )
@@ -851,7 +851,7 @@ function MyWeek({
                             </span>
                             <span className="text-xs text-muted">
                                 {note?.is_closed
-                                    ? 'Store closed'
+                                    ? 'Restaurant closed'
                                     : hours
                                         ? `Open ${hours.open} to ${hours.close}`
                                         : ''}
@@ -860,7 +860,7 @@ function MyWeek({
 
                         <div className="px-4 py-3">
                             {working.length === 0 ? (
-                                <p className="text-sm text-muted">Not in.</p>
+                                <p className="text-sm text-muted">Not working.</p>
                             ) : working.map(s => (
                                 <div key={s.id} className="mb-2 last:mb-0">
                                     <p className="text-lg font-bold text-gray-900">
@@ -883,7 +883,7 @@ function MyWeek({
                                             onClick={() => onOpenShift(s)}
                                             className={rowButton('plain')}
                                         >
-                                            Ask somebody to take this
+                                            Ask somebody to take this shift
                                         </button>
                                         {asksOn(s.id).length > 0 && (
                                             <span className={`${badge} bg-accent-light text-accent-ink`}>
@@ -902,7 +902,7 @@ function MyWeek({
                             {others.length > 0 && (
                                 <div className="mt-3 pt-3 border-t border-border">
                                     <p className="text-[0.625rem] font-bold text-muted uppercase tracking-wider mb-1.5">
-                                        Also on
+                                        Also working
                                     </p>
                                     <div className="flex flex-wrap gap-x-4 gap-y-1">
                                         {others.map(s => (
@@ -962,10 +962,10 @@ function DayCard({
             </p>
 
             {closedOn(date) ? (
-                <p className="text-sm text-red-700 mt-1">The store is closed.</p>
+                <p className="text-sm text-red-700 mt-1">The restaurant is closed.</p>
             ) : theirs.length === 0 ? (
                 <p className="text-sm text-muted mt-1">
-                    {awayOn(employeeId, date) ? AWAY.label + ' all day.' : 'Nothing on. Free all day.'}
+                    {awayOn(employeeId, date) ? AWAY.label + ' all day.' : 'Not working. Free all day.'}
                 </p>
             ) : (
                 <>
@@ -998,7 +998,7 @@ function DayCard({
                                 onClick={() => onOpenShift(s)}
                                 className={rowButton(isMe ? 'plain' : 'edit')}
                             >
-                                {isMe ? 'Ask somebody to take this' : 'Ask for this shift'}
+                                {isMe ? 'Ask somebody to take this shift' : 'Ask for this shift'}
                             </button>
                         ))}
                         {theirs.some(s => asksOn(s.id).length > 0) && (
@@ -1011,7 +1011,7 @@ function DayCard({
             {rest.length > 0 && (
                 <div className="mt-3 pt-3 border-t border-border">
                     <p className="text-[0.625rem] font-bold text-muted uppercase tracking-wider mb-1.5">
-                        Everybody else that day
+                        Also working
                     </p>
                     <div className="space-y-1">
                         {rest.map(s => (
@@ -1097,7 +1097,7 @@ function RequestCard({ request, meId, nameOf, shiftById, hoursOn, dates, saving,
             ))}
 
             {halves.length === 1 && (
-                <p className="text-xs text-muted mt-0.5">Nothing comes back the other way.</p>
+                <p className="text-xs text-muted mt-0.5">No shift in return.</p>
             )}
 
             {request.message && (
@@ -1150,7 +1150,7 @@ function RequestCard({ request, meId, nameOf, shiftById, hoursOn, dates, saving,
                         onClick={() => onWithdraw(request)}
                         className={rowButton('plain')}
                     >
-                        Take it back
+                        Cancel request
                     </button>
                 )}
             </div>

@@ -38,7 +38,7 @@ function draw() {
 
 async function saveOnce() {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
-    await screen.findByText(/Saved, but it did not reach Google/)
+    await screen.findByText('Saved, but it did not reach Google. Try saving it again later.')
 }
 
 beforeEach(() => {
@@ -52,9 +52,20 @@ beforeEach(() => {
     })
     writeToGoogle.mockReset()
     writeToGoogle.mockResolvedValue({ ok: false, reason: 'Google refused the token.' })
+    vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 
 describe('saving again after it did not reach Google', () => {
+    // Google's own words are for whoever fixes it, not for staff.
+    it('keeps what Google said off the screen and in the console', async () => {
+        draw()
+        fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Lunch for twelve' } })
+        await saveOnce()
+
+        expect(screen.queryByText(/Google refused the token/)).not.toBeInTheDocument()
+        expect(console.error).toHaveBeenCalledWith(expect.any(String), 'Google refused the token.')
+    })
+
     it('changes the row it already saved rather than adding another', async () => {
         draw()
         fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Lunch for twelve' } })
@@ -88,14 +99,14 @@ describe('saving again after it did not reach Google', () => {
 describe('who is offered All sites', () => {
     it('is not offered to a store manager', () => {
         draw()
-        expect(screen.queryByLabelText(/All sites/)).not.toBeInTheDocument()
+        expect(screen.queryByLabelText(/All restaurants/)).not.toBeInTheDocument()
         expect(screen.getByLabelText(/Just me/)).toBeInTheDocument()
     })
 
     it('is offered to an owner', () => {
         signedIn = { id: 'u5', role: 'owner', restaurant_id: 'r1' }
         draw()
-        expect(screen.getByLabelText(/All sites/)).toBeInTheDocument()
+        expect(screen.getByLabelText(/All restaurants/)).toBeInTheDocument()
     })
 })
 
@@ -107,9 +118,9 @@ describe('taking out one that is not theirs to change', () => {
         render(
             <DiaryDialog entry={SAVED} date={SAVED.starts_on} restaurants={RESTAURANTS} onClose={() => {}} onSaved={() => {}} />,
         )
-        fireEvent.click(screen.getByRole('button', { name: 'Take it out' }))
+        fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
         expect(await screen.findByText('You do not have permission to change this one.')).toBeInTheDocument()
-        expect(screen.queryByText(/still in Google/)).not.toBeInTheDocument()
+        expect(screen.queryByText(/could not be removed from Google calendar/)).not.toBeInTheDocument()
         expect(asked.filter(c => c.delete.mock.calls.length)).toHaveLength(0)
     })
 })

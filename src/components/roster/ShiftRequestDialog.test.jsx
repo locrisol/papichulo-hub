@@ -49,7 +49,7 @@ function draw() {
     return onSend
 }
 
-const send = () => fireEvent.click(screen.getByRole('button', { name: 'Send the ask' }))
+const send = () => fireEvent.click(screen.getByRole('button', { name: 'Send request' }))
 
 describe('changing who to ask', () => {
     // Picking Ben, then his Thursday to take back, then changing to Cal kept
@@ -110,7 +110,7 @@ describe('somebody with no account', () => {
         )
         expect(screen.getByText('Cal Byrne does not have an account, so they cannot answer. Ask a manager instead.'))
             .toBeInTheDocument()
-        expect(screen.getByRole('button', { name: 'Send the ask' })).toBeDisabled()
+        expect(screen.getByRole('button', { name: 'Send request' })).toBeDisabled()
     })
 })
 
@@ -128,7 +128,7 @@ describe('giving part of a shift', () => {
         fireEvent.click(screen.getByRole('button', { name: /Ben Walsh/ }))
 
         expect(screen.getByText('The hours you are giving must be within the shift.')).toBeInTheDocument()
-        expect(screen.getByRole('button', { name: 'Send the ask' })).toBeDisabled()
+        expect(screen.getByRole('button', { name: 'Send request' })).toBeDisabled()
         send()
         expect(onSend).not.toHaveBeenCalled()
     })

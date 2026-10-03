@@ -58,7 +58,7 @@ export default function DiaryWeek({ weekStart, today, byDate, onOpen, onAdd, can
                                 <button
                                     type="button"
                                     onClick={() => onAdd(date)}
-                                    aria-label={`Add something on ${date}`}
+                                    aria-label={`Add an entry on ${dayLabel(date)}`}
                                     className={`${iconButton} sm:self-center xl:self-auto`}
                                 >
                                     +

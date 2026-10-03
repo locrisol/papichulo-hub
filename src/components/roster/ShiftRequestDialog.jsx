@@ -154,7 +154,7 @@ export default function ShiftRequestDialog({
 
     return (
         <Modal
-            title={mine ? 'Ask somebody to take this' : 'Ask for this shift'}
+            title={mine ? 'Ask somebody to take this shift' : 'Ask for this shift'}
             onClose={onClose}
             width="max-w-xl"
         >
@@ -198,8 +198,8 @@ export default function ShiftRequestDialog({
                     <>
                         <p className={`${headCls} mt-5`}>Who to ask</p>
                         <Group
-                            title="Would finish their day"
-                            hint="Already in that day and free for these hours. The likeliest yes."
+                            title="Already working that day"
+                            hint="Free for these hours, so the most likely to say yes."
                             entries={list.finishing}
                             chosen={toEmployeeId}
                             onPick={pickWho}
@@ -207,8 +207,8 @@ export default function ShiftRequestDialog({
                             colourOf={colourOf}
                         />
                         <Group
-                            title="Free that day"
-                            hint="Nothing on at all, so it is a day off you are asking for."
+                            title="Not working that day"
+                            hint="You would be asking them to come in on a day off."
                             entries={list.free}
                             chosen={toEmployeeId}
                             onPick={pickWho}
@@ -216,8 +216,8 @@ export default function ShiftRequestDialog({
                             colourOf={colourOf}
                         />
                         <Group
-                            title="Cannot"
-                            hint="Already on those hours, down as away, or with no account to answer with."
+                            title="Not available"
+                            hint="Already working those hours, away, or without an account."
                             entries={list.cannot}
                             chosen={toEmployeeId}
                             onPick={pickWho}
@@ -252,7 +252,7 @@ export default function ShiftRequestDialog({
                             >
                                 <span className="font-semibold">Nothing</span>
                                 <span className="text-muted">
-                                    {mine ? ' just cover me' : ' I am only asking'}
+                                    {mine ? ', just cover my shift' : ', I am only asking for this shift'}
                                 </span>
                             </button>
 
@@ -330,12 +330,12 @@ export default function ShiftRequestDialog({
                     </div>
                 )}
 
-                <label className={`${labelClass} mt-5`}>Anything to say</label>
+                <label className={`${labelClass} mt-5`}>Add a note (optional)</label>
                 <textarea
                     value={message}
                     onChange={e => setMessage(e.target.value)}
                     rows={2}
-                    placeholder="Optional"
+                    placeholder="Optional note"
                     className={fieldClass}
                 />
 
@@ -351,7 +351,7 @@ export default function ShiftRequestDialog({
                     onClick={() => onSend(draft)}
                     className={primaryButton()}
                 >
-                    {saving ? 'Sending...' : 'Send the ask'}
+                    {saving ? 'Sending...' : 'Send request'}
                 </button>
             </div>
         </Modal>
@@ -396,7 +396,7 @@ function Group({ title, hint, entries, chosen, onPick, hoursOn, colourOf, shut =
                                 : entry.why === 'no_login'
                                 ? <span className={`${badge} bg-gray-200 text-gray-700`}>No account</span>
                                 : entry.shifts.length === 0
-                                    ? 'Nothing on'
+                                    ? 'Not working'
                                     : entry.shifts.map(s => (
                                         <span key={s.id} className="block">
                                             {shortTime(s.starts_at)} to {endLabel(s, hoursOn(s.shift_date))}

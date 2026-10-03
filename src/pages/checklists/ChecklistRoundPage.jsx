@@ -245,7 +245,7 @@ export default function ChecklistRoundPage() {
         const ok = await confirm({
             title: 'Delete this round?',
             message: 'Nothing on it has been ticked, so nothing is lost. Use this for a round started by mistake.',
-            confirmLabel: 'Delete it',
+            confirmLabel: 'Delete',
             tone: 'danger',
         })
         if (!ok) return

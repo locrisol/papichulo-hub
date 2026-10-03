@@ -167,7 +167,7 @@ describe('the cleaning report on paper', () => {
         const { pdf, log } = await drawn(() => reportPdf({
             restaurant: RESTAURANT, fromLabel: '31 Aug', toLabel: '26 Sept 2026',
             byDay: [0, 4, 9, 2, 0, 1, 0],
-            byTime: [{ label: 'Before 9am', count: 3 }, { label: '9am to 12pm', count: 13 }],
+            byTime: [{ label: 'Before 09:00', count: 3 }, { label: '09:00 to 12:00', count: 13 }],
             lists: Array.from({ length: 6 }, (_, i) => ({
                 name: `List ${i + 1}`, repeats: 'Every week', summary: 'Finished in 3 of the last 4 weeks.',
                 record: [{ label: '6 Sept', outcome: 'done', finishedOn: 'Tue 8 Sept' }, { label: '13 Sept', outcome: 'missed' }],

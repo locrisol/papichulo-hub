@@ -28,12 +28,13 @@ export default function TimeOffCard({ requests, onAsk, onWithdraw }) {
     async function ask(row) {
         const ok = await confirm({
             title: 'Cancel this request?',
-            message: 'It is taken back and your manager will not see it. You can ask again afterwards.',
+            message: 'Your manager will no longer see it. You can send a new request afterwards.',
             details: [
                 { label: 'What', value: requestLabel(row) },
                 { label: 'When', value: absenceRange(row, dayLabel) },
             ],
-            confirmLabel: 'Cancel it',
+            confirmLabel: 'Cancel request',
+            cancelLabel: 'Go back',
             tone: 'danger',
         })
         if (ok) onWithdraw(row.id)

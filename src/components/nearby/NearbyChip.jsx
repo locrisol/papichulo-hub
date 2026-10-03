@@ -56,7 +56,7 @@ export default function NearbyChip({ row, short = false, bare = false, compact =
 
     // Said out loud rather than drawn, because a dashed edge is a hint and not
     // a sentence, and on a phone it is barely a hint.
-    const title = row?.checked === false ? `${words} (found, nobody has checked it)` : words
+    const title = row?.checked === false ? `${words} (not checked yet)` : words
 
     if (!onOpen) return <span className={look} title={title}>{inside}</span>
 
