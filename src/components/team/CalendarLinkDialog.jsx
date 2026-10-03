@@ -64,7 +64,7 @@ export default function CalendarLinkDialog({ employee, onClose, onChanged }) {
         const ok = await confirm({
             title: `Make a new link for ${employee.full_name}?`,
             message: 'The one they have now stops working straight away and their calendar goes empty until they subscribe to the new one. This is what to do if a phone has been lost.',
-            confirmLabel: 'Make a new one',
+            confirmLabel: 'Make new link',
             tone: 'danger',
         })
         if (ok) save(makeToken())
@@ -116,10 +116,10 @@ export default function CalendarLinkDialog({ employee, onClose, onChanged }) {
                                 onClick={() => copy(webcal, 'subscribe')}
                                 className={primaryButton()}
                             >
-                                {copied === 'subscribe' ? 'Copied' : 'Copy for a phone'}
+                                {copied === 'subscribe' ? 'Copied' : 'Copy for iPhone'}
                             </button>
                             <button type="button" onClick={() => copy(url, 'plain')} className={secondaryButton}>
-                                {copied === 'plain' ? 'Copied' : 'Copy the plain address'}
+                                {copied === 'plain' ? 'Copied' : 'Copy for Google Calendar'}
                             </button>
                         </div>
                     </ModalSection>
@@ -132,19 +132,18 @@ export default function CalendarLinkDialog({ employee, onClose, onChanged }) {
                             </li>
                             <li>
                                 <b className="text-gray-900">On Android.</b> Google Calendar on a computer,
-                                Other calendars, then From URL, and paste the plain address. Phones cannot
-                                add one, only the website can.
+                                Other calendars, then From URL, and paste the link from the Copy for
+                                Google Calendar button. Phones cannot add one, only the website can.
                             </li>
                             <li>
                                 <b className="text-gray-900">Google will call it by its address.</b> It
                                 ignores the name the calendar gives itself, so it turns up in the list as a
-                                long link. Click the three dots beside it, Settings, and rename it. Once,
+                                long link. Press the three dots beside it, Settings, and rename it. Once,
                                 and it stays. Apple picks the name up on its own.
                             </li>
                             <li>
-                                <b className="text-gray-900">It is not instant.</b> Their calendar re-reads it
-                                on its own, but Apple checks more often than Google and Google can take most
-                                of a day. Worth saying so once, or somebody will think it is broken.
+                                <b className="text-gray-900">It is not instant.</b> Their calendar updates by
+                                itself, and Google Calendar can take up to a day.
                             </li>
                         </ul>
                     </ModalSection>

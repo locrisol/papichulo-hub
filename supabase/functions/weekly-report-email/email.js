@@ -447,7 +447,7 @@ function salesAndCosts(section, f, charts) {
         }),
         line({ label: 'Cost of sales', value: withShare(f.costOfSales, f.costOfSalesPct), total: true }),
     ])
-        + note('Every share is against net sales.'
+        + note('Every percentage is of net sales.'
             + (targetNote
                 ? ` Green is at or under target, amber within two points over, red past that. This week was judged against ${targetNote}.`
                 : ''))
@@ -561,9 +561,8 @@ function profitAndLoss(section, f, charts) {
             share: pct(f.earningsPct),
             tone: num(f.earnings) < 0 ? RED : GREEN,
         })
-        + note('Net earnings is what is left of net sales after the food, the packaging, the '
-            + 'people, the fixed overheads and the delivery platforms. The share under it is '
-            + 'against net sales, the same as every other share on this report.')
+        + note('Net earnings is net sales minus food, labour, packaging and cleaning, fixed '
+            + 'overheads and third party delivery costs. The percentage under it is of net sales.')
         + chart(charts.earnings, 'Net earnings, week by week.')
         + comments(sectionComments(section))
 }
@@ -740,7 +739,7 @@ export function renewalText(person) {
     if (!person.applied) return 'No renewal applied for'
 
     const late = person.on && person.applied > person.on
-    return `Renewal applied for ${fmtDate(person.applied)}` + (late ? ', after it ran out' : '')
+    return `Applied to renew on ${fmtDate(person.applied)}` + (late ? ', after it expired' : '')
 }
 
 // The paperwork, from the copy frozen with the report rather than from the staff
@@ -771,8 +770,8 @@ function paperwork(state, title) {
             + `<div style="margin-top:4px;font-family:${FONT};font-size:14px;line-height:1.7;color:${INK};">${names}</div>`)
     }
 
-    group('Out of date:', state.expired, true)
-    group('Runs out soon:', state.expiring, true)
+    group('Expired:', state.expired, true)
+    group('Expires soon:', state.expiring, true)
     group('Nothing on file:', state.missing, false)
 
     return `<tr><td style="padding:14px ${SIDE}px 0;">
@@ -783,7 +782,7 @@ function paperwork(state, title) {
                     <tr>
                         <td width="100%" style="font-family:${FONT};font-size:16px;font-weight:700;color:${INK};">${escapeHtml(title)}</td>
                         <td width="1%" align="right" style="padding-left:12px;font-family:${FONT};font-size:15px;
-                            font-weight:700;color:${tone};white-space:nowrap;">${state.fine} of ${state.total} fine</td>
+                            font-weight:700;color:${tone};white-space:nowrap;">${state.fine} of ${state.total} in date</td>
                     </tr>
                 </table>
             </td></tr>
@@ -1137,7 +1136,7 @@ export function pricesSection(section, f) {
             value: money(b.money),
             tone: GREEN,
         })),
-        ...(p.owed.length ? [subHeading('Still waiting on a credit')] : []),
+        ...(p.owed.length ? [subHeading('Still waiting for a credit')] : []),
         ...p.owed.map(o => line({
             inset: 14,
             label: escapeHtml(o.what) + small(`${escapeHtml(o.label)}, since ${dayMonth(o.since)}`),
@@ -1208,7 +1207,7 @@ function pricesText(p) {
         }
     }
     if (p.owed.length) {
-        out.push('  Still waiting on a credit')
+        out.push('  Still waiting for a credit')
         for (const o of p.owed) out.push(`    ${o.what}: ${o.money == null ? 'not priced' : money(o.money)}, since ${dayMonth(o.since)}`)
     }
     if (p.earlier?.length) {
@@ -1296,13 +1295,13 @@ export function reportEmail({
     let bands = ''
     if (isTest) {
         bands += band(AMBER, '#FEF6E7', '#F3D9A6', 'This is a test',
-            'Nobody else has been sent it. It is the report exactly as it would go out, '
-            + 'so anything that looks wrong here would have looked wrong to everybody.')
+            'It went to everyone on the report list except the owners. It is the report exactly '
+            + 'as it would go out if it were published now.')
     }
     if (correction) {
         bands += band(RED, '#FEF2F2', '#F5C2C2', 'This replaces the report sent earlier',
             changes.length === 0
-                ? 'Something was written up again. The figures are the same as the ones you already have.'
+                ? 'The sales and cost figures have not changed from the report you already have.'
                 : '<strong>What changed:</strong><br />'
                     + changes.map(c => escapeHtml(changeWords(c))).join('<br />'))
     }
@@ -1414,7 +1413,7 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
     out.push('')
 
     if (isTest) {
-        out.push('THIS IS A TEST. Nobody else has been sent it.')
+        out.push('THIS IS A TEST. It went to everyone on the report list except the owners.')
         out.push('')
     }
     if (correction) {
@@ -1423,7 +1422,7 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
             out.push('What changed:')
             for (const c of changes) out.push(`  ${changeWords(c)}`)
         } else {
-            out.push('The figures are the same as the ones you already have.')
+            out.push('The sales and cost figures have not changed from the report you already have.')
         }
         out.push('')
     }
@@ -1489,7 +1488,7 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
             ]) {
                 if (!state) continue
                 out.push(`  ${title}`)
-                out.push(`  ${state.fine} of ${state.total} fine`)
+                out.push(`  ${state.fine} of ${state.total} in date`)
                 const group = (label, people, withDate) => {
                     if (!people.length) return
                     out.push(`  ${label}`)
@@ -1498,8 +1497,8 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
                         if (renewalText(p)) out.push(`      ${renewalText(p)}`)
                     }
                 }
-                group('Out of date:', state.expired, true)
-                group('Runs out soon:', state.expiring, true)
+                group('Expired:', state.expired, true)
+                group('Expires soon:', state.expiring, true)
                 group('Nothing on file:', state.missing, false)
             }
             if (f.paperwork?.allergenSheet?.words) {

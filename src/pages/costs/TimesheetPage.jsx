@@ -894,9 +894,9 @@ export default function TimesheetPage() {
                                     ? 'has hours' : 'have hours'} the till&apos;s report does not have, with nothing
                                 said about them.
                             </strong>{' '}
-                            A time off the report that was moved, or a shift typed onto a day the
-                            report says nothing about. Either way the accountant is reading a
-                            different figure, so the week needs a comment saying why.
+                            Either a time from the till's report was changed, or a shift was added
+                            on a day the report does not cover. The accountant will see a different
+                            figure, so add a comment saying why.
                         </p>
                     )}
                     {noClockOut.length > 0 && (
@@ -906,7 +906,7 @@ export default function TimesheetPage() {
                                 with no clock out.
                             </strong>{' '}
                             It counts as no hours, so no report can be drafted and the hours
-                            cannot be sent until it has one. Type the clock out time, or clear the
+                            cannot be sent until it has one. Enter the clock out time, or clear the
                             clock in and add a comment.
                         </p>
                     )}

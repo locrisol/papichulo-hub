@@ -132,7 +132,7 @@ export default function InvoiceForm({
             {readIn && (
                 <p className={`${hintClass} mb-3`}>
                     This was read from the supplier's document, so the total and category come from its
-                    lines. To claim for something missing or overcharged, log it in{' '}
+                    lines. For anything missing or overcharged, log a problem on{' '}
                     <Link to="/invoices/claims" className="font-semibold text-accent-ink underline">
                         Delivery problems
                     </Link>.

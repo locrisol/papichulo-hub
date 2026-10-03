@@ -59,7 +59,7 @@ describe('the small words', () => {
     it('says how far ahead it was asked, as a fact and not a telling off', () => {
         expect(noticeWords(holiday(), NOW)).toBe('Asked 38 days ahead')
         expect(noticeWords(holiday({ starts_on: '2026-09-05' }), NOW)).toBe('Asked 1 day ahead')
-        expect(noticeWords(holiday({ starts_on: '2026-09-04' }), NOW)).toBe('Asked for today')
+        expect(noticeWords(holiday({ starts_on: '2026-09-04' }), NOW)).toBe('Asked the same day')
     })
 
     // Half twelve at night in Dublin is still the day before in UTC, and
@@ -95,9 +95,9 @@ describe('somebody asked', () => {
             ...base,
             clashes: [shift('2026-10-13', '08:30:00', '15:00:00'), shift('2026-10-15', '08:30:00', '23:00:00')],
         })
-        expect(mail.html).toContain('is rostered on 2 of these days')
+        expect(mail.html).toContain('has 2 shifts on these days')
         expect(mail.html).toContain('08:30 to 15:00')
-        expect(mail.text).toContain('is rostered on 2 of these days')
+        expect(mail.text).toContain('has 2 shifts on these days')
     })
 
     it('says nothing about the roster when they are not on it', () => {
@@ -148,18 +148,18 @@ describe('somebody answered', () => {
 
     it('says what came off the roster, and only when something did', () => {
         expect(answerEmail({ ...base, absence: holiday({ status: 'approved' }), freedCount: 3 }).text)
-            .toContain('3 shifts have been taken off your roster')
+            .toContain('3 shifts have been removed from your roster')
         expect(answerEmail({ ...base, absence: holiday({ status: 'approved' }), freedCount: 1 }).text)
-            .toContain('1 shift has been taken off your roster')
+            .toContain('1 shift has been removed from your roster')
         expect(answerEmail({ ...base, absence: holiday({ status: 'approved' }), freedCount: 0 }).text)
-            .not.toContain('taken off your roster')
+            .not.toContain('removed from your roster')
     })
 
     it('never gives a reason', () => {
         // A reason belongs in a conversation. A sentence written by an app is
         // the wrong place to have one, and there is nowhere to type it anyway.
         const mail = answerEmail({ ...base, absence: holiday({ status: 'declined' }), freedCount: 0 })
-        expect(mail.html).toContain('Have a word with your manager')
+        expect(mail.html).toContain('Talk to your manager if you have any questions')
         expect(mail.text).not.toContain('because')
     })
 
@@ -596,18 +596,18 @@ describe('the mail back to whoever asked', () => {
 
     it('says yes plainly', () => {
         expect(swapAnswerEmail(words('accepted')).subject)
-            .toBe('Georgiana said yes to your shift swap')
+            .toBe('Georgiana accepted your shift swap')
     })
 
     it('says no plainly', () => {
         expect(swapAnswerEmail(words('declined')).subject)
-            .toBe('Georgiana said no to your shift swap')
+            .toBe('Georgiana declined your shift swap')
     })
 
     // A yes is the step people think is the last one.
     it('says a yes is now with a manager', () => {
         expect(swapAnswerEmail(words('accepted')).text)
-            .toContain('It is with a manager now')
+            .toContain('A manager now has to approve it')
     })
 
     // A no that leaves somebody wondering whether their shifts changed is a no
@@ -670,7 +670,7 @@ describe('the mail after a manager decided', () => {
 
     it('says the roster has already moved', () => {
         expect(swapDecisionEmail(words('approved')).text)
-            .toContain('The roster has already been changed')
+            .toContain('The roster has been updated')
     })
 
     it('says nothing moved when it was refused', () => {

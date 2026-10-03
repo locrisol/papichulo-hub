@@ -24,7 +24,7 @@ import { fieldClass } from '@/lib/controlStyles'
 // large is for the waste screen, which is worked one handed on a phone, so
 // its rows are a thumb's height rather than a mouse's.
 export default function ProductSelect({
-    value, onChange, products, placeholder = 'Select a product...', inputRef, className = '', large = false,
+    value, onChange, products, placeholder = 'Pick a product', inputRef, className = '', large = false,
 }) {
     const [open, setOpen] = useState(false)
     const [term, setTerm] = useState('')

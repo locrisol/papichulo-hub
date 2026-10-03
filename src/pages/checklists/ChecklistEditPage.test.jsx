@@ -86,7 +86,8 @@ describe('taking things off', () => {
         const row = (await screen.findByText('Small toaster area')).closest('li')
         await user.click(within(row).getByRole('button', { name: 'Remove' }))
         await waitFor(() => expect(removed).toHaveBeenCalledWith(['r1/guides/g.jpg']))
-        expect(confirm.mock.calls[0][0].confirmLabel).toBe('Delete it')
+        expect(confirm.mock.calls[0][0].confirmLabel).toBe('Delete')
+        expect(confirm.mock.calls[0][0].dangerNote).toBe('This cannot be undone.')
         const deleted = db.from.mock.results.map(r => r.value).find(q => q.delete.mock.calls.length)
         expect(deleted.in).toHaveBeenCalledWith('id', ['t1'])
     })
@@ -96,13 +97,14 @@ describe('taking things off', () => {
         const row = (await screen.findByText('Mop the floor')).closest('li')
         await user.click(within(row).getByRole('button', { name: 'Remove' }))
         await waitFor(() => expect(written('checklist_tasks', 'update')).toEqual([{ is_active: false }]))
-        expect(confirm.mock.calls[0][0].confirmLabel).toBe('Take it off')
+        expect(confirm.mock.calls[0][0].confirmLabel).toBe('Remove')
+        expect(confirm.mock.calls[0][0].dangerNote).toBe('Its guide pictures are deleted tonight.')
         expect(removed).not.toHaveBeenCalled()
     })
 
     it('takes off a list that has been worked through rather than deleting it', async () => {
         const user = open()
-        await user.click(await screen.findByRole('button', { name: 'Take this list off' }))
+        await user.click(await screen.findByRole('button', { name: 'Deactivate list' }))
         await waitFor(() => expect(written('checklists', 'update')).toEqual([{ is_active: false }]))
     })
 })
@@ -121,7 +123,7 @@ describe('guide pictures', () => {
         const row = (await screen.findByText('Mop the floor')).closest('li')
         await user.click(within(row).getByRole('button', { name: 'Edit' }))
         expect(screen.getByRole('button', { name: 'Add another picture' })).toBeDisabled()
-        expect(screen.getByText('That is the most a task can have.')).toBeInTheDocument()
+        expect(screen.getByText('That is the most allowed.')).toBeInTheDocument()
     })
 
     it('saves without one taken off, and only then deletes it', async () => {

@@ -21,8 +21,8 @@ import { NO_RESTAURANT } from '@/context/restaurant'
 // manager, and a new account nobody has linked to a restaurant yet.
 const SAID = {
     [NO_ACCESS]: {
-        title: 'Your login is switched off',
-        words: 'This happens after your last day, or when a manager switches it off. '
+        title: 'Your account is deactivated',
+        words: 'This happens after your last day, or when a manager deactivates it. '
             + 'If you think it is a mistake, ask your manager.',
     },
     [NO_RESTAURANT]: {
@@ -71,7 +71,7 @@ export default function CannotContinue({ reason }) {
 
                 {!known && (
                     <p className="text-xs text-muted mt-4">
-                        If it keeps happening, tell whoever set your account up.
+                        If it keeps happening, ask your manager.
                     </p>
                 )}
             </div>

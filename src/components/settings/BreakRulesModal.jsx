@@ -50,12 +50,12 @@ export default function BreakRulesModal({ onClose }) {
         .sort((a, b) => b.hours - a.hours)
 
     const problem = (() => {
-        if (clean.length === 0) return 'A ladder needs at least one rung.'
-        if (clean.some(r => isNaN(r.hours) || r.hours <= 0)) return 'Every rung needs a length in hours.'
-        if (clean.some(r => isNaN(r.minutes) || r.minutes < 0)) return 'A break cannot be less than nothing.'
+        if (clean.length === 0) return 'Enter the hours and minutes for at least one rule.'
+        if (clean.some(r => isNaN(r.hours) || r.hours <= 0)) return 'Enter a length in hours for every rule.'
+        if (clean.some(r => isNaN(r.minutes) || r.minutes < 0)) return 'Enter 0 or more break minutes for every rule.'
         const lengths = clean.map(r => `${r.hours}-${r.operator}`)
         if (new Set(lengths).size !== lengths.length) {
-            return 'Two rungs cannot say the same thing. The lower one would never be reached.'
+            return 'Two rules apply to the same shifts. Change or remove one of them.'
         }
         return null
     })()
@@ -88,8 +88,8 @@ export default function BreakRulesModal({ onClose }) {
         <Modal title="Break rules" onClose={onClose} width="max-w-xl">
             <div>
                 <ModalSection
-                    title="The ladder"
-                    description="Read top down, and the first rung a shift is long enough for is the one it gets. Breaks are paid and are never taken off the hours: this decides what is printed beside a shift, not what the shift is worth."
+                    title="Rules"
+                    description="Read from the top: a shift gets the first rule it is long enough for. Breaks are paid and are never taken off the hours. This only decides the break shown beside a shift."
                 >
 
                 {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
@@ -130,7 +130,7 @@ export default function BreakRulesModal({ onClose }) {
                                     <div
                                         className={segmentTrack}
                                         role="group"
-                                        aria-label="Which shifts this rung catches"
+                                        aria-label="Which shifts this rule applies to"
                                     >
                                         {OPERATORS.map(o => (
                                             <button
@@ -149,7 +149,7 @@ export default function BreakRulesModal({ onClose }) {
                                     type="button"
                                     onClick={() => removeRung(i)}
                                     className={removeButton}
-                                    aria-label="Remove this rung"
+                                    aria-label="Remove this rule"
                                 >
                                     &times;
                                 </button>
@@ -181,13 +181,13 @@ export default function BreakRulesModal({ onClose }) {
                 </div>
 
                 <AddButton onClick={addRung} className="mb-5">
-                    Add a rung
+                    Add rule
                 </AddButton>
 
                 </ModalSection>
 
                 {/* What it does, before it is saved. */}
-                <ModalSection title="What that gives">
+                <ModalSection title="Examples">
                     <div className="flex flex-wrap gap-x-4 gap-y-1">
                         {examples.map(h => {
                             const minutes = problem ? null : breakFor(h, clean)

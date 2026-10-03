@@ -240,7 +240,7 @@ export function kindGoogleColour(kind) {
 // on the day there is only one restaurant left ticked.
 
 export function scopeLabel(entry, restaurants) {
-    if (entry?.scope === 'all_sites') return 'All sites'
+    if (entry?.scope === 'all_sites') return 'All restaurants'
     if (entry?.scope === 'private') return 'Just me'
 
     const ids = entry?.restaurant_ids || []
@@ -528,9 +528,9 @@ export function canChangeEntry(user, entry) {
 // -- What is wrong with it before it is saved --------------------------
 
 export function entryProblem(form) {
-    if (!String(form?.title || '').trim()) return 'It needs a name.'
-    if (!KINDS.includes(form?.kind)) return 'Say what kind of thing it is.'
-    if (!form?.starts_on) return 'It needs a date.'
+    if (!String(form?.title || '').trim()) return 'Enter a name.'
+    if (!KINDS.includes(form?.kind)) return 'Pick what kind of entry it is.'
+    if (!form?.starts_on) return 'Pick a date.'
 
     if (form.ends_on && form.ends_on < form.starts_on) {
         return 'It cannot finish before it starts.'
@@ -540,10 +540,10 @@ export function entryProblem(form) {
     }
     if (form.starts_at && form.ends_at && !form.ends_on
         && toMinutes(shortTime(form.ends_at)) <= toMinutes(shortTime(form.starts_at))) {
-        return 'It finishes before it starts. Put a finishing date on it if it runs past midnight.'
+        return 'It finishes before it starts. If it runs past midnight, enter a finishing date.'
     }
     if (form.mode === 'sites' && !(form.restaurantIds || []).length) {
-        return 'Say which restaurant it is for.'
+        return 'Pick a restaurant.'
     }
     return ''
 }

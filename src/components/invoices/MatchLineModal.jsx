@@ -70,8 +70,8 @@ export default function MatchLineModal({ row, products, onClose, onMatch }) {
                     />
                     <p className={hintClass}>
                         {line.pack_size
-                            ? `The paper says ${line.pack_size}.`
-                            : 'The paper does not say, so this one is yours.'}
+                            ? `The invoice says ${line.pack_size}.`
+                            : 'The invoice does not say, so enter it yourself.'}
                         {perUnit != null && (
                             <> That makes it {fmtUnitCost(perUnit)} a {product?.unit || 'unit'}.</>
                         )}
@@ -87,7 +87,7 @@ export default function MatchLineModal({ row, products, onClose, onMatch }) {
                     onClick={go}
                     className={primaryButton('md', 'good')}
                 >
-                    {busy ? 'Matching...' : 'That is the one'}
+                    {busy ? 'Matching...' : 'Match'}
                 </button>
             </div>
         </Modal>

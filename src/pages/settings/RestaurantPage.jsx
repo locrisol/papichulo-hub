@@ -158,8 +158,8 @@ export default function RestaurantPage() {
         .filter(([day, d]) => day !== BANK_HOLIDAY && d?.open && d?.close).length
     const bankHours = hours[BANK_HOLIDAY]
     const bankSummary = bankHours?.open && bankHours?.close
-        ? ` Bank holidays ${bankHours.open} to ${bankHours.close}, on every one of the ten without anybody marking it.`
-        : ' No bank holiday hours set, so a bank holiday keeps the usual ones.'
+        ? ` Bank holidays ${bankHours.open} to ${bankHours.close}. These apply to every bank holiday automatically.`
+        : ' No bank holiday hours set, so bank holidays use the usual hours.'
     const openingSummary = openDays === 0
         ? 'Not set yet. Until they are, the roster cannot mark opening or closing shifts.'
         : `Open ${openDays} ${openDays === 1 ? 'day' : 'days'} a week.${bankSummary}`
@@ -179,7 +179,7 @@ export default function RestaurantPage() {
     const rules = { ...DEFAULT_RULES, ...(activeRestaurant?.roster_rules || {}) }
     const warnCount = ['dailyRest', 'weeklyRest', 'daysOff', 'maxWeek'].filter(k => rules[k]?.on).length
     const blockCount = ['visaCap', 'underAge'].filter(k => rules[k]?.on).length
-    const rulesSummary = `${warnCount} of 4 warnings on, and ${blockCount} of 2 checks that hold a week back. Rest, days off, visa hours, under 18s, food safety expiry and how wide the grid is drawn.`
+    const rulesSummary = `${warnCount} of 4 rest and hours warnings on, and ${blockCount} of 2 checks that stop the week being published. It also sets availability and time off warnings, holiday notice, food safety warnings and the roster grid.`
 
     // What is in force this week for one target, and how long it runs.
     function targetSummary(type) {
@@ -194,7 +194,7 @@ export default function RestaurantPage() {
     return (
         <>
             <PageHeader
-                title="Restaurant Settings"
+                title="Restaurant settings"
                 subtitle={[
                     `Cost targets and settings for ${activeRestaurant?.name || ''}`,
                     activeRestaurant?.updated_at && `Last updated: ${stampDateTime(activeRestaurant.updated_at)}`,
@@ -283,7 +283,7 @@ export default function RestaurantPage() {
                     <div className={`${card} p-6 mb-4`}>
                         <h3 className="text-sm font-semibold text-gray-900 mb-4">Prices on the weekly report</h3>
                         <label className={labelClass} htmlFor="recipe-gap">
-                            List a product when recipes are this far off what we pay (%)
+                            List a product when the price recipes use is this far from what we last paid (%)
                         </label>
                         <div className="sm:w-32">
                             <input
@@ -304,8 +304,8 @@ export default function RestaurantPage() {
                             />
                         </div>
                         <p className={hintClass}>
-                            Either way, dearer or cheaper. A product stays on every report until what recipes
-                            cost it at is closer than this to what was last paid for the one usually bought.
+                            Higher or lower. The product stays on every weekly report until the gap is back
+                            within this.
                         </p>
                     </div>
 
@@ -492,9 +492,8 @@ export default function RestaurantPage() {
                                 never manage. */}
                             <p className={hintClass}>
                                 Where catering, meetings and promotions for this restaurant are
-                                written. Find it in Google Calendar under Settings, Integrate
-                                calendar. Leave it empty and they stay in the Hub, which the
-                                calendar screen says rather than pretending they went out.
+                                written. Find its calendar ID in Google calendar under Settings,
+                                Integrate calendar. Leave it empty to keep them in the Hub only.
                             </p>
                         </div>
 
@@ -572,8 +571,7 @@ export default function RestaurantPage() {
                             <div>
                                 <h3 className="text-sm font-semibold text-gray-900">Places near us</h3>
                                 <p className="text-xs text-muted mt-1">
-                                    What is on around this restaurant, as a badge on the roster and
-                                    the calendar. Nothing here predicts anything.
+                                    Events near this restaurant, shown on the roster and the calendar.
                                 </p>
                             </div>
                             <button
@@ -596,7 +594,7 @@ export default function RestaurantPage() {
                             <div>
                                 <h3 className="text-sm font-semibold text-gray-900">Sales platforms</h3>
                                 <p className="text-xs text-muted mt-1">
-                                    The delivery and catering platforms used for sales entry.
+                                    The online and corporate platforms used for sales entry.
                                 </p>
                             </div>
                             <button
@@ -679,9 +677,9 @@ export default function RestaurantPage() {
                         <div className={`${card} p-6`}>
                             <div className="flex items-center justify-between gap-4 flex-wrap">
                                 <div>
-                                    <h3 className="text-sm font-semibold text-gray-900">Till receipt rows</h3>
+                                    <h3 className="text-sm font-semibold text-gray-900">Till receipt lines</h3>
                                     <p className="text-xs text-muted mt-1">
-                                        The rows on the sales screens, in the order the till prints them. Add one when
+                                        The lines on the sales screens, in the order the till prints them. Add one when
                                         the till starts taking money a new way, retire one when it stops.
                                     </p>
                                 </div>
@@ -690,7 +688,7 @@ export default function RestaurantPage() {
                                     onClick={() => setShowTendersModal(true)}
                                     className={secondaryButton}
                                 >
-                                    Manage rows
+                                    Manage lines
                                 </button>
                             </div>
                         </div>

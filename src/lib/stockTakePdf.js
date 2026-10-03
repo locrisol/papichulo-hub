@@ -574,7 +574,7 @@ export async function exportStockTakePdf({ session, restaurant, products, lines,
 
     drawNameList(
         'Not counted',
-        'No count was recorded this session, so nothing here is known either way.',
+        'These were not counted in this stock take, so their stock is unknown.',
         summary.notCounted)
 
     footers(pdf, { left: 'Papi Chulo Hub stock take record', margin: marginX })

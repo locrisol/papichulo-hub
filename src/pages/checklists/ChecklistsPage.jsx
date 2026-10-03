@@ -123,7 +123,7 @@ export default function ChecklistsPage() {
         setError(friendlyError(startErr))
     }
 
-    if (!activeRestaurant) return <p className="text-sm text-muted">Select a restaurant to see its checklists.</p>
+    if (!activeRestaurant) return <p className="text-sm text-muted">Pick a restaurant to see its checklists.</p>
     if (loading) return <p className="text-sm text-muted">Loading checklists...</p>
 
     const today = todayISO()

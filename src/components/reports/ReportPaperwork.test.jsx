@@ -40,14 +40,14 @@ describe('ReportPaperwork', () => {
     it('leaves out somebody who has left', () => {
         draw()
         expect(screen.queryByText(/Lee/)).toBeNull()
-        expect(screen.getByText(/^4 on the books/)).toBeTruthy()
+        expect(screen.getByText(/^4 on the team/)).toBeTruthy()
     })
 
     it('says whether a renewal was applied for, under the right to work only', () => {
         draw()
         expect(screen.getByText('Right to work: 3 of 4 in date.')).toBeTruthy()
         expect(screen.getByText('Kim')).toBeTruthy()
-        expect(screen.getByText('Renewal applied for 20 Aug')).toBeTruthy()
+        expect(screen.getByText('Applied to renew on 20 Aug')).toBeTruthy()
     })
 
     it('says one line when everything is in date', () => {
@@ -58,7 +58,7 @@ describe('ReportPaperwork', () => {
 
     it('says so when nobody was on the books', () => {
         draw([team[4]])
-        expect(screen.getByText(/Nobody was on the books this week/)).toBeTruthy()
+        expect(screen.getByText(/Nobody was on the team this week/)).toBeTruthy()
     })
 
     // His ask of 29 September: the reminder to print a new allergen sheet is
@@ -77,7 +77,7 @@ describe('ReportPaperwork', () => {
     // The sheet is on the wall whether or not anybody worked that week.
     it('says it even when nobody was on the books', () => {
         draw([team[4]], DUE)
-        expect(screen.getByText(/Nobody was on the books this week/)).toBeTruthy()
+        expect(screen.getByText(/Nobody was on the team this week/)).toBeTruthy()
         expect(screen.getByText(DUE.words)).toBeTruthy()
     })
 })

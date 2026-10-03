@@ -35,7 +35,7 @@ const OUTCOME = {
     done: { text: 'Done', tone: 'bg-green-100 text-green-900 border-green-300' },
     missed: { text: 'Not done', tone: 'bg-red-50 text-red-800 border-red-200' },
     ended: { text: 'Ended early', tone: 'bg-amber-50 text-amber-900 border-amber-200' },
-    current: { text: 'Still going', tone: 'bg-white text-gray-600 border-gray-300' },
+    current: { text: 'In progress', tone: 'bg-white text-gray-600 border-gray-300' },
 }
 
 export default function ChecklistsReportPage() {
@@ -110,7 +110,9 @@ export default function ChecklistsReportPage() {
         const summary = list.repeats === 'once'
             ? onceWords(list, data.rounds)
             : closed.length
-                ? `Finished ${done} of the last ${closed.length === 1 ? 'time' : `${closed.length} times`} it was due.`
+                ? closed.length === 1
+                    ? (done ? 'Finished the last time it was due.' : 'Not finished the last time it was due.')
+                    : `Finished ${done} of the last ${closed.length} times it was due.`
                 : 'Not due in full yet in these weeks.'
         return { list, tree, record, summary, rows: lastDoneRows(tree, data.lastDone) }
     })
@@ -241,7 +243,7 @@ export default function ChecklistsReportPage() {
                             return (
                                 <li key={r.id} className="px-5 py-3 flex flex-col sm:flex-row sm:items-center gap-2">
                                     <div className="flex-1 min-w-0">
-                                        <p className="font-medium text-gray-900">{list?.name || 'A list taken off'}</p>
+                                        <p className="font-medium text-gray-900">{list?.name || 'Inactive list'}</p>
                                         <p className="text-xs text-muted">
                                             Started {doneDayLong(r.started_at)}{r.started_by_name ? ` by ${r.started_by_name}` : ''}
                                             {' · '}
@@ -270,9 +272,9 @@ function stretchLabel(list, stretch) {
 
 function onceWords(list, rounds) {
     const round = rounds.find(r => r.checklist_id === list.id)
-    if (!round) return list.finish_by ? `Done once, by ${doneDayLong(list.finish_by + 'T12:00:00')}. Not started yet.` : 'Done once. Not started yet.'
-    if (!round.ended_at) return 'Done once. In progress.'
-    return `Done once. ${roundOutcome(round) === 'finished' ? 'Finished' : 'Ended early'} ${doneDayLong(round.ended_at)}.`
+    if (!round) return list.finish_by ? `Finish by ${doneDayLong(list.finish_by + 'T12:00:00')}. Not started yet.` : 'Not started yet.'
+    if (!round.ended_at) return 'In progress.'
+    return `${roundOutcome(round) === 'finished' ? 'Finished' : 'Ended early'} ${doneDayLong(round.ended_at)}.`
 }
 
 // Counts drawn as bars, one colour, read off a common left edge. The same

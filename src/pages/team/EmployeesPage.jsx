@@ -221,7 +221,7 @@ export default function EmployeesPage() {
                     onClick: () => setCalendarFor(employee),
                 },
                 !employee.ended_on && {
-                    label: 'Leaving',
+                    label: 'Set last day',
                     tone: 'danger',
                     onClick: () => recordLastDay(employee),
                 },
@@ -272,7 +272,7 @@ export default function EmployeesPage() {
         <div className="w-full">
             <PageHeader
                 title="Team"
-                subtitle={`Everyone who works at ${activeRestaurant?.name}, whether or not they log in.`}
+                subtitle={`Everyone who works at ${activeRestaurant?.name}, whether or not they have an account.`}
             >
                 {/* Arranging is a button rather than arrows on every row.
                     The order matters, it is the order people appear in on
@@ -518,7 +518,7 @@ export default function EmployeesPage() {
                         onChange={change}
                         onSubmit={save}
                         onCancel={() => { setAdding(false); setEditing(null) }}
-                        submitLabel={editing ? 'Save' : 'Add them'}
+                        submitLabel={editing ? 'Save' : 'Add'}
                         saving={saving}
                         problem={problem}
                         note={note}

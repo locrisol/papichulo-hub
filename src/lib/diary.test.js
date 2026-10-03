@@ -72,8 +72,8 @@ describe('who it is for', () => {
         expect(scopeLabel(meeting, RESTAURANTS)).toBe('Point Campus, Dun Laoghaire')
     })
 
-    it('says All sites for the group', () => {
-        expect(scopeLabel({ scope: 'all_sites' }, RESTAURANTS)).toBe('All sites')
+    it('says All restaurants for the group', () => {
+        expect(scopeLabel({ scope: 'all_sites' }, RESTAURANTS)).toBe('All restaurants')
     })
 
     it('says Just me for a private one', () => {
@@ -322,11 +322,11 @@ describe('what is wrong with it before it is saved', () => {
     })
 
     it('wants a name', () => {
-        expect(entryProblem({ ...good, title: '   ' })).toBe('It needs a name.')
+        expect(entryProblem({ ...good, title: '   ' })).toBe('Enter a name.')
     })
 
     it('wants a date', () => {
-        expect(entryProblem({ ...good, starts_on: '' })).toBe('It needs a date.')
+        expect(entryProblem({ ...good, starts_on: '' })).toBe('Pick a date.')
     })
 
     it('wants a kind it knows', () => {
@@ -355,7 +355,7 @@ describe('what is wrong with it before it is saved', () => {
     })
 
     it('wants to know which restaurant, when that is the answer given', () => {
-        expect(entryProblem({ ...good, restaurantIds: [] })).toContain('which restaurant')
+        expect(entryProblem({ ...good, restaurantIds: [] })).toBe('Pick a restaurant.')
     })
 
     // All sites and Just me do not need one, which is the whole point of them
@@ -366,7 +366,7 @@ describe('what is wrong with it before it is saved', () => {
     })
 
     it('does not throw on nothing at all', () => {
-        expect(entryProblem(undefined)).toBe('It needs a name.')
+        expect(entryProblem(undefined)).toBe('Enter a name.')
     })
 })
 

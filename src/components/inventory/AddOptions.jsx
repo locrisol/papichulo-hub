@@ -197,7 +197,9 @@ export default function AddOptions({
                     <span className="text-sm text-gray-700">
                         List them separately on the allergen sheet
                         <span className="block text-xs text-muted">
-                            Leave this off if they already appear in their own category.
+                            Leave this off only if they already appear in their own category.
+                            Otherwise, if they have any allergens, the allergen sheet asks customers
+                            to speak to a member of staff about this dish.
                         </span>
                     </span>
                 </label>
@@ -211,7 +213,7 @@ export default function AddOptions({
                         aria-label="Fill the list from"
                         className={`${fieldClass} flex-1 min-w-[10rem]`}
                     >
-                        <option value="">Choose a category...</option>
+                        <option value="">Pick a category</option>
                         <optgroup label="Menu categories">
                             {menuCategories.map(c => (
                                 <option key={c.id} value={c.id}>{c.name}</option>
@@ -310,7 +312,7 @@ export default function AddOptions({
 
                 {!categoryId ? (
                     <p className="text-sm text-muted py-6 text-center">
-                        Choose a category to see what is in it, or All products for something
+                        Pick a category to see what is in it, or All products for something
                         that is not sold on its own.
                     </p>
                 ) : rest.length === 0 ? (
@@ -373,14 +375,14 @@ export default function AddOptions({
                     up missing three options with no reason to go looking. */}
                 {fromProducts && shown.length > 0 && (
                     <p className="text-xs text-muted mt-3">
-                        Every product, so search is the quick way through it. A recipe made
-                        in house is here the same as anything bought in.
+                        This is every product, including recipes made in house. Use search
+                        to find one.
                     </p>
                 )}
                 {packagingLeftOut > 0 && (
                     <p className="text-xs text-muted mt-3">
-                        Packaging is not included. A salsa sold on its own comes in a dip pot,
-                        but going into a dish it does not, so only the salsa is added.
+                        Packaging is left out. Only the food is added, not the container it
+                        is sold in.
                     </p>
                 )}
                 {skipped > 0 && (

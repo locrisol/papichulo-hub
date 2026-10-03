@@ -48,7 +48,7 @@ function validate(f, { fixed = false } = {}) {
     if (fixed) return null
     if (!f.category) return 'Pick a category'
     const amount = parseFloat(f.totalAmount)
-    if (isNaN(amount) || amount <= 0) return 'The total has to be a number above zero'
+    if (isNaN(amount) || amount <= 0) return 'Enter a total above 0'
     return null
 }
 
@@ -296,7 +296,7 @@ export default function InvoicesPage() {
                 + `${supplier?.name || 'that supplier'} dated ${fullDate(payload.invoice_date)}`
                 + `${match.notes ? ` ("${match.notes}")` : ''}. `
                 + 'Two on one day does happen, so this is only a check.',
-            confirmLabel: 'Save it anyway',
+            confirmLabel: 'Save anyway',
         })
     }
 

@@ -84,7 +84,7 @@ export default function StockTakeReviewPage() {
     const { data: sessionData, error: sessionErr } = await supabase
       .from('stock_takes').select('*').eq('id', id).single()
     if (sessionErr || !sessionData) {
-      setError('Stock take session not found.')
+      setError('This stock take could not be found.')
       setLoading(false)
       return
     }
@@ -324,7 +324,7 @@ export default function StockTakeReviewPage() {
 
       <PageHeader
         title="Review & close"
-        subtitle="Check the count, then close the stock take. Once closed it becomes read-only."
+        subtitle="Check the entries, then close the stock take. After that, they cannot be changed."
       />
 
       {/* Summary cards */}
@@ -356,8 +356,8 @@ export default function StockTakeReviewPage() {
           <ListHeading count={unpricedProducts.length}>Counted with no price</ListHeading>
           <div className={`${card} p-4`}>
             <p className="text-xs text-muted mb-3">
-              These had no price when they were counted, so they are not in the total value. It does
-              not stop you closing.
+              These had no price when they were counted, so they are not in the total value. You can
+              still close the stock take.
             </p>
             <div className="space-y-2">
               {unpricedProducts.map(product => (
@@ -377,9 +377,8 @@ export default function StockTakeReviewPage() {
 
           <div className={`${card} p-4`}>
             <p className="text-xs text-muted mb-3">
-              These are kept in more than one place and you counted them in one of them. Worth a
-              look before closing, in case the other shelf was not empty. It does not stop you
-              closing.
+              These are kept in more than one place but were not counted in all of them. Check the
+              other places are empty before closing. You can still close the stock take.
             </p>
 
             <div className="space-y-2">
@@ -440,7 +439,7 @@ export default function StockTakeReviewPage() {
         ) : (
           <>
             <p className="text-xs text-muted mb-3">
-              These have no count for this session. You can count them now, or close without them (they will be left uncounted, not recorded as zero).
+              Nobody has counted these yet. Count them now, or close without them. They will show as not counted, not as zero.
             </p>
             <div className={`${card} overflow-hidden`}>
               {uncountedProducts.map((product, i) => {
@@ -537,11 +536,11 @@ export default function StockTakeReviewPage() {
         <Modal title="Close this stock take?" onClose={closeConfirm} width="max-w-md">
           <div className="px-6 py-4 space-y-3">
             <p className="text-sm text-gray-700">
-              Once closed, counts become read-only. You can reopen it later if a correction is needed.
+              After closing, the entries cannot be changed. You can reopen it later to correct them.
             </p>
             {uncountedProducts.length > 0 && (
               <Notice tone="warn">
-                {uncountedProducts.length} {uncountedProducts.length === 1 ? 'product' : 'products'} will be left uncounted for this session (no count recorded). You can reopen and add them later if needed.
+                {uncountedProducts.length} {uncountedProducts.length === 1 ? 'product has' : 'products have'} not been counted. You can reopen the stock take later to add more entries.
               </Notice>
             )}
             <p className="text-sm text-gray-700">

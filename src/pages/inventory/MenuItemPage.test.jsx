@@ -162,9 +162,9 @@ function showAgain(rerender) {
     rerender(<MemoryRouter initialEntries={['/catalogue/menu-items/m1']}>{routes()}</MemoryRouter>)
 }
 
-// What one allergen's chip says, from the Derived Allergens panel.
+// What one allergen's chip says, from the Allergens panel.
 async function chip(label) {
-    const panel = (await screen.findByText('Derived Allergens')).closest('div')
+    const panel = (await screen.findByRole('heading', { name: 'Allergens' })).closest('div')
     return within(panel).getByText(label).parentElement.textContent
 }
 
@@ -198,8 +198,8 @@ describe('a deactivated product still in the recipe', () => {
     it('is not offered when adding a component', async () => {
         const me = userEvent.setup()
         showPage()
-        await me.click(await screen.findByRole('button', { name: '+ Add Component' }))
-        await me.click(screen.getByPlaceholderText('Select a product...'))
+        await me.click(await screen.findByRole('button', { name: '+ Add component' }))
+        await me.click(screen.getByPlaceholderText('Pick a product'))
         const offered = screen.getAllByRole('option').map(o => o.textContent)
         expect(offered.some(t => t.includes('Rice'))).toBe(true)
         expect(offered.some(t => t.includes('Old Cream'))).toBe(false)
@@ -207,28 +207,28 @@ describe('a deactivated product still in the recipe', () => {
     })
 })
 
-// Nothing ever entered for something in the dish. The panel said Not Present
+// Nothing ever entered for something in the dish. The panel said Not present
 // for all of it, which is the one answer nobody gave.
 describe('a component nobody entered allergens for', () => {
     const WITH_RICE = [BURRITO[0], { id: 'k4', menu_item_id: 'm1', product_id: 'rice', quantity: 0.2, no_quantity: false }]
 
-    it('is named, and nothing it might carry is called Not Present', async () => {
+    it('is named, and nothing it might carry is called Not present', async () => {
         useTables(tablesFor({ menu_item_components: WITH_RICE }))
         showPage()
         expect(await screen.findByText(/Allergens have not been entered for Rice/)).toBeInTheDocument()
         expect(await chip('Milk')).toContain('Not known')
-        expect(await chip('Milk')).not.toContain('Not Present')
+        expect(await chip('Milk')).not.toContain('Not present')
         // What is known is still said.
         expect(await chip('Gluten')).toContain('Contains')
     })
 
-    it('says Not Present once everything in the dish was answered', async () => {
+    it('says Not present once everything in the dish was answered', async () => {
         useTables(tablesFor({
             menu_item_components: WITH_RICE,
             product_allergens: [...tablesFor().product_allergens, answered('rice')],
         }))
         showPage()
-        expect(await chip('Milk')).toContain('Not Present')
+        expect(await chip('Milk')).toContain('Not present')
         expect(screen.queryByText(/Allergens have not been entered/)).toBeNull()
     })
 })
@@ -251,15 +251,15 @@ describe('an option with no row of its own on the allergen sheet', () => {
     it('is named under its choice, with what to do about it', async () => {
         useTables(tables())
         showPage()
-        expect(await screen.findByText(/Cheese Sauce has no row of its own on the allergen sheet/))
+        expect(await screen.findByText(/Cheese Sauce is not listed separately on the allergen sheet/))
             .toBeInTheDocument()
     })
 
     it('is not named once it is ticked to be listed separately', async () => {
         useTables(tables({ list_separately: true }))
         showPage()
-        await screen.findByText('Derived Allergens')
-        expect(screen.queryByText(/no row of its own/)).toBeNull()
+        await screen.findByRole('heading', { name: 'Allergens' })
+        expect(screen.queryByText(/not listed separately on the allergen sheet/)).toBeNull()
     })
 
     // A free can on a breakfast, from a drinks category kept off the sheet on
@@ -284,7 +284,7 @@ describe('an option with no row of its own on the allergen sheet', () => {
 
 // supabase-js hands a failed read back rather than throwing it, and the page
 // kept whatever arrived. A failed read of the allergens left every component
-// with none, and the panel said Not Present for all fourteen.
+// with none, and the panel said Not present for all fourteen.
 describe('a read that fails', () => {
     function failing(table, overrides = {}) {
         const tables = tablesFor(overrides)
@@ -298,12 +298,12 @@ describe('a read that fails', () => {
     it.each([
         'product_allergens', 'products', 'menu_item_components', 'mix_recipes', 'menu_items',
         'menu_categories',
-    ])('is said, and nothing is shown as Not Present, when %s fails', async table => {
+    ])('is said, and nothing is shown as Not present, when %s fails', async table => {
         failing(table)
         showPage()
         expect(await screen.findByText(/could not be loaded in full/)).toBeInTheDocument()
-        expect(screen.queryByText('Derived Allergens')).toBeNull()
-        expect(screen.queryByText('Not Present')).toBeNull()
+        expect(screen.queryByRole('heading', { name: 'Allergens' })).toBeNull()
+        expect(screen.queryByText('Not present')).toBeNull()
     })
 
     it('reads again on Try again, and shows the dish once it arrives', async () => {
@@ -313,7 +313,7 @@ describe('a read that fails', () => {
         await screen.findByText(/could not be loaded in full/)
         useTables(tablesFor())
         await me.click(screen.getByRole('button', { name: 'Try again' }))
-        expect(await screen.findByText('Derived Allergens')).toBeInTheDocument()
+        expect(await screen.findByRole('heading', { name: 'Allergens' })).toBeInTheDocument()
     })
 
     // Not as a dish with no prices set, which is what it used to say.
@@ -321,7 +321,7 @@ describe('a read that fails', () => {
         failing('product_supplier_prices', { menu_item_components: [BURRITO[0]] })
         showPage()
         expect(await screen.findByText(/prices could not be read/)).toBeInTheDocument()
-        expect(screen.queryByText(/Some components have no preferred price/)).toBeNull()
+        expect(screen.queryByText(/Some components have no preferred price at/)).toBeNull()
     })
 
     // Switching restaurant reads the prices again. A failed read kept the
@@ -335,7 +335,7 @@ describe('a read that fails', () => {
             ],
         }))
         const { rerender } = showPage()
-        await screen.findByText('Derived Allergens')
+        await screen.findByRole('heading', { name: 'Allergens' })
         expect(screen.getByText('Cost').parentElement.textContent).toContain('€0.30')
 
         failing('product_supplier_prices', { menu_item_components: [BURRITO[0]] })
@@ -392,14 +392,14 @@ describe('the cost of a dish with a deactivated product in it', () => {
         }))
         showPage()
         const note = await screen.findByText(/Old Beans is deactivated/)
-        expect(note.textContent).toMatch(/Some components have no preferred price/)
+        expect(note.textContent).toMatch(/Some components have no preferred price at/)
         expect(note.textContent).not.toMatch(/to see the cost/)
     })
 
     it('is worked out once the dish has nothing deactivated in it', async () => {
         useTables(tablesFor({ menu_item_components: [BURRITO[0]], product_supplier_prices: PRICED }))
         showPage()
-        await screen.findByText('Derived Allergens')
+        await screen.findByRole('heading', { name: 'Allergens' })
         expect(costLine()).toContain('€0.30')
         expect(screen.queryByText(/is deactivated/)).toBeNull()
     })
@@ -428,14 +428,14 @@ describe('the marks beside a component', () => {
 describe('the component form', () => {
     // Done first and the button that does it last, the same as every other
     // form in the app.
-    it('puts Done before Add Component', async () => {
+    it('puts Done before Add component', async () => {
         useTables(tablesFor())
         const me = userEvent.setup()
         showPage()
-        await me.click(await screen.findByRole('button', { name: '+ Add Component' }))
+        await me.click(await screen.findByRole('button', { name: '+ Add component' }))
 
         const done = screen.getByRole('button', { name: 'Done' })
-        const add = screen.getByRole('button', { name: 'Add Component' })
+        const add = screen.getByRole('button', { name: 'Add component' })
         expect(done.compareDocumentPosition(add) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     })
 })

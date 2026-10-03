@@ -195,17 +195,16 @@ export default function AvailabilityDialog({ employee, onClose, onChanged }) {
                 {mode === 'now' ? (
                     <>
                         <p className="text-xs text-muted mb-3">
-                            Only the days you set say anything. A day left on any time is one the roster
-                            will never question, so there is no need to fill in a whole week to record
-                            one afternoon off.
+                            The roster only checks the days you set. Days left on Any time are never
+                            checked, so you only need to set the days that are different.
                         </p>
                         <DayRows rows={rows} on={nowRows} />
                     </>
                 ) : !changing ? (
                     <div className="text-center py-6">
                         <p className="text-sm text-muted mb-3 max-w-sm mx-auto">
-                            For somebody who has told you their hours change on a day still to come.
-                            The week above keeps applying right up to it.
+                            Use this when someone's hours change from a future date. Until then, the
+                            hours under From now on still apply.
                         </p>
                         <button
                             type="button"
@@ -269,8 +268,8 @@ export default function AvailabilityDialog({ employee, onClose, onChanged }) {
             <ModalSection title="What the roster does with it">
                 <ul className="text-sm text-muted space-y-1.5">
                     <li>The hours they cannot work are shaded on the day timeline, before you put anything in.</li>
-                    <li>A shift outside them is said in the warnings at the top of the week.</li>
-                    <li>It never stops a week going out. If you know something the roster does not, roster it.</li>
+                    <li>A shift outside them shows as a warning at the top of the week.</li>
+                    <li>It never stops the week being published.</li>
                 </ul>
             </ModalSection>
 

@@ -302,7 +302,7 @@ export function drawWeek(canvas, table) {
     font(11)
     c.fillStyle = YELLOW
     c.fillRect(l.width - l.pad - 168, l.pad + 8, 14, 14)
-    text('opens or closes the store', l.width - l.pad - 146, l.pad + 15, { colour: MUTED })
+    text('opening or closing shift', l.width - l.pad - 146, l.pad + 15, { colour: MUTED })
 
     // ---- the days
     const headTop = y
@@ -332,7 +332,7 @@ export function drawWeek(canvas, table) {
     // ---- the store's own hours
     box(l.pad, y, l.width - l.pad * 2, l.metaH, SLATE)
     font(11, '700')
-    text('STORE HOURS', l.pad + 12, y + l.metaH / 2, { colour: '#334155' })
+    text('OPENING HOURS', l.pad + 12, y + l.metaH / 2, { colour: '#334155' })
     font(12)
     table.storeHours.forEach((v, i) => {
         // The whole column, a row at a time. Painted per row rather than as one
@@ -361,7 +361,7 @@ export function drawWeek(canvas, table) {
         box(l.pad, y, l.width - l.pad * 2, l.bandsH, '#ffffff')
         font(11, '700')
         // Named like every other row. A blank left column read as a strip of
-        // colour nobody had labelled, on a sheet where STORE HOURS, EVENTS and
+        // colour nobody had labelled, on a sheet where OPENING HOURS, EVENTS and
         // ALSO ON all say what they are.
         text('ONGOING', l.pad + 12, y + l.bandsH / 2, { colour: '#475569' })
 

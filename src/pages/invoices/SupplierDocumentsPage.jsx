@@ -134,7 +134,7 @@ export default function SupplierDocumentsPage() {
 
     return (
         <>
-            <PageHeader title="What the supplier says it sent" subtitle={activeRestaurant?.name}>
+            <PageHeader title="Supplier documents" subtitle={activeRestaurant?.name}>
                 <Link to="/invoices/import" className={secondaryButton}>Import invoices</Link>
                 <Link to="/invoices" className={secondaryButton}>Invoices</Link>
             </PageHeader>
@@ -143,7 +143,7 @@ export default function SupplierDocumentsPage() {
             <Notice tone="good" className="mb-4">{said}</Notice>
 
             <div className={`${card} mb-6 overflow-hidden`}>
-                <div className={cardHeader}>The list off their portal</div>
+                <div className={cardHeader}>Paste the supplier's list</div>
                 <div className="p-5">
                     <div className="grid gap-4 sm:grid-cols-[minmax(0,14rem)_1fr]">
                         <div>
@@ -181,8 +181,7 @@ export default function SupplierDocumentsPage() {
                                 placeholder={'2017891\t45448455\t\t2026-08-23\tInvoice\t€163.03\tView'}
                             />
                             <p className={hintClass}>
-                                The column titles can come with it. A month is about eighty rows and
-                                pasting one you have already pasted is safe.
+                                Column headings can be included. Pasting the same list again is safe.
                             </p>
                         </div>
                     </div>
@@ -365,7 +364,7 @@ export default function SupplierDocumentsPage() {
 // for. A credit taken off a total before it was typed is not missing either:
 // its money is already in the Hub, inside that total.
 const HELD = {
-    held: { words: 'Have it', tint: 'bg-green-50 text-green-800 border-green-200' },
+    held: { words: 'In the Hub', tint: 'bg-green-50 text-green-800 border-green-200' },
     by_hand: { words: 'Typed in by hand', tint: 'bg-blue-50 text-blue-800 border-blue-200' },
     in_hand_total: { words: 'In a typed total', tint: 'bg-blue-50 text-blue-800 border-blue-200' },
     missing: { words: 'Not in the Hub', tint: 'bg-amber-50 text-amber-800 border-amber-200' },

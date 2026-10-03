@@ -176,7 +176,7 @@ export default function CalendarPage() {
                 markSynced(id)
                 if (!alive) return
                 if (r.added > 0) {
-                    setNote(`Found ${r.added} new ${r.added === 1 ? 'thing' : 'things'} happening nearby.`)
+                    setNote(`Found ${r.added} new ${r.added === 1 ? 'event' : 'events'} nearby.`)
                 }
                 // Read again whatever it added, and whatever it took off the
                 // waiting list: a reading the feed now covers is dismissed by
@@ -607,7 +607,7 @@ export default function CalendarPage() {
                                 onClick={() => setWeekExtrasOpen(true)}
                                 className={`${secondaryButton} w-full sm:w-auto`}
                             >
-                                Corporate schedule
+                                Corporate orders
                             </button>
                             <button
                                 type="button"

@@ -25,9 +25,9 @@ const BY_CODE = {
     // are deleting something still in use.
     '23503': 'Something else is still using that, so it cannot be removed.',
     // Not null.
-    '23502': 'Something required was left empty.',
+    '23502': 'Something required is missing. Fill it in and try again.',
     // Check constraint.
-    '23514': 'That value is not one this field accepts.',
+    '23514': 'One of the values is not allowed. Check the values and try again.',
     // .single() got no rows, or more than one. Usually a permission problem
     // wearing a different hat: the rows are there, this role cannot see them.
     'PGRST116': 'That could not be found, or you do not have permission to see it.',
@@ -83,7 +83,7 @@ export function friendlyError(error) {
     }
 
     // Something we have not seen. The raw message is more use than a shrug.
-    return error.message || 'Something went wrong.'
+    return error.message || 'Something went wrong. Please try again.'
 }
 
 // Whether this was a permission refusal, so a screen can react rather than just

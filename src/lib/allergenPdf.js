@@ -42,7 +42,7 @@ export async function qrCardPdf({ restaurantName, qrDataUrl, publicUrl, slug }) 
 
     pdf.setFont('helvetica', 'normal')
     pdf.setFontSize(10)
-    pdf.text('Allergen Information', pageWidth / 2, 25, { align: 'center' })
+    pdf.text('Allergen information', pageWidth / 2, 25, { align: 'center' })
 
     // QR code, centred
     const qrSize = 70
@@ -275,7 +275,7 @@ export async function allergenListPdf({ menuData, slug, userName }) {
         pdf.setFont('helvetica', 'bold')
         pdf.setFontSize(10)
         pdf.setTextColor(...CREAM)
-        pdf.text('Menu Item', marginX + nameColWidth / 2, y + headerRowHeight / 2 + 1.5, { align: 'center' })
+        pdf.text('Menu item', marginX + nameColWidth / 2, y + headerRowHeight / 2 + 1.5, { align: 'center' })
 
         // Allergen column headers
         pdf.setFontSize(7.5)
@@ -322,7 +322,7 @@ export async function allergenListPdf({ menuData, slug, userName }) {
         pdf.setFontSize(7)
         pdf.setTextColor(...GREEN)
         pdf.text(
-            'If you have a severe allergy, please speak to a member of staff before ordering. Our kitchen handles many allergens and we cannot guarantee zero cross-contamination.',
+            'If you have a food allergy or intolerance, please speak to a member of staff before ordering. We take great care, but our kitchen handles many allergens and we cannot guarantee that any dish is completely free of them.',
             marginX,
             pageHeight - 5,
             { maxWidth: contentWidth },

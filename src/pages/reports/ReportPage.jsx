@@ -72,7 +72,7 @@ import SaveState from '@/components/ui/SaveState'
 const pct2 = v => fmtPct(v, 2)
 
 // What stands in the way of Publish while part of the week could not be read.
-const UNREAD = 'Part of this week could not be read, so it cannot go out yet. Reload the page to try again.'
+const UNREAD = 'Part of this week could not be loaded, so it cannot be sent yet. Reload the page to try again.'
 
 const TONE = {
     green: 'text-green-700',
@@ -229,7 +229,7 @@ export default function ReportPage() {
     const reviewHeld = report?.status === 'draft' && toDecide > 0
         ? [{
             text: `${toDecide} invoice ${toDecide === 1 ? 'line' : 'lines'} from this week or earlier `
-                + `${toDecide === 1 ? 'is' : 'are'} still waiting on Review.`,
+                + `${toDecide === 1 ? 'is' : 'are'} still waiting in Review.`,
             to: '/invoices/review',
             link: 'Open Review',
         }]
@@ -802,15 +802,15 @@ export default function ReportPage() {
     function stillReading() {
         if (sections.some(s => s.key === 'cleaning') && !liveCleaning.ready) {
             setError(liveCleaning.error
-                ? `The checklists could not be read, so this cannot go out yet: ${liveCleaning.error}`
-                : 'The checklists are still being read. Give it a moment and press it again.')
+                ? `The checklists could not be loaded, so this cannot be sent yet: ${liveCleaning.error}`
+                : 'The checklists are still loading. Wait a moment and try again.')
             return true
         }
         if (!sections.some(s => s.key === 'prices_suppliers')) return false
         if (livePrices.ready) return false
         setError(livePrices.error
-            ? `The prices could not be read, so this cannot go out yet: ${livePrices.error}`
-            : 'The prices are still being read. Give it a moment and press it again.')
+            ? `The prices could not be loaded, so this cannot be sent yet: ${livePrices.error}`
+            : 'The prices are still loading. Wait a moment and try again.')
         return true
     }
 
@@ -824,10 +824,10 @@ export default function ReportPage() {
         const ok = await confirm({
             title: first ? 'Send this report?' : 'Send a correction?',
             message: first
-                ? 'The figures are frozen as they stand and the report goes out. You can re-open it afterwards '
+                ? 'The figures are frozen as they stand and the report goes out. You can reopen it afterwards '
                     + 'if something needs changing.'
                 : 'Everyone who got the first one gets this, marked as a correction saying what changed.',
-            confirmLabel: first ? 'Send it' : 'Send the correction',
+            confirmLabel: first ? 'Send' : 'Send the correction',
         })
         if (!ok) return
 
@@ -889,10 +889,10 @@ export default function ReportPage() {
         const gone = extras.filter(a => !list.includes(a))
         if (gone.length > 0) {
             const ok = await confirm({
-                title: 'Take them off the list?',
+                title: 'Remove from the list?',
                 message: `${gone.join(', ')} will stop getting the weekly report, this week and `
                     + 'every week after, until somebody adds them back.',
-                confirmLabel: 'Take them off',
+                confirmLabel: 'Remove',
             })
             if (!ok) return
         }
@@ -951,7 +951,7 @@ export default function ReportPage() {
         const ok = await confirm({
             title: 'Send this report?',
             message: 'It goes to everyone on the list below, with the figures as they were frozen.',
-            confirmLabel: 'Send it',
+            confirmLabel: 'Send',
         })
         if (!ok) return
 
@@ -975,13 +975,13 @@ export default function ReportPage() {
     // for the first time, so it is not told otherwise. See isCorrection.
     async function reopen() {
         const ok = await confirm({
-            title: 'Re-open this report?',
+            title: 'Reopen this report?',
             message: isCorrection(report)
-                ? 'It goes back to a draft and the figures go live again. Nothing is unsent: publishing it '
-                    + 'a second time mails a correction to everyone who got the first.'
-                : 'It goes back to a draft and the figures go live again. Nobody got it the first time, so '
-                    + 'publishing it sends it as the first mail, not a correction.',
-            confirmLabel: 'Re-open it',
+                ? 'It goes back to a draft and the figures are no longer frozen. The mail already sent stays '
+                    + 'sent. Publishing again sends a correction to everyone who got the first one.'
+                : 'It goes back to a draft and the figures are no longer frozen. Nobody got it the first time, '
+                    + 'so publishing sends it as the first mail, not a correction.',
+            confirmLabel: 'Reopen',
         })
         if (!ok) return
 
@@ -1146,7 +1146,7 @@ export default function ReportPage() {
     function renumber(item, key) {
         const plan = renumberPlan(item)
         return decidePrice(key, {
-            title: 'The same thing under a new number?',
+            title: 'Is this a code update?',
             message: `${item.bought} (code ${item.code}) and the ${item.name} usually bought`
                 + `${item.usualCode ? ` (code ${item.usualCode})` : ''} become one, with one price and one price `
                 + 'history. What recipes cost it at does not change here: if the price moved, it shows as a price '
@@ -1267,7 +1267,7 @@ export default function ReportPage() {
         return (
             <div className="space-y-3">
                 <p className="text-sm text-red-700">
-                    {error || (report ? 'This week could not be read.' : 'That report could not be found.')}
+                    {error || (report ? 'This week could not be loaded.' : 'That report could not be found.')}
                 </p>
                 <BackButton to="/reports">Back to reports</BackButton>
             </div>
@@ -1311,7 +1311,7 @@ export default function ReportPage() {
                         ? 'bg-accent-light text-accent-ink'
                         : 'bg-green-50 text-green-700'}`}>
                         {report.status === 'draft'
-                            ? (report.send_count > 0 ? 'Re-opened' : 'Draft')
+                            ? (report.send_count > 0 ? 'Reopened' : 'Draft')
                             : mailMissing(report) ? 'Not sent' : 'Sent'}
                     </span>
                 </div>
@@ -1405,9 +1405,8 @@ export default function ReportPage() {
                     </div>
 
                     <p className="text-xs text-muted mt-4 mb-4">
-                        Food and packaging come from the invoices dated in this week, labour from the hours
-                        entered against it. Nothing here is typed twice, so it cannot disagree with the cost
-                        dashboard.
+                        Food and packaging come from the invoices dated in this week, and labour from the hours
+                        entered for it. These are the same figures as on the Cost dashboard.
                     </p>
 
                     <WeekChart rows={history} {...specs.sales} />
@@ -1675,7 +1674,7 @@ function AddSection({ onAdd }) {
                 </button>
             </div>
             <p className="text-xs text-muted mt-2">
-                It appears on every week from now on, and can be dropped again whenever you like.
+                It appears on every week from now on, and can be removed at any time.
             </p>
         </div>
     )

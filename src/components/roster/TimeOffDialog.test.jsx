@@ -55,7 +55,7 @@ async function freeHerMonday() {
         <TimeOffDialog employees={[ANA]} initialEmployeeId="e1" restaurantId="r1" userId="u1" onClose={() => {}} />,
     )
     fireEvent.change(container.querySelectorAll('input[type="date"]')[0], { target: { value: DAY } })
-    fireEvent.click(await screen.findByRole('button', { name: 'Add it and free that day' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add and remove 1 shift' }))
 }
 
 describe('freeing the days it lands on', () => {
@@ -79,9 +79,9 @@ describe('freeing the days it lands on', () => {
         deleteFails = true
         await freeHerMonday()
         expect(await screen.findByText(/^Saved, but the shifts are still on the roster/)).toBeInTheDocument()
-        expect(screen.queryByRole('button', { name: 'Add it and free that day' })).toBeNull()
+        expect(screen.queryByRole('button', { name: 'Add and remove 1 shift' })).toBeNull()
 
-        fireEvent.click(screen.getByRole('button', { name: 'Save it' }))
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }))
         await waitFor(() => expect(calls).toContain('absences update'))
         expect(calls.filter(c => c === 'absences insert')).toHaveLength(1)
     })

@@ -69,13 +69,13 @@ export default function DoorClaimModal({ suppliers, claim = null, fixed = false,
     }
 
     return (
-        <Modal title={claim ? 'Change this problem' : 'What was wrong with it?'} onClose={onClose} width="max-w-lg">
+        <Modal title={claim ? 'Edit delivery problem' : 'Log a delivery problem'} onClose={onClose} width="max-w-lg">
             <div className="px-6 py-4">
                 {problem && <p className={`${errorBanner} mb-3`} role="alert">{problem}</p>}
 
                 <div className="grid gap-4 sm:grid-cols-2">
                     <div>
-                        <label className={labelClass} htmlFor="claim-supplier">Who delivered it</label>
+                        <label className={labelClass} htmlFor="claim-supplier">Supplier</label>
                         {onLine ? (
                             <input id="claim-supplier" value={supplierName} disabled readOnly className={locked} />
                         ) : (
@@ -103,17 +103,17 @@ export default function DoorClaimModal({ suppliers, claim = null, fixed = false,
                                     value={form.docket}
                                     onChange={e => set('docket', e.target.value)}
                                     className={fieldClass}
-                                    placeholder="Off the paper they leave"
+                                    placeholder="From the delivery docket"
                                 />
                                 <p className={hintClass}>
-                                    Worth thirty seconds of looking. It tells a manager which invoice this
-                                    was on, so it goes against the right delivery.
+                                    Optional. It tells a manager which invoice this was on, so the problem
+                                    goes against the right delivery.
                                 </p>
                             </>
                         )}
                     </div>
                 </div>
-                {onLine && <p className={hintClass}>Use Not this line to change the delivery.</p>}
+                {onLine && <p className={hintClass}>Press Not this line to change the delivery.</p>}
 
                 {fixed && (
                     <div className="mt-4">
@@ -126,8 +126,8 @@ export default function DoorClaimModal({ suppliers, claim = null, fixed = false,
                             className={locked}
                         />
                         <p className={hintClass}>
-                            The report for the week this comes off has gone out, so what was wrong and how many
-                            can no longer change.
+                            The report for the week this comes off has been sent, so what was wrong and how many
+                            can no longer be changed.
                         </p>
                     </div>
                 )}
@@ -189,7 +189,7 @@ export default function DoorClaimModal({ suppliers, claim = null, fixed = false,
                         <p className={hintClass}>One bag, tin, bottle or tray out of a case. Not kilos.</p>
                         {count && (
                             <p className="text-sm text-gray-900 mt-2">
-                                You are claiming: {count} {kind.counted}.
+                                You are logging: {count} {kind.counted}.
                             </p>
                         )}
                     </div>
@@ -211,7 +211,7 @@ export default function DoorClaimModal({ suppliers, claim = null, fixed = false,
                 </div>
 
                 <div className="mt-4">
-                    <label className={labelClass} htmlFor="claim-note">Anything else</label>
+                    <label className={labelClass} htmlFor="claim-note">Note</label>
                     <AutoTextarea
                         id="claim-note"
                         minRows={2}
@@ -226,7 +226,7 @@ export default function DoorClaimModal({ suppliers, claim = null, fixed = false,
             <div className={modalFooter}>
                 <button type="button" onClick={onClose} className={secondaryButton}>Cancel</button>
                 <button type="button" disabled={busy} onClick={go} className={primaryButton('md', 'good')}>
-                    {busy ? (next ? 'Working it out...' : 'Saving...') : !claim ? 'Log it' : next ? 'Next' : 'Save changes'}
+                    {busy ? (next ? 'Calculating...' : 'Saving...') : !claim ? 'Log problem' : next ? 'Next' : 'Save changes'}
                 </button>
             </div>
         </Modal>

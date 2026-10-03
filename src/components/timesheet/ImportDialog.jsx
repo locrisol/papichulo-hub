@@ -264,7 +264,7 @@ export default function ImportDialog({
                             onClick={apply}
                             className={primaryButton('md', 'good')}
                         >
-                            {busy ? 'Reading in...' : 'Read it in'}
+                            {busy ? 'Importing...' : 'Import'}
                         </button>
                     </>
                 )}
@@ -300,8 +300,8 @@ function Names({ names, people, answers, onAnswer }) {
     return (
         <div>
             <p className="text-sm text-muted mb-4">
-                The till spells names its own way and some of them are not people at all. Answered
-                once and remembered, except the last one.
+                Some names from the till do not match anyone on the team, and some are not people.
+                Your answers are remembered, except Ignore this time.
             </p>
 
             {names.map(name => (
@@ -314,7 +314,7 @@ function Names({ names, people, answers, onAnswer }) {
                             ? answers[name] : ''}
                         onChange={e => onAnswer(name, e.target.value || null)}
                     >
-                        <option value="">This is...</option>
+                        <option value="">Pick a person</option>
                         {people.map(p => (
                             <option key={p.id} value={p.id}>{p.full_name}</option>
                         ))}
@@ -339,8 +339,8 @@ function Names({ names, people, answers, onAnswer }) {
 
                     {answers[name] === 'once' && (
                         <p className="text-xs text-muted mt-2">
-                            Dropped from this file only. It will ask again next week, which is right
-                            if somebody typed the wrong employee number.
+                            Skipped for this file only. You will be asked again the next time this name
+                            appears.
                         </p>
                     )}
                 </div>
@@ -416,7 +416,7 @@ function Ready({ plan, read }) {
                 {read.outside > 0 && (
                     <Line>
                         {read.outside} for {otherWeeks(read)}. Open that week and upload
-                        the same file to read them in.
+                        the same file to import them.
                     </Line>
                 )}
             </ul>
@@ -436,7 +436,7 @@ function Done({ result, people }) {
     return (
         <div>
             <p className="text-base font-bold text-gray-900 mb-3">
-                {result.shifts} shift{result.shifts === 1 ? '' : 's'} read in
+                {result.shifts} shift{result.shifts === 1 ? '' : 's'} imported
             </p>
 
             <ul className="text-sm text-gray-900 space-y-1.5 mb-4">
@@ -457,7 +457,7 @@ function Done({ result, people }) {
             {result.asks.length > 0 && (
                 <div className="border-t border-border pt-3">
                     <p className="text-sm font-bold text-accent-ink mb-2">
-                        {result.asks.length} need{result.asks.length === 1 ? 's' : ''} you. Nothing was overwritten.
+                        {result.asks.length} need{result.asks.length === 1 ? 's' : ''} checking. Nothing was overwritten.
                     </p>
                     <ul className="text-xs text-muted space-y-1 tabular-nums">
                         {result.asks.map((ask, i) => (
@@ -480,7 +480,7 @@ function Done({ result, people }) {
 
 const Line = ({ children, tick, quiet }) => (
     <li className="flex gap-2">
-        <span className={quiet ? 'text-muted' : 'text-green-700'}>{tick || quiet ? (quiet ? '–' : '✓') : '•'}</span>
+        <span className={quiet ? 'text-muted' : 'text-green-700'}>{tick || quiet ? (quiet ? '—' : '✓') : '•'}</span>
         <span className={quiet ? 'text-muted' : ''}>{children}</span>
     </li>
 )

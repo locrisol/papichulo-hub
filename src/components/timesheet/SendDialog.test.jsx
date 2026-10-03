@@ -50,7 +50,7 @@ function anaNeverAnswered() {
 describe('who is offered the send', () => {
     it('gives a store manager both sends and the list', async () => {
         open({ canSend: true })
-        await waitFor(() => expect(screen.getByRole('button', { name: 'Send it' })).toBeEnabled())
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled())
         expect(screen.getByRole('button', { name: 'Send a test' })).toBeInTheDocument()
         expect(screen.getByRole('button', { name: 'Add somebody else' })).toBeInTheDocument()
         expect(screen.getByText(/You get a copy of every send/)).toBeInTheDocument()
@@ -62,7 +62,7 @@ describe('who is offered the send', () => {
     it('gives an owner the PDF and no send', async () => {
         open({ canSend: false })
         await waitFor(() => expect(screen.getByRole('button', { name: 'Download the PDF' })).toBeEnabled())
-        expect(screen.queryByRole('button', { name: 'Send it' })).not.toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: 'Send' })).not.toBeInTheDocument()
         expect(screen.queryByRole('button', { name: 'Send a test' })).not.toBeInTheDocument()
         expect(screen.queryByRole('button', { name: 'Add somebody else' })).not.toBeInTheDocument()
         expect(screen.getByText(/Only a store manager can send the hours/)).toBeInTheDocument()
@@ -115,7 +115,7 @@ describe('what is said about the fortnight', () => {
         open({ canSend: true })
         expect(await screen.findByText(/One person has a day in this period/)).toBeInTheDocument()
         expect(screen.getByText(/cannot go out/)).toBeInTheDocument()
-        expect(screen.getByRole('button', { name: 'Send it' })).toBeDisabled()
+        expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled()
     })
 })
 
@@ -125,7 +125,7 @@ describe('keeping the list', () => {
     // to.
     it('puts the list back when it could not be kept', async () => {
         open({ canSend: true, onKeepList: async () => 'That could not be saved, so nothing has changed.' })
-        await userEvent.click(screen.getByRole('button', { name: 'Take payroll@example.ie off the list' }))
+        await userEvent.click(screen.getByRole('button', { name: 'Remove payroll@example.ie from the list' }))
 
         await waitFor(() => expect(screen.getByText('That could not be saved, so nothing has changed.')).toBeInTheDocument())
         expect(screen.getByText('payroll@example.ie')).toBeInTheDocument()
@@ -163,7 +163,7 @@ describe('a period held by a clock in with no clock out', () => {
         }
         open({ canSend: true })
         await screen.findByText(/has a clock in with no clock out/)
-        const send = screen.getByRole('button', { name: 'Send it' })
+        const send = screen.getByRole('button', { name: 'Send' })
         expect(send).toBeDisabled()
         expect(send).toHaveAttribute('title', 'The period has a clock in with no clock out')
     })

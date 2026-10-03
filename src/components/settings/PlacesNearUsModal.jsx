@@ -58,7 +58,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
     const [address, setAddress] = useState('')
     const [searching, setSearching] = useState(false)
     const [candidates, setCandidates] = useState(null)
-    // Every place in the Hub, which is what Watch it fills in from. The note
+    // Every place in the Hub, which is what Add fills in from. The note
     // under each venue reads the same list, so it says what the button does.
     const [everyPlace, setEveryPlace] = useState(null)
     // Where it searched from. Shown because a lookup can succeed and be wrong:
@@ -150,8 +150,8 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
 
             if (clash && clash.id !== mine) {
                 setBusy(false)
-                setError(`${clash.name} already has that venue id. Clear it from there first, `
-                    + 'or take that place off the list.')
+                setError(`${clash.name} already has that venue ID. Clear it from there first, `
+                    + 'or remove that place from the list.')
                 return
             }
         }
@@ -207,10 +207,10 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
     // right for "not this year"; this is for "that is not us at all".
     async function stopWatching(row) {
         if (!await confirm({
-            title: `Take ${row.place.name} off the list?`,
+            title: `Remove ${row.place.name} from the list?`,
             message: 'It stops appearing on the roster and the calendar. Anything already read '
                 + 'from it is kept, and you can add it again from the search.',
-            confirmLabel: 'Take it off',
+            confirmLabel: 'Remove',
             tone: 'danger',
         })) return
 
@@ -418,7 +418,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                     <form onSubmit={save} className="grid gap-3 sm:grid-cols-2 py-3">
                         <div className="sm:col-span-2">
                             <label className={labelClass} htmlFor="place-relation">
-                                Would somebody at this walk to us?
+                                Would people at this place walk to us?
                             </label>
                             <select
                                 id="place-relation"
@@ -432,8 +432,8 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                             {/* The one judgement in the whole feature,
                                 and no API can make it. */}
                             <p className={hintClass}>
-                                The second one shows nothing until you type how many it
-                                holds, and only counts over{' '}
+                                If not, it only shows once you enter how many people it
+                                holds, and only if that is over{' '}
                                 {CITY_CAPACITY.toLocaleString('en-IE')}.
                             </p>
                         </div>
@@ -468,7 +468,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                                 inputMode="numeric"
                                 value={form.capacity}
                                 onChange={e => setForm({ ...form, capacity: e.target.value })}
-                                placeholder="Only for the city rule"
+                                placeholder="Only needed if it is not a walk away"
                             />
                         </div>
                         <div className="sm:col-span-2">
@@ -509,9 +509,9 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                                 onChange={e => setForm({ ...form, page_depth: e.target.value })}
                             />
                             <p className={hintClass}>
-                                Only does anything when the address has{' '}
-                                <code className="font-mono">{'{page}'}</code> in it. One
-                                unless the site is stingy.
+                                Only used when the address has{' '}
+                                <code className="font-mono">{'{page}'}</code> in it. Leave it at 1
+                                unless the site spreads its events over several pages.
                             </p>
                         </div>
                         <div className="sm:col-span-2">
@@ -541,7 +541,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                         </div>
                         <div className="sm:col-span-2">
                             <label className={labelClass} htmlFor="place-venue">
-                                Ticketmaster venue id
+                                Ticketmaster venue ID
                             </label>
                             <input
                                 id="place-venue"
@@ -575,7 +575,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                         </label>
                         <div className="sm:col-span-2 flex flex-wrap gap-2">
                             <button type="submit" disabled={busy} className={primaryButton()}>
-                                {editingId ? 'Save' : 'Add it'}
+                                {editingId ? 'Save' : 'Add place'}
                             </button>
                             <button
                                 type="button"
@@ -595,7 +595,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                                     onClick={() => stopWatching(rows.find(r => r.id === editingId))}
                                     className={`${rowButton('danger')} ml-auto disabled:opacity-50`}
                                 >
-                                    Take it off the list
+                                    Remove place
                                 </button>
                             )}
                         </div>
@@ -617,8 +617,8 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                         <ModalSectionBar title="Within walking distance" />
                         {walkers.length === 0 && (
                             <p className="text-sm text-muted py-3">
-                                Nothing yet. Add one below, or type the address and let the Hub
-                                look.
+                                Nothing yet. Add one below, or search from the restaurant's
+                                address.
                             </p>
                         )}
                         {walkers.map(row => (
@@ -632,7 +632,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                             />
                         ))}
 
-                        <ModalSectionBar title="Big things in the city" />
+                        <ModalSectionBar title="Large venues in the city" />
                         <label className="flex items-start gap-3 py-3 cursor-pointer">
                             <input
                                 type="checkbox"
@@ -651,9 +651,9 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                                     affected by things that drag visitors in,
                                     and those guests eat near where they sleep. */}
                                 <span className="block text-xs text-muted mt-0.5">
-                                    Nobody walks from these. They are here because they fill the
-                                    hotels beside us. A capacity has to be typed once per place,
-                                    because no API publishes it.
+                                    Nobody walks from these, but they fill the hotels near us. Enter
+                                    how many people each place holds. You only need to do this once
+                                    for each place.
                                 </span>
                             </span>
                         </label>
@@ -694,7 +694,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                         </div>
                         <Notice tone="good" className="mb-3">{read}</Notice>
 
-                        <ModalSectionBar title="Look for what is near us" />
+                        <ModalSectionBar title="Find places near us" />
                         <form onSubmit={findNearby} className="py-3 flex flex-wrap gap-2 items-end">
                             <div className="flex-1 min-w-[12rem]">
                                 <label className={labelClass} htmlFor="place-address">
@@ -709,7 +709,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                                 />
                             </div>
                             <button type="submit" disabled={searching} className={secondaryButton}>
-                                {searching ? 'Looking...' : 'Look'}
+                                {searching ? 'Searching...' : 'Search'}
                             </button>
                             {/* The address lookup is the one part of this that
                                 can refuse us and say nothing useful, so the box
@@ -719,7 +719,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                                 An Eircode, an address, or coordinates in any of the shapes
                                 Google gives them:{' '}
                                 <code className="font-mono">53.3486&deg; N, 6.2285&deg; W</code>.
-                                Whatever you give it is remembered, so this is asked once.
+                                The Hub remembers this, so you only enter it once.
                             </p>
                         </form>
 
@@ -729,20 +729,20 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                             point over it. */}
                         {lookedFrom && (
                             <p className="text-xs text-muted pb-3">
-                                Looked from{' '}
+                                Searched from{' '}
                                 <code className="font-mono">
                                     {lookedFrom.latitude}, {lookedFrom.longitude}
                                 </code>
                                 . If that is not where this restaurant is, paste the right
-                                coordinates above and look again.
+                                coordinates above and search again.
                             </p>
                         )}
 
                         {candidates && candidates.length === 0 && (
                             <p className="text-sm text-muted pb-3">
-                                Nothing selling tickets within a walk of there. Add anything else
-                                by hand above: a cinema, a park, a harbour, a college, a shopping
-                                centre, the council&apos;s events page.
+                                No more venues selling tickets were found near that address. You can
+                                add other places by hand above, such as a cinema, a park or a
+                                shopping centre.
                             </p>
                         )}
 
@@ -769,7 +769,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                                     />
                                     <span className="block text-xs text-muted">
                                         {found.relation === 'city'
-                                            ? `${found.km} km away, big enough for the city rule`
+                                            ? `${found.km} km away, big enough to count`
                                             : `${walkWords(found.walkMinutes)} · ${found.km} km`}
                                         {found.listed != null && ` · ${found.listed} listed`}
                                     </span>
@@ -780,7 +780,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                                     onClick={() => takeOn(found)}
                                     className={`${rowButton()} disabled:opacity-50`}
                                 >
-                                    Watch it
+                                    Add
                                 </button>
                             </div>
                         ))}
@@ -795,7 +795,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
     )
 }
 
-// What pressing Watch it on a venue from the search will do, when that is not
+// What pressing Add on a venue from the search will do, when that is not
 // simply adding a place.
 //
 // It fills in a place already on the list when that place is the same
@@ -816,7 +816,7 @@ function SameAs({ found, watched, places }) {
         if (fills.ticketmaster_venue_id) return null
         return (
             <span className="block text-xs text-amber-800 font-medium">
-                Watching it adds Ticketmaster to {placeName(fills)}, {where(fills)}.
+                This adds Ticketmaster to {placeName(fills)}, {where(fills)}.
             </span>
         )
     }
@@ -825,7 +825,7 @@ function SameAs({ found, watched, places }) {
     if (!like) return null
     return (
         <span className="block text-xs text-amber-800 font-medium">
-            Looks like {placeName(like)}, {where(like)}. Watching it adds a second place.
+            Looks like {placeName(like)}, {where(like)}. Adding it makes a second place.
         </span>
     )
 }

@@ -76,10 +76,10 @@ describe('ProtectedRoute', () => {
 
     // Signing in again does nothing for a login that is switched off, after a
     // last day or by a manager, so that screen must not say it will.
-    it('tells somebody whose login is switched off, and who to ask', () => {
+    it('tells somebody whose account is deactivated, and who to ask', () => {
         Object.assign(auth, { loading: false, session: { user: { id: 'u1' } }, error: 'no access' })
         show()
-        expect(screen.getByText('Your login is switched off')).toBeInTheDocument()
+        expect(screen.getByText('Your account is deactivated')).toBeInTheDocument()
         expect(screen.getByText(/ask your manager/)).toBeInTheDocument()
         expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
         expect(screen.queryByText(/usually fixes it/)).not.toBeInTheDocument()

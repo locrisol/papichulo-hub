@@ -206,12 +206,12 @@ export default function RecipePage() {
     const newErrors = {}
 
     if (!formData.ingredient_product_id) {
-      newErrors.ingredient_product_id = 'Ingredient is required'
+      newErrors.ingredient_product_id = 'Pick an ingredient'
     }
 
     const qty = parseFloat(formData.quantity)
     if (isNaN(qty) || qty <= 0) {
-      newErrors.quantity = 'Quantity must be greater than 0'
+      newErrors.quantity = 'Enter a quantity above 0'
     }
 
     return newErrors
@@ -294,7 +294,7 @@ export default function RecipePage() {
     const ingredient = getProduct(line.ingredient_product_id)
     const ok = await confirm({
       title: 'Remove this ingredient?',
-      message: 'The mix will be costed without it, and every dish using the mix follows.',
+      message: 'The MIX will be costed without it, and so will every dish that uses it.',
       details: [
         { label: 'Ingredient', value: ingredient?.name || 'Unknown product' },
         { label: 'Quantity', value: `${line.quantity} ${ingredient?.unit || ''}`.trim() },
@@ -319,7 +319,7 @@ export default function RecipePage() {
 
     const value = parseFloat(batchYieldInput)
     if (isNaN(value) || value <= 0) {
-      setBatchYieldMessage('Batch yield must be greater than 0')
+      setBatchYieldMessage('Enter a batch yield above 0')
       setBatchYieldSaving(false)
       return
     }
@@ -385,7 +385,7 @@ export default function RecipePage() {
           disabled={availableProducts.length === 0}
           className={primaryButton()}
         >
-          + Add Ingredient
+          + Add ingredient
         </button>
       </PageHeader>
 
@@ -395,12 +395,12 @@ export default function RecipePage() {
 
       {product && !product.is_mix && (
         <Notice tone="warn" className="mb-4">
-          This product is not marked as a MIX. Recipes only make sense for house-made MIX products. Edit the product and tick the MIX checkbox to make this recipe meaningful.
+          This product is not a MIX, so its cost does not come from this recipe. To use the recipe, edit the product and tick "This is a MIX product".
         </Notice>
       )}
 
       <div className={`${card} p-6 mb-6`}>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">Batch Yield</h3>
+        <h3 className="text-sm font-semibold text-gray-900 mb-3">Batch yield</h3>
         <p className="text-xs text-muted mb-3">
           How much finished {product?.name || 'product'} one batch of this recipe produces,
           measured in {product?.unit || 'the product unit'}.
@@ -438,7 +438,7 @@ export default function RecipePage() {
 
       {showForm && !editingLine && (
         <div className={`${card} overflow-hidden mb-6`}>
-          <h3 className={cardHeader}>New Ingredient</h3>
+          <h3 className={cardHeader}>New ingredient</h3>
           <div className="p-6">
             <RecipeIngredientForm
               problem={formProblem}
@@ -446,7 +446,7 @@ export default function RecipePage() {
               onChange={handleFieldChange}
               onSubmit={handleSave}
               onCancel={resetForm}
-              submitLabel="Add Ingredient"
+              submitLabel="Add ingredient"
               saving={saving}
               errors={errors}
               availableProducts={availableProducts}
@@ -460,7 +460,7 @@ export default function RecipePage() {
       ) : recipeLines.filter(line => line.mix_product_id === id).length === 0 ? (
         <div className={`${card} p-8 text-center`}>
           <p className="text-sm text-muted">
-            No ingredients yet. Click "+ Add Ingredient" to start building the recipe.
+            No ingredients yet. Press Add ingredient to start the recipe.
           </p>
         </div>
       ) : (
@@ -513,8 +513,8 @@ export default function RecipePage() {
                 <tr className={tableHeadRow}>
                   <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Ingredient</th>
                   <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Quantity</th>
-                  <th className={`text-right px-4 py-3 ${tableHeadCell}`}>Unit Cost</th>
-                  <th className={`text-right px-4 py-3 ${tableHeadCell}`}>Line Cost</th>
+                  <th className={`text-right px-4 py-3 ${tableHeadCell}`}>Unit cost</th>
+                  <th className={`text-right px-4 py-3 ${tableHeadCell}`}>Line cost</th>
                   <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Notes</th>
                   <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Actions</th>
                 </tr>
@@ -605,7 +605,7 @@ export default function RecipePage() {
               )}
               {summary.status === 'missing_price' && (summary.deactivated.length === 0 || summary.stillUnset) && (
                 <p className="text-xs text-amber-700 mt-3">
-                  Some ingredients (or nested MIX ingredients) have no preferred price set for {activeRestaurant?.name}. The cost above cannot be calculated until all ingredient prices are configured.
+                  Some ingredients have no preferred price at {activeRestaurant?.name}, or are a MIX whose cost cannot be worked out yet. The cost will show once they all have one.
                 </p>
               )}
               {summary.status === 'no_batch_yield' && (
@@ -615,7 +615,7 @@ export default function RecipePage() {
               )}
               {summary.status === 'cycle' && (
                 <p className="text-xs text-red-600 mt-3">
-                  This recipe references itself somewhere in the chain (a MIX appearing in its own recipe, directly or via another MIX). The cost cannot be calculated until the cycle is removed.
+                  A MIX used in this recipe ends up inside its own recipe, directly or through another MIX. The cost will show once that is fixed.
                 </p>
               )}
             </div>
@@ -634,6 +634,7 @@ export default function RecipePage() {
               onSubmit={handleSave}
               onCancel={resetForm}
               submitLabel="Save changes"
+              editing
               saving={saving}
               errors={errors}
               availableProducts={availableProducts}

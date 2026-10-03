@@ -122,7 +122,7 @@ export function sendWords(result, { test = false } = {}) {
     let words
     if (test) {
         words = sent === 0
-            ? 'The test went nowhere: there is nobody on the list.'
+            ? 'Test not sent. Nobody is on the list.'
             : `Test sent to ${sent} ${sent === 1 ? 'address' : 'addresses'}.`
     } else {
         words = sent === 0

@@ -19,7 +19,7 @@ export default function ReportCleaning({ cleaning, published }) {
     if (!cleaning) {
         return published
             ? <p className="text-sm text-muted">This report went out before it had a Cleaning section.</p>
-            : <p className="text-sm text-muted">Reading the checklists for the week.</p>
+            : <p className="text-sm text-muted">Loading the checklists for this week...</p>
     }
     if (cleaning.lists.length === 0) {
         return <p className="text-sm text-muted">No checklists were due this week.</p>
@@ -75,7 +75,7 @@ export default function ReportCleaning({ cleaning, published }) {
                             <div className="mt-2">
                                 <p className="text-xs text-muted">
                                     {list.photos.length === 1 ? '1 photo' : `${list.photos.length} photos`} taken this week
-                                    {gone > 0 && `, ${gone === list.photos.length ? 'all' : gone} since deleted, since only the last two rounds keep them`}.
+                                    {gone > 0 && ` (${gone === list.photos.length ? 'all' : gone} now deleted, as only the last two rounds keep photos)`}.
                                 </p>
                                 <PhotoStrip paths={photos} />
                             </div>

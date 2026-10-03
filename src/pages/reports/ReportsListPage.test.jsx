@@ -86,7 +86,7 @@ describe('a week with its sales in and its timesheet not', () => {
     // no figures yet."
     it('names the person on the phone as well, not the days', async () => {
         renderWithRouter(<ReportsListPage />)
-        const said = await screen.findAllByText(/Aoife has a rostered shift with nothing said on the timesheet/)
+        const said = await screen.findAllByText(/Aoife has a rostered shift with no times, time off or comment on the timesheet/)
         expect(said).toHaveLength(2)
         expect(screen.queryByText(/undefined/)).toBeNull()
     })
@@ -157,6 +157,6 @@ describe('a week with no sales at all', () => {
     it('still says the sales, first', async () => {
         const row = await rowFor(addDays(LAST_WEEK, -7))
         expect(within(row).getByText('Sales not finished')).toBeInTheDocument()
-        expect(within(row).getByRole('button', { name: 'Open weekly sales' })).toBeInTheDocument()
+        expect(within(row).getByRole('button', { name: 'Open Weekly sales' })).toBeInTheDocument()
     })
 })

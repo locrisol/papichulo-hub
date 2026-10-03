@@ -44,7 +44,7 @@ export async function sendTimesheet({
         // asked for the hours and the paper together, and a mail that quietly
         // arrives without it is the kind of thing nobody notices until the
         // accountant asks.
-        if (failed) throw new Error(`The hours went nowhere: ${friendlyError(failed)}`)
+        if (failed) throw new Error(`The hours were not sent, because the PDF could not be saved: ${friendlyError(failed)}`)
     }
 
     const { data, error } = await supabase.functions.invoke('weekly-report-email', {
@@ -70,7 +70,7 @@ export function sentWords(result, { test = false } = {}) {
     if (sent === 0) {
         words = 'Nobody is on the list, so nothing was sent.'
     } else if (test) {
-        words = `Test sent to ${sent} ${sent === 1 ? 'address' : 'addresses'}. Nothing has been filed.`
+        words = `Test sent to ${sent} ${sent === 1 ? 'address' : 'addresses'}. The pay period is not marked as sent.`
     } else {
         words = `Sent to ${sent} ${sent === 1 ? 'address' : 'addresses'}.`
     }

@@ -122,7 +122,7 @@ export default function TimesheetWeek({
                         to start flush against it. */}
                     <tr className={`${tableHeadRow} border-b-[3px] border-[#0B1A12]`}>
                         <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider whitespace-nowrap">
-                            Who
+                            Name
                         </th>
                         {dates.map((date, i) => {
                             const day = totals.perDay[i]

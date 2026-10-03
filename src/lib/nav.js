@@ -20,7 +20,7 @@ import { can, ALL_ROLES, MANAGERS, RESTAURANT_CONFIG, ADMIN_ONLY, homeFor } from
 // Anything not built yet is left out entirely rather than added and disabled. A
 // link that goes nowhere is worse than no link.
 export const navItems = [
-    { path: '/dashboard', label: 'Cost Dashboard', icon: 'costs', section: 'Overview', roles: MANAGERS },
+    { path: '/dashboard', label: 'Cost dashboard', icon: 'costs', section: 'Overview', roles: MANAGERS },
     { path: '/reports', label: 'Reports', icon: 'report', section: 'Overview', roles: MANAGERS },
 
     // Sales module. Daily Sales is the per-day entry form; Weekly Sales is the
@@ -28,8 +28,8 @@ export const navItems = [
     // `search` is appended when navigating: Daily Sales asks for the day view
     // explicitly, otherwise the day form redirects wide screens to the grid and
     // the link would appear to do nothing.
-    { path: '/sales', search: '?view=day', label: 'Daily Sales', icon: 'sales', section: 'Operations', roles: MANAGERS },
-    { path: '/sales/weekly', label: 'Weekly Sales', icon: 'table', section: 'Operations', roles: MANAGERS },
+    { path: '/sales', search: '?view=day', label: 'Daily sales', icon: 'sales', section: 'Operations', roles: MANAGERS },
+    { path: '/sales/weekly', label: 'Weekly sales', icon: 'table', section: 'Operations', roles: MANAGERS },
     { path: '/costs/timesheet', label: 'Timesheet', icon: 'clock', section: 'Operations', roles: MANAGERS },
     { path: '/invoices', label: 'Invoices', icon: 'invoice', section: 'Operations', roles: MANAGERS },
     { path: '/invoices/import', label: 'Import invoices', icon: 'download', section: 'Operations', roles: MANAGERS },
@@ -45,13 +45,13 @@ export const navItems = [
 
     // { path: '/catalogue', label: 'Products', icon: 'cat', section: 'Inventory' },
     { path: '/catalogue/products', label: 'Products', icon: 'cat', section: 'Catalogue', roles: MANAGERS },
-    { path: '/catalogue/menu-items', label: 'Menu Items', icon: 'book', section: 'Catalogue', roles: MANAGERS },
+    { path: '/catalogue/menu-items', label: 'Menu items', icon: 'book', section: 'Catalogue', roles: MANAGERS },
     // Employees can see suppliers on purpose: if a delivery is wrong they need
     // the rep's number. Nothing here is commercially sensitive.
     { path: '/catalogue/suppliers', label: 'Suppliers', icon: 'suppliers', section: 'Catalogue', roles: ALL_ROLES },
 
-    { path: '/inventory/stock-takes', label: 'Stock Takes', icon: 'stk', section: 'Inventory', roles: ALL_ROLES },
-    { path: '/inventory/public-allergens', label: 'Public Allergens', icon: 'alg', section: 'Inventory', roles: MANAGERS },
+    { path: '/inventory/stock-takes', label: 'Stock takes', icon: 'stk', section: 'Inventory', roles: ALL_ROLES },
+    { path: '/inventory/public-allergens', label: 'Public allergens', icon: 'alg', section: 'Inventory', roles: MANAGERS },
 
     // Everyone sees this. Nothing on it is sensitive, and the people working a
     // concert night are the ones who most need to know it is happening.

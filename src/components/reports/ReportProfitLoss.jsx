@@ -103,7 +103,7 @@ function OverheadLine({ item, net, canEdit, onSave, onRename, onRemove }) {
             title: `Remove ${item.label}?`,
             message: 'It goes from this week and stops carrying into the weeks after. Reports already sent '
                 + 'keep their own copy and do not change.',
-            confirmLabel: 'Remove it',
+            confirmLabel: 'Remove',
         })
         if (ok) onRemove(item.id)
     }
@@ -463,7 +463,7 @@ export default function ReportProfitLoss({
                 <FigureRow label="Net sales" amount={figures.net} share={null} />
                 <FigureRow
                     label="Total cost of sales"
-                    hint="food, packaging and wages"
+                    hint="food, packaging and cleaning, and labour"
                     amount={figures.costOfSales}
                     share={figures.costOfSalesPct}
                 />
@@ -508,8 +508,7 @@ export default function ReportProfitLoss({
                         {gaps.map(gap => <li key={gap}>{gap}</li>)}
                     </ul>
                     <p className="text-xs text-accent-ink/80 mt-2">
-                        The arithmetic above is right; what it is being given is not. Enter the missing hours and
-                        invoices and this section fills itself in.
+                        Once the missing hours and invoices are entered, these figures update on their own.
                     </p>
                 </div>
             )}

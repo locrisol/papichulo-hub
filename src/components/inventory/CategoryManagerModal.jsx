@@ -59,7 +59,7 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
 
     const name = newName.trim()
     if (!name) {
-      setError('Name is required')
+      setError('Enter a name')
       return
     }
     // Onto the end. Somewhere is where a new one goes, and Arrange is how it
@@ -95,7 +95,7 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
 
     const name = editName.trim()
     if (!name) {
-      setError('Name is required')
+      setError('Enter a name')
       return
     }
     const { error: e1 } = await supabase
@@ -132,10 +132,10 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
   async function toggleActive(category) {
     if (category.is_active) {
       const ok = await confirm({
-        title: `Turn off ${category.name}?`,
-        message: 'It stops appearing in Menu Items, and every dish in it comes off the allergen sheet '
-          + 'customers read. The dishes themselves are not touched and turning it back on brings them back.',
-        confirmLabel: 'Turn it off',
+        title: `Deactivate ${category.name}?`,
+        message: 'It and its dishes stop showing on Menu items and on the allergen sheet customers read. '
+          + 'The dishes themselves are not changed, and reactivating the category brings them back.',
+        confirmLabel: 'Deactivate',
         tone: 'danger',
       })
       if (!ok) return
@@ -159,9 +159,9 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
           )}
 
           <p className="text-xs text-gray-500 mb-4">
-            Categories group the menu items list, and they are the headings customers read on the
-            allergen page, in the same order. Turn one off rather than deleting it, so the dishes in it
-            keep pointing at something.
+            Categories group the menu items, and they are the headings customers see on the
+            allergen page, in this order. Categories cannot be deleted, so deactivate one you no
+            longer use.
           </p>
 
           {/* Arranging is a button rather than a pair of arrows on every row.

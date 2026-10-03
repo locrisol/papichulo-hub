@@ -56,7 +56,7 @@ describe('the note taken at the door', () => {
         await pick('Short')
         await userEvent.type(screen.getByLabelText('What it was'), 'Chicken breast, the two trays on the bottom.')
         await userEvent.type(screen.getByLabelText('Single items'), '3')
-        expect(screen.getByText('You are claiming: 3 single items missing.')).toBeInTheDocument()
+        expect(screen.getByText('You are logging: 3 single items missing.')).toBeInTheDocument()
     })
 
     // The dot used to vanish as it was typed, so 1.5 became 15 single items
@@ -64,13 +64,13 @@ describe('the note taken at the door', () => {
     // whole number.
     it('keeps a dot that is typed, and refuses part of an item', async () => {
         const onSave = open()
-        await userEvent.selectOptions(screen.getByLabelText('Who delivered it'), 's1')
+        await userEvent.selectOptions(screen.getByLabelText('Supplier'), 's1')
         await pick('Damaged')
         await userEvent.type(screen.getByLabelText('What it was'), 'Eggs')
         await userEvent.type(screen.getByLabelText('Single items'), '1.5')
         expect(screen.getByLabelText('Single items')).toHaveValue('1.5')
-        await pick('Log it')
-        expect(screen.getByRole('alert')).toHaveTextContent('Count whole ones only')
+        await pick('Log problem')
+        expect(screen.getByRole('alert')).toHaveTextContent('Enter whole numbers only')
         expect(onSave).not.toHaveBeenCalled()
     })
 
@@ -89,28 +89,28 @@ describe('the note taken at the door', () => {
 
     it('names the reason when the number is missing', async () => {
         const onSave = open()
-        await userEvent.selectOptions(screen.getByLabelText('Who delivered it'), 's1')
+        await userEvent.selectOptions(screen.getByLabelText('Supplier'), 's1')
         await pick('Short')
         await userEvent.type(screen.getByLabelText('What it was'), 'Chorizo')
-        await pick('Log it')
-        expect(screen.getByRole('alert')).toHaveTextContent('Say how many are missing.')
+        await pick('Log problem')
+        expect(screen.getByRole('alert')).toHaveTextContent('Enter how many are missing.')
         expect(onSave).not.toHaveBeenCalled()
     })
 
     it('says it is logging a new one', () => {
         open()
-        expect(screen.getByRole('dialog', { name: 'What was wrong with it?' })).toBeInTheDocument()
-        expect(screen.getByRole('button', { name: 'Log it' })).toBeInTheDocument()
+        expect(screen.getByRole('dialog', { name: 'Log a delivery problem' })).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Log problem' })).toBeInTheDocument()
     })
 
     it('hands over the same note as before', async () => {
         const onSave = open()
-        await userEvent.selectOptions(screen.getByLabelText('Who delivered it'), 's1')
+        await userEvent.selectOptions(screen.getByLabelText('Supplier'), 's1')
         await pick('Short')
         await userEvent.type(screen.getByLabelText('What it was'), 'Chorizo')
         await userEvent.type(screen.getByLabelText('Single items'), '3')
         await userEvent.type(screen.getByLabelText('Docket number'), '45747318')
-        await pick('Log it')
+        await pick('Log problem')
         expect(onSave).toHaveBeenCalledWith({
             supplierId: 's1', kind: 'short', what: 'Chorizo', cases: '', units: '3', docket: '45747318', note: '',
         })
@@ -132,7 +132,7 @@ describe('changing a note already logged', () => {
 
     it('opens with what was logged, and saves the change', async () => {
         const onSave = change(CHORIZO)
-        expect(screen.getByRole('dialog', { name: 'Change this problem' })).toBeInTheDocument()
+        expect(screen.getByRole('dialog', { name: 'Edit delivery problem' })).toBeInTheDocument()
         expect(screen.getByLabelText('What it was')).toHaveValue('Chorizo')
         expect(screen.getByLabelText('Full cases')).toHaveValue('3')
         expect(screen.getByLabelText('Docket number')).toHaveValue('45747318')
@@ -149,10 +149,10 @@ describe('changing a note already logged', () => {
     // On a line, the supplier and the docket are that delivery's.
     it('keeps the delivery as it is once it is on a line, and says how to change it', async () => {
         const onSave = change({ ...CHORIZO, invoice_line_id: 'l1' })
-        expect(screen.getByLabelText('Who delivered it')).toBeDisabled()
-        expect(screen.getByLabelText('Who delivered it')).toHaveValue('Sysco Ireland')
+        expect(screen.getByLabelText('Supplier')).toBeDisabled()
+        expect(screen.getByLabelText('Supplier')).toHaveValue('Sysco Ireland')
         expect(screen.getByLabelText('Docket number')).toBeDisabled()
-        expect(screen.getByText('Use Not this line to change the delivery.')).toBeInTheDocument()
+        expect(screen.getByText('Press Not this line to change the delivery.')).toBeInTheDocument()
         // The money is worked out and shown before anything is saved.
         await pick('Next')
         expect(onSave).toHaveBeenCalled()
@@ -163,7 +163,7 @@ describe('changing a note already logged', () => {
         const waiting = () => new Promise(() => {})
         change({ ...CHORIZO, invoice_line_id: 'l1' }, vi.fn(waiting))
         await pick('Next')
-        expect(screen.getByRole('button', { name: 'Working it out...' })).toBeDisabled()
+        expect(screen.getByRole('button', { name: 'Calculating...' })).toBeDisabled()
     })
 
     it('says it is saving a change to one on no line', async () => {
@@ -177,7 +177,7 @@ describe('changing a note already logged', () => {
     it('saves a price query on a line straight away while only its words change', async () => {
         const query = { ...CHORIZO, kind: 'price', invoice_line_id: 'l1' }
         change(query)
-        await userEvent.type(screen.getByLabelText('Anything else'), 'Rang them')
+        await userEvent.type(screen.getByLabelText('Note'), 'Rang them')
         expect(screen.getByRole('button', { name: 'Save changes' })).toBeInTheDocument()
         await userEvent.type(screen.getByLabelText('Single items'), '2')
         expect(screen.getByRole('button', { name: 'Next' })).toBeInTheDocument()
@@ -197,18 +197,18 @@ describe('changing a note already logged', () => {
         )
         expect(screen.getByLabelText('What was wrong')).toHaveValue('Short, 3 cases missing')
         expect(screen.getByLabelText('What was wrong')).toBeDisabled()
-        expect(screen.getByText(/has gone out, so what was wrong and how many\s+can no longer change\./)).toBeInTheDocument()
+        expect(screen.getByText(/has been sent, so what was wrong and how many\s+can no longer be changed\./)).toBeInTheDocument()
         expect(screen.queryByRole('button', { name: 'Damaged' })).toBeNull()
         expect(screen.queryByLabelText('Full cases')).toBeNull()
-        await userEvent.type(screen.getByLabelText('Anything else'), 'Rang them')
+        await userEvent.type(screen.getByLabelText('Note'), 'Rang them')
         await pick('Save changes')
         expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ note: 'Rang them' }))
     })
 
     it('shows what was wrong with the change and stays open', async () => {
-        change({ ...CHORIZO, invoice_line_id: 'l1' }, vi.fn(async () => 'That line only billed 1 case, less than this claim.'))
+        change({ ...CHORIZO, invoice_line_id: 'l1' }, vi.fn(async () => 'That line only billed 1 case, less than the count on this problem.'))
         await pick('Next')
         expect(screen.getByRole('alert')).toHaveTextContent('That line only billed 1 case')
-        expect(screen.getByRole('dialog', { name: 'Change this problem' })).toBeInTheDocument()
+        expect(screen.getByRole('dialog', { name: 'Edit delivery problem' })).toBeInTheDocument()
     })
 })

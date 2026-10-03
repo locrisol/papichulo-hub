@@ -88,7 +88,7 @@ describe('the count on Products', () => {
         await onProducts('Allergens not set for 2 products')
 
         tables.product_allergens = [{ product_id: 'cheese' }]
-        await me.click(navButton('Menu Items'))
+        await me.click(navButton('Menu items'))
         expect(await onProducts('Allergens not set for 1 product')).toBeInTheDocument()
 
         tables.product_allergens = [{ product_id: 'cheese' }, { product_id: 'rice' }]
@@ -109,7 +109,7 @@ describe('the count on Products', () => {
         db.from = vi.fn(table => (table === 'product_allergens'
             ? makeQuery({ data: null, error: { message: 'offline' } })
             : answer(table)))
-        await me.click(navButton('Menu Items'))
+        await me.click(navButton('Menu items'))
         // The last of the five asked for, then everything it set off let finish.
         await waitFor(() => expect(db.from).toHaveBeenCalledWith('menu_item_components'))
         await act(async () => {})
@@ -159,7 +159,7 @@ describe('when the count on Products is worked out', () => {
 
         await me.click(navButton('Products'))
         expect(reads()).toBe(2)
-        await me.click(navButton('Menu Items'))
+        await me.click(navButton('Menu items'))
         expect(reads()).toBe(3)
         await me.click(navButton('Team'))
         expect(reads()).toBe(4)
@@ -183,7 +183,7 @@ describe('the count on Roster', () => {
     it('stays amber, with words for a screen reader', async () => {
         show()
 
-        const badge = (await within(navButton('Roster')).findByText('3 requests waiting for an answer')).parentElement
+        const badge = (await within(navButton('Roster')).findByText('3 requests waiting for approval')).parentElement
         expect(badge).toHaveClass('bg-amber-500', 'text-white')
     })
 
@@ -197,7 +197,7 @@ describe('the count on Roster', () => {
         await waitFor(() => expect(db.from).toHaveBeenCalledWith('absences'))
         await act(async () => {})
 
-        expect(within(navButton('Roster')).queryByText(/waiting for an answer/)).not.toBeInTheDocument()
+        expect(within(navButton('Roster')).queryByText(/waiting for approval/)).not.toBeInTheDocument()
     })
 
     it('still counts it for an owner, who answers it', async () => {
@@ -206,7 +206,7 @@ describe('the count on Roster', () => {
         waiting = { swaps: 0 }
         show()
 
-        expect(await within(navButton('Roster')).findByText('1 request waiting for an answer')).toBeInTheDocument()
+        expect(await within(navButton('Roster')).findByText('1 request waiting for approval')).toBeInTheDocument()
     })
 
     // Part of a day stays theirs to answer, so it is still theirs to count.
@@ -216,7 +216,7 @@ describe('the count on Roster', () => {
         tables.absences[0].can_work_to = '15:00'
         show()
 
-        expect(await within(navButton('Roster')).findByText('1 request waiting for an answer')).toBeInTheDocument()
+        expect(await within(navButton('Roster')).findByText('1 request waiting for approval')).toBeInTheDocument()
     })
 })
 
@@ -229,7 +229,7 @@ describe('the dot on the menu button', () => {
     it('is red while any product has no allergens set, and says everything waiting', async () => {
         show()
 
-        const words = 'Allergens not set for 2 products. 3 requests waiting for an answer'
+        const words = 'Allergens not set for 2 products. 3 requests waiting for approval'
         await waitFor(() => expect(menu()).toHaveAccessibleDescription(words))
         expect(dot(words)).toHaveClass('bg-red-600')
     })
@@ -238,7 +238,7 @@ describe('the dot on the menu button', () => {
         tables.product_allergens = [{ product_id: 'rice' }, { product_id: 'cheese' }]
         show()
 
-        const words = '3 requests waiting for an answer'
+        const words = '3 requests waiting for approval'
         await waitFor(() => expect(menu()).toHaveAccessibleDescription(words))
         expect(dot(words)).toHaveClass('bg-amber-600')
     })
@@ -277,10 +277,10 @@ describe('which item on the menu is lit', () => {
 
     // Each starts with a path that has its own item, and only the longer one
     // is theirs.
-    it('keeps Weekly Sales on its own item', async () => {
+    it('keeps Weekly sales on its own item', async () => {
         show('/sales/weekly')
         await screen.findByText('page')
-        expect(lit()).toEqual([navButton('Weekly Sales')])
+        expect(lit()).toEqual([navButton('Weekly sales')])
     })
 
     it('keeps Delivery problems on its own item', async () => {

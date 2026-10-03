@@ -64,20 +64,20 @@ export default function ShiftDialog({
         // is the next morning, so the same time at both ends measures 24
         // hours, and this said it was over sixteen, which is the wrong thing
         // to go and look at.
-        if (toMinutes(form.startsAt) === toMinutes(form.endsAt)) return 'That shift has no length.'
+        if (toMinutes(form.startsAt) === toMinutes(form.endsAt)) return 'The start and finish times are the same.'
         if (minutes > 16 * 60) return 'That is over sixteen hours. Check the finishing time.'
         return null
     })()
 
     async function remove() {
         const ok = await confirm({
-            title: 'Remove this shift?',
+            title: 'Delete this shift?',
             details: [
                 { label: 'Who', value: employees.find(e => e.id === form.employeeId)?.full_name || '' },
                 { label: 'Day', value: dayLabel(date) },
                 { label: 'Time', value: `${form.startsAt} to ${form.endsAt}` },
             ],
-            confirmLabel: 'Remove it',
+            confirmLabel: 'Delete',
             tone: 'danger',
         })
         if (ok) onRemove(shift)
@@ -111,7 +111,7 @@ export default function ShiftDialog({
                         onChange={e => set('employeeId', e.target.value)}
                         className={fieldClass}
                     >
-                        <option value="">Pick somebody</option>
+                        <option value="">Pick a person</option>
                         {employees.map(e => (
                             <option key={e.id} value={e.id}>{e.full_name}</option>
                         ))}
@@ -157,9 +157,9 @@ export default function ShiftDialog({
                         {(edges.opening || edges.closing) && (
                             <p className="text-xs text-amber-700 mt-1.5">
                                 {edges.opening && edges.closing
-                                    ? 'Opens and closes the store.'
+                                    ? 'Opens and closes the restaurant.'
                                     : edges.opening
-                                        ? 'Starts before the store opens, so it is an opening shift.'
+                                        ? 'Starts before the restaurant opens, so it is an opening shift.'
                                         : 'Runs past closing, so it will print as Closing rather than a time.'}
                             </p>
                         )}
@@ -185,7 +185,7 @@ export default function ShiftDialog({
                 <div className={modalFooter}>
                     {editing && (
                         <button type="button" onClick={remove} className={`${rowButton('danger')} mr-auto`}>
-                            Remove
+                            Delete
                         </button>
                     )}
                     <button type="button" onClick={onClose} className={secondaryButton}>
@@ -196,7 +196,7 @@ export default function ShiftDialog({
                         disabled={saving || !!problem}
                         className={primaryButton('lg')}
                     >
-                        {saving ? 'Saving...' : editing ? 'Save' : 'Add it'}
+                        {saving ? 'Saving...' : editing ? 'Save' : 'Add shift'}
                     </button>
                 </div>
             </form>

@@ -54,9 +54,9 @@ const icons = {
 // Detail pages are not in navItems (they are reached from their list pages), so
 // the header falls back to a prefix match to keep showing a sensible title.
 const titleFallbacks = [
-    { prefix: '/inventory/stock-takes', label: 'Stock Takes' },
+    { prefix: '/inventory/stock-takes', label: 'Stock takes' },
     { prefix: '/catalogue/products', label: 'Products' },
-    { prefix: '/catalogue/menu-items', label: 'Menu Items' },
+    { prefix: '/catalogue/menu-items', label: 'Menu items' },
     { prefix: '/sales', label: 'Sales' },
     { prefix: '/checklists', label: 'Checklists' },
     { prefix: '/reports', label: 'Reports' },
@@ -184,7 +184,7 @@ export default function AppLayout({ children }) {
             return {
                 count: waitingCount,
                 tone: 'waiting',
-                words: `${waitingCount} ${waitingCount === 1 ? 'request' : 'requests'} waiting for an answer`,
+                words: `${waitingCount} ${waitingCount === 1 ? 'request' : 'requests'} waiting for approval`,
             }
         }
         if (path === PRODUCTS.path && noAllergens > 0) {

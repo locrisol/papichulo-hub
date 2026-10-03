@@ -84,7 +84,7 @@ describe('the calendar and the Ticketmaster check', () => {
         answer({ data: { added: 1, total: 9, places: 1, failures: [] }, error: null })
 
         await waitFor(() => expect(eventReads()).toBeGreaterThan(before))
-        expect(await screen.findByText('Found 1 new thing happening nearby.')).toBeInTheDocument()
+        expect(await screen.findByText('Found 1 new event nearby.')).toBeInTheDocument()
         expect(screen.queryByText('Loading the calendar...')).toBeNull()
         expect(screen.getByText(/Kings of Leon/)).toBeInTheDocument()
     })

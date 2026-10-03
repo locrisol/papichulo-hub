@@ -226,7 +226,7 @@ export default function WasteSummaryPage() {
                     </p>
                 ) : (
                     <p className="text-sm text-muted mt-2">
-                        {fmtMoney(totalValue)} thrown out of {fmtMoney(netSales)} taken
+                        {fmtMoney(totalValue)} thrown out, against {fmtMoney(netSales)} in net sales
                     </p>
                 )}
             </div>
@@ -326,7 +326,7 @@ export default function WasteSummaryPage() {
             </div>
 
             <p className="text-xs text-muted mt-3">
-                Under {GOOD_BELOW}% of net sales is healthy, {GOOD_BELOW} to {WARN_BELOW}% is worth a look, above
+                Under {GOOD_BELOW}% of net sales is healthy, {GOOD_BELOW} to {WARN_BELOW}% is a warning, above
                 {' '}{WARN_BELOW}% needs attention. Quantities are not totalled across products, since kilos and units
                 do not add up together.
             </p>

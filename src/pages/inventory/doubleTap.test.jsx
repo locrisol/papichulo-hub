@@ -77,7 +77,7 @@ describe('a second tap on Save', () => {
     it('adds one supplier', async () => {
         const clicker = userEvent.setup()
         renderWithRouter(<SuppliersPage />)
-        await clicker.click(await screen.findByRole('button', { name: '+ Add Supplier' }))
+        await clicker.click(await screen.findByRole('button', { name: '+ Add supplier' }))
         const form = within(screen.getByText('New supplier').parentElement)
         await clicker.type(box(form, 'Name'), 'Musgrave')
 
@@ -88,13 +88,13 @@ describe('a second tap on Save', () => {
     it('adds one menu item', async () => {
         const clicker = userEvent.setup()
         renderWithRouter(<MenuItemsPage />)
-        await clicker.click(await screen.findByRole('button', { name: '+ Add Menu Item' }))
-        const form = within(screen.getByText('New Menu Item').parentElement)
+        await clicker.click(await screen.findByRole('button', { name: '+ Add menu item' }))
+        const form = within(screen.getByText('New menu item').parentElement)
         await clicker.type(box(form, 'Name'), 'Chicken Burrito')
         await clicker.selectOptions(box(form, 'Category', 'select'), 'c1')
-        await clicker.type(box(form, 'Selling Price (€, gross)'), '11.9')
+        await clicker.type(box(form, 'Selling price (€, gross)'), '11.9')
 
-        const made = await twice(clicker, form.getByRole('button', { name: 'Create & Edit Components' }), 'menu_items')
+        const made = await twice(clicker, form.getByRole('button', { name: 'Save and add components' }), 'menu_items')
         expect(made).toHaveLength(1)
     })
 
@@ -104,12 +104,12 @@ describe('a second tap on Save', () => {
             <Routes><Route path="/catalogue/products/:id/recipe" element={<RecipePage />} /></Routes>,
             { route: '/catalogue/products/m1/recipe' },
         )
-        await clicker.click(await screen.findByRole('button', { name: /Add Ingredient/ }))
+        await clicker.click(await screen.findByRole('button', { name: /Add ingredient/ }))
         await clicker.click(screen.getByRole('combobox'))
         await clicker.click(screen.getByRole('option', { name: /Green Peppers/ }))
         await clicker.type(box(screen, 'Quantity'), '5')
 
-        const made = await twice(clicker, screen.getByRole('button', { name: 'Add Ingredient' }), 'mix_recipes')
+        const made = await twice(clicker, screen.getByRole('button', { name: 'Add ingredient' }), 'mix_recipes')
         expect(made).toHaveLength(1)
     })
 
@@ -119,12 +119,12 @@ describe('a second tap on Save', () => {
             <Routes><Route path="/catalogue/products/:id/prices" element={<ProductPricesPage />} /></Routes>,
             { route: '/catalogue/products/p1/prices' },
         )
-        await clicker.click(await screen.findByRole('button', { name: '+ Add Price' }))
+        await clicker.click(await screen.findByRole('button', { name: '+ Add price' }))
         await clicker.selectOptions(box(screen, 'Supplier', 'select'), 's1')
-        await clicker.type(box(screen, 'Price per Case (€)'), '11.5')
-        await clicker.type(box(screen, 'Units per Case (KG)'), '5')
+        await clicker.type(box(screen, 'Price per case (€)'), '11.5')
+        await clicker.type(box(screen, 'Units per case (KG)'), '5')
 
-        const made = await twice(clicker, screen.getByRole('button', { name: 'Add Price' }), 'product_supplier_prices')
+        const made = await twice(clicker, screen.getByRole('button', { name: 'Add price' }), 'product_supplier_prices')
         expect(made).toHaveLength(1)
     })
 })

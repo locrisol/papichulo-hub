@@ -134,7 +134,7 @@ export default function StartStockTakeModal({ onClose, onCreated, restaurantId, 
                 className={fieldClass}
               />
               <p className={hintClass}>
-                A short label to help identify this session later.
+                A name to help you find this stock take later.
               </p>
             </div>
 

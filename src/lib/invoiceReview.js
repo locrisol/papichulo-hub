@@ -85,7 +85,7 @@ export async function readToDecide(restaurantId, { upTo = null } = {}) {
 export async function claimCode(price, restaurantId) {
     const code = price?.supplier_code?.trim()
     if (!code || !price.supplier_id) return null
-    const missed = err => `The price was saved, but invoices with code ${code} will not find it yet: `
+    const missed = err => `The price was saved, but it could not be matched to code ${code}: `
         + `${friendlyError(err)} Match the code on Review instead.`
 
     const { data: taken, error: readErr } = await supabase.from('supplier_codes')

@@ -78,7 +78,7 @@ export default function PublicAllergensPage({ slugOverride }) {
       return
     }
     if (!restRes.data) {
-      setError('Restaurant not found')
+      setError('Please ask a member of staff for allergen information.')
       setLoading(false)
       return
     }
@@ -208,7 +208,7 @@ export default function PublicAllergensPage({ slugOverride }) {
     return (
       <div className="min-h-screen bg-app-bg flex items-center justify-center p-4">
         <div className={`${card} p-8 max-w-sm w-full text-center`} role="alert">
-          <p className="text-xs font-bold text-accent-ink uppercase tracking-widest mb-1">Allergen Information</p>
+          <p className="text-xs font-bold text-accent-ink uppercase tracking-widest mb-1">Allergen information</p>
           {restaurant && (
             <h1 className="font-serif text-2xl font-bold text-gray-900 mb-3">{restaurant.name}</h1>
           )}
@@ -227,7 +227,6 @@ export default function PublicAllergensPage({ slugOverride }) {
     return (
       <div className="min-h-screen bg-app-bg flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl p-8 max-w-sm w-full text-center shadow">
-          <p className="text-4xl mb-3">🚫</p>
           <h1 className="text-lg font-semibold text-gray-900 mb-2">Page not found</h1>
           <p className="text-sm text-gray-500">{error}</p>
         </div>
@@ -239,7 +238,7 @@ export default function PublicAllergensPage({ slugOverride }) {
     <div className="min-h-screen bg-app-bg">
       <div className="max-w-2xl mx-auto p-4 sm:p-6">
         <header className="mb-6">
-          <p className="text-xs font-bold text-accent-ink uppercase tracking-widest mb-1">Allergen Information</p>
+          <p className="text-xs font-bold text-accent-ink uppercase tracking-widest mb-1">Allergen information</p>
           <h1 className="font-serif text-2xl sm:text-3xl font-bold text-gray-900">{restaurant.name}</h1>
           {/* The day anything on the sheet last changed, and nothing when
               there is no such day to say. It used to fall back to today,
@@ -251,11 +250,11 @@ export default function PublicAllergensPage({ slugOverride }) {
 
         <div className={`${warningNote} mb-6`}>
           <p className="font-semibold mb-1">Important</p>
-          <p>If you have a severe allergy, please speak to a member of staff before ordering. While we take great care, our kitchen handles many allergens and we cannot guarantee zero cross-contamination.</p>
+          <p>If you have a food allergy or intolerance, please speak to a member of staff before ordering. We take great care, but our kitchen handles many allergens and we cannot guarantee that any dish is completely free of them.</p>
         </div>
 
         <div className={`${card} p-4 mb-6 text-xs text-gray-600`}>
-          <p className="mb-2">Tap a dish to see its full allergen breakdown. The summary shows allergens that the dish either contains or may contain.</p>
+          <p className="mb-2">Press a dish to see its full allergen breakdown. The summary shows allergens that the dish either contains or may contain.</p>
           <div className="flex flex-wrap gap-3 text-xs">
             {/* The colours and the ~ come from the same place as the
                 chips', so the key cannot say something they do not. */}
@@ -276,7 +275,7 @@ export default function PublicAllergensPage({ slugOverride }) {
 
         {itemsByCategory.length === 0 ? (
           <div className={`${card} p-8 text-center`}>
-            <p className="text-sm text-gray-500">No menu items available.</p>
+            <p className="text-sm text-gray-500">No dishes to show. Please ask a member of staff about allergens.</p>
           </div>
         ) : (
           <AllergenList
@@ -288,7 +287,7 @@ export default function PublicAllergensPage({ slugOverride }) {
 
         <footer className="mt-8 text-center">
           <p className="text-xs text-muted">
-            Allergen information provided by {restaurant.name}. For the most current information, please ask a member of staff.
+            If you have any questions about allergens, please ask a member of staff.
           </p>
         </footer>
       </div>

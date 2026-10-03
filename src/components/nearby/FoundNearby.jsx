@@ -39,7 +39,7 @@ export default function FoundNearby({ rows, today, restaurantName, onDecide, bus
     if (!rows?.length) return null
 
     const count = rows.length
-    const what = count === 1 ? 'thing' : 'things'
+    const what = count === 1 ? 'event' : 'events'
 
     return (
         <div className="mb-3">
@@ -49,26 +49,26 @@ export default function FoundNearby({ rows, today, restaurantName, onDecide, bus
                     is drawn on the calendar the same as a kept one. What it
                     actually is, is a decision waiting on somebody. */}
                 <p className="text-sm font-semibold text-accent-ink">
-                    {count} {what} near {restaurantName || 'us'}{' '}
-                    {count === 1 ? 'is' : 'are'} waiting on you
+                    {count} {what} near {restaurantName || 'the restaurant'}{' '}
+                    {count === 1 ? 'needs' : 'need'} checking
                 </p>
                 <button
                     type="button"
                     onClick={() => setOpen(v => !v)}
                     className={rowButton()}
                 >
-                    {open ? 'Not now' : 'Show me'}
+                    {open ? 'Hide' : 'Show'}
                 </button>
             </div>
 
             {open && (
                 <div className={`${card} mt-2 overflow-hidden`}>
                     <p className="px-4 py-2 bg-sidebar text-white text-sm font-semibold">
-                        Found since you last looked
+                        Waiting to be checked
                     </p>
                     <p className="px-4 py-2 text-xs text-muted border-b border-border">
-                        Correct a name before you keep it if the page got it short. What you type
-                        is what the roster says.
+                        You can correct a name before you keep it. The roster shows the name as you
+                        type it here.
                     </p>
                     {rows.map(row => (
                         <div

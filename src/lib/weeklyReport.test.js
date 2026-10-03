@@ -725,7 +725,7 @@ describe("the delivery platforms' own week", () => {
 
         it('waits for the Monday the statements come out', () => {
             const said = deliveryBlockers({ weekStart: WEEK, today: '2026-09-27', rows, days: DAYS })
-            expect(said[0]).toBe('The delivery platforms bill Monday to Sunday, so their statements for '
+            expect(said[0]).toBe('The online platforms bill Monday to Sunday, so their statements for '
                 + 'Monday 21 to Sunday 27 September come out on Monday 28 September. The report can be sent from then.')
         })
 

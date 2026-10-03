@@ -8,7 +8,7 @@ import {
 describe('tableWords', () => {
     it('uses the name the app calls it', () => {
         expect(tableWords('sales_records')).toBe('Daily sales')
-        expect(tableWords('shift_requests')).toBe('Time off request')
+        expect(tableWords('shift_requests')).toBe('Shift swap')
         expect(tableWords('users')).toBe('Account')
     })
 

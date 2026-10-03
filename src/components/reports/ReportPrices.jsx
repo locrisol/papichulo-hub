@@ -43,7 +43,7 @@ const toneOf = n => (n > 0.004 ? 'up' : n < -0.004 ? 'down' : 'quiet')
 
 const WHY = {
     weight: 'Recipes count it by weight and it is sold one at a time, so nothing on the invoice says what one weighs.',
-    units: 'The price the Hub has and the invoice are not counted the same way. Worth checking the price on the product.',
+    units: 'The price the Hub has and the invoice are not counted the same way. Check the price on the product.',
 }
 
 export default function ReportPrices({
@@ -190,7 +190,7 @@ function Decision({ item, busy, onCostFrom, onMakeUsual, onRenumber, onGiveReaso
             <>
                 <b>{item.name}.</b> The last three deliveries were {item.bought} (code {item.code}), not the
                 one recipes cost from. {item.renumbered && renumberPlan(item)
-                    ? 'It reads like the same thing under a new number.'
+                    ? 'It looks like a code update.'
                     : `Is it the usual one now? The Hub has it at ${fmtMoney(item.rowPer)} ${item.unit}.`}
             </>
         )
@@ -219,8 +219,8 @@ function Decision({ item, busy, onCostFrom, onMakeUsual, onRenumber, onGiveReaso
     } else if (item.kind === 'renumbered') {
         words = (
             <>
-                <b>{item.name}.</b> {item.bought} (code {item.code}) reads like {item.usualName}
-                {item.usualCode ? ` (code ${item.usualCode})` : ''} under {item.newer ? 'a new' : 'an old'} number
+                <b>{item.name}.</b> {item.bought} (code {item.code}) looks like {item.usualName}
+                {item.usualCode ? ` (code ${item.usualCode})` : ''} under {item.newer ? 'a newer' : 'an older'} code
                 {item.change == null ? '.' : item.change === 0 ? ', at the same price.' : `, ${pct(item.change)} ${item.unit}.`}
             </>
         )
@@ -524,7 +524,7 @@ function Moves({ moves, doubtful }) {
                         {' '}on {shortDate(m.on)}{m.invoice ? `, ${m.invoice}` : ''}.
                     </p>
                     <p className="text-xs text-muted">
-                        More likely a pack read wrong on one of the two than a real price. Worth checking the invoice.
+                        More likely a pack read wrong on one of the two than a real price. Check the invoice.
                     </p>
                 </div>
             ))}
@@ -685,7 +685,7 @@ function Back({ back, reasons, owed, earlier = [], total, canEdit, jobs, busy, o
             {owed.length > 0 && (
                 <>
                     <p className="px-3 py-2 bg-app-bg border-y border-border text-xs font-bold text-muted uppercase tracking-wider">
-                        Still waiting on a credit
+                        Still waiting for a credit
                     </p>
                     {owed.map(o => (
                         <Row key={o.id}>
@@ -797,7 +797,7 @@ function Ledger({ section }) {
             key: b.id, name: b.what, what: `${b.number || ''} of ${shortDate(b.date)}`,
             before: '', now: '', change: b.parts.map(p => p.label).join(', '), money: fmtMoney(b.money),
         }))],
-        ['Still waiting on a credit', section.owed.map(o => ({
+        ['Still waiting for a credit', section.owed.map(o => ({
             key: o.id, name: o.what, what: `since ${shortDate(o.since)}`,
             before: '', now: '', change: o.label, money: o.money == null ? '' : fmtMoney(o.money),
         }))],

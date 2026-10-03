@@ -261,7 +261,7 @@ describe('the allergen page when one read fails', () => {
         expect(await screen.findByText(ASK_STAFF)).toBeInTheDocument()
         expect(screen.queryByText('Plain Rice')).toBeNull()
         expect(screen.queryByText('No declared allergens')).toBeNull()
-        expect(screen.queryByText('No menu items available.')).toBeNull()
+        expect(screen.queryByText('No dishes to show. Please ask a member of staff about allergens.')).toBeNull()
     })
 
     // A read that failed is not a restaurant that does not exist, and the

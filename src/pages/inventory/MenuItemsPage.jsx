@@ -180,12 +180,12 @@ export default function MenuItemsPage() {
 
   function validate() {
     const e = {}
-    if (!formData.name.trim()) e.name = 'Name is required'
-    if (!formData.category_id) e.category_id = 'Category is required'
+    if (!formData.name.trim()) e.name = 'Enter a name'
+    if (!formData.category_id) e.category_id = 'Pick a category'
     const price = parseFloat(formData.selling_price)
-    if (isNaN(price) || price < 0) e.selling_price = 'Selling price must be 0 or more'
+    if (isNaN(price) || price < 0) e.selling_price = 'Enter a selling price of 0 or more'
     const vat = parseFloat(formData.vat_rate)
-    if (isNaN(vat) || vat < 0 || vat > 100) e.vat_rate = 'VAT rate must be between 0 and 100'
+    if (isNaN(vat) || vat < 0 || vat > 100) e.vat_rate = 'Enter a VAT rate from 0 to 100'
     return e
   }
 
@@ -239,9 +239,9 @@ export default function MenuItemsPage() {
       const ok = await confirm({
         title: `Deactivate ${item.name}?`,
         message: 'It comes off the menu and off the allergen sheet. Everything already recorded against it stays as it is.',
-        confirmLabel: 'Deactivate it',
+        confirmLabel: 'Deactivate',
         tone: 'danger',
-        dangerNote: 'You can put it back at any time.',
+        dangerNote: 'You can reactivate it at any time.',
       })
       if (!ok) return
     }
@@ -401,7 +401,7 @@ export default function MenuItemsPage() {
     return (
       <>
         {s.contains > 0 && <span className="text-red-600 mr-2">{s.contains} contains</span>}
-        {s.mayContain > 0 && <span className="text-amber-700">{s.mayContain} may</span>}
+        {s.mayContain > 0 && <span className="text-amber-700">{s.mayContain} may contain</span>}
       </>
     )
   }
@@ -437,19 +437,19 @@ export default function MenuItemsPage() {
       {/* Allowed to wrap. A title, a subtitle and three buttons never fit
           across a phone, and with no wrapping the title was squeezed into a
           narrow column while the last button hung off the right edge. */}
-      <PageHeader title="Menu Items" subtitle={`Costs and margins for ${activeRestaurant?.name ?? ''}`}>
+      <PageHeader title="Menu items" subtitle={`Costs and margins for ${activeRestaurant?.name ?? ''}`}>
         <button
           onClick={() => setShowCategoryModal(true)}
           className={secondaryButton}
         >
-          Manage Categories
+          Manage categories
         </button>
         <ShowInactiveButton showing={showInactive} onToggle={() => setShowInactive(on => !on)} />
         <button
           onClick={() => { resetForm(); setShowForm(true) }}
           className={primaryButton()}
         >
-          + Add Menu Item
+          + Add menu item
         </button>
       </PageHeader>
 
@@ -462,7 +462,7 @@ export default function MenuItemsPage() {
 
       {showForm && (
         <div className={`${card} overflow-hidden mb-6`}>
-          <h3 className={cardHeader}>New Menu Item</h3>
+          <h3 className={cardHeader}>New menu item</h3>
           <form onSubmit={handleSave} className="p-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
               <div>
@@ -482,7 +482,7 @@ export default function MenuItemsPage() {
                   onChange={e => handleFieldChange('category_id', e.target.value)}
                   className={fieldClass}
                 >
-                  <option value="">Select a category...</option>
+                  <option value="">Pick a category</option>
                   {categories.filter(c => c.is_active).map(c => (
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
@@ -490,7 +490,7 @@ export default function MenuItemsPage() {
                 {errors.category_id && <p className={fieldError}>{errors.category_id}</p>}
               </div>
               <div>
-                <label className={labelClass}>Selling Price (€, gross)</label>
+                <label className={labelClass}>Selling price (€, gross)</label>
                 <input
                   {...numberField({
                     value: formData.selling_price,
@@ -501,7 +501,7 @@ export default function MenuItemsPage() {
                 {errors.selling_price && <p className={fieldError}>{errors.selling_price}</p>}
               </div>
               <div>
-                <label className={labelClass}>VAT Rate (%)</label>
+                <label className={labelClass}>VAT rate (%)</label>
                 <input
                   {...numberField({
                     value: formData.vat_rate,
@@ -510,7 +510,7 @@ export default function MenuItemsPage() {
                   className={fieldClass}
                 />
                 {errors.vat_rate && <p className={fieldError}>{errors.vat_rate}</p>}
-                <p className={hintClass}>Use 0 if no VAT applies. Margin calculation handles any rate.</p>
+                <p className={hintClass}>Use 0 if there is no VAT.</p>
               </div>
             </div>
             <div className="mb-4">
@@ -542,7 +542,7 @@ export default function MenuItemsPage() {
                 disabled={saving}
                 className={primaryButton()}
               >
-                {saving ? 'Saving...' : 'Create & Edit Components'}
+                {saving ? 'Saving...' : 'Save and add components'}
               </button>
             </div>
           </form>
@@ -555,7 +555,7 @@ export default function MenuItemsPage() {
         <button type="button" onClick={() => fetchAll()} className={primaryButton()}>Try again</button>
       ) : itemsByCategory.every(g => g.items.length === 0) ? (
         <div className={`${card} p-8 text-center`}>
-          <p className="text-sm text-muted">No menu items yet. Click "+ Add Menu Item" to add your first.</p>
+          <p className="text-sm text-muted">No menu items yet. Press Add menu item to add the first one.</p>
         </div>
       ) : (
         <div className="space-y-6">

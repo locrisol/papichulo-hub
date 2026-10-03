@@ -52,13 +52,17 @@ export default function TimeOffRequestDialog({ me, rules, onClose, onSaved }) {
     const days = startsOn && lastDay
         ? Math.round((new Date(lastDay + 'T00:00:00') - new Date(startsOn + 'T00:00:00')) / 86400000) + 1
         : 0
+    const away = startsOn
+        ? Math.round((new Date(startsOn + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000)
+        : 0
+    const starts = away === 0 ? 'today' : away === 1 ? 'tomorrow' : `in ${away} days`
 
     function problem() {
         if (!startsOn) return 'Pick a day.'
         if (isHoliday && !endsOn) return 'Pick the last day.'
         if (lastDay < startsOn) return 'The last day is before the first one.'
-        if (startsOn < today) return 'That day has gone.'
-        if (isPart && !canFrom && !canTo) return 'Say what hours you can work.'
+        if (startsOn < today) return 'That date is in the past.'
+        if (isPart && !canFrom && !canTo) return 'Enter the hours you can work.'
         if (isPart && canFrom && canTo && canTo <= canFrom) return 'The end is before the start.'
         return null
     }
@@ -141,7 +145,7 @@ export default function TimeOffRequestDialog({ me, rules, onClose, onSaved }) {
                                 placeholder="Until closing" aria-label="I can work until" />
                         </div>
                         <p className={hintClass}>
-                            Leave one empty if only the other changes. Empty means opening or closing.
+                            Leave a time empty to mean from opening or until closing.
                         </p>
                     </div>
                 )}
@@ -158,14 +162,14 @@ export default function TimeOffRequestDialog({ me, rules, onClose, onSaved }) {
                     and a week either side at the same time. */}
                 {days > 0 && !notice && (
                     <p className="text-xs text-muted">
-                        {days} {days === 1 ? 'day' : 'days'} off, starting in {Math.round((new Date(startsOn + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000)} days.
+                        {days} {days === 1 ? 'day' : 'days'} off, starting {starts}.
                     </p>
                 )}
 
                 {notice && (
                     <Notice tone={blocked ? 'urgent' : 'warn'}>
-                        Holidays need {noticeDays(rules)} days' notice and this one starts in {notice.actual}{' '}
-                        {notice.actual === 1 ? 'day' : 'days'}.{' '}
+                        Holidays need {noticeDays(rules)} {noticeDays(rules) === 1 ? "day's" : "days'"} notice
+                        and this one starts {starts}.{' '}
                         {blocked
                             ? 'Pick a later date, or speak to your manager.'
                             : 'You can still send it, but your manager may not be able to approve it.'}

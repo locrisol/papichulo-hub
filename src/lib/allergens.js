@@ -107,8 +107,8 @@ export const ALLERGENS = [
 ]
 
 export const ALLERGEN_STATES = [
-  { value: 'none', label: 'Not Present', activeClass: 'bg-gray-200 text-gray-700 border-gray-300' },
-  { value: 'may_contain', label: 'May Contain', activeClass: 'bg-amber-100 text-amber-800 border-amber-300' },
+  { value: 'none', label: 'Not present', activeClass: 'bg-gray-200 text-gray-700 border-gray-300' },
+  { value: 'may_contain', label: 'May contain', activeClass: 'bg-amber-100 text-amber-800 border-amber-300' },
   { value: 'contains', label: 'Contains', activeClass: 'bg-red-100 text-red-800 border-red-300' },
 ]
 
@@ -163,7 +163,7 @@ export function allergenLook(state) {
 
 const SEVERITY = { contains: 2, may_contain: 1, none: 0 }
 
-// All fourteen at Not Present, which is where the form starts so only the ones
+// All fourteen at Not present, which is where the form starts so only the ones
 // that apply need changing. It is a starting point and not an answer: a product
 // nobody ever saved allergens for is a gap, see neverEntered below.
 export function emptyAllergens() {
@@ -378,7 +378,7 @@ export function summariseAllergens(allergens) {
 
 export { ALLERGEN_KEYS }
 
-// How many of the fourteen are set to anything other than Not Present. It is
+// How many of the fourteen are set to anything other than Not present. It is
 // what a collapsed section says about itself, and what tells a save whether
 // somebody has answered the question or skipped it.
 export function declaredCount(values) {

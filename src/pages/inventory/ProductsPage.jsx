@@ -140,9 +140,9 @@ const COLUMNS = [
   { key: 'section', label: 'Section', width: 'w-48' },
   { key: 'unit', label: 'Unit', width: 'w-20' },
   { key: 'type', label: 'Type', width: 'w-32' },
-  { key: 'supplier', label: 'Preferred Supplier', sortable: true },
+  { key: 'supplier', label: 'Preferred supplier', sortable: true },
   { key: 'cost', label: 'Cost/Unit', width: 'w-28', sortable: true },
-  { key: 'weightLoss', label: 'Weight Loss', width: 'w-28', sortable: true },
+  { key: 'weightLoss', label: 'Weight loss', width: 'w-28', sortable: true },
 ]
 
 export default function ProductsPage() {
@@ -524,7 +524,7 @@ export default function ProductsPage() {
     const newErrors = {}
 
     if (!formData.name.trim()) {
-      newErrors.name = 'Name is required'
+      newErrors.name = 'Enter a name'
     } else if (sameName(products, formData.name, editingProduct?.id)) {
       // Refused rather than warned about. Two rows with the same name on a
       // stock take is somebody guessing which one to count, and a guess is
@@ -535,13 +535,13 @@ export default function ProductsPage() {
 
     const weightLoss = parseFloat(formData.weight_loss_pct)
     if (isNaN(weightLoss) || weightLoss < 0 || weightLoss > 100) {
-      newErrors.weight_loss_pct = 'Weight loss must be between 0 and 100'
+      newErrors.weight_loss_pct = 'Enter a weight loss from 0 to 100'
     }
 
     // Empty is a real answer: nobody has said. A number has to be more than
     // nothing, since a piece that weighs nothing would make a case of ten free.
     if (String(formData.piece_weight ?? '').trim() !== '' && !(parseFloat(formData.piece_weight) > 0)) {
-      newErrors.piece_weight = 'Leave it empty, or say roughly what one piece weighs'
+      newErrors.piece_weight = 'Enter a weight above 0, or leave it empty'
     }
 
     return newErrors
@@ -781,7 +781,7 @@ export default function ProductsPage() {
           const packsErr = await replacePacks(saved.id)
           if (packsErr) {
             setFormProblem(savedButNot(formData.name,
-              [{ what: 'pack sizes', plural: true, error: packsErr, next: 'Press Save changes to try again.' }]))
+              [{ what: 'packs', plural: true, error: packsErr, next: 'Press Save changes to try again.' }]))
             await fetchPrices()
             fetchProducts()
             // The product row itself was saved, so the count may have moved.
@@ -853,7 +853,7 @@ export default function ProductsPage() {
 
       // Once the product is in, anything after it that fails closes the form
       // and says what is missing and where to add it. Left open, the form
-      // still said Add Product, and pressing it again made a second product
+      // still said Add product, and pressing it again made a second product
       // with the same name. The rest of the product is on its own screens.
       //
       // A failure does not stop the writes after it unless they hang off it:
@@ -880,7 +880,7 @@ export default function ProductsPage() {
           .select()
           .single()
 
-        const packsMissed = { what: 'pack sizes', plural: true, next: 'Add the pack sizes under Formats on its Prices page.' }
+        const packsMissed = { what: 'packs', plural: true, next: 'Add the packs from its Prices page.' }
 
         if (priceErr) {
           missed.push({ what: 'price', error: priceErr, next: 'Add the price from its Prices page.' })
@@ -1063,11 +1063,11 @@ export default function ProductsPage() {
         title: `Deactivate ${product.name}?`,
         // The cost part is said here because it is the surprise. Its old
         // price is not used for anything made with it, see lib/mixCost.
-        message: 'It stays on every recipe and every count that already used it, and it cannot be picked for anything new. '
+        message: 'It stays on every recipe and every stock take that already used it, and it cannot be picked for anything new. '
           + 'A recipe or dish still using it has no cost until it is replaced.',
-        confirmLabel: 'Deactivate it',
+        confirmLabel: 'Deactivate',
         tone: 'danger',
-        dangerNote: 'You can turn it back on at any time.',
+        dangerNote: 'You can reactivate it at any time.',
       })
       if (!ok) return
     }
@@ -1317,7 +1317,7 @@ export default function ProductsPage() {
           onClick={() => { resetForm(); setShowForm(true) }}
           className={primaryButton()}
         >
-          + Add Product
+          + Add product
         </button>
       </PageHeader>
 
@@ -1330,7 +1330,7 @@ export default function ProductsPage() {
           a field somebody has to go back and read. */}
       {showForm && !editingProduct && (
         <div className={`${card} overflow-hidden mb-6`}>
-          <h3 className={cardHeader}>New Product</h3>
+          <h3 className={cardHeader}>New product</h3>
           <div className={`p-6 ${sectionColour(formData.section).bg}`}>
             <ProductForm
               problem={formProblem}
@@ -1338,7 +1338,7 @@ export default function ProductsPage() {
               onChange={handleFieldChange}
               onSubmit={handleSave}
               onCancel={resetForm}
-              submitLabel="Add Product"
+              submitLabel="Add product"
               saving={saving && !asking}
               errors={errors}
               extras

@@ -31,7 +31,7 @@ export default function FillInModal({ doc, invoice, lines, onClose, onFillIn }) 
     }
 
     return (
-        <Modal title="Fill in what is behind it" onClose={onClose} width="max-w-lg">
+        <Modal title="Fill in an invoice typed by hand" onClose={onClose} width="max-w-lg">
             <div className="px-6 py-4">
                 <p className={captionClass}>Already in the Hub</p>
                 <p className="text-sm text-gray-900 mt-1 mb-4">
@@ -58,13 +58,13 @@ export default function FillInModal({ doc, invoice, lines, onClose, onFillIn }) 
                         </p>
                         <p className="mt-1">
                             The invoice goes up to {fmtMoney(plan.gross)}, which is what they
-                            charged, and that {fmtMoney(plan.deducted)} becomes a claim against this
-                            delivery. The week stays on {fmtMoney(plan.net)}, exactly where it is
-                            now.
+                            charged, and that {fmtMoney(plan.deducted)} becomes a delivery problem
+                            on this invoice. The week stays on {fmtMoney(plan.net)}, exactly where
+                            it is now.
                         </p>
                         <p className="mt-1">
-                            The claim starts open, because nobody knows whether the credit ever
-                            came. It goes on the list until somebody says.
+                            It starts open, because nobody knows yet whether the credit came. It
+                            stays on Delivery problems until it is credited, refused or cancelled.
                         </p>
                     </Notice>
                 )}
@@ -97,7 +97,7 @@ export default function FillInModal({ doc, invoice, lines, onClose, onFillIn }) 
                     onClick={go}
                     className={primaryButton('md', plan.over > 0 ? 'accent' : 'good')}
                 >
-                    {busy ? 'Filling in...' : 'Fill it in'}
+                    {busy ? 'Filling in...' : 'Fill in invoice'}
                 </button>
             </div>
         </Modal>

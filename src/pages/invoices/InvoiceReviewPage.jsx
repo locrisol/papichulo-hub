@@ -53,7 +53,7 @@ const PILE_CARDS = [
     {
         key: 'new_code',
         title: 'The same thing under a new code',
-        under: 'A code we have never had, that reads like one we already buy. If the old code has stopped, it is a code update: one price and one price history for both. If Sysco sends either one depending on what it has, we usually buy both: each keeps its own price and neither is ever counted as bought instead of the other.',
+        under: 'A code we have never had, that reads like one we already buy. If the old code has stopped, it is a code update: one price and one price history for both. If the supplier sends either one depending on what it has, we usually buy both: each keeps its own price and neither is ever counted as bought instead of the other.',
     },
     {
         key: 'price_changed',
@@ -63,7 +63,7 @@ const PILE_CARDS = [
     {
         key: 'unchanged',
         title: 'Nothing to decide',
-        under: 'Matched and the same as before. Listed rather than hidden, and one press clears them.',
+        under: 'Matched, and the same price as before. Press Clear all to remove them from this list.',
     },
 ]
 
@@ -640,7 +640,7 @@ export default function InvoiceReviewPage() {
                                         onClick={() => run('clear', () => clearUnchanged(piles.unchanged))}
                                         className={primaryButton('sm', 'good')}
                                     >
-                                        {busy === 'clear' ? 'Clearing...' : 'Nothing to decide, clear them'}
+                                        {busy === 'clear' ? 'Clearing...' : 'Clear all'}
                                     </button>
                                 </>
                             ) : (

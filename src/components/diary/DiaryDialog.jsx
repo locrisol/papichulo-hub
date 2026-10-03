@@ -68,7 +68,7 @@ function GoesOn({ mode, restaurantIds, restaurants, allSites, onChange }) {
             <div className="border-t border-dashed border-border my-2" />
 
             {[
-                ...(allSites ? [{ value: 'all_sites', label: 'All sites, the whole group' }] : []),
+                ...(allSites ? [{ value: 'all_sites', label: 'All restaurants' }] : []),
                 { value: 'private', label: 'Just me. Nobody else sees it' },
             ].map(one => (
                 <label key={one.value} className="flex items-start gap-2.5 py-1.5 cursor-pointer">
@@ -248,10 +248,13 @@ export default function DiaryDialog({ entry, date, restaurants, onClose, onSaved
 
         // The row is saved either way. A calendar that refuses is reported, not
         // hidden: an entry that quietly stayed in the Hub looks exactly like one
-        // that went out, and the list says which it was.
+        // that went out, and the list says which it was. Google's own words
+        // go to the console, where whoever fixes it can read them, and not on
+        // a screen staff read. A refusal is our own sentence and says itself.
         const went = await writeToGoogle(data.id)
         if (!went.ok && went.reason) {
-            setError(`Saved, but it did not reach Google. ${went.reason}`)
+            if (!went.refused) console.error('Google calendar did not take the entry:', went.reason)
+            setError(went.refused ? went.reason : 'Saved, but it did not reach Google. Try saving it again later.')
             setSaving(false)
             return
         }
@@ -261,9 +264,9 @@ export default function DiaryDialog({ entry, date, restaurants, onClose, onSaved
 
     async function remove() {
         const yes = await confirm({
-            title: 'Take this out of the diary?',
-            message: `${form.title} will be removed from the calendar, from the roster, and from Google.`,
-            confirmLabel: 'Take it out',
+            title: 'Delete this entry?',
+            message: `${form.title} will be deleted from the Hub, and from Google calendar if it is on it.`,
+            confirmLabel: 'Delete',
             tone: 'danger',
         })
         if (!yes) return
@@ -277,9 +280,10 @@ export default function DiaryDialog({ entry, date, restaurants, onClose, onSaved
         // may never have been on Google at all.
         const cleared = await writeToGoogle(current.id, { clear: true })
         if (!cleared.ok && cleared.reason) {
+            if (!cleared.refused) console.error('Google calendar did not remove the entry:', cleared.reason)
             setError(cleared.refused
                 ? cleared.reason
-                : `It is still in Google and could not be taken off. ${cleared.reason}`)
+                : 'Nothing was deleted, because it could not be removed from Google calendar. Try again later.')
             setSaving(false)
             return
         }
@@ -294,7 +298,7 @@ export default function DiaryDialog({ entry, date, restaurants, onClose, onSaved
     }
 
     return (
-        <Modal title={current ? 'Edit this' : 'Add to the calendar'} onClose={close}>
+        <Modal title={current ? 'Edit entry' : 'Add to the calendar'} onClose={close}>
             <div className="px-6 py-4 space-y-4">
                 {error && <ErrorBanner>{error}</ErrorBanner>}
 
@@ -427,8 +431,7 @@ export default function DiaryDialog({ entry, date, restaurants, onClose, onSaved
                         </button>
                     </div>
                     <p className={hintClass}>
-                        Who or what it is for. Anything typed here is offered next time, so the
-                        same word gets used rather than four spellings of it.
+                        Who or what it is for. Labels you add are offered again next time.
                     </p>
                 </div>
 
@@ -471,7 +474,7 @@ export default function DiaryDialog({ entry, date, restaurants, onClose, onSaved
 
                 <div>
                     <label className={labelClass} htmlFor="diary-note">
-                        Anything else <span className="text-muted font-normal">optional</span>
+                        Note <span className="text-muted font-normal">optional</span>
                     </label>
                     <AutoTextarea
                         id="diary-note"
@@ -482,21 +485,20 @@ export default function DiaryDialog({ entry, date, restaurants, onClose, onSaved
                 </div>
 
                 <div>
-                    <label className={labelClass} htmlFor="diary-status">How sure is it</label>
+                    <label className={labelClass} htmlFor="diary-status">Status</label>
                     <select
                         id="diary-status"
                         className={fieldClass}
                         value={form.status}
                         onChange={e => set('status', e.target.value)}
                     >
-                        <option value="enquiry">An enquiry, not confirmed yet</option>
+                        <option value="enquiry">Enquiry, not confirmed yet</option>
                         <option value="confirmed">Confirmed</option>
                         <option value="done">Done</option>
                         <option value="cancelled">Cancelled</option>
                     </select>
                     <p className={hintClass}>
-                        A cancelled one stays here but comes off the roster, because knowing it was
-                        cancelled is not the same as it never existing.
+                        A cancelled entry stays on the Calendar but no longer shows on the roster.
                     </p>
                 </div>
             </div>
@@ -504,7 +506,7 @@ export default function DiaryDialog({ entry, date, restaurants, onClose, onSaved
             <div className={modalFooter}>
                 {current && (
                     <button type="button" onClick={remove} disabled={saving} className={`${rowButton('danger')} mr-auto`}>
-                        Take it out
+                        Delete
                     </button>
                 )}
                 <button type="button" onClick={close} className={secondaryButton}>Cancel</button>

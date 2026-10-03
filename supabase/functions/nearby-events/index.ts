@@ -461,7 +461,15 @@ Deno.serve(async (request) => {
             signal: AbortSignal.timeout(WAIT_MS),
         }).catch(() => null)
         if (!res) return json({ error: 'Ticketmaster did not answer. Try again in a minute.' }, 502)
-        if (!res.ok) return json({ error: `Ticketmaster said no (${res.status}).` }, 502)
+        // A refused key is said the way the roster says it, since trying
+        // again will not mend it. Anything else usually passes.
+        if (!res.ok) {
+            return json({
+                error: res.status === 401 || res.status === 403
+                    ? refusedWords(res.status)
+                    : `Ticketmaster could not search right now (error ${res.status}). Try again in a minute.`,
+            }, 502)
+        }
 
         const answer = await res.json().catch(() => null)
         if (!answer) return json({ error: 'Ticketmaster did not answer. Try again in a minute.' }, 502)

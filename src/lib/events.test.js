@@ -56,7 +56,7 @@ describe('statusNote', () => {
         expect(statusNote(undefined)).toBe(null)
     })
 
-    it('reads off sale as probably sold out', () => {
+    it('reads off sale as possibly sold out', () => {
         expect(statusNote('offsale').text).toMatch(/sold out/)
         expect(statusNote('offsale').tone).toBe('warn')
     })

@@ -53,7 +53,7 @@ const LINE_COLUMNS = 'id, raw_description, pack_size, cases, units, price_per_ca
 
 // Where a claim's money now comes off, once it is written. claimWeek's answer.
 function landsSaid(amount, { week, delivered, moved }) {
-    if (!moved) return `${fmtMoney(amount)} is coming off the week that delivery landed in.`
+    if (!moved) return `${fmtMoney(amount)} comes off the costs for the week of that delivery.`
     return `The report for the week of ${shortDate(delivered)} has already been sent, `
         + `so ${fmtMoney(amount)} is coming off the week of ${shortDate(week)} instead, `
         + `shown as from the delivery in the week of ${shortDate(delivered)}.`
@@ -64,7 +64,7 @@ function landsSaid(amount, { week, delivered, moved }) {
 // rather than reported as done. Null when it went through.
 function changedSince(rows) {
     return rows && !rows.length
-        ? 'Nothing changed: that problem has moved on since this page was read. Have a look again.'
+        ? 'Nothing was changed, because this problem was updated after the page loaded. Check it again below.'
         : null
 }
 
@@ -76,7 +76,7 @@ function lineName(line) {
 // A change to the money once that week's report has gone out (amountFixed),
 // when the page did not know yet: it went out while the form was open.
 function fixedSaid(claim) {
-    return `The report for the week of ${shortDate(claim.counted_week)} has gone out, so this claim stays at `
+    return `The report for the week of ${shortDate(claim.counted_week)} has been sent, so the amount stays at `
         + `${fmtMoney(claim.amount)}. Only what it was and the note can change now.`
 }
 
@@ -186,8 +186,8 @@ export default function ClaimsPage() {
         setSaid(!manager
             ? 'Logged. A manager will put it against the invoice once it comes in.'
             : claimCandidates(row, invoices).lines.length
-                ? 'Logged. Say which line it was below.'
-                : 'Logged. Once its invoice is imported, say which line it was below.')
+                ? 'Logged. Pick the invoice line for it below.'
+                : 'Logged. Once its invoice is imported, pick the line for it below.')
         setRefresh(n => n + 1)
         return null
     }
@@ -220,7 +220,7 @@ export default function ClaimsPage() {
         setError('')
         setSaid('')
         if (notTheDocket(claim, invoice) && !otherDelivery) {
-            setError(`That isn't invoice ${claim.docket_number}, the one written on the note.`)
+            setError(`That isn't invoice ${claim.docket_number}, the docket number logged with this problem.`)
             return false
         }
         setBusy(claim.id)
@@ -296,7 +296,7 @@ export default function ClaimsPage() {
         setBusy('')
         if (e1) return friendlyError(e1)
         setSaid(changedSince(data)
-            || (moved ? `Changes saved. The claim is ${fmtMoney(patch.amount)} now.` : 'Changes saved.'))
+            || (moved ? `Changes saved. The amount is now ${fmtMoney(patch.amount)}.` : 'Changes saved.'))
         setRefresh(n => n + 1)
         return null
     }
@@ -309,10 +309,10 @@ export default function ClaimsPage() {
         const off = claimTakesOff(claim)
         const ok = await confirm({
             title: 'Not this line?',
-            message: `Take it off invoice ${on?.invoice_number || ''} of ${on ? shortDate(on.invoice_date) : ''}? `
+            message: `Remove it from invoice ${on?.invoice_number || ''} of ${on ? shortDate(on.invoice_date) : ''}? `
                 + (off > 0 ? `${fmtMoney(off)} stops coming off the week of ${shortDate(claim.counted_week)}, and it ` : 'It ')
                 + 'waits for the right invoice again.',
-            confirmLabel: 'Take it off',
+            confirmLabel: 'Remove from invoice',
         })
         if (!ok) return
         setError('')
@@ -328,13 +328,13 @@ export default function ClaimsPage() {
         setBusy('')
         if (e1) { setError(friendlyError(e1)); return }
         setSaid(changedSince(data)
-            || `It is off invoice ${on?.invoice_number || 'that invoice'} now, and waits for the right invoice again.`)
+            || `Removed from invoice ${on?.invoice_number || 'that invoice'}. It is waiting for the right invoice again.`)
         setRefresh(n => n + 1)
     }
 
     // They said no, or it was logged by mistake. Asked first, with what it
     // does to the money, because on 2 October one was pressed seven seconds
-    // after another button by mistake. Ask again under Finished undoes either.
+    // after another button by mistake. Reopen under Finished undoes either.
     //
     // The money that stops is what the claim takes off now less what it will
     // take off after, not its amount: a claim part credited keeps what came
@@ -350,19 +350,20 @@ export default function ClaimsPage() {
         const problem = [{ label: 'Problem', value: claim.what }]
         const ok = await confirm(status === 'refused'
             ? {
-                title: 'They said no?',
+                title: 'Mark as refused?',
                 message: `This problem will be marked as refused. ${money} `
-                    + 'If they credit it after all, use Ask again under Finished first.',
+                    + 'If the supplier credits it after all, press Reopen under Finished first.',
                 details: problem,
-                confirmLabel: 'They said no',
+                confirmLabel: 'Mark as refused',
             }
             : {
-                title: 'Take it back?',
-                message: `It will be removed from the list and won't count anywhere.${stops > 0 ? ` ${money}` : ''}`,
+                title: 'Cancel this problem?',
+                message: `It moves to Finished and won't count anywhere.${stops > 0 ? ` ${money}` : ''}`,
                 details: problem,
-                confirmLabel: 'Take it back',
+                confirmLabel: 'Cancel problem',
+                cancelLabel: 'Go back',
                 tone: 'danger',
-                dangerNote: 'You can ask again from Finished.',
+                dangerNote: 'You can reopen it from Finished.',
             })
         if (!ok) return
 
@@ -379,8 +380,8 @@ export default function ClaimsPage() {
         setBusy('')
         if (e1) { setError(friendlyError(e1)); return }
         setSaid(changedSince(data) || (status === 'refused'
-            ? 'Marked as refused. You can still ask again from Finished.'
-            : 'Taken back. You can still ask again from Finished.'))
+            ? 'Marked as refused. You can reopen it from Finished.'
+            : 'Cancelled. You can reopen it from Finished.'))
         setRefresh(n => n + 1)
     }
 
@@ -399,17 +400,17 @@ export default function ClaimsPage() {
         // Moved, it never came off the new week before, so not "again".
         const shifted = back.patch.counted_week != null
         const ok = await confirm({
-            title: 'Ask again?',
+            title: 'Reopen this problem?',
             message: (comes <= 0
                 ? 'It goes back on Still waiting.'
                 : shifted
                     ? `It goes back on Still waiting. The report for the week of ${shortDate(claim.counted_week)} `
-                        + `has gone out, so ${fmtMoney(comes)} comes off the week of ${shortDate(back.week)} instead.`
+                        + `has been sent, so ${fmtMoney(comes)} comes off the week of ${shortDate(back.week)} instead.`
                     : `It goes back on Still waiting, and ${fmtMoney(comes)} comes off the week of ${shortDate(back.week)} again.`)
                 + (canDetach(again) && claim.delivery
-                    ? ` It is still on invoice ${claim.delivery.invoice_number}. If that is the wrong one, use Not this line.`
+                    ? ` It is still on invoice ${claim.delivery.invoice_number}. If that is the wrong one, press Not this line.`
                     : ''),
-            confirmLabel: 'Ask again',
+            confirmLabel: 'Reopen',
         })
         if (!ok) return
 
@@ -439,15 +440,13 @@ export default function ClaimsPage() {
 
             <div className={`${card} p-4 mb-6`}>
                 <p className="text-sm text-gray-900">
-                    <strong className="font-bold">Say it at the door or it never happens.</strong>{' '}
-                    They do not credit anything that was not queried when it arrived, so this list
+                    <strong className="font-bold">Log a problem while the delivery is still at the door.</strong>{' '}
+                    Suppliers only credit problems reported when the delivery arrives, so this list
                     is the only record of what was asked for.
                 </p>
                 {manager && (
                     <p className={hintClass}>
-                        Anything still open after {LATE_AFTER_DAYS} days is worth a phone call.
-                        Every credit over the month this was designed against arrived the same day
-                        or the next.
+                        If a problem is still open after {LATE_AFTER_DAYS} days, phone the supplier.
                     </p>
                 )}
             </div>
@@ -460,7 +459,7 @@ export default function ClaimsPage() {
                 />
             )}
 
-            {loading && <p className="text-sm text-muted">Reading...</p>}
+            {loading && <p className="text-sm text-muted">Loading...</p>}
 
             {!loading && (
                 <div className={`${card} mb-6 overflow-hidden`}>
@@ -567,8 +566,8 @@ export default function ClaimsPage() {
                                     <span className="line-through text-muted">{claim.what}</span>
                                     <span className="text-xs text-muted">
                                         {shortDate(claim.raised_on)}
-                                        {claim.status === 'refused' ? ', they said no' : ''}
-                                        {claim.status === 'void' ? ', taken back' : ''}
+                                        {claim.status === 'refused' ? ', refused' : ''}
+                                        {claim.status === 'void' ? ', cancelled' : ''}
                                     </span>
                                     {manager && claim.credited_amount > 0 && (
                                         <span className="text-xs font-semibold text-green-700 tabular-nums">
@@ -582,7 +581,7 @@ export default function ClaimsPage() {
                                             onClick={() => reopen(claim)}
                                             className={rowButton()}
                                         >
-                                            Ask again
+                                            Reopen
                                         </button>
                                     )}
                                 </div>
@@ -757,7 +756,7 @@ function ClaimRow({
                             On invoice {claim.delivery.invoice_number} of {shortDate(claim.delivery.invoice_date)}
                             {claim.invoice_lines ? `, ${lineName(claim.invoice_lines)}` : ''}
                             {notTheDocket(claim, claim.delivery) && (
-                                <>, <strong className="font-bold">not the invoice written on the note</strong></>
+                                <>, <strong className="font-bold">not the docket number logged</strong></>
                             )}
                         </p>
                     )}
@@ -795,7 +794,7 @@ function ClaimRow({
                                 onClick={() => { setProblem(''); setOther(o => !o) }}
                                 className={rowButton()}
                             >
-                                {other ? 'Never mind' : 'It was a different delivery'}
+                                {other ? 'Hide other deliveries' : 'Show other deliveries'}
                             </button>
                             {other && (
                                 <LinePicker
@@ -819,7 +818,7 @@ function ClaimRow({
                                 onClick={() => choose(suggestion.line, suggestion.invoice)}
                                 className={rowButton('good')}
                             >
-                                That is the one
+                                Pick this line
                             </button>
                         </>
                     ) : (
@@ -829,7 +828,7 @@ function ClaimRow({
                                 onClick={() => { setProblem(''); setPicking(p => !p) }}
                                 className={rowButton('edit')}
                             >
-                                {picking ? 'Never mind' : 'Say which line this was'}
+                                {picking ? 'Cancel' : 'Pick the invoice line'}
                             </button>
                             {picking && <LinePicker lines={found.lines} busy={busy || weighing} onChoose={choose} />}
                         </>
@@ -844,7 +843,7 @@ function ClaimRow({
                         <div className={`mt-3 ${infoNote}`}>
                             <label className="text-xs text-blue-900 block mb-1" htmlFor={`agreed-${claim.id}`}>
                                 <strong className="font-bold">{pricing.line.raw_description}</strong> came in at{' '}
-                                {fmtMoney(pricing.line.price_per_case)} a case. What should they have charged?
+                                {fmtMoney(pricing.line.price_per_case)} a case. What should the supplier have charged?
                             </label>
                             <div className="flex flex-wrap items-center gap-2">
                                 <div className="w-28">
@@ -866,26 +865,26 @@ function ClaimRow({
                                     }, pricing.change)}
                                     className={rowButton('good')}
                                 >
-                                    That is the price
+                                    Use this price
                                 </button>
                                 <button
                                     type="button"
                                     onClick={() => { setProblem(''); setPricing(null) }}
                                     className={rowButton()}
                                 >
-                                    Never mind
+                                    Cancel
                                 </button>
                             </div>
                             {pricing.from && (
                                 <p className="text-xs text-blue-900 mt-1">
                                     {pricing.from.claimed
-                                        ? `It starts at ${fmtMoney(pricing.from.start)} a case, the price this claim was worked out on.`
+                                        ? `It starts at ${fmtMoney(pricing.from.start)} a case, the price it was last worked out on.`
                                         : `It starts at ${fmtMoney(pricing.from.start)} a case, from the `
                                             + `${fmtMoney(pricing.from.perUnit)} ${unitWord(pricing.from.unit)} the Hub costs it at.`}
                                 </p>
                             )}
                             <p className="text-xs text-blue-900 mt-1">
-                                The claim is the difference on {claimCountSaid(priced.cases, priced.units)}, not the
+                                The amount is the difference on {claimCountSaid(priced.cases, priced.units)}, not the
                                 whole line.
                             </p>
                         </div>
@@ -897,7 +896,7 @@ function ClaimRow({
                             {/* A change says what the claim was as well, so
                                 old money priced a new way is seen moving. */}
                             {confirming.change && Number(claim.amount) !== confirming.amount && (
-                                <p>{`This changes the claim from ${fmtMoney(claim.amount)} to ${fmtMoney(confirming.amount)}.`}</p>
+                                <p>{`This changes the amount from ${fmtMoney(claim.amount)} to ${fmtMoney(confirming.amount)}.`}</p>
                             )}
                             <p>
                                 On invoice {confirming.invoice.invoice_number} of{' '}
@@ -907,21 +906,21 @@ function ClaimRow({
                                 {confirming.kept
                                     ? `It still comes off the week of ${shortDate(confirming.kept)}.`
                                     : confirming.moved
-                                        ? `The report for the week of ${shortDate(confirming.delivered)} has gone out, `
+                                        ? `The report for the week of ${shortDate(confirming.delivered)} has been sent, `
                                             + `so it comes off the week of ${shortDate(confirming.week)}.`
                                         : `It comes off the week of ${shortDate(confirming.week)}.`}
                             </p>
                             {confirming.other && (
                                 <p className="font-bold">
-                                    {`This isn't invoice ${claim.docket_number}, the one written on the note.`}
+                                    {`This isn't invoice ${claim.docket_number}, the docket number logged with this problem.`}
                                 </p>
                             )}
                             <div className="flex flex-wrap gap-2 pt-2">
                                 <button type="button" disabled={busy} onClick={yes} className={rowButton('good')}>
-                                    {confirming.change ? 'Save changes' : 'Yes, that line'}
+                                    {confirming.change ? 'Save changes' : 'Use this line'}
                                 </button>
                                 <button type="button" onClick={() => setConfirming(null)} className={rowButton()}>
-                                    Never mind
+                                    Cancel
                                 </button>
                             </div>
                         </div>
@@ -957,10 +956,10 @@ function ClaimRow({
                         </button>
                     )}
                     <button type="button" disabled={busy} onClick={() => onClose(claim, 'refused')} className={rowButton()}>
-                        They said no
+                        Mark as refused
                     </button>
                     <button type="button" disabled={busy} onClick={() => onClose(claim, 'void')} className={rowButton()}>
-                        Take it back
+                        Cancel problem
                     </button>
                 </div>
             )}
@@ -984,7 +983,7 @@ function LinePicker({ lines, note, busy, onChoose }) {
     const groups = byInvoice(lines)
 
     if (!groups.length) {
-        return <p className="text-xs text-muted mt-2">No invoice from them has come in for around that day.</p>
+        return <p className="text-xs text-muted mt-2">No invoice from this supplier has come in around that day.</p>
     }
 
     return (

@@ -731,7 +731,7 @@ const MANAGERS = ['owner', 'store_manager']
 // agree.
 export function refusalFor(me, restaurantId) {
     if (!me) return { status: 401, error: 'Not signed in' }
-    if (me.is_active !== true) return { status: 403, error: 'Your login is switched off' }
+    if (me.is_active !== true) return { status: 403, error: 'Your account is deactivated' }
     if (me.role === 'super_admin') return null
     if (me.restaurant_id !== restaurantId || !MANAGERS.includes(me.role)) {
         return { status: 403, error: 'Not yours' }

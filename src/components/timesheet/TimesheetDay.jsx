@@ -295,7 +295,7 @@ export default function TimesheetDay({ rows, date, canEdit = true, onOpenDay, on
                                             }}
                                         >
                                             <span className="block text-[0.625rem] text-gray-500 whitespace-nowrap leading-6">
-                                                {shortTime(shift.starts_at)} - {shortTime(shift.ends_at)}
+                                                {shortTime(shift.starts_at)} to {shortTime(shift.ends_at)}
                                             </span>
                                         </button>
                                     ))}
@@ -369,8 +369,8 @@ export default function TimesheetDay({ rows, date, canEdit = true, onOpenDay, on
                                                 >
                                                     <span className="block text-[0.6875rem] font-bold text-gray-900 whitespace-nowrap leading-tight">
                                                         {held
-                                                            ? `${toTime(held.from)} - ${toTime(held.to)}`
-                                                            : `${shortClock(entry.starts_at)} - ${shortClock(entry.ends_at)}`}
+                                                            ? `${toTime(held.from)} to ${toTime(held.to)}`
+                                                            : `${shortClock(entry.starts_at)} to ${shortClock(entry.ends_at)}`}
                                                     </span>
                                                     {/* The hours and, beside
                                                         them, how far off the
@@ -421,13 +421,13 @@ export default function TimesheetDay({ rows, date, canEdit = true, onOpenDay, on
 
             <div className="flex flex-wrap gap-4 px-4 py-2.5 text-xs text-muted border-t border-border">
                 <Chip dashed>what they were rostered for</Chip>
-                <Chip colour={AS_PLANNED}>the clock agreed with it</Chip>
+                <Chip colour={AS_PLANNED}>within {NOTICEABLE_MINUTES} minutes of the roster</Chip>
                 <Chip colour={NOT_AS_PLANNED}>
-                    more than {NOTICEABLE_MINUTES} minutes out at either end, or in what it ran,
+                    started, finished or ran more than {NOTICEABLE_MINUTES} minutes off the roster,
                     or not rostered
                 </Chip>
                 {canEdit && (
-                    <span className="ml-auto">Drag an end to correct it, or press it to type it exactly.</span>
+                    <span className="ml-auto">Drag either end of a shift to change it, or press the shift to type the times.</span>
                 )}
             </div>
         </div>

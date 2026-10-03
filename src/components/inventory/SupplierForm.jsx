@@ -48,7 +48,7 @@ export default function SupplierForm({ problem, formData, onChange, onSubmit, on
                     </select>
                 </div>
                 <div>
-                    <label className={labelClass}>Contact Email</label>
+                    <label className={labelClass}>Email</label>
                     <input
                         type="email"
                         value={formData.contact_email}
@@ -57,7 +57,7 @@ export default function SupplierForm({ problem, formData, onChange, onSubmit, on
                     />
                 </div>
                 <div>
-                    <label className={labelClass}>Contact Phone</label>
+                    <label className={labelClass}>Phone</label>
                     <input
                         type="text"
                         value={formData.contact_phone}

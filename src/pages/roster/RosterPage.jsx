@@ -690,11 +690,11 @@ export default function RosterPage() {
             // The sentence is the red line under the dialog, never notice.
             // A notice is one button with no way back.
             const past = await confirm({
-                title: 'This week cannot go out as it is',
+                title: 'Fix these before publishing',
                 message: blocks.map(b => b.text).join('\n\n'),
-                dangerNote: 'These are limits on the company rather than on the person. Publishing anyway is a decision, not a shortcut.',
-                confirmLabel: 'Publish it anyway',
-                cancelLabel: 'Go back and fix it',
+                dangerNote: 'These are legal limits for the business. Only publish if you are sure.',
+                confirmLabel: 'Publish anyway',
+                cancelLabel: 'Go back',
                 tone: 'danger',
             })
             if (!past) return
@@ -702,7 +702,7 @@ export default function RosterPage() {
 
         const ok = await confirm({
             title: `Publish ${weekMonthLabel(weekStart)}?`,
-            message: 'Every shift in the week goes out together. Change anything afterwards and the week will say it has unpublished changes.',
+            message: 'Every shift in the week is published together. If you change anything afterwards, the week will show Unpublished changes.',
             details: [
                 { label: 'Week', value: `${shortDate(weekStart)} to ${shortDate(weekEnd)}` },
                 { label: 'Shifts', value: String(shifts.length) },
@@ -714,7 +714,7 @@ export default function RosterPage() {
             // all, since the week can still be changed after it goes out.
             tone: clashes.length > 0 ? 'danger' : 'default',
             dangerNote: clashes.length > 0
-                ? `${clashes.length} ${clashes.length === 1 ? 'person is' : 'people are'} double booked. Worth fixing first.`
+                ? `${clashes.length} ${clashes.length === 1 ? 'person is' : 'people are'} double booked. Check this before publishing.`
                 : undefined,
         })
         if (!ok) return
@@ -735,7 +735,7 @@ export default function RosterPage() {
     const stateBadge = {
         empty: { text: 'Nothing rostered', cls: 'bg-gray-100 text-gray-600' },
         draft: { text: 'Draft', cls: 'bg-amber-50 text-amber-700' },
-        changed: { text: 'Changed since it went out', cls: 'bg-red-50 text-red-700' },
+        changed: { text: 'Unpublished changes', cls: 'bg-red-50 text-red-700' },
         published: { text: 'Published', cls: 'bg-green-50 text-green-700' },
     }[state]
 
@@ -796,7 +796,7 @@ export default function RosterPage() {
             {blocks.length > 0 && (
                 <div className="bg-red-50 border border-red-200 text-red-800 text-sm rounded-lg p-3 mb-3">
                     <p className="font-semibold mb-1">
-                        {blocks.length === 1 ? 'One thing has to be fixed' : `${blocks.length} things have to be fixed`} before this week goes out
+                        {blocks.length === 1 ? 'One thing has to be fixed' : `${blocks.length} things have to be fixed`} before this week can be published
                     </p>
                     <ul className="list-disc pl-5 space-y-0.5">
                         {blocks.map((b, i) => <li key={i}>{b.text}</li>)}
@@ -806,7 +806,7 @@ export default function RosterPage() {
 
             {warnings.length > 0 && (
                 <Notice tone="warn" className="mb-3">
-                    <p className="font-semibold mb-1">Worth a look</p>
+                    <p className="font-semibold mb-1">Warnings</p>
                     <ul className="list-disc pl-5 space-y-0.5">
                         {warnings.map((w, i) => <li key={i}>{w.text}</li>)}
                     </ul>
@@ -838,7 +838,7 @@ export default function RosterPage() {
                                             onClick={() => setWeekStart(weekStartOf(a.starts_on))}
                                             className="px-3 py-1.5 rounded-lg border border-amber-300 bg-white text-xs font-semibold text-amber-900 hover:bg-amber-50"
                                         >
-                                            Go to that week
+                                            Open that week
                                         </button>
                                     )}
                                     {/* Their own, for a store manager on the
@@ -854,7 +854,7 @@ export default function RosterPage() {
                                             onClick={() => openTimeOff(a)}
                                             className={primaryButton('sm')}
                                         >
-                                            Answer it
+                                            Review
                                         </button>
                                     )}
                                 </span>
@@ -928,7 +928,7 @@ export default function RosterPage() {
                     <span className="flex items-center gap-3 normal-case tracking-normal">
                         <span className="text-white/80 text-xs">
                             {noteFor(date)?.is_closed
-                                ? 'Store closed'
+                                ? 'Restaurant closed'
                                 : dayHours
                                     ? `Open ${shortTime(dayHours.open)} to ${shortTime(dayHours.close)}`
                                     : 'No hours set'}
@@ -944,7 +944,7 @@ export default function RosterPage() {
                 </div>
                 <div className="px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs border-b border-border">
                     <span className="text-muted">
-                        <b className="text-gray-900">{fmtHours(day.hours)}</b> hours today
+                        <b className="text-gray-900">{fmtHours(day.hours)}</b> hours
                     </span>
                     <span className="text-muted">
                         <b className="text-gray-900">{fmtMoney(day.cost)}</b>
@@ -985,7 +985,7 @@ export default function RosterPage() {
                             onClick={() => setDeskOpen(true)}
                             className={`${primaryButton()} whitespace-nowrap`}
                         >
-                            {agreed.length} {agreed.length === 1 ? 'change' : 'changes'} to approve
+                            {agreed.length} {agreed.length === 1 ? 'shift swap' : 'shift swaps'} to approve
                         </button>
                     )}
                     <button type="button" onClick={() => { setPersonForm(EMPTY_EMPLOYEE); setAddingPerson(true) }} className={secondaryButton}>
@@ -1034,10 +1034,10 @@ export default function RosterPage() {
                         {state === 'published'
                             ? 'This week is published. Send it out.'
                             : state === 'changed'
-                                ? 'Changed since it went out. Publish again and you can share it.'
+                                ? 'This week has unpublished changes. Publish again to share it.'
                                 : state === 'empty'
                                     ? 'Nothing on this week yet.'
-                                    : 'Not published yet. Publish it and you can share it.'}
+                                    : 'Not published yet. Publish the week to share it.'}
                     </p>
                     <ShareWeekButton
                         dates={dates}
@@ -1140,7 +1140,7 @@ export default function RosterPage() {
                         onChange={(field, value) => setPersonForm(f => ({ ...f, [field]: value }))}
                         onSubmit={addPerson}
                         onCancel={() => setAddingPerson(false)}
-                        submitLabel="Add them"
+                        submitLabel="Add"
                         saving={saving}
                         problem={employeeProblem(personForm, todayISO())}
                         note={employeeNote(personForm, todayISO())}

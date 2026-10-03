@@ -12,12 +12,12 @@ import ErrorBanner from '@/components/ui/ErrorBanner'
 // The stored value stays 'catering'. Only what you read changes, so nothing
 // already recorded against it has to move.
 const BUCKETS = [
-  { value: 'online_platform', label: 'Online Platform' },
+  { value: 'online_platform', label: 'Online platform' },
   { value: 'catering', label: 'Corporate' },
 ]
 
 const BUCKET_LABEL = {
-  online_platform: 'Online Platforms',
+  online_platform: 'Online platforms',
   catering: 'Corporate',
 }
 
@@ -72,7 +72,7 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
 
     const name = newName.trim()
     if (!name) {
-      setError('Name is required')
+      setError('Enter a name')
       return
     }
 
@@ -85,7 +85,7 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
     const renamed = platforms.find(p => p.key === name && p.name !== name)
     if (renamed) {
       setError(`${renamed.name} was called ${name} before, so a new platform cannot use that name. `
-        + `Choose another name, or rename ${renamed.name} back.`)
+        + `Enter another name, or rename ${renamed.name} back.`)
       return
     }
 
@@ -156,7 +156,7 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
 
     const name = editName.trim()
     if (!name) {
-      setError('Name is required')
+      setError('Enter a name')
       return
     }
 
@@ -169,7 +169,7 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
         title: `Move ${p.name} to ${BUCKET_LABEL[editBucket]}?`,
         message: `Its figures in every week already entered will count toward ${BUCKET_LABEL[editBucket]} `
           + `instead of ${BUCKET_LABEL[p.bucket]}, not only the weeks from now on.`,
-        confirmLabel: 'Move it',
+        confirmLabel: 'Move',
       })
       if (!ok) return
     }
@@ -195,8 +195,8 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
       const ok = await confirm({
         title: `Retire ${p.name}?`,
         message: 'It stops appearing on new weeks. Weeks that already have figures for it keep them and '
-          + 'still show it, and turning it back on brings the row back.',
-        confirmLabel: 'Retire it',
+          + 'still show it. Press Bring back to show it on new weeks again.',
+        confirmLabel: 'Retire',
         tone: 'danger',
       })
       if (!ok) return
@@ -303,7 +303,7 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
           )}
         </div>
         {rows.length === 0 ? (
-          <p className="text-xs text-muted italic mb-2">No platforms in this bucket yet.</p>
+          <p className="text-xs text-muted italic mb-2">No platforms in this group yet.</p>
         ) : (
           <>
           {/* A card each on a phone. Three columns inside a dialog put Retire
@@ -387,7 +387,7 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
           )}
 
           <p className="text-xs text-muted mb-4">
-            Platforms feed the Online Platform and Corporate totals on the sales entry form. Retire one rather than deleting it, so weeks already entered keep their figures. Arrange sets the order they appear in.
+            Platforms feed the Online platforms and Corporate totals on the sales entry form. Retire one rather than deleting it, so weeks already entered keep their figures. Arrange sets the order they appear in.
           </p>
 
           {loading ? (

@@ -122,17 +122,17 @@ describe('the city rule is a rule', () => {
     // we have no reason to believe the place fills a hotel.
     it('counts nothing until somebody says how many it holds', () => {
         expect(countsAsCity(pairFor(null, 2.5))).toBe(false)
-        expect(cityProblem(pairFor(null, 2.5))).toBe('waiting on how many it holds')
+        expect(cityProblem(pairFor(null, 2.5))).toBe('needs how many people it holds')
     })
 
     it('refuses one that is too small for the rule', () => {
         expect(countsAsCity(pairFor(900, 2.5))).toBe(false)
-        expect(cityProblem(pairFor(900, 2.5))).toBe('holds 900, under the rule')
+        expect(cityProblem(pairFor(900, 2.5))).toBe('holds 900, too small to count')
     })
 
     it('refuses one that is too far for the rule', () => {
         expect(countsAsCity(pairFor(82300, 9))).toBe(false)
-        expect(cityProblem(pairFor(82300, 9))).toBe('9 km away, past the rule')
+        expect(cityProblem(pairFor(82300, 9))).toBe('9 km away, too far to count')
     })
 
     // One found by searching carries a distance; one added by hand does not,
@@ -475,13 +475,13 @@ describe('a listing that is somewhere else entirely', () => {
     // against a thing in Dundrum is not a rounding error, it is wrong.
     it('drops the walking time when it is not the place we measured', () => {
         expect(foundWords(rowFor('Dundrum Library'), '2026-10-01'))
-            .toBe('Thu 15 Oct · Dundrum Library · read from dlrcoco.ie')
+            .toBe('Thu 15 Oct · Dundrum Library · found on dlrcoco.ie')
     })
 
     it('keeps the place and the walk when the listing is at the place', () => {
         expect(elsewhere(rowFor('dlr LexIcon'))).toBe('dlr LexIcon')
         expect(foundWords(rowFor(null), '2026-10-01'))
-            .toBe('Thu 15 Oct · Dun Laoghaire Rathdown County Council, 5 min · read from dlrcoco.ie')
+            .toBe('Thu 15 Oct · Dun Laoghaire Rathdown County Council, 5 min · found on dlrcoco.ie')
     })
 
     // A feed calls it "The Convention Centre Dublin" and our own row calls it
@@ -631,12 +631,12 @@ describe('the line under a finding', () => {
     it('says all three', () => {
         const row = nearbyRows([film], pairs, {})[0]
         expect(foundWords(row, '2026-11-18'))
-            .toBe('Thu 19 Nov, 17:00 · Odeon Point Square, 1 min · read from pointsquare.ie yesterday')
+            .toBe('Thu 19 Nov, 17:00 · Odeon Point Square, 1 min · found on pointsquare.ie yesterday')
     })
 
     it('falls back to the place page when the row carries no address', () => {
         const row = nearbyRows([{ ...film, source_url: null }], pairs, {})[0]
-        expect(foundWords(row, '2026-11-18')).toContain('read from pointsquare.ie')
+        expect(foundWords(row, '2026-11-18')).toContain('found on pointsquare.ie')
     })
 })
 
@@ -733,7 +733,7 @@ describe('finding the next restaurant its places', () => {
     it('says why it is not being offered', () => {
         expect(pastWalking(1, null)).toBe('')
         expect(pastWalking(4, 900)).toBe('48 minutes, past walking')
-        expect(pastWalking(9, 82300)).toBe('108 minutes, big enough for the city rule')
+        expect(pastWalking(9, 82300)).toBe('108 minutes, big enough to count')
     })
 })
 

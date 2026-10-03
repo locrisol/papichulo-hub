@@ -223,7 +223,7 @@ function UnderLine({ cell, unplanned, canEdit, onOpen }) {
             const plan = cell.rostered[0]
             const differs = plan && (shortClock(plan.starts_at) !== shortClock(first.starts_at)
                 || shortClock(plan.ends_at) !== shortClock(first.ends_at))
-            if (differs) bits.push(`for ${shortClock(plan.starts_at)}–${shortClock(plan.ends_at)}`)
+            if (differs) bits.push(`for ${shortClock(plan.starts_at)} to ${shortClock(plan.ends_at)}`)
         }
     }
 

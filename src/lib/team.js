@@ -178,7 +178,7 @@ export function employeeRow(form) {
 // Returns the first problem as a sentence, because a form with one field
 // wrong should say what is wrong, not colour four boxes red.
 export function employeeProblem({ fullName, startedOn, endedOn, dateOfBirth }, today) {
-    if (!fullName?.trim()) return 'Give them a name.'
+    if (!fullName?.trim()) return 'Enter a name.'
     if (endedOn && startedOn && endedOn < startedOn) {
         return 'The last day cannot be before the first day.'
     }
@@ -218,7 +218,7 @@ export function employeeNote({ dateOfBirth, startedOn }, today) {
             + 'so check it is right.'
     }
     if (age > 90) {
-        return `That date of birth makes them ${age}. Worth checking.`
+        return `That date of birth makes them ${age}. Check it is right.`
     }
     if (startedOn && yearsBetween(dateOfBirth, startedOn) < 14) {
         return 'That first day is before their fourteenth birthday.'

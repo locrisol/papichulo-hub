@@ -37,22 +37,22 @@ export function priceProblem(form) {
     const errors = {}
 
     if (!form.supplier_id) {
-        errors.supplier_id = 'Supplier is required'
+        errors.supplier_id = 'Pick a supplier'
     }
 
     if (form.purchase_type === 'case') {
         const perCase = parseFloat(form.price_per_case)
         const perPack = parseFloat(form.units_per_case)
         if (isNaN(perCase) || perCase <= 0) {
-            errors.price_per_case = 'Price per case must be greater than 0'
+            errors.price_per_case = 'Enter a price per case above 0'
         }
         if (isNaN(perPack) || perPack <= 0) {
-            errors.units_per_case = 'Units per case must be greater than 0'
+            errors.units_per_case = 'Enter how many units are in a case'
         }
     } else {
         const perUnit = parseFloat(form.price_per_unit)
         if (isNaN(perUnit) || perUnit <= 0) {
-            errors.price_per_unit = 'Price must be greater than 0'
+            errors.price_per_unit = 'Enter a price above 0'
         }
     }
 

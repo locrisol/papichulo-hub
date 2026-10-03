@@ -275,7 +275,7 @@ describe('employeeNote', () => {
     })
 
     it('asks about an implausible age', () => {
-        expect(employeeNote({ dateOfBirth: '1910-01-01' }, TODAY)).toMatch(/Worth checking/)
+        expect(employeeNote({ dateOfBirth: '1910-01-01' }, TODAY)).toMatch(/Check it is right/)
     })
 })
 

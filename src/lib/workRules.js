@@ -34,7 +34,7 @@ import { irishOffset } from '@/lib/clock'
 // thing worth saying.
 export const WORK_PERMISSIONS = [
     { value: '', label: 'Not recorded', term: null, holiday: null, expires: true },
-    { value: 'unrestricted', label: 'No restriction (citizen, EU, Stamp 4)', term: null, holiday: null, expires: false },
+    { value: 'unrestricted', label: 'No restriction (Irish, UK, EEA or Swiss citizen, or Stamp 4)', term: null, holiday: null, expires: false },
     { value: 'stamp2', label: 'Stamp 2 (student)', term: 20, holiday: 40, expires: true },
     { value: 'stamp2a', label: 'Stamp 2A (no permission to work)', term: 0, holiday: 0, expires: true },
     { value: 'stamp1', label: 'Stamp 1 (employment permit)', term: null, holiday: null, expires: true },
@@ -373,29 +373,30 @@ export function checkWeek({
 
             if (grace.covered && grace.sameDay) {
                 add('warn', 'permissionRenewedSameDay',
-                    `${name}'s permission ran out on ${on(employee.work_permission_expires)} and the `
-                    + `renewal was applied for that same day. The rule says `
-                    + 'before it ran out, so this one is worth confirming.')
+                    `${name}'s permission expired on ${on(employee.work_permission_expires)} and the `
+                    + `renewal was applied for that same day. The rule says it must be applied for `
+                    + 'before the expiry date, so check this one.')
             } else if (grace.covered) {
                 add('warn', 'permissionGrace',
-                    `${name}'s permission ran out on ${on(employee.work_permission_expires)} `
+                    `${name}'s permission expired on ${on(employee.work_permission_expires)} `
                     + `and a renewal was applied for on ${on(employee.permission_renewal_applied)}`
                     + `. They may keep working while it is processed.`)
             } else if (grace.lapsed) {
                 add(settings.permissionGrace?.afterBlocks ? 'block' : 'warn', 'permissionGraceOver',
-                    `${name}'s renewal, applied for on ${on(employee.permission_renewal_applied)}`
-                    + `, has been going more than ${grace.weeks} weeks. `
-                    + 'Worth checking where it stands.')
+                    `${name}'s permission expired on ${on(employee.work_permission_expires)}, more than `
+                    + `${grace.weeks} ${grace.weeks === 1 ? 'week' : 'weeks'} before this week ends. `
+                    + `The renewal was applied for on ${on(employee.permission_renewal_applied)}. `
+                    + 'Check where it stands.')
             } else if (grace.tooLate) {
                 // Applying after it ran out earns nothing. Saying which day
                 // they applied is the difference between a rule that looks
                 // broken and one somebody can act on.
                 add('block', 'permissionRenewedLate',
-                    `${name}'s permission ran out on ${on(employee.work_permission_expires)} `
+                    `${name}'s permission expired on ${on(employee.work_permission_expires)} `
                     + `and the renewal was not applied for until ${on(employee.permission_renewal_applied)}.`)
             } else {
                 add('block', 'permissionExpired',
-                    `${name}'s permission to work ran out on ${on(employee.work_permission_expires)}.`)
+                    `${name}'s permission to work expired on ${on(employee.work_permission_expires)}.`)
             }
         } else if (permission === 'expiring') {
             // A renewal already in means this is a date passing rather than
@@ -404,12 +405,12 @@ export function checkWeek({
             // reads as the app not having noticed.
             if (employee.permission_renewal_applied) {
                 add('warn', 'permissionExpiringRenewing',
-                    `${name}'s permission runs out on ${on(employee.work_permission_expires)}, `
+                    `${name}'s permission expires on ${on(employee.work_permission_expires)}, `
                     + `part way through this week, and a renewal was applied for on `
                     + `${on(employee.permission_renewal_applied)}.`)
             } else {
                 add('block', 'permissionExpiring',
-                    `${name}'s permission to work runs out on ${on(employee.work_permission_expires)}, part way through this week.`)
+                    `${name}'s permission to work expires on ${on(employee.work_permission_expires)}, part way through this week.`)
             }
         } else if (permission === 'soon') {
             // Still a warning either way. One is a job to do and the other is a
@@ -417,12 +418,12 @@ export function checkWeek({
             // sent three weeks ago is how a warning starts being ignored.
             if (employee.permission_renewal_applied) {
                 add('warn', 'permissionSoonRenewing',
-                    `${name}'s permission runs out on ${on(employee.work_permission_expires)}. `
+                    `${name}'s permission expires on ${on(employee.work_permission_expires)}. `
                     + `A renewal was applied for on ${on(employee.permission_renewal_applied)}`
                     + `.`)
             } else {
                 add('warn', 'permissionSoon',
-                    `${name}'s permission to work runs out on ${on(employee.work_permission_expires)}.`)
+                    `${name}'s permission to work expires on ${on(employee.work_permission_expires)}.`)
             }
         }
 
@@ -442,10 +443,10 @@ export function checkWeek({
             )
             if (food === 'expired') {
                 add('warn', 'foodSafetyExpired',
-                    `${name}'s food safety training ran out on ${on(employee.food_safety_expires)}.`)
+                    `${name}'s food safety training expired on ${on(employee.food_safety_expires)}.`)
             } else if (food === 'expiring' || food === 'soon') {
                 add('warn', 'foodSafetySoon',
-                    `${name}'s food safety training runs out on ${on(employee.food_safety_expires)}.`)
+                    `${name}'s food safety training expires on ${on(employee.food_safety_expires)}.`)
             }
         }
 
@@ -501,7 +502,7 @@ export function checkWeek({
                 }
                 const gap = shortestGap(around, weekDates)
                 if (gap.hours < 12) {
-                    add('warn', 'minorRest', `${name} is under 18 and has only ${gap.hours.toFixed(1)} hours between two shifts, against 12.`)
+                    add('warn', 'minorRest', `${name} is under 18 and has only ${gap.hours.toFixed(1)} hours between two shifts, and the minimum is 12.`)
                 }
             }
         }
@@ -563,7 +564,7 @@ export function checkWeek({
                 const first = off[0]
                 add('warn', 'timeOff', isPartDay(first)
                     ? `${name} is rostered ${shortTime(s.starts_at)} to ${shortTime(s.ends_at)} on ${shortDate(s.shift_date)} and ${partWords(first)}.`
-                    : `${name} is rostered on ${shortDate(s.shift_date)} and is down as ${kindPhrase(first.kind)}.`)
+                    : `${name} is rostered on ${shortDate(s.shift_date)} but is ${kindPhrase(first.kind)}.`)
             }
         }
 
@@ -571,7 +572,7 @@ export function checkWeek({
             const gap = shortestGap(around, weekDates)
             if (gap.hours < settings.dailyRest.hours) {
                 add('warn', 'dailyRest',
-                    `${name} has only ${gap.hours.toFixed(1)} hours between finishing one day and starting the next, against ${settings.dailyRest.hours}.`)
+                    `${name} has only ${gap.hours.toFixed(1)} hours between finishing one day and starting the next, and the minimum is ${settings.dailyRest.hours}.`)
             }
         }
 
@@ -582,7 +583,7 @@ export function checkWeek({
             const rest = longestRest(around, weekDates)
             if (rest !== null && rest < settings.weeklyRest.hours) {
                 add('warn', 'weeklyRest',
-                    `${name}'s longest break this week is ${rest.toFixed(1)} hours, against ${settings.weeklyRest.hours}.`)
+                    `${name}'s longest break this week is ${rest.toFixed(1)} hours, and the minimum is ${settings.weeklyRest.hours}.`)
             }
         }
 
@@ -591,7 +592,7 @@ export function checkWeek({
             const off = 7 - worked
             if (off < settings.daysOff.count) {
                 add('warn', 'daysOff',
-                    `${name} has ${off} ${off === 1 ? 'day' : 'days'} off this week, against ${settings.daysOff.count}.`)
+                    `${name} has ${off} ${off === 1 ? 'day' : 'days'} off this week, and the minimum is ${settings.daysOff.count}.`)
             }
         }
 
@@ -604,7 +605,7 @@ export function checkWeek({
             const average = (prior.reduce((t, h) => t + h, 0) + hours) / weeks
             if (average > settings.maxWeek.hours) {
                 add('warn', 'maxWeek',
-                    `${name} averages ${average.toFixed(1)} hours a week over the last ${weeks}, against ${settings.maxWeek.hours}.`)
+                    `${name} averages ${average.toFixed(1)} hours a week over the last ${weeks === 1 ? 'week' : `${weeks} weeks`}, and the limit is ${settings.maxWeek.hours}.`)
             }
         }
     }

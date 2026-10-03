@@ -90,7 +90,7 @@ const row = event => ({ event, place: arena, pairing: { walk_minutes: 2 }, kind:
 describe('a night that is not going ahead', () => {
     it('says Ticketmaster cancelled it, in the spelling Ticketmaster uses', () => {
         render(<EventModal row={row({ id: 'e1', name: 'Westlife', event_date: '2026-10-16', status: 'canceled' })} onClose={() => {}} />)
-        expect(screen.getByText(/Cancelled, so this is an ordinary night/)).toBeInTheDocument()
+        expect(screen.getByText(/Cancelled, so expect a normal night/)).toBeInTheDocument()
     })
 
     it('says nothing of the kind about a night still on sale', () => {

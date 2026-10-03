@@ -208,12 +208,12 @@ export const weekdayName = i => WEEKDAY_NAMES[i]
 // The day cut into the parts a kitchen thinks in, since twenty four bars for
 // the hours is more than anybody reads.
 export const TIME_BANDS = [
-    { label: 'Before 9am', from: 0, to: 9 },
-    { label: '9am to 12pm', from: 9, to: 12 },
-    { label: '12pm to 3pm', from: 12, to: 15 },
-    { label: '3pm to 6pm', from: 15, to: 18 },
-    { label: '6pm to 9pm', from: 18, to: 21 },
-    { label: 'After 9pm', from: 21, to: 24 },
+    { label: 'Before 09:00', from: 0, to: 9 },
+    { label: '09:00 to 12:00', from: 9, to: 12 },
+    { label: '12:00 to 15:00', from: 12, to: 15 },
+    { label: '15:00 to 18:00', from: 15, to: 18 },
+    { label: '18:00 to 21:00', from: 18, to: 21 },
+    { label: 'After 21:00', from: 21, to: 24 },
 ]
 
 export function ticksByTimeOfDay(ticks) {

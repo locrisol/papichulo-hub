@@ -38,7 +38,7 @@ const { default: StockTakesListPage } = await import('./StockTakesListPage')
 
 // Staff read products through staff_products, which leaves out the notes,
 // the weight loss and the rest of what only the Products page uses.
-describe('an employee opening Stock Takes', () => {
+describe('an employee opening Stock takes', () => {
     it('sees how far through the count is, without reading the products table', async () => {
         renderWithRouter(<StockTakesListPage />)
         expect(await screen.findByText('Active stock take')).toBeInTheDocument()
@@ -51,9 +51,9 @@ describe('the page itself', () => {
     // AppLayout already gives the page its h1.
     it('names the page in an h2, with the restaurant under it', async () => {
         renderWithRouter(<StockTakesListPage />)
-        expect(await screen.findByRole('heading', { level: 2, name: 'Stock Takes' })).toBeInTheDocument()
+        expect(await screen.findByRole('heading', { level: 2, name: 'Stock takes' })).toBeInTheDocument()
         expect(screen.queryByRole('heading', { level: 1 })).toBeNull()
-        expect(screen.getByText('Point Campus · count what is physically in the kitchen and storage.')).toBeInTheDocument()
+        expect(screen.getByText('Point Campus · count what is in the kitchen and storage.')).toBeInTheDocument()
     })
 
     // The same date and time the rest of the app writes, not "30 Sept 2026, 09:05".

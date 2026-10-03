@@ -21,7 +21,7 @@ import PageHeader from '@/components/ui/PageHeader'
 // three states and the boxes from the same place.
 //
 // The 14 are fixed by EU 1169 and cannot be added to or renamed. The form opens
-// at Not Present for all of them, so only the ones that apply need changing,
+// at Not present for all of them, so only the ones that apply need changing,
 // but a product with no record saved is not known rather than none, and the
 // page says so until it is saved.
 //
@@ -170,14 +170,14 @@ export default function AllergenPage() {
       )}
 
       <div className="bg-blue-50 text-blue-700 text-xs rounded-lg p-3 mb-4">
-        Set the allergen status for each of the 14 EU-mandated allergens. "Not Present" means the product does not contain the allergen. "May Contain" indicates possible cross-contamination. "Contains" means the allergen is an ingredient. The public allergen page will display these values to customers.
+        Set each of the 14 allergens listed by law. Not present: the product does not contain it. May contain: it could be there by accident, for example from shared equipment. Contains: it is an ingredient. Customers see these on the allergen page.
       </div>
 
       {loading ? (
         <div className="text-sm text-muted">Loading allergens...</div>
       ) : (
         <>
-          {/* The boxes open at Not Present so only the ones that apply need
+          {/* The boxes open at Not present so only the ones that apply need
               changing, but until something is saved that is where the form
               starts, not an answer. The customer sheet treats it as not
               known, so this says so rather than looking like none. */}
@@ -185,7 +185,7 @@ export default function AllergenPage() {
             <Notice tone="warn" className="mb-4">
               Nothing has been saved for {product.name} yet. Until it is, the allergen sheet asks
               customers to speak to a member of staff about any dish it goes into. Set what applies,
-              or leave all fourteen at Not Present, and save.
+              or leave all fourteen at Not present, and save.
             </Notice>
           )}
           {hasRecipe && !error && (
@@ -209,7 +209,7 @@ export default function AllergenPage() {
               disabled={saving}
               className={primaryButton()}
             >
-              {saving ? 'Saving...' : 'Save Allergens'}
+              {saving ? 'Saving...' : 'Save allergens'}
             </button>
             {savedMessage && (
               <span className="text-xs text-green-700">{savedMessage}</span>

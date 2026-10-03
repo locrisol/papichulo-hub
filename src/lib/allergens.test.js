@@ -389,7 +389,7 @@ describe('ALLERGENS', () => {
     expect(nuts.also).toMatch(/tree nuts only/i)
   })
 
-  it('starts a product off as Not Present for all of them', () => {
+  it('starts a product off as Not present for all of them', () => {
     const empty = emptyAllergens()
     expect(Object.keys(empty)).toHaveLength(14)
     expect(Object.values(empty).every(v => v === 'none')).toBe(true)

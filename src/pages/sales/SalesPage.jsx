@@ -262,7 +262,7 @@ export default function SalesPage() {
         setSaving(true)
 
         // What is stored for this day now. A phone, the week grid or another
-        // tab may have saved it since this screen opened it, and "Overwrite
+        // tab may have saved it since this screen opened it, and "Replace
         // this day?" used to be asked the same either way, so a correction
         // made there was written over without anybody knowing it existed.
         const { data: now, error: e0 } = await supabase
@@ -287,10 +287,10 @@ export default function SalesPage() {
             })
         } else if (now) {
             ok = await confirm({
-                title: 'Overwrite this day?',
-                message: 'There is already a record for this day. Saving replaces it with what is on screen now.',
+                title: 'Replace this day?',
+                message: 'This day is already saved. Saving again replaces it with what is on screen now.',
                 details: [{ label: 'Day', value: fullDate(saleDate) }],
-                confirmLabel: 'Overwrite',
+                confirmLabel: 'Replace',
                 tone: 'danger',
             })
         }
@@ -383,7 +383,7 @@ export default function SalesPage() {
                     <h3 className="text-xs font-bold text-white uppercase tracking-wider">
                         {title}
                         <span className="text-xs font-normal normal-case tracking-normal text-white/60 ml-2">
-                            tracking only, outside the reconciliation
+                            for reference only, not part of the reconciliation
                         </span>
                     </h3>
                 </div>
@@ -402,8 +402,8 @@ export default function SalesPage() {
 
                 {comparable && Math.abs(gap) >= 0.01 && (
                     <p className="text-xs text-amber-700 px-5 pt-3">
-                        {gap > 0 ? '+' : ''}{fmtMoney(gap)} against the receipt figure. Expected: platforms report
-                        commission and VAT differently.
+                        {gap > 0 ? '+' : ''}{fmtMoney(gap)} against the till receipt. This is normal, because platforms
+                        report commission and VAT differently.
                     </p>
                 )}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-5">
@@ -437,7 +437,7 @@ export default function SalesPage() {
         <>
             <PageHeader
                 title="Daily sales"
-                subtitle={[activeRestaurant?.name, 'one record per day'].filter(Boolean).join(' · ')}
+                subtitle={activeRestaurant?.name}
             >
                 {/* Switch to the whole-week grid, better suited to a laptop */}
                 <button
@@ -493,7 +493,7 @@ export default function SalesPage() {
                             phone it was being pushed onto a line of its own and
                             reading like a stray label. */}
                         {recordId && (
-                            <p className="text-xs text-amber-700 font-medium mt-2">Existing record</p>
+                            <p className="text-xs text-amber-700 font-medium mt-2">Already saved</p>
                         )}
                         {/* Which one it is, not just that it is one. A day
                             taking bank holiday money is a day to compare with
@@ -519,7 +519,7 @@ export default function SalesPage() {
                                 className={checkbox}
                             />
                             <div>
-                                <span className="text-sm font-medium text-gray-900">Store was closed this day</span>
+                                <span className="text-sm font-medium text-gray-900">Closed all day</span>
                                 <p className="text-xs text-muted mt-0.5">
                                     Marks the day as not trading. Closed days are excluded from daily averages.
                                 </p>
@@ -595,8 +595,8 @@ export default function SalesPage() {
                                 <div className={`text-xl font-semibold ${varianceWarn ? 'text-red-700' : 'text-green-700'}`}>{fmtMoney(variance)}</div>
                                 <div className={`text-xs mt-1 ${varianceWarn ? 'text-red-600' : 'text-green-700'}`}>
                                     {varianceWarn
-                                        ? 'Does not add up to gross sales, check the figures'
-                                        : 'everything the till took, against gross sales'}
+                                        ? 'Does not add up to gross sales. Check the figures.'
+                                        : 'Matches gross sales'}
                                 </div>
                             </div>
                         </>
@@ -608,9 +608,9 @@ export default function SalesPage() {
                 {!isClosed && (
                     <div>
                         {/* Platform detail, outside the reconciliation */}
-                        {trackingBucket('Online Platform', onlinePlatforms, 'online_sales')}
+                        {trackingBucket('Online platforms', onlinePlatforms, 'online_sales')}
                         {trackingBucket('Corporate', cateringPlatforms, 'outside_catering',
-                            'These start as whatever you typed on the till rows above, since the till now itemises them itself. Change one if the platform pays something different after commission, and it will stop following.')}
+                            'These copy the till figures of the same name above. If a platform pays a different amount after commission, change it here and it stops copying.')}
 
                         <div className={`${card} p-5 mb-3`}>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

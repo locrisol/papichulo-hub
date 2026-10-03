@@ -168,7 +168,7 @@ export default function ProductForm({
             is not a question you can ask about a case of tomatoes. */}
         {formData.is_mix && (
           <div>
-            <label className={labelClass}>Weight Loss %</label>
+            <label className={labelClass}>Weight loss (%)</label>
             <input
               {...numberField({
                 value: formData.weight_loss_pct,
@@ -178,7 +178,7 @@ export default function ProductForm({
             />
             {errors.weight_loss_pct
               ? <p className={fieldError}>{errors.weight_loss_pct}</p>
-              : <p className={hintClass}>Prepped cost = raw cost / (1 - weight loss). Leave at 0 if none.</p>}
+              : <p className={hintClass}>How much weight a batch loses while it is made. It does not change the cost: put what a batch really makes in Batch yield on its recipe. Leave at 0 if none.</p>}
           </div>
         )}
       </div>
@@ -352,7 +352,7 @@ export default function ProductForm({
           <ModalSectionBar
             collapsible
             tone="recipe"
-            title="What goes into it"
+            title="Recipe"
             summary={recipe.lines.length === 0
               ? 'Nothing yet'
               : `${recipe.lines.length} ${recipe.lines.length === 1 ? 'ingredient' : 'ingredients'}`}
@@ -424,7 +424,7 @@ export default function ProductForm({
                     })}
                     products={ingredientOptions.filter(p =>
                       !recipe.lines.some(l => l.ingredient_product_id === p.id))}
-                    placeholder="Select an ingredient..."
+                    placeholder="Pick an ingredient"
                   />
                 </div>
                 <div>
@@ -460,7 +460,7 @@ export default function ProductForm({
           <ModalSectionBar
             collapsible
             tone="supplier"
-            title="Who you buy it from"
+            title="Supplier and price"
             summary={supplierSummary}
             open={openExtra === 'supplier'}
             onToggle={() => onOpenExtra(openExtra === 'supplier' ? null : 'supplier')}
@@ -479,8 +479,9 @@ export default function ProductForm({
                 <div className="mb-3 flex items-start justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
                   <p className="text-xs text-amber-900">
                     This is the preferred price.{' '}
-                    {otherPriceCount === 1 ? 'One other supplier' : `${otherPriceCount} other suppliers`}
-                    {' '}also price this product, and are not shown here.
+                    {otherPriceCount === 1
+                      ? 'There is 1 other price for this product, not shown here.'
+                      : `There are ${otherPriceCount} other prices for this product, not shown here.`}
                   </p>
                   {onOpenPrices && (
                     <button
@@ -567,7 +568,7 @@ export default function ProductForm({
                       />
                     </div>
                     <div>
-                      <label className={labelClass}>One of them is</label>
+                      <label className={labelClass}>{formData.unit} per {formats.draft.label.trim() || 'pack'}</label>
                       <input
                         {...numberField({
                           value: formats.draft.factor,
@@ -650,9 +651,9 @@ export default function ProductForm({
               ) : (
                 <>
                   <p className="text-xs text-muted mb-3">
-                    The fourteen the law names. Not Present is the answer for most of them, so
-                    only change the ones that apply. This is what the public allergen page shows
-                    customers, and every dish the product goes into inherits it.
+                    The 14 allergens listed by law. Most will be Not present, so only change the
+                    ones that apply. Customers see these on the allergen page, and every dish that
+                    uses this product includes them.
                   </p>
                   <AllergenPicker values={allergens} onChange={onAllergenChange} />
                 </>

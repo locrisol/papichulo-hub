@@ -15,14 +15,14 @@ export default function SaveState({
     problem = false,
     saving = false,
     savedAt = null,
-    idle = 'Saves as you type',
+    idle = 'Saves as you leave each box',
     className = '',
     children,
 }) {
     const words = problem
         ? 'Not saved'
         : saving
-            ? 'Saving'
+            ? 'Saving...'
             : savedAt
                 ? `Saved at ${clockTime(savedAt)}`
                 : idle

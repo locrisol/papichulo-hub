@@ -22,7 +22,7 @@ export function useRemoveCard() {
         const ok = await confirm({
             title: `Remove this ${what}?`,
             message: `"${String(holds).trim().slice(0, 140)}" goes with it, and it cannot be brought back.`,
-            confirmLabel: 'Remove it',
+            confirmLabel: 'Remove',
         })
         if (ok) return onRemove()
     }

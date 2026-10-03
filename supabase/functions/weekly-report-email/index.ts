@@ -295,7 +295,7 @@ Deno.serve(async (req) => {
         const token = (req.headers.get('Authorization') || '').replace('Bearer ', '')
         const { data: whoami } = await admin.auth.getUser(token)
         const caller = whoami?.user
-        if (!caller) return json({ error: 'Not logged in.' }, 401)
+        if (!caller) return json({ error: 'Not signed in.' }, 401)
 
         const { data: account } = await admin
             .from('users').select('id, full_name, role, restaurant_id, is_active')
@@ -304,7 +304,7 @@ Deno.serve(async (req) => {
         // Before the role, because a manager who has left is still a manager
         // on their row. Without this a leaver could still have every
         // colleague's hours mailed to them. See switchedOff in email.js.
-        if (account && switchedOff(account)) return json({ error: 'Your login is switched off.' }, 403)
+        if (account && switchedOff(account)) return json({ error: 'Your account is deactivated.' }, 403)
 
         if (!account || !['store_manager', 'super_admin'].includes(account.role)) {
             return json({ error: 'Only a manager can send a report.' }, 403)

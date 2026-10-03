@@ -70,12 +70,12 @@ export default function WeeklyExtrasModal({ onClose }) {
             {error && <ErrorBanner className="mx-6 mt-4">{error}</ErrorBanner>}
 
             <ModalSection
-                title="What usually happens in the store"
-                description="Office deliveries, Feedr, Lunch Team, Clockmeal, anything that comes round most weeks. A list to tick from on the day rather than a schedule, so a week something does not come is a week you simply do not tick it."
+                title="What usually happens at the restaurant"
+                description="Office deliveries, Feedr, Lunch Team, Clockmeal, anything that comes most weeks. Tick them on the days they come."
             >
                 {extras.length === 0 ? (
                     <p className="text-sm text-muted italic mb-4">
-                        None yet. Add whatever happens most weeks and you will never type it again.
+                        None yet. Add anything that happens most weeks.
                     </p>
                 ) : (
                     <div className="divide-y divide-border mb-4">
@@ -97,7 +97,7 @@ export default function WeeklyExtrasModal({ onClose }) {
                                 <button
                                     type="button"
                                     onClick={() => setExtras(list => list.filter((_, n) => n !== i))}
-                                    aria-label={`Take ${extra.name} off the list`}
+                                    aria-label={`Remove ${extra.name}`}
                                     className={removeButton}
                                 >
                                     &times;
@@ -125,12 +125,12 @@ export default function WeeklyExtrasModal({ onClose }) {
                         compact
                         />
                     <button type="button" onClick={add} disabled={!adding.name.trim()} className={secondaryButton}>
-                        Add it
+                        Add
                     </button>
                 </div>
                 <p className="text-xs text-muted mt-2">
-                    The time here is the usual one. A day can disagree with it, and changing it later
-                    leaves every week already sent out exactly as it was.
+                    This is the usual time. You can change it on any day, and changing it here does not
+                    change days already ticked.
                 </p>
             </ModalSection>
 
@@ -142,7 +142,7 @@ export default function WeeklyExtrasModal({ onClose }) {
                 every roster has to carry, and the two are not the same job. */}
             <ModalSection
                 title="The note at the bottom of every roster"
-                description="Printed under every week that goes out. Leave it empty and nothing is printed, which is the state to leave it in unless there is genuinely something that has to be on every single week."
+                description="Printed under every published week. Leave it empty unless something needs to be on every week."
             >
                 <textarea
                     value={note}
@@ -152,8 +152,8 @@ export default function WeeklyExtrasModal({ onClose }) {
                     placeholder="Optional note"
                 />
                 <p className="text-xs text-muted mt-2">
-                    Swaps have to be agreed with a manager before they happen. Anything about one week goes on
-                    the day it is about instead, through Options on that day. Those are the ones people read.
+                    For example: swaps must be agreed with a manager first. For something about one week only,
+                    use Options on that day.
                 </p>
             </ModalSection>
 

@@ -304,9 +304,9 @@ export default function RosterDay({
                         its own now, so the old sentence about nobody having
                         marked it was saying the opposite of what happens. */}
                     {closed
-                        ? 'The store is closed this day. Anything rostered here is somebody coming in anyway.'
+                        ? 'The restaurant is closed this day. Anyone rostered here is coming in anyway.'
                         : `${bankHoliday.name}.${dayHours
-                            ? ` The store is open ${dayHours.open} to ${dayHours.close}.`
+                            ? ` The restaurant is open ${dayHours.open} to ${dayHours.close}.`
                             : ''}`}
                 </div>
             )}
@@ -365,7 +365,7 @@ export default function RosterDay({
                                     return (
                                         <span
                                             key={row.event.id}
-                                            title={chipWords(row) + (row.checked === false ? ' (found, nobody has checked it)' : '')}
+                                            title={chipWords(row) + (row.checked === false ? ' (not checked yet)' : '')}
                                             className="relative h-4 mb-0.5 last:mb-0 rounded-sm flex items-center px-1 overflow-hidden"
                                             style={{
                                                 marginLeft: `${pct(start)}%`,
@@ -642,7 +642,7 @@ export default function RosterDay({
                                                 : part
                                                     ? partWords(part).replace('can work ', 'Can work ')
                                                     : away === 'none'
-                                                        ? 'Not available today'
+                                                        ? 'Not available'
                                                         : closedLate
                                                             ? 'Closed last night'
                                                             : positionOf(employee.position_id)?.name || 'No position'}
@@ -776,7 +776,7 @@ export default function RosterDay({
                                         <span
                                             key={spanFrom}
                                             title={away === 'none'
-                                                ? `${employee.full_name} is not available today`
+                                                ? `${employee.full_name} is not available this day`
                                                 : `${employee.full_name} can work ${windowsLabel(canWork)}`}
                                             className="absolute top-0 bottom-0 pointer-events-none"
                                             style={{
@@ -853,7 +853,7 @@ export default function RosterDay({
                                                 }`}
                                             >
                                                 <span className="block text-xs font-bold text-gray-900 whitespace-nowrap">
-                                                    {shortTime(preview.starts_at)} - {endLabel(preview, dayHours)}
+                                                    {shortTime(preview.starts_at)} to {endLabel(preview, dayHours)}
                                                 </span>
                                                 <span className="block text-[0.625rem] text-gray-600 whitespace-nowrap">
                                                     {fmtHours(shiftHours(preview))}h · {breakLabel(
@@ -884,8 +884,8 @@ export default function RosterDay({
 
             <p className="px-4 py-2.5 border-t border-border text-xs text-muted">
                 Drag across a row with a mouse to put a shift straight in, or drag either end of one to
-                move its start or finish. Tap a row to add a shift through the dialog, and tap a shift
-                to change or remove it.
+                move its start or finish. Press a row to add a shift through the dialog, and press a shift
+                to change or delete it.
                 {anyAway && (
                     <span className="block mt-1">
                         The hatched stretches are hours somebody said they cannot work. Nothing stops you

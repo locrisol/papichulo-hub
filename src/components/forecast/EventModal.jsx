@@ -107,7 +107,7 @@ export default function EventModal({ row, canEdit = false, sameName = 0, onRenam
         // Today here, the way sinceWords counts. The UTC date put a reading found
         // the evening before on today, from midnight to one all summer.
         const when = sinceWords(event.found_at, todayISO())
-        rows.push({ label: 'Read from', value: when ? `${source}, ${when}` : source })
+        rows.push({ label: 'Source', value: when ? `${source}, ${when}` : source })
     }
 
     return (
@@ -134,8 +134,8 @@ export default function EventModal({ row, canEdit = false, sameName = 0, onRenam
                     hint, and on a phone it is barely that. */}
                 {row?.checked === false && (
                     <p className="text-sm rounded-lg p-3 mt-4 bg-blue-50 text-blue-900">
-                        A model read this off a page and nobody has checked it yet.
-                        Keep it or say it is not for us at the top of the calendar.
+                        This was found online and has not been checked yet.
+                        {canEdit && ' Press Keep or Not for us at the top of the Calendar page.'}
                     </p>
                 )}
 

@@ -76,7 +76,7 @@ describe('gross profit on the dashboard', () => {
         const label = await screen.findByText('Gross profit')
 
         expect(label.nextElementSibling.textContent).not.toContain('€385.00')
-        expect(screen.getByText('Already counted in food purchases')).toBeInTheDocument()
+        expect(screen.getByText('Already counted in the food cost')).toBeInTheDocument()
     })
 })
 

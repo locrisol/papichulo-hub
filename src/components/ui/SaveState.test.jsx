@@ -10,17 +10,17 @@ const quarterPastTwo = new Date(2026, 9, 3, 14, 15)
 describe('SaveState', () => {
     it('says how it saves before anything is typed', () => {
         render(<SaveState />)
-        expect(screen.getByText('Saves as you type')).toBeInTheDocument()
+        expect(screen.getByText('Saves as you leave each box')).toBeInTheDocument()
     })
 
     it('takes its own words for that', () => {
-        render(<SaveState idle="Saves as you leave each box" />)
-        expect(screen.getByText('Saves as you leave each box')).toBeInTheDocument()
+        render(<SaveState idle="Saves when you press Enter" />)
+        expect(screen.getByText('Saves when you press Enter')).toBeInTheDocument()
     })
 
     it('says it is saving', () => {
         render(<SaveState saving savedAt={quarterPastTwo} />)
-        expect(screen.getByText('Saving')).toBeInTheDocument()
+        expect(screen.getByText('Saving...')).toBeInTheDocument()
     })
 
     it('says when it last saved', () => {
@@ -47,6 +47,6 @@ describe('SaveState', () => {
 
     it('is the small size the three screens already use', () => {
         render(<SaveState />)
-        expect(screen.getByText('Saves as you type').parentElement.className).toContain('text-xs')
+        expect(screen.getByText('Saves as you leave each box').parentElement.className).toContain('text-xs')
     })
 })

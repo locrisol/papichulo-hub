@@ -27,7 +27,7 @@ const STATE = {
     already_here: { words: 'Already here', tint: 'bg-gray-100 text-gray-700 border-gray-300' },
     by_hand: { words: 'Entered by hand', tint: 'bg-blue-50 text-blue-800 border-blue-200' },
     blocked: { words: 'Cannot be read', tint: 'bg-red-50 text-red-800 border-red-200' },
-    on_hand: { words: 'Already taken off?', tint: 'bg-amber-50 text-amber-800 border-amber-200' },
+    on_hand: { words: 'May already be counted', tint: 'bg-amber-50 text-amber-800 border-amber-200' },
     working: { words: 'Reading...', tint: 'bg-gray-100 text-gray-700 border-gray-300' },
 }
 
@@ -52,7 +52,7 @@ export default function DocumentCard({ file, busy, onForget, onLinkAccount, onFi
                 </div>
                 <div className="flex items-center gap-2">
                     <span className={`${badge} border ${look.tint}`}>{look.words}</span>
-                    <button type="button" onClick={onForget} className={rowButton()}>Take it off</button>
+                    <button type="button" onClick={onForget} className={rowButton()}>Remove</button>
                 </div>
             </div>
 
@@ -91,15 +91,15 @@ export default function DocumentCard({ file, busy, onForget, onLinkAccount, onFi
                 <Notice tone="info" className="mb-3">
                     <strong className="font-bold">
                         {place.candidates.length === 1
-                            ? 'There is one typed in for that day.'
-                            : `There are ${place.candidates.length} typed in for that day.`}
+                            ? 'An invoice was typed in for that day.'
+                            : `${place.candidates.length} invoices were typed in for that day.`}
                     </strong>{' '}
                     {place.candidates.length === 1
                         ? `${fmtMoney(place.candidates[0].total_amount)} with no document behind it. `
                         : 'None has a document behind it. '}
                     A hand entered total is net, because a shortage was taken off before it was
                     typed, so filling it in restores the real total and turns the difference into a
-                    claim. If this is another delivery that day, it goes in as new.
+                    delivery problem. If this is another delivery that day, it goes in as new.
                     {place.candidates.length === 1 ? (
                         <button
                             type="button"
@@ -129,7 +129,7 @@ export default function DocumentCard({ file, busy, onForget, onLinkAccount, onFi
                         </ul>
                     )}
                     <button type="button" disabled={busy} onClick={onAsNew} className={`${rowButton()} mt-2 block`}>
-                        It is a different delivery, import it as new
+                        Import as new delivery
                     </button>
                 </Notice>
             )}

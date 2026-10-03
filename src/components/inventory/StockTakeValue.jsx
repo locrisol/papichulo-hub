@@ -28,7 +28,7 @@ export default function StockTakeValue({ summary }) {
     if (sections.length === 0) {
         return (
             <p className="text-sm text-muted italic">
-                Nothing was counted, so there is nothing to draw.
+                Nothing was counted in this stock take.
             </p>
         )
     }

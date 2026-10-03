@@ -128,7 +128,7 @@ describe('a read that fails', () => {
         answer({ ...fine, failing: ['employees'] })
         renderReport()
         expect(await screen.findByText('Could not read employees')).toBeInTheDocument()
-        expect(screen.getByText(/could not be read, so it cannot go out/)).toBeInTheDocument()
+        expect(screen.getByText(/could not be loaded, so it cannot be sent/)).toBeInTheDocument()
         expect(screen.getByRole('button', { name: 'Publish and send' })).toBeDisabled()
     })
 
@@ -204,7 +204,7 @@ describe('a report published but not sent', () => {
         db.functions.invoke.mockResolvedValue({ data: { sent: 2 }, error: null })
         renderReport()
 
-        fireEvent.click(await screen.findByRole('button', { name: 'Send it' }))
+        fireEvent.click(await screen.findByRole('button', { name: 'Send report' }))
         await waitFor(() => expect(db.functions.invoke).toHaveBeenCalled())
 
         const [name, { body }] = db.functions.invoke.mock.calls[0]
@@ -225,7 +225,7 @@ describe('a report published but not sent', () => {
         confirmed.mockClear()
         renderReport()
 
-        fireEvent.click(await screen.findByRole('button', { name: 'Re-open' }))
+        fireEvent.click(await screen.findByRole('button', { name: 'Reopen' }))
         await waitFor(() => expect(confirmed).toHaveBeenCalled())
         const { message } = confirmed.mock.calls[0][0]
         expect(message).not.toMatch(/correction to everyone/)
@@ -237,9 +237,9 @@ describe('a report published but not sent', () => {
         confirmed.mockClear()
         renderReport()
 
-        fireEvent.click(await screen.findByRole('button', { name: 'Re-open to correct it' }))
+        fireEvent.click(await screen.findByRole('button', { name: 'Reopen report' }))
         await waitFor(() => expect(confirmed).toHaveBeenCalled())
-        expect(confirmed.mock.calls[0][0].message).toMatch(/mails a correction to everyone who got the first/)
+        expect(confirmed.mock.calls[0][0].message).toMatch(/sends a correction to everyone who got the first one/)
     })
 })
 
@@ -259,7 +259,7 @@ describe('lines still waiting on Review', () => {
     it('holds Publish while a line from its week is waiting, and says where to decide it', async () => {
         answer({ ...fine, lines: [waitingOn(addDays(WEEK, 2))] })
         renderReport()
-        expect(await screen.findByText('1 invoice line from this week or earlier is still waiting on Review.'))
+        expect(await screen.findByText('1 invoice line from this week or earlier is still waiting in Review.'))
             .toBeInTheDocument()
         expect(screen.getByRole('link', { name: 'Open Review' })).toHaveAttribute('href', '/invoices/review')
         expect(screen.getByRole('button', { name: 'Publish and send' })).toBeDisabled()
@@ -268,7 +268,7 @@ describe('lines still waiting on Review', () => {
     it('counts a line from a week before as well', async () => {
         answer({ ...fine, lines: [waitingOn(addDays(WEEK, -40)), waitingOn(addDays(WEEK, 6))] })
         renderReport()
-        expect(await screen.findByText('2 invoice lines from this week or earlier are still waiting on Review.'))
+        expect(await screen.findByText('2 invoice lines from this week or earlier are still waiting in Review.'))
             .toBeInTheDocument()
     })
 
@@ -276,7 +276,7 @@ describe('lines still waiting on Review', () => {
         answer({ ...fine, lines: [waitingOn(addDays(WEEK, 7))] })
         renderReport()
         expect(await screen.findByRole('button', { name: 'Publish and send' })).toBeEnabled()
-        expect(screen.queryByText(/still waiting on Review/)).toBeNull()
+        expect(screen.queryByText(/still waiting in Review/)).toBeNull()
     })
 
     it('holds Publish when what is waiting could not be read', async () => {
@@ -382,7 +382,7 @@ describe('the save line', () => {
         answer({ ...fine, failing: ['employees'] })
         renderReport()
         expect(await screen.findByText('Could not read employees')).toBeInTheDocument()
-        expect(screen.getByText('Saves as you type')).toBeInTheDocument()
+        expect(screen.getByText('Saves as you leave each box')).toBeInTheDocument()
         expect(screen.queryByText('Not saved')).toBeNull()
     })
 })

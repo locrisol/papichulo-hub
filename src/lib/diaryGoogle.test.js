@@ -137,7 +137,7 @@ describe('what it says when you tap it', () => {
     // Somebody editing it in Google has no way of knowing the Hub will write
     // over them, unless the event says so.
     it('warns that a change made in Google will be written over', () => {
-        expect(description({})).toContain('written over')
+        expect(description({})).toContain('overwritten')
     })
 })
 
@@ -274,7 +274,7 @@ describe('asking the function to write it', () => {
     // to send a request" tells nobody what to do about it.
     it('says the function is not deployed rather than something unreadable', async () => {
         invoke.mockResolvedValue({ data: null, error: new Error('Edge Function returned a non-2xx status code') })
-        expect((await writeToGoogle('e1')).reason).toContain('not deployed')
+        expect((await writeToGoogle('e1')).reason).toContain('not set up yet')
     })
 
     // The function refusing a person said the function was not deployed, which
@@ -287,7 +287,7 @@ describe('asking the function to write it', () => {
         invoke.mockResolvedValue({ data: null, error: refusal(403, { error: 'Not allowed' }) })
         const out = await writeToGoogle('e1', { clear: true })
         expect(out).toMatchObject({ ok: false, refused: true })
-        expect(out.reason).toBe('You do not have permission to change this one.')
+        expect(out.reason).toBe('You do not have permission to change this entry.')
     })
 
     it('says when they have been signed out', async () => {
@@ -302,7 +302,7 @@ describe('asking the function to write it', () => {
 
     it('still says not deployed for a 404 the function never answered', async () => {
         invoke.mockResolvedValue({ data: null, error: refusal(404) })
-        expect((await writeToGoogle('e1')).reason).toContain('not deployed')
+        expect((await writeToGoogle('e1')).reason).toContain('not set up yet')
     })
 
     it('does not throw when the call itself falls over', async () => {
@@ -427,7 +427,7 @@ describe('who may ask for a calendar write', () => {
 
     it('refuses a login that is switched off, whatever its role', () => {
         for (const me of [PC_MANAGER, PC_OWNER, SUPER]) {
-            expect(callerRefusal({ ...me, is_active: false })).toBe('Your login is switched off')
+            expect(callerRefusal({ ...me, is_active: false })).toBe('Your account is deactivated')
         }
     })
 

@@ -73,7 +73,7 @@ export default function WeekChart({
 
     const anything = shown.some(row => series.some(s => !isMissing(row[s.key])))
     if (shown.length === 0 || !anything) {
-        return <p className="text-sm text-muted italic">{empty || 'Nothing to draw yet.'}</p>
+        return <p className="text-sm text-muted italic">{empty || 'Nothing to show yet.'}</p>
     }
 
     const H = chartHeight(W)

@@ -79,14 +79,14 @@ describe('a recipe with a deactivated ingredient', () => {
         showPage()
         const note = await screen.findByText(/Old Cream is deactivated/)
         expect(note.textContent).not.toMatch(/to see the cost/)
-        expect(screen.getByText(/have no preferred price set/)).toBeInTheDocument()
+        expect(screen.getByText(/have no preferred price at/)).toBeInTheDocument()
     })
 
     it('offers neither it nor the sauce itself as an ingredient', async () => {
         const me = userEvent.setup()
         showPage()
-        await me.click(await screen.findByRole('button', { name: '+ Add Ingredient' }))
-        await me.click(screen.getByPlaceholderText('Select an ingredient...'))
+        await me.click(await screen.findByRole('button', { name: '+ Add ingredient' }))
+        await me.click(screen.getByPlaceholderText('Pick an ingredient'))
         const offered = screen.getAllByRole('option').map(o => o.textContent)
         expect(offered.some(t => t.includes('Salt'))).toBe(true)
         expect(offered.some(t => t.includes('Old Cream'))).toBe(false)
@@ -120,14 +120,14 @@ describe('changing the recipe', () => {
         useTables([])
         const me = userEvent.setup()
         showPage()
-        await me.click(await screen.findByRole('button', { name: '+ Add Ingredient' }))
-        await me.click(screen.getByPlaceholderText('Select an ingredient...'))
+        await me.click(await screen.findByRole('button', { name: '+ Add ingredient' }))
+        await me.click(screen.getByPlaceholderText('Pick an ingredient'))
         await me.pointer({
             keys: '[MouseLeft]',
             target: screen.getAllByRole('option').find(o => o.textContent.includes('Salt')),
         })
         await me.type(screen.getByText('Quantity').parentElement.querySelector('input'), '1')
-        await me.click(screen.getByRole('button', { name: 'Add Ingredient' }))
+        await me.click(screen.getByRole('button', { name: 'Add ingredient' }))
 
         await waitFor(() => expect(heard).toHaveBeenCalledTimes(1))
     })

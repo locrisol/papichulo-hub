@@ -132,7 +132,7 @@ export default function StockTakesListPage() {
   if (!activeRestaurant) {
     return (
       <div>
-        <p className="text-sm text-muted">Select a restaurant to view stock takes.</p>
+        <p className="text-sm text-muted">Pick a restaurant to see its stock takes.</p>
       </div>
     )
   }
@@ -148,12 +148,10 @@ export default function StockTakesListPage() {
   return (
     <>
       <PageHeader
-        title="Stock Takes"
-        subtitle={`${activeRestaurant.name}${isManager
-          ? ' · physical inventory counts and history.'
-          : ' · count what is physically in the kitchen and storage.'}`}
+        title="Stock takes"
+        subtitle={`${activeRestaurant.name} · count what is in the kitchen and storage.`}
       >
-        {/* Start new button only shown when there's no active session and the user can manage */}
+        {/* Start stock take button only shown when there's no active session and the user can manage */}
         {!activeSession && isManager && (
           <button
             type="button"
@@ -163,7 +161,7 @@ export default function StockTakesListPage() {
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
             </svg>
-            Start new
+            Start stock take
           </button>
         )}
       </PageHeader>
@@ -189,7 +187,7 @@ export default function StockTakesListPage() {
                 </span>
               </div>
               <h2 className="font-serif text-lg font-bold text-gray-900">
-                {activeSession.notes || `${typeLabel(activeSession.type)} count, ${stampDate(activeSession.started_at) || '—'}`}
+                {activeSession.notes || `${typeLabel(activeSession.type)} stock take, ${stampDate(activeSession.started_at) || '—'}`}
               </h2>
               <p className="text-sm text-muted mt-1">
                 Started by {activeSession.starter?.full_name || 'Unknown'} on {stampDateTime(activeSession.started_at) || '—'}
@@ -204,7 +202,7 @@ export default function StockTakesListPage() {
                   <strong>{activeProgress.productsCounted}</strong> of <strong>{activeProgress.productsTotal}</strong> products counted
                 </span>
                 <span className="text-muted text-xs">
-                  {activeProgress.linesTotal} {activeProgress.linesTotal === 1 ? 'line' : 'lines'} recorded
+                  {activeProgress.linesTotal} {activeProgress.linesTotal === 1 ? 'entry' : 'entries'} recorded
                 </span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
@@ -291,7 +289,7 @@ export default function StockTakesListPage() {
                         )}
                       </div>
                       <p className="font-medium text-gray-900">
-                        {session.notes || `${typeLabel(session.type)} count, ${stampDate(session.started_at) || '—'}`}
+                        {session.notes || `${typeLabel(session.type)} stock take, ${stampDate(session.started_at) || '—'}`}
                       </p>
                       <p className="text-xs text-muted mt-0.5">
                         Started {stampDateTime(session.started_at) || '—'}

@@ -41,7 +41,7 @@ export default function TimeOffDeskModal({
                         {absenceRange(request, dayLabel)}
                         {hours ? `, ${hours}` : ''}
                     </p>
-                    <span className={`${badge} bg-amber-100 text-amber-800`}>Waiting</span>
+                    <span className={`${badge} bg-amber-100 text-amber-800`}>Waiting for approval</span>
                 </div>
                 {request.note && <p className="text-sm text-muted italic mt-1">"{request.note}"</p>}
 
@@ -49,7 +49,7 @@ export default function TimeOffDeskModal({
                 {hit.length > 0 ? (
                     <Notice tone="urgent" className="mt-3">
                         <p className="font-semibold">
-                            {name} is rostered on {hit.length} of these {hit.length === 1 ? 'days' : 'days'}
+                            {name} has {hit.length} {hit.length === 1 ? 'shift' : 'shifts'} on these days
                         </p>
                         <ul className="text-xs text-red-700 mt-1 space-y-0.5">
                             {hit.map(s => <li key={s.id}>{shiftLine(s)}</li>)}
@@ -65,7 +65,7 @@ export default function TimeOffDeskModal({
                     <Notice tone="warn" className="mt-2">
                         <p className="text-xs">
                             Requested {notice.actual} {notice.actual === 1 ? 'day' : 'days'} in advance.
-                            You ask for {noticeDays(rules)}.
+                            Holidays need {noticeDays(rules)} {noticeDays(rules) === 1 ? "day's" : "days'"} notice.
                         </p>
                     </Notice>
                 )}
@@ -76,7 +76,7 @@ export default function TimeOffDeskModal({
                 {confirming === 'free' && (
                     <Notice tone="warn" className="mt-3">
                         <p className="font-semibold">
-                            This takes {hit.length} {hit.length === 1 ? 'shift' : 'shifts'} off the roster
+                            This removes {hit.length} {hit.length === 1 ? 'shift' : 'shifts'} from the roster
                         </p>
                         <p className="text-xs text-amber-800 mt-0.5">
                             The week will keep saying those hours need covering until somebody is on them.
@@ -102,7 +102,7 @@ export default function TimeOffDeskModal({
                             disabled={saving}
                             className={primaryButton('md', 'good')}
                         >
-                            {saving ? 'Saving...' : 'Yes, free those days'}
+                            {saving ? 'Saving...' : hit.length === 1 ? 'Yes, remove the shift' : 'Yes, remove the shifts'}
                         </button>
                     </>
                 ) : (
@@ -116,7 +116,7 @@ export default function TimeOffDeskModal({
                             disabled={saving}
                             className={hit.length > 0 ? secondaryButton : primaryButton('md', 'good')}
                         >
-                            {hit.length > 0 ? 'Approve, leave the shifts' : 'Approve'}
+                            {hit.length > 0 ? 'Approve and keep shifts' : 'Approve'}
                         </button>
                         {hit.length > 0 && (
                             <button
@@ -125,7 +125,7 @@ export default function TimeOffDeskModal({
                                 disabled={saving}
                                 className={primaryButton('md', 'good')}
                             >
-                                Approve and free {hit.length === 1 ? 'that day' : `those ${hit.length} days`}
+                                Approve and remove {hit.length === 1 ? '1 shift' : `${hit.length} shifts`}
                             </button>
                         )}
                     </>

@@ -2,7 +2,7 @@ import { useAuth } from '@/context/auth'
 import { can, SEES_INACTIVE } from '@/lib/access'
 import { secondaryButton } from '@/lib/controlStyles'
 
-// Show Inactive, written once and refusing employees on its own.
+// Show inactive, written once and refusing employees on its own.
 //
 // It was the same twenty lines on Products, Menu Items and Suppliers. Two of
 // those three are manager only routes, so an employee could only ever reach the
@@ -35,7 +35,7 @@ export default function ShowInactiveButton({ showing, onToggle }) {
             aria-pressed={showing}
             className={showing ? ON : secondaryButton}
         >
-            {showing ? 'Hide Inactive' : 'Show Inactive'}
+            {showing ? 'Hide inactive' : 'Show inactive'}
         </button>
     )
 }

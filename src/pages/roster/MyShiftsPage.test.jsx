@@ -372,8 +372,8 @@ describe('a request already answered', () => {
 
         renderWithRouter(<MyShiftsPage />)
 
-        expect(await screen.findAllByText('Turned down')).toHaveLength(1)
-        await waitFor(() => expect(screen.getAllByText('Turned down')).toHaveLength(1))
+        expect(await screen.findAllByText('Declined')).toHaveLength(1)
+        await waitFor(() => expect(screen.getAllByText('Declined')).toHaveLength(1))
     })
 })
 
@@ -394,10 +394,10 @@ describe('an ask that fails to send', () => {
         db.from = vi.fn(table => (table === 'roster_published' ? filtered([mine]) : plain(table)))
 
         renderWithRouter(<MyShiftsPage />)
-        fireEvent.click(await screen.findByRole('button', { name: 'Ask somebody to take this' }))
+        fireEvent.click(await screen.findByRole('button', { name: 'Ask somebody to take this shift' }))
         const dialog = await screen.findByRole('dialog')
         fireEvent.click(within(dialog).getByRole('button', { name: /Ben Test/ }))
-        fireEvent.click(within(dialog).getByRole('button', { name: 'Send the ask' }))
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Send request' }))
 
         expect(await within(dialog).findByRole('alert'))
             .toHaveTextContent('Could not reach the server. Check your connection and try again.')
@@ -405,7 +405,7 @@ describe('an ask that fails to send', () => {
 
         fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
         await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
-        fireEvent.click(screen.getByRole('button', { name: 'Ask somebody to take this' }))
+        fireEvent.click(screen.getByRole('button', { name: 'Ask somebody to take this shift' }))
         expect(within(await screen.findByRole('dialog')).queryByRole('alert')).toBeNull()
     })
 })

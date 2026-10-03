@@ -311,7 +311,7 @@ function PlatformBlock({
                                         const note = e.target.value.trim()
                                         if (note !== (item.note || '')) onSaveItem(item.id, { note })
                                     }}
-                                    placeholder={needs ? 'What did they say' : 'Anything worth saying'}
+                                    placeholder={needs ? 'Enter a comment' : 'Enter a comment (optional)'}
                                     className={needs ? askDense : denseField}
                                 />
                             ) : item.note ? (
@@ -353,14 +353,13 @@ function PlatformBlock({
             )}
 
             <p className="text-xs text-muted mt-2">
-                Three stars or under needs a comment before the week can go out. Four and five do not, because a
-                good review needs no explaining.
+                Reviews of three stars or less need a comment before the report can be sent.
             </p>
 
             <SubLabel hint={refundTotal > 0
                 ? `${fmtMoney(-refundTotal)} this week`
                     + (claimedBack > 0 ? `, ${fmtMoney(claimedBack)} claimed back` : ', none claimed back')
-                : 'one card each, never a total'}>Refunds</SubLabel>
+                : 'add each refund separately'}>Refunds</SubLabel>
             <div className="space-y-2">
                 {refunds.map(item => (
                     <LineCard
@@ -414,9 +413,8 @@ export default function ReportOnlineSales({ section, platforms, taken, canEdit, 
     return (
         <div>
             <p className="text-sm text-muted mb-4">
-                Takings come from the tracking rows on weekly sales, the ones filled by hand beside the till,
-                because that is what a platform statement is reconciled against. Everything else here is only
-                known to whoever looked at the app.
+                Takings come from the Online platforms rows on Weekly sales. Enter ratings, reviews and refunds
+                here, from each platform's own app.
             </p>
 
             <div className="rounded-lg bg-sidebar text-white px-4 py-3 mb-4 flex flex-wrap items-baseline justify-between gap-2">
