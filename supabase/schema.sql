@@ -131,9 +131,12 @@ CREATE TABLE IF NOT EXISTS "public"."users" (
     "created_at" timestamp with time zone DEFAULT "now"(),
     "is_test" boolean DEFAULT false NOT NULL,
     "landing_page" "text",
+    "password_set_at" timestamp with time zone,
     CONSTRAINT "users_role_check" CHECK (("role" IN ('super_admin', 'owner', 'store_manager', 'employee'))),
     CONSTRAINT "users_landing_page_is_a_path" CHECK ((("landing_page" IS NULL) OR ("landing_page" ~ '^/[a-z0-9/-]{0,60}$')))
 );
+
+COMMENT ON COLUMN "public"."users"."password_set_at" IS 'When this person last chose their own password. Null means never: the login was made with one somebody else picked, or with none, and the Hub asks for one before anything else. Written only by on_auth_password_set.';
 
 COMMENT ON COLUMN "public"."users"."landing_page" IS 'The page this account opens on after signing in. Null lands where the role always did. The app checks it is still allowed before using it, because nothing here can.';
 
@@ -645,7 +648,7 @@ CREATE TABLE IF NOT EXISTS "public"."invoices" (
 
 COMMENT ON COLUMN "public"."invoices"."invoice_number" IS 'The number printed on the document. Null for everything entered by hand off a total, which is eight months of them.';
 COMMENT ON COLUMN "public"."invoices"."credit_reason" IS 'Why a credit note came back, given afterwards for the part nobody logged at the door. A label and nothing else: it moves no money and no week. Logging a claim for it now would take the money off the week the delivery happened, which may be a report already sent.';
-COMMENT ON COLUMN "public"."invoices"."counts_in_cost" IS 'Whether this document counts towards the food cost, as against whether it exists. False for a credit note that settles a claim, because the claim already takes that money off, in the week the delivery happened. A credit with no claim behind it counts on its own date.';
+COMMENT ON COLUMN "public"."invoices"."counts_in_cost" IS 'Whether this document counts towards the food cost, as against whether it exists. False for a credit note that settles a claim, because the claim already takes that money off, in the week the delivery happened. False too for one whose docket matches a claim sitting on another invoice, until that claim is put right, because that claim already takes its whole ask off. A credit with no claim behind it counts on its own date.';
 
 ALTER TABLE ONLY "public"."invoices"
     ADD CONSTRAINT "invoices_pkey" PRIMARY KEY ("id");
@@ -1645,7 +1648,7 @@ COMMENT ON COLUMN "public"."events"."last_seen_at" IS 'The last sync that still 
 COMMENT ON COLUMN "public"."events"."review" IS 'trusted came from a feed and goes everywhere with nobody asked. found came off a page somebody read and shows on the calendar marked not checked, and stays off the roster until it is kept. kept is one somebody kept. dismissed is one somebody said no to, and it stays in the table precisely so the next read of the same page does not offer it again.';
 COMMENT ON COLUMN "public"."events"."source" IS 'Where the row came from. A feed is trusted because it is the venue itself saying so. A page is a reading of something written for people, which is a different kind of fact and is marked as one.';
 COMMENT ON COLUMN "public"."events"."source_key" IS 'What makes a page read the same event twice, since only a feed hands out an id. Built from the place, the date and a flattened title, so a second read lands on the row that is already there and a dismissal is remembered.';
-COMMENT ON COLUMN "public"."events"."status" IS 'Ticketmaster sale status: onsale, offsale, canceled, postponed, rescheduled. Off sale well before the date usually means sold out. withdrawn is ours rather than Ticketmaster''s: a night still to come that a whole answer from the feed no longer lists, which the roster and the calendar mark as no longer listed until a later answer lists it again and writes its real status back.';
+COMMENT ON COLUMN "public"."events"."status" IS 'Ticketmaster sale status: onsale, offsale, canceled, postponed, rescheduled. Off sale well before the date usually means sold out. withdrawn is ours rather than Ticketmaster''s: a night still to come that a whole answer from the feed no longer lists. The roster and the calendar leave it out, and a later answer that lists it again writes its real status back.';
 ALTER TABLE ONLY "public"."events"
     ADD CONSTRAINT "events_pkey" PRIMARY KEY ("id");
 ALTER TABLE ONLY "public"."events"
@@ -2172,6 +2175,46 @@ BEGIN
   RETURN OLD;
 END;
 $$;
+
+-- When somebody last chose their own password (users.password_set_at). Fired
+-- by Supabase Auth storing a new one, the only thing that fills the column. It
+-- must never raise: a trigger on auth.users that fails turns every password
+-- change into an error for whoever is changing it.
+CREATE OR REPLACE FUNCTION "public"."password_was_set"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public', 'pg_temp'
+    AS $$
+begin
+    update public.users set password_set_at = now() where id = new.id;
+    return new;
+exception when others then
+    return new;
+end $$;
+
+-- Stops anybody saying a password was chosen when it was not. The super admin
+-- can write any users row, so without this a click could lift the Hub's ask.
+-- No claims is the database itself: the trigger above, run by Supabase Auth,
+-- or somebody in the SQL editor setting it back to null to make a person
+-- choose again. The same test restaurant_settings_guard uses.
+CREATE OR REPLACE FUNCTION "public"."password_set_at_guard"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    SET "search_path" TO 'public', 'pg_temp'
+    AS $$
+begin
+    if nullif(current_setting('request.jwt.claims', true), '') is null then
+        return new;
+    end if;
+    if tg_op = 'INSERT' then
+        new.password_set_at := null;
+    elsif new.password_set_at is distinct from old.password_set_at then
+        raise exception 'Only choosing a password can say a password was chosen';
+    elsif new.is_test is distinct from old.is_test then
+        -- A developer account skips the ask, so marking a real one as a test
+        -- account would lift it the same way. Set in the SQL editor instead.
+        raise exception 'Only the SQL editor can mark a developer account';
+    end if;
+    return new;
+end $$;
 
 CREATE OR REPLACE FUNCTION "public"."update_updated_at"() RETURNS "trigger"
     LANGUAGE "plpgsql"
@@ -3350,6 +3393,10 @@ revoke all on function "public"."handle_delete_user"() from public, anon, authen
 grant execute on function "public"."handle_delete_user"() to service_role;
 revoke all on function "public"."handle_new_user"() from public, anon, authenticated, service_role;
 grant execute on function "public"."handle_new_user"() to service_role;
+revoke all on function "public"."password_was_set"() from public, anon, authenticated, service_role;
+grant execute on function "public"."password_was_set"() to service_role;
+revoke all on function "public"."password_set_at_guard"() from public, anon, authenticated, service_role;
+grant execute on function "public"."password_set_at_guard"() to service_role;
 revoke all on function "public"."record_change"() from public, anon, authenticated, service_role;
 grant execute on function "public"."record_change"() to service_role;
 revoke all on function "public"."record_logins"() from public, anon, authenticated, service_role;
@@ -4587,6 +4634,7 @@ create policy checklist_photos_remove on storage.objects
 -- database tests check that is still true.
 
 CREATE OR REPLACE TRIGGER "restaurants_settings_guard" BEFORE UPDATE ON "public"."restaurants" FOR EACH ROW EXECUTE FUNCTION "public"."restaurant_settings_guard"();
+CREATE OR REPLACE TRIGGER "users_password_set_at_guard" BEFORE INSERT OR UPDATE ON "public"."users" FOR EACH ROW EXECUTE FUNCTION "public"."password_set_at_guard"();
 CREATE OR REPLACE TRIGGER "restaurants_updated_at" BEFORE UPDATE ON "public"."restaurants" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "product_supplier_prices_updated_at" BEFORE UPDATE ON "public"."product_supplier_prices" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "product_allergens_updated_at" BEFORE UPDATE ON "public"."product_allergens" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
@@ -4618,6 +4666,7 @@ CREATE OR REPLACE TRIGGER "stock_takes_reopened_clears_value" BEFORE UPDATE OF "
 -- that key would refuse the delete before an AFTER trigger could clear it.
 CREATE OR REPLACE TRIGGER "on_auth_user_created" AFTER INSERT ON "auth"."users" FOR EACH ROW EXECUTE FUNCTION "public"."handle_new_user"();
 CREATE OR REPLACE TRIGGER "on_auth_user_deleted" BEFORE DELETE ON "auth"."users" FOR EACH ROW EXECUTE FUNCTION "public"."handle_delete_user"();
+CREATE OR REPLACE TRIGGER "on_auth_password_set" AFTER UPDATE OF "encrypted_password" ON "auth"."users" FOR EACH ROW WHEN ((("new"."encrypted_password" IS DISTINCT FROM "old"."encrypted_password") AND (COALESCE("new"."encrypted_password", ''::character varying) <> ''::"text"))) EXECUTE FUNCTION "public"."password_was_set"();
 
 -- The audit triggers, put on by the function rather than listed here. There
 -- are sixty six of them and they are all the same two.
