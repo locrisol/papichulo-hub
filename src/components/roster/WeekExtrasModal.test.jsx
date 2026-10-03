@@ -68,7 +68,7 @@ describe('more than one of the same on a day, a week at a time', () => {
         fireEvent.click(grid().getByRole('button', { name: 'Another Feedr on 2026-09-30' }))
         fireEvent.change(grid().getAllByLabelText('Feedr time on 2026-09-30')[2], { target: { value: '12:30' } })
         fireEvent.click(grid().getByRole('button', { name: 'Another Feedr on 2026-09-30' }))
-        fireEvent.click(grid().getAllByRole('button', { name: 'Take this Feedr off 2026-09-30' })[3])
+        fireEvent.click(grid().getAllByRole('button', { name: 'Remove Feedr from 2026-09-30' })[3])
 
         fireEvent.click(screen.getByRole('button', { name: 'Save the week' }))
         await waitFor(() => expect(onSaved).toHaveBeenCalled())

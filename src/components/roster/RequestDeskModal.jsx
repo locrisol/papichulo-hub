@@ -54,11 +54,11 @@ export default function RequestDeskModal({
         .every(id => shifts.some(s => s.id === id))
 
     return (
-        <Modal title="Changes to approve" onClose={onClose} width="max-w-2xl">
+        <Modal title="Shift swaps to approve" onClose={onClose} width="max-w-2xl">
             <div className="px-6 py-4 overflow-y-auto space-y-4">
                 {requests.length === 0 && (
                     <p className="text-sm text-muted">
-                        Nothing waiting. Anything two people agree between them turns up here.
+                        No shift swaps to approve. Swaps that two people have agreed show up here.
                     </p>
                 )}
 
@@ -157,14 +157,14 @@ export default function RequestDeskModal({
                             {here && broke.length > 0 && (
                                 <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 mt-3">
                                     <p className="text-xs font-bold text-amber-800 uppercase tracking-wider mb-1.5">
-                                        This would break
+                                        Problems if approved
                                     </p>
                                     {broke.map((f, i) => (
                                         <p key={i} className="text-sm text-amber-800 flex items-start gap-2">
                                             <span className={`${badge} ${
                                                 f.level === 'block' ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-800'
                                             }`}>
-                                                {f.level === 'block' ? 'Stops it' : 'Warning'}
+                                                {f.level === 'block' ? 'Has to be fixed' : 'Warning'}
                                             </span>
                                             <span>{f.text}</span>
                                         </p>
@@ -188,7 +188,7 @@ export default function RequestDeskModal({
                                         onClick={() => onRefuse(request)}
                                         className={rowButton('danger')}
                                     >
-                                        Do not approve
+                                        Decline
                                     </button>
                                     {moved && (
                                         <span className="text-xs text-red-700 self-center">
@@ -204,8 +204,8 @@ export default function RequestDeskModal({
                                     )}
                                     {stops && (
                                         <span className="text-xs text-red-700 self-center">
-                                            Something here stops the week going out, so it cannot be approved
-                                            as it stands.
+                                            Something here stops the week being published, so this cannot
+                                            be approved.
                                         </span>
                                     )}
                                 </div>
@@ -215,8 +215,7 @@ export default function RequestDeskModal({
                                         it, because the reason it is not an
                                         Approve is the thing worth reading. */}
                                     <span className="text-sm text-muted">
-                                        This is for another week, so what it would do to that week cannot be
-                                        worked out from here.
+                                        This is for another week. Open that week to approve or decline it.
                                     </span>
                                     {when && onGoToWeek && (
                                         <button

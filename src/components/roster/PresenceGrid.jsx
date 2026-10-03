@@ -117,7 +117,7 @@ export default function PresenceGrid({
                 obvious every time after. */}
             <p className="text-[0.625rem] text-muted mt-2 leading-snug">
                 Each bar is the part of the day somebody is in. Left is the morning, right is the
-                evening. Tap any square for the times.
+                evening. Press any square for the times.
             </p>
         </div>
     )

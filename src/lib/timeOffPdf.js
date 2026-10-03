@@ -144,7 +144,7 @@ export async function timeOffRecordPdf({ absence, employeeName, restaurant, answ
         pdf.setFontSize(9)
         pdf.setTextColor(...INK)
         pdf.text(
-            `${freed.length} ${freed.length === 1 ? 'shift was' : 'shifts were'} taken off the roster`,
+            `${freed.length} ${freed.length === 1 ? 'shift was' : 'shifts were'} removed from the roster`,
             marginX + 5, boxTop + 7.5,
         )
 

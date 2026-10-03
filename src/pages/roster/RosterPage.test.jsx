@@ -132,9 +132,9 @@ const deletedFrom = table => made.some(([t, q]) => t === table && q.delete.mock.
 
 async function approveFreeingTheDay() {
     renderWithRouter(<RosterPage />)
-    fireEvent.click(await screen.findByRole('button', { name: 'Answer it' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Approve and free that day' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Yes, free those days' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Review' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve and remove 1 shift' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Yes, remove the shift' }))
 }
 
 // Approving used to take the shifts off first and then mark the request, and
@@ -181,7 +181,7 @@ describe('answering time off', () => {
         renderWithRouter(<RosterPage />)
 
         expect(await screen.findByText('Waiting for an owner to approve')).toBeInTheDocument()
-        expect(screen.getAllByRole('button', { name: 'Answer it' })).toHaveLength(1)
+        expect(screen.getAllByRole('button', { name: 'Review' })).toHaveLength(1)
     })
 
     it('still offers an owner every request', async () => {
@@ -189,15 +189,15 @@ describe('answering time off', () => {
         waitingOn({ absences: { data: [anasDayOff, leosHoliday], error: null } })
         renderWithRouter(<RosterPage />)
 
-        await screen.findAllByRole('button', { name: 'Answer it' })
-        expect(screen.getAllByRole('button', { name: 'Answer it' })).toHaveLength(2)
+        await screen.findAllByRole('button', { name: 'Review' })
+        expect(screen.getAllByRole('button', { name: 'Review' })).toHaveLength(2)
         expect(screen.queryByText('Waiting for an owner to approve')).toBeNull()
     })
 
     it('declines through the same call, freeing nothing', async () => {
         db.rpc = vi.fn(() => Promise.resolve({ data: { ...anasDayOff, status: 'declined' }, error: null }))
         renderWithRouter(<RosterPage />)
-        fireEvent.click(await screen.findByRole('button', { name: 'Answer it' }))
+        fireEvent.click(await screen.findByRole('button', { name: 'Review' }))
         fireEvent.click(await screen.findByRole('button', { name: 'Decline' }))
 
         await waitFor(() => expect(db.rpc).toHaveBeenCalledWith('answer_time_off', {

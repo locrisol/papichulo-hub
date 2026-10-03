@@ -99,7 +99,7 @@ function PhoneShape({ rows, dates, picked, onPick, onAdd, onTime, onRemove }) {
                                                     <button
                                                         type="button"
                                                         onClick={() => onRemove(date, row.name, n)}
-                                                        aria-label={`Take this ${row.name} off ${date}`}
+                                                        aria-label={`Remove ${row.name} from ${date}`}
                                                         className={removeButton}
                                                     >
                                                         &times;
@@ -177,7 +177,7 @@ function GridShape({ rows, dates, onAdd, onTime, onRemove }) {
                                                         <button
                                                             type="button"
                                                             onClick={() => onRemove(date, row.name, n)}
-                                                            aria-label={`Take this ${row.name} off ${date}`}
+                                                            aria-label={`Remove ${row.name} from ${date}`}
                                                             className={removeButton}
                                                         >
                                                             &times;
@@ -346,7 +346,7 @@ export default function WeekExtrasModal({
     }
 
     return (
-        <Modal title="Corporate orders, the whole week" onClose={onClose} width="max-w-4xl">
+        <Modal title="Corporate orders for the week" onClose={onClose} width="max-w-4xl">
             <div className="px-6 py-4">
                 {error && <ErrorBanner className="mb-3">{error}</ErrorBanner>}
 
@@ -382,9 +382,8 @@ export default function WeekExtrasModal({
                 </div>
 
                 <p className="text-xs text-muted mb-3">
-                    The schedule arrives as a week, so it goes in as a week. Tap a day to put
-                    something on it, and tap the time to change it. Two or three of the same on one
-                    day: add another under the first.
+                    Press a day to add one, and press the time to change it. For two or three of the
+                    same on one day, add another under the first.
                 </p>
 
                 {/* Anything typed and not saved is lost on a week step, which

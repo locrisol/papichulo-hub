@@ -197,10 +197,10 @@ export default function DayNoteDialog({
                             {publicHoliday.name}.
                             <span className="block text-xs font-normal text-muted mt-0.5">
                                 {bankHours
-                                    ? `Marked everywhere without being ticked, and open ${bankHours.open} `
-                                        + `to ${bankHours.close} unless different hours are typed above.`
-                                    : 'Marked everywhere without being ticked. No bank holiday hours are '
-                                        + 'set in Restaurant settings, so the usual ones are in force.'}
+                                    ? `Marked as a bank holiday automatically. Open ${bankHours.open} `
+                                        + `to ${bankHours.close} unless you set different hours above.`
+                                    : 'Marked as a bank holiday automatically. No bank holiday hours are '
+                                        + 'set in Restaurant settings, so the usual hours apply.'}
                             </span>
                         </p>
                     ) : (
@@ -218,7 +218,7 @@ export default function DayNoteDialog({
                                 <span className="block text-xs text-muted">
                                     For a day that is not a public holiday and is being treated like one.
                                     It takes the bank holiday hours set in Restaurant settings unless
-                                    different hours are typed above.
+                                    you set different hours above.
                                 </span>
                             </span>
                         </label>
@@ -254,7 +254,7 @@ export default function DayNoteDialog({
                 {show('extras') && (
                 <ModalSection
                     title="Also on"
-                    description="Anything else happening in the store that day, and the time it lands. An office delivery, Feedr, somebody servicing the coffee machine. Ticking one copies its usual time, and the day is free to disagree with it."
+                    description="Deliveries and visits on this day, like an office delivery, Feedr or a coffee machine service. Tick one to add it at its usual time, then change the time if needed."
                 >
                     {(usualExtras || []).length > 0 && (
                         <div className="flex flex-wrap gap-2 mb-4">
@@ -327,7 +327,7 @@ export default function DayNoteDialog({
                                     <button
                                         type="button"
                                         onClick={() => set('extras', removeExtraAt(form.extras, i))}
-                                        aria-label={'Take this ' + extra.name + ' off this day'}
+                                        aria-label={'Remove ' + extra.name + ' from this day'}
                                         className={removeButton}
                                     >
                                         &times;
@@ -369,7 +369,7 @@ export default function DayNoteDialog({
                             disabled={!oneOff.name.trim()}
                             className={secondaryButton}
                         >
-                            Add it
+                            Add
                         </button>
                     </div>
                 </ModalSection>
@@ -378,7 +378,7 @@ export default function DayNoteDialog({
                 {show('message') && (
                 <ModalSection
                     title="Note at the bottom of the roster"
-                    description="Printed under the week on the copy that goes out, with this day's date in front of it. This is the one people read, because it is only there when there is something to say."
+                    description="Printed under the week on the shared roster, with this day's date in front of it."
                 >
                     <textarea
                         value={form.message}

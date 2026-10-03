@@ -33,7 +33,7 @@ describe('a shift that starts and finishes at the same time', () => {
     it('is said to have no length', () => {
         draw({ starts_at: '09:00:00', ends_at: '09:00:00' })
 
-        expect(screen.getByText('That shift has no length.')).toBeInTheDocument()
+        expect(screen.getByText('The start and finish times are the same.')).toBeInTheDocument()
         expect(screen.queryByText(/over sixteen hours/)).toBeNull()
         expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
     })
@@ -41,7 +41,7 @@ describe('a shift that starts and finishes at the same time', () => {
     it('leaves a shift past midnight alone', () => {
         draw({ starts_at: '17:00:00', ends_at: '00:00:00' })
 
-        expect(screen.queryByText('That shift has no length.')).toBeNull()
+        expect(screen.queryByText('The start and finish times are the same.')).toBeNull()
         expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
     })
 })

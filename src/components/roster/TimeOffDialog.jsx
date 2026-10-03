@@ -216,7 +216,7 @@ export default function TimeOffDialog({
             if (delErr) {
                 setSaving(false)
                 setEditing(saved)
-                setError(`Saved, but the shifts are still on the roster. Take them off there. ${friendlyError(delErr)}`)
+                setError(`Saved, but the shifts are still on the roster. Remove them there. ${friendlyError(delErr)}`)
                 reload()
                 return
             }
@@ -229,9 +229,9 @@ export default function TimeOffDialog({
 
     async function remove(absence) {
         const ok = await confirm({
-            title: 'Take this off the record?',
-            message: `${kindLabel(absence.kind)}, ${absenceRange(absence, fullDate)}. It goes for good, so this is for one typed in by mistake rather than for one that has been and gone.`,
-            confirmLabel: 'Take it off',
+            title: 'Delete this time off?',
+            message: `${kindLabel(absence.kind)}, ${absenceRange(absence, fullDate)}. Only delete time off that was entered by mistake. Time off that has already happened should stay on record.`,
+            confirmLabel: 'Delete',
             tone: 'danger',
         })
         if (!ok) return
@@ -317,7 +317,7 @@ export default function TimeOffDialog({
                                     placeholder="0.00"
                                 />
                                 <p className={hintClass}>
-                                    Off the payslip. The app holds no entitlement.
+                                    Copy this from the payslip. The Hub does not track holiday allowance.
                                 </p>
                             </div>
                         )}
@@ -377,7 +377,7 @@ export default function TimeOffDialog({
                         <p className="text-xs text-amber-700 mt-3">
                             {person?.full_name} already has {kindLabel(clash.kind).toLowerCase()} down for
                             {' '}{absenceRange(clash, fullDate)}. That is fine if they went sick during a
-                            holiday, and worth a look if it is the same week typed twice.
+                            holiday. Check it is not the same time off entered twice.
                         </p>
                     )}
 
@@ -392,8 +392,8 @@ export default function TimeOffDialog({
                     {!problem && clashing.length > 0 && (
                         <Notice tone="urgent" className="mt-3">
                             <p className="font-semibold">
-                                {person?.full_name || 'They'} {clashing.length === 1 ? 'is' : 'is'} rostered on{' '}
-                                {clashing.length} of {clashing.length === 1 ? 'these days' : 'these days'}
+                                {person?.full_name || 'They'} {person?.full_name ? 'has' : 'have'} {clashing.length}{' '}
+                                {clashing.length === 1 ? 'shift' : 'shifts'} on these days
                             </p>
                             <ul className="text-xs text-red-700 mt-1 space-y-0.5">
                                 {clashing.map(x => (
@@ -412,7 +412,7 @@ export default function TimeOffDialog({
                             disabled={saving || !!problem}
                             className={primaryButton('lg')}
                         >
-                            {saving ? 'Saving...' : editing ? 'Save it' : clashing.length > 0 ? 'Add it, leave the shifts' : 'Add it'}
+                            {saving ? 'Saving...' : editing ? 'Save' : clashing.length > 0 ? 'Add and keep shifts' : 'Add time off'}
                         </button>
                         {!editing && clashing.length > 0 && (
                             <button
@@ -421,7 +421,7 @@ export default function TimeOffDialog({
                                 disabled={saving || !!problem}
                                 className={primaryButton('lg', 'good')}
                             >
-                                Add it and free {clashing.length === 1 ? 'that day' : `those ${clashing.length} days`}
+                                Add and remove {clashing.length === 1 ? '1 shift' : `${clashing.length} shifts`}
                             </button>
                         )}
                         {editing && (
@@ -491,7 +491,7 @@ export default function TimeOffDialog({
                                             onClick={() => remove(absence)}
                                             className={rowButton('danger')}
                                         >
-                                            Remove
+                                            Delete
                                         </button>
                                     </span>
                                 </div>

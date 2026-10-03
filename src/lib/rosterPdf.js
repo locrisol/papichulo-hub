@@ -218,7 +218,7 @@ export async function weekPdf(table, restaurantName, weekStart, { save = true } 
     pdf.setDrawColor(...YELLOW_EDGE)
     pdf.setLineWidth(0.4)
     pdf.rect(pageWidth - l.pad - 130, y + h(8), 9, 9, 'FD')
-    at('opens or closes the store', pageWidth - l.pad - 117, y + h(15), {
+    at('opening or closing shift', pageWidth - l.pad - 117, y + h(15), {
         size: 7, rgb: [107, 114, 128],
     })
     at(table.subtitle, l.pad, y + h(36), { size: 9, rgb: [107, 114, 128] })
@@ -253,7 +253,7 @@ export async function weekPdf(table, restaurantName, weekStart, { save = true } 
 
     // ---- the rows about the day
     box(l.pad, y, pageWidth - l.pad * 2, h(l.metaH), SLATE)
-    at('STORE HOURS', l.pad + 8, y + h(l.metaH) / 2 + 3, { size: 7, style: 'bold', rgb: [51, 65, 85] })
+    at('OPENING HOURS', l.pad + 8, y + h(l.metaH) / 2 + 3, { size: 7, style: 'bold', rgb: [51, 65, 85] })
     table.storeHours.forEach((v, i) => {
         // The whole column, a row at a time, because rows paint their own
         // backgrounds after this point and would cover one tall rectangle.
