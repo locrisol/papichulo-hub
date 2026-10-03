@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, waitFor, fireEvent, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { mockSupabase, renderWithRouter, tableOf } from '@/test/helpers'
-import { todayISO, addDays } from '@/lib/dates'
+import { todayISO, addDays, addMonths, monthStart, monthLabel, shortDate, weekStartOf } from '@/lib/dates'
 
 // The calendar asks Ticketmaster for news at most twice a day. It used to wait
 // for that answer before drawing anything, so once every twelve hours a manager
@@ -229,5 +229,41 @@ describe('what is on near us, for an employee', () => {
             .map(r => r.value.select.mock.calls[0][0])
         for (const columns of pairings) expect(columns).toContain('place:places(*)')
         expect(db.calls.filter(t => t === 'events')).toHaveLength(2)
+    })
+})
+
+// Stepping through months and weeks uses the same stepper as the other
+// screens, so its arrows say which way they go and the middle says where you
+// are.
+describe('stepping through the calendar', () => {
+    it('names the arrows by the month, and the middle follows them', async () => {
+        renderWithRouter(<CalendarPage />)
+        await screen.findByText(/Kings of Leon/)
+        await userEvent.click(screen.getByRole('button', { name: 'Month' }))
+
+        const now = monthLabel(monthStart(todayISO()))
+        const next = monthLabel(addMonths(monthStart(todayISO()), 1))
+        expect(screen.getAllByText(now).length).toBeGreaterThan(0)
+
+        await userEvent.click(screen.getByRole('button', { name: 'Next month' }))
+        expect(screen.getAllByText(next).length).toBeGreaterThan(0)
+        expect(screen.getByRole('button', { name: 'Go to current month' })).toBeInTheDocument()
+
+        await userEvent.click(screen.getByRole('button', { name: 'Previous month' }))
+        expect(screen.getAllByText(now).length).toBeGreaterThan(0)
+    })
+
+    it('names them by the week in the week view, with the week in the middle', async () => {
+        renderWithRouter(<CalendarPage />)
+        await screen.findByText(/Kings of Leon/)
+        await userEvent.click(screen.getByRole('button', { name: 'Week' }))
+
+        const start = weekStartOf(todayISO())
+        expect(screen.getByText(`${shortDate(start)} to ${shortDate(addDays(start, 6))}`)).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Previous week' })).toBeInTheDocument()
+
+        await userEvent.click(screen.getByRole('button', { name: 'Next week' }))
+        const after = addDays(start, 7)
+        expect(screen.getByText(`${shortDate(after)} to ${shortDate(addDays(after, 6))}`)).toBeInTheDocument()
     })
 })

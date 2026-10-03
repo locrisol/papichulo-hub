@@ -5,7 +5,8 @@ import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
 import { addDays, shortDate, stampDay, todayISO, weekStartOf } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
-import { card, cardHeader, pageTitle, rowButton, secondaryButton, segmentButton, segmentTrack } from '@/lib/controlStyles'
+import { card, cardHeader, rowButton, secondaryButton, segmentButton, segmentTrack } from '@/lib/controlStyles'
+import { fmtPct } from '@/lib/format'
 import {
     busiestWords, doneDay, doneDayLong, lastDoneRows, listTree, periodRecord, progressOf, repeatWords,
     roundOutcome, ticksByTimeOfDay, ticksByWeekday, weekdayName,
@@ -13,6 +14,8 @@ import {
 import { BAR_COLOUR } from '@/lib/weekTaken'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import BackButton from '@/components/ui/BackButton'
+import PageHeader from '@/components/ui/PageHeader'
+import PdfButton from '@/components/ui/PdfButton'
 
 // How the cleaning is going, for managers.
 //
@@ -42,7 +45,6 @@ export default function ChecklistsReportPage() {
     const [weeks, setWeeks] = useState(4)
     const [data, setData] = useState(null)
     const [error, setError] = useState('')
-    const [busy, setBusy] = useState(false)
 
     const today = todayISO()
     const from = addDays(weekStartOf(today), -7 * (weeks - 1))
@@ -114,29 +116,22 @@ export default function ChecklistsReportPage() {
     })
 
     async function download() {
-        setBusy(true)
-        try {
-            const { reportPdf } = await import('@/lib/checklistPdf')
-            await reportPdf({
-                restaurant: activeRestaurant,
-                fromLabel: shortDate(from),
-                toLabel: `${shortDate(today)} ${today.slice(0, 4)}`,
-                byDay,
-                byTime,
-                generatedBy: user?.full_name,
-                lists: perList.map(p => ({
-                    name: p.list.name,
-                    repeats: repeatWords(p.list),
-                    summary: p.summary,
-                    record: p.record.map(r => ({ label: stretchLabel(p.list, r), outcome: r.outcome, finishedOn: r.finishedOn ? doneDay(r.finishedOn + 'T12:00:00') : null })),
-                    rows: p.rows,
-                })),
-            })
-        } catch (err) {
-            setError(friendlyError(err))
-        } finally {
-            setBusy(false)
-        }
+        const { reportPdf } = await import('@/lib/checklistPdf')
+        await reportPdf({
+            restaurant: activeRestaurant,
+            fromLabel: shortDate(from),
+            toLabel: `${shortDate(today)} ${today.slice(0, 4)}`,
+            byDay,
+            byTime,
+            generatedBy: user?.full_name,
+            lists: perList.map(p => ({
+                name: p.list.name,
+                repeats: repeatWords(p.list),
+                summary: p.summary,
+                record: p.record.map(r => ({ label: stretchLabel(p.list, r), outcome: r.outcome, finishedOn: r.finishedOn ? doneDay(r.finishedOn + 'T12:00:00') : null })),
+                rows: p.rows,
+            })),
+        })
     }
 
     const roundsShown = data.rounds.filter(r => stampDay(r.started_at) >= from || !r.ended_at)
@@ -145,24 +140,20 @@ export default function ChecklistsReportPage() {
     return (
         <div>
             <BackButton to="/checklists">Back to checklists</BackButton>
-            <header className="mt-4 mb-6 flex flex-wrap items-end justify-between gap-3">
-                <div>
-                    <h1 className={pageTitle}>Checklist reports</h1>
-                    <p className="text-sm text-muted mt-1">{activeRestaurant.name} | {shortDate(from)} to today</p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            <div className="mt-4">
+                <PageHeader title="Checklist reports" subtitle={`${activeRestaurant.name} · ${shortDate(from)} to today`}>
                     <div className={segmentTrack} role="group" aria-label="How far back">
                         {RANGES.map(r => (
-                            <button key={r.weeks} type="button" aria-pressed={weeks === r.weeks} onClick={() => setWeeks(r.weeks)} className={segmentButton(weeks === r.weeks)}>
+                            <button key={r.weeks} type="button" aria-pressed={weeks === r.weeks} onClick={() => setWeeks(r.weeks)} className={segmentButton(weeks === r.weeks, true)}>
                                 {r.label}
                             </button>
                         ))}
                     </div>
-                    <button type="button" onClick={download} disabled={busy} className={secondaryButton}>
-                        {busy ? 'Making PDF...' : 'Download PDF'}
-                    </button>
-                </div>
-            </header>
+                    <PdfButton make={download} onError={err => setError(friendlyError(err))} className={secondaryButton}>
+                        Download PDF
+                    </PdfButton>
+                </PageHeader>
+            </div>
 
             <ErrorBanner className="mb-4">{error}</ErrorBanner>
 
@@ -295,7 +286,7 @@ function Bars({ rows, total }) {
                     <div className="flex justify-between items-baseline gap-3 mb-1">
                         <span className="text-sm text-gray-700">{r.label}</span>
                         <span className="text-xs text-muted tabular-nums whitespace-nowrap">
-                            {r.count} {total ? `(${Math.round((r.count / total) * 100)}%)` : ''}
+                            {r.count} {total ? `(${fmtPct((r.count / total) * 100, 0)})` : ''}
                         </span>
                     </div>
                     <span className="block h-4 bg-gray-100 rounded-md overflow-hidden">

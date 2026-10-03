@@ -165,6 +165,20 @@ describe('ticking and submitting', () => {
         expect(await screen.findByText('Ticked, not saved yet')).toBeInTheDocument()
         expect(screen.getByText('1 tick not saved yet.')).toBeInTheDocument()
     })
+
+    // A private window, or a browser told to keep nothing, refuses the store.
+    // The tick still works; it only does not survive the page closing.
+    it('still ticks when the browser will not keep anything', async () => {
+        const refuse = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('refused') })
+        try {
+            const user = open()
+            await user.click(await screen.findByLabelText('Clean toaster sides'))
+            expect(screen.getByText('Ticked, not saved yet')).toBeInTheDocument()
+            expect(screen.getByRole('button', { name: 'Submit' })).toBeInTheDocument()
+        } finally {
+            refuse.mockRestore()
+        }
+    })
 })
 
 describe('a round that has ended', () => {
