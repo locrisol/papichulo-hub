@@ -101,7 +101,7 @@ vi.mock('@/context/restaurant', () => ({
     }),
 }))
 
-const { default: TimesheetPage } = await import('@/pages/costs/TimesheetPage')
+const { default: TimesheetPage } = await import('@/pages/timesheet/TimesheetPage')
 
 const boxes = () => Array.from(document.querySelectorAll('input[data-r]'))
 
