@@ -1,34 +1,25 @@
 # Migrations
 
-**`001` to `036` are in here. `001` to `035` are run on live, `036` is his to run, and the next one is `037`.**
-
-`028` to `034` were run on 1 October, `034` before development reached main.
-papichulo-hub.vercel.app still runs main, which reads the tables `034` closed
-to staff, so staff accounts cannot use it until development is released to
-main. His call: nobody but him uses it yet, and main waits until the audit
-plan is finished. `034`'s note below says what to check after the release.
-
-The numbers started again at `001` on 20 September, because the folder was
-empty then. They were only ever there to put the files in order. Everything
-that went through here before is in git history and under the `pre-rewrite`
-tag, so a number used before is not a number lost.
+**Empty. The next one is `001`.**
 
 The design lives in `../schema.sql`, written by hand and grouped by what each
-part is for. This folder is only for changes to a database that already exists,
-and from here that means **new functionality**, not catching up on anything.
+part is for, and `../seed.sql` has the rows and scheduled jobs it cannot start
+without. This folder is only for changes to a database that already exists, and
+from here that means **new functionality**, not catching up on anything.
 
 ## Adding one
 
 1. Write `001_what_it_does.sql` in here. One change, and a comment at the top
    saying why, not what.
 2. Fold the same change into `../schema.sql` by hand, where it belongs by
-   subject rather than at the end.
+   subject rather than at the end. A scheduled job goes in `../seed.sql`.
 3. Commit the two together. A change in one and not the other is how the two
    drift apart, and the whole point of this arrangement is that they cannot.
-4. `npm run db:local` builds a database from `schema.sql` and `seed.sql` and
-   will tell you if step 2 was wrong. The stronger check, and the one worth
-   doing, is the one at the bottom of this file: build from `schema.sql` alone
-   and compare it to a dump of live, object by object.
+4. `npm run db:local` builds a database from `schema.sql`, every migration in
+   here and `seed.sql`, and will tell you if step 2 was wrong. The stronger
+   check, and the one worth doing, is the one at the bottom of this file: build
+   from `schema.sql` alone and compare it to a dump of live, statement by
+   statement.
 
 The GitHub action fails a pull request that adds a migration without touching
 `schema.sql`, but it cannot tell whether what you folded in was right.
@@ -42,256 +33,21 @@ backup to the running database, and deleting it throws that path away.
 **Folding one away is not worth a branch of its own**, so it rides with whatever
 is being worked on next.
 
-## What is in here now
+## The restart, 3 October 2026
 
-`001` to `009` are the Timesheet, all run on live and all merged. `010` is the
-invoice import, run on live: five tables, `invoice_lines` reshaped, `invoices`
-given a document number and a credit note, and `invoice_cost_by_category`.
-`011` and `012` are run on live. `011` changes that view so a claim carries the
-money back in the week the delivery happened and a credit note that settles one
-does not count again, and lets a claim made from a credit say nobody logged a
-reason. `012` gives each invoice line its share of the VAT and the container
-deposit, and the view counts them, so an invoice costs what it charges.
-`013` is run on live. It gives every supplier code a price of its own, splitting
-the six prices two or three codes were sharing, widens the reasons for a
-delivery problem, lets a credit note nobody logged be given its reason as a
-label, adds how far recipes may drift before the report says so, and puts the
-Prices and suppliers section into every report still being written.
-`014` is run on live. It lets a product say roughly what one piece weighs, so
-a case of ten cabbages can be priced by the kilo.
-`015` is run on live. It lets codes for the same thing that are bought either
-way be put in one group, each keeping its own price.
-`016` is run on live, and came in on its own pull request. It switches off a
-leaver's login the night after their last day, with a job at 00:05 UTC.
-`017` is run on live. It lets a document on a supplier's list be cleared off
-Still to download as not needed, without deleting it.
-`018` is run on live. It adds `sales_tender_names`, where the weekly
-sales import keeps what the till calls a row of the receipt (CASH is Cash
-Sales, Credit Card is Card), answered once.
-`019` is run on live. It adds the checklists: five tables for the lists,
-their categories and tasks, the rounds staff go through and the ticks that can
-never be changed, a private `checklist-photos` bucket with its three policies,
-the functions the nightly photo job calls, and the Cleaning section on the
-report still being written. The job itself is the `checklist-photos` edge
-function, scheduled as cron job 7.
-`020` is run on live. It lets a checklist task carry up to four guide
-pictures instead of one, moving any picture already added into the new list.
-`021` is run on live. It makes every view read only. The seven views
-behind the allergen page read one table each, so the database would write
-through them as their owner, past row level security, and anybody with the
-website's key held write access to them. Reading does not change.
-`022` is run on live. It lets employees read MIX recipes, so what they
-count or log as waste is valued. Writing a recipe stays with managers.
-`023` is run on live. It gives the allergen sheet a real date and a
-reminder to print it again: `allergens_changed_at()`, the newest change that
-alters what the sheet says, for the customer page and the PDF, with an index
-so it stays quick; two columns on `restaurants` for when it was last printed
-and how many months it stays up; and `allergen_sheet_printed()`, which the PDF
-button calls, because an owner can print but cannot write the restaurant row.
-`024` is run on live. It guards a swap request from the moment it is sent:
-it starts as asked, gives the asker's own shift and takes one of the person
-asked, and after that the two of them can only answer it or take it back.
-Before, a hand written call could send one already agreed, or change it after
-the other person said yes.
-`025` is run on live. It makes where a diary entry is on Google the
-calendar function's to write: a person saving an entry can no longer change
-the Google event ids, which a store manager could use to delete an owner's
-event from the group calendar. And a manager can no longer delete a place
-somebody watches or has listings from, nor delete a listing, which took the
-other restaurant's pairing and listings with it. A super admin still can.
-`026` is run on live. It gives each delivery platform a key that never
-changes, starting as the name it has now, and its figures are kept under
-that, so renaming or retiring a platform no longer loses its past weeks. Not
-one stored figure moves.
-`027` is run on live. The nightly job keeps the photos of a checklist
-round still going, so a tick submitted days after its photo was taken still
-has it, and a tick is refused if its photo is no longer in storage.
-`028` is run on live. It gives each place three columns saying how its
-last Ticketmaster sync went: when the feed last answered, how many it listed,
-and what went wrong if anything did, and a fourth saying what went wrong the
-last time a page was read. The roster and the calendar tell a manager when a
-feed has stopped answering, instead of it looking like a quiet fortnight.
-Redeploy `nearby-events` and `read-listings` after it.
-`029` is run on live. It is the roster, swaps and time off after the
-second round of the audit. A swap for part of a shift has to name hours
-inside that shift, because approving one that did not invented hours. A swap
-cannot be asked of somebody with no account, who could never answer it, and
-`roster_colleagues` says who has one. Time off is answered by
-`answer_time_off()`, which frees the shifts and writes the answer together,
-and only for a request still waiting. A store manager can no longer answer
-their own holiday or day off; an owner or the super admin does. Their own part
-of a day stays theirs, the same as the mail, which tells nobody about it. A shift changed after
-its week went out stays on that person's My shifts and phone calendar as it
-went out, until the week is published again: `roster_shifts.published_as`
-keeps that copy and the `roster_published` view serves it, with a shift's note
-only for that person and the managers. A shift or a timesheet row can no
-longer start and finish at the same time, which came to 24 hours. If one is
-already saved, 029 stops and says so; `select * from timesheet_entries where
-starts_at = ends_at`, and the same on `roster_shifts`, finds it to put right
-first. The roster calls that function to answer time off, and My shifts
-reads `roster_published`. Redeploy `roster-calendar` and `roster-email` only
-after 029 is run, never before:
-both read `published_as`, and without it the phone calendars come back empty
-and the time off mail stops saying when somebody is rostered. Deploy the
-calendar as `npx supabase functions deploy roster-calendar --no-verify-jwt`,
-then open somebody's plain calendar address (Team, calendar link, Copy the
-plain address) in a browser: it should download a file starting
-`BEGIN:VCALENDAR`, not say 401. Once 029 is
-run, publish again any week that says "Changed since it went out". A shift
-changed before 029 has no copy kept, so it stays off My shifts and the phone
-until its week goes out again.
-`030` is run on live. It works a timesheet row's hours out in real time
-from the date, so a shift on the night the clocks go back or forward comes to
-the hours really worked rather than what the clock face says. Every other
-night is exactly as before and no saved figure moves. It needs Postgres 17,
-which is what `set expression` arrived in.
-`031` is run on live. A super admin can log and delete waste at any
-restaurant, the same as on every other table, rather than only at their own.
-And the waste an employee sees is today's in Ireland rather than the server's
-UTC date, so what they log after midnight in summer stays on their list. And
-only a super admin can change an account: an owner or a store manager could
-change the accounts below them through the API, role included, which nothing
-in the app offers.
-`032` is run on live. It gives `public_products` the section, so the
-customer allergen page can tell a food product nobody entered allergens for
-(it asks the customer to see staff) from a dip pot, which has nothing to
-declare, and the sheet's date counts a product moving section. And it makes
-the columns the allergen answer is worked out from not null: the fourteen on
-`product_allergens`, `is_mix` and `is_active` on `products`, and `is_active`
-on `menu_items` and `menu_categories`. It checks first, and if any of them is
-empty it stops, names the table and changes nothing. Without it, the new
-page asks customers to see staff about every dish that comes in a pot.
-`033` is run on live. It adds the views the new site reads instead of
-the tables 034 closes to staff. Nothing in it broke the site as it was:
+`001` to `036` were all run on live and are gone from here. They are in git
+history and under the `pre-restart` tag, and the earlier set is under
+`pre-rewrite`, so a number used before is not a number lost. Comments in the
+code that said "since 034" now say the date instead.
 
-- `staff_restaurants`, their restaurant with the name, opening hours, break
-  and roster rules and nothing else;
-- `my_claims`, the delivery problems they logged, without what each was worth;
-- `roster_asks`, which shifts somebody has asked about, for the mark on My
-  shifts, without who asked whom or the message;
-- `staff_products`, the products as a count and the Waste page use them,
-  without the notes, the weight loss, the piece weight or the count frequency;
-- `staff_diary`, what is on, without where each entry is on Google or who
-  wrote it;
-- `staff_places`, a place nearby with its name and size, without its page
-  address, Ticketmaster id or reading settings;
-- `staff_mix_recipes`, what goes into each MIX and how much, without the
-  notes.
+Live was dumped first, the same day and after all thirty six had run:
+`schema-2026-10-03.sql`, `roles-2026-10-03.sql` and `data-2026-10-03.sql` in
+`papichulo-backups`, newer than every one of them.
 
-`034` is run on live. It takes away from staff what no staff screen
-uses, now that the new site reads only what it needs:
-
-- the restaurants table, which carries the cost targets, the default hourly
-  rate and the report and payroll addresses;
-- their own row on the team list, which carries their hourly rate and the
-  managers' notes;
-- the menu: every dish's selling price, VAT and what goes into it, and the
-  allergen rows (the customer page uses the `public_` views);
-- the suppliers that were switched off;
-- every stock take but the one being counted, with what each was worth. A
-  stock take reopened before this still holds its old value, and 034 clears
-  it. From then on the database clears it whenever one is reopened;
-- `invoice_line_claims`, which carries what a delivery problem was worth once
-  matched to a line, and what came back. They read `my_claims` instead, and
-  still log one the same way;
-- swap requests between two other people. They read their own, whole, and
-  `roster_asks` for the rest;
-- `roster_shifts`, which carries every colleague's shift note and every
-  draft. My shifts reads `roster_published` (029), which gives each person
-  the note on their own shifts and nobody else's;
-- the products table. A count and the Waste page read `staff_products`;
-- the group's and their restaurant's diary entries on the table, which carry
-  the Google event ids. The calendar and My shifts read `staff_diary`. It
-  also stops a switched off account reading its own private diary entries;
-  nobody still working loses anything;
-- the team, its time off and the published shifts outside the weeks My
-  shifts opens. `roster_colleagues`, `roster_away` and `roster_published`
-  give nine weeks either side of today, so nobody who left long ago, no old
-  holidays, no leaving date months before it matters, and no shifts from
-  rosters long gone. My shifts steps eight weeks either way;
-- the places table, the other restaurant's pairings, and listings that were
-  dismissed or are at a place their restaurant does not watch. Only the
-  employee side narrows: the rule on deleting a place reads the pairings and
-  the listings as the manager, so managers keep all of them;
-- `mix_recipes`, with its notes. A count and the Waste page read
-  `staff_mix_recipes`, so a MIX is valued the same as before.
-
-It was meant to wait until development was merged into main, and went in
-before (see the top of this file). Until that release, papichulo-hub.vercel.app
-runs main, which reads these tables: staff are told the Hub cannot open, My
-shifts says they are not on the team list, Delivery problems is empty, Waste
-and Stock Takes have no products and the calendar has no diary. Once Vercel
-shows the release as Ready, sign in there as a staff account and open My
-shifts to check.
-
-Anybody who had the Hub open from before the release has to reload it once
-after 034 runs. Until they do, staff see "We cannot open the Hub for you", and
-signing out and in again on that same page does not fix it, so tell anybody
-with a staff login to close the Hub and open it again.
-
-`035` adds `users.password_set_at`, when somebody last chose their own
-password. While it is empty the Hub asks them for one before anything else.
-Only Supabase Auth storing a new password fills it, through a trigger on
-`auth.users`, and a guard stops anybody writing it, or marking an account as
-a developer one, through the API. It also rewords two column notes that had
-gone out of date.
-
-**Set up custom SMTP and the templates first** (supabase/templates/README.md),
-then run `035`, then turn on Secure password change. From `035` everybody is
-asked to choose a password, and a session over a day old is sent a link to do
-it, which the built in mailer would only deliver to the Supabase team. The
-screens cope with `035` not being run yet: they just do not ask. On live,
-check the trigger is there afterwards with the query at the bottom of this
-file.
-
-`036` is the sidebar badges: `report_reads`, which report each person has
-opened (so an owner's Reports count goes down when they open one, and a
-correction counts again), and `my_badges()`, every count the sidebar shows in
-one call. Security definer, because two counts need what staff cannot read: an
-edited shift's real date and when the allergen sheet last changed. It repeats
-the policies' checks itself. Run it before the badges branch is deployed, or
-the sidebar shows no counts at all (it does not break).
-
-## What was here before
-
-Sixty three numbered migrations from May to September 2026, then ten in
-September that brought the live database up to the rewritten schema, then four
-more that answered the Supabase advisor. Then `005` and `006`, and then these
-nine, which went on 20 September:
-
-- **`007_test_accounts.sql`** marked the developer accounts, so eleven rows on
-  the Users page were not read as eleven people.
-- **`008_the_diary.sql`** added `diary_entries` and one column on `restaurants`.
-- **`009_diary_labels.sql`** let a promotion say who it is for without the
-  answer living inside its own name.
-- **`010_landing_page.sql`** let an account choose which page the Hub opens on.
-- **`011_places_near_us.sql`** added `places` and `restaurant_places`, gave
-  `events` a place and a say in where it came from, and carried the one venue
-  that used to live on the restaurant across into the first of them.
-- **`012_a_cinema_is_not_a_list_of_events.sql`** let a place say how its
-  readings are keyed, and pointed the cinema at a page that can be read at all.
-- **`013_four_more_pages_worth_reading.sql`** gave four more places a page, and
-  fixed the council, which was being read six events at a time.
-- **`014_a_place_can_have_its_own_row.sql`** let one place near a restaurant
-  have a roster row with its name on it.
-- **`015_a_listing_can_be_called_something_shorter.sql`** let a listing be
-  called something shorter than it calls itself.
-
-All of them are in git history and under the `pre-rewrite` tag, and nothing has
-been lost.
-
-## How the nine were checked
-
-The same way as every time before. Live was dumped on 20 September, after all
-nine had run: `schema-2026-09-20.sql`, `roles-2026-09-20.sql` and
-`data-2026-09-20.sql` in `papichulo-backups`, all three newer than every one of
-them. Then a second database was built from `schema.sql` alone, with no
-migrations at all, dumped the same way, and the two were compared object by
-object rather than line by line.
-
-**904 statements on live against 905 from `schema.sql`.** Every table, column,
-type, default, constraint, key, index, policy, function, trigger, view and grant
-matches exactly. The differences are six things, all of them understood:
+**1,356 statements on live against 1,357 from `schema.sql` alone**, compared one
+by one: every table, column, type, default, constraint, key, index, policy,
+function, trigger, view and grant matches exactly. The differences are the same
+six as at the last check, all understood:
 
 - `pg_graphql`. Supabase manages it and `db dump --linked` does not list it, so
   it looks missing on live when it is not. It stays here, because a database set
@@ -299,33 +55,31 @@ matches exactly. The differences are six things, all of them understood:
   Supabase.
 - Three column comments, on `employees.availability`, `sales_records.is_closed`
   and `places.page_url`, where this file says more than live does. Live's text
-  is the older one every time: a comment was improved after the migration
-  carrying it had already run. The fuller version is worth keeping, and a column
+  is the older one every time. The fuller version is worth keeping, and a column
   comment is not worth a migration.
 - The bodies of `get_my_role` and `get_my_restaurant_id`, which live spells in
-  lower case and this file spells in upper. The same SQL, and lower casing two
-  function bodies here to match a dump would make the design file worse for
-  nothing. The next time either is replaced they agree again.
+  lower case and this file in upper. The same SQL. The next time either is
+  replaced they agree again.
 
-Two things were **brought into line with live** rather than left to differ,
-since live is what actually runs:
+## How to check it again
 
-- `pg_net` was missing from `schema.sql`. This was worth finding: all three cron
-  jobs call `net.http_post`, so a database built from this file alone would have
-  failed every scheduled run with nothing useful to say.
-- The order of the columns on `users`, `restaurants`, `places`,
-  `restaurant_places`, `events` and `diary_entries`. A column added by a
-  migration lands at the end of its table, and this file had each one where it
-  belongs by subject. Nothing depends on the order, since there is not one
-  `INSERT` without a column list anywhere in the schema or the seed, but leaving
-  it means the next person doing this check has six tables to re-derive as
-  harmless.
+Dump live and build a second database from `schema.sql` alone, with this folder
+set aside, then compare the two dumps statement by statement, not line by line:
 
-**The comparison only sees `public`.** Both dumps are of that schema, so the
-two triggers on `auth.users` that give a new login its `users` row were never
-in it, and they went missing from `schema.sql` in the rewrite without the check
-noticing. They are back, and `npm run db:local` now fails without them. On live
-they have to be looked at by hand, read only:
+    npx supabase db dump --linked -f live.sql
+    (move the .sql files out of this folder)
+    npm run db:local
+    npx supabase db dump --local -f design.sql
+    (put them back)
+
+Anything other than the six above is a real difference.
+
+**The comparison only sees `public`.** The triggers on `auth.users` that give a
+new login its `users` row and record a password being chosen are not in either
+dump, so look at them on live by hand, read only:
 
     select tgname, pg_get_triggerdef(oid) from pg_trigger
      where tgrelid = 'auth.users'::regclass and not tgisinternal;
+
+It should list `on_auth_user_created`, `on_auth_user_deleted` and
+`on_auth_password_set`.
