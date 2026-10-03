@@ -244,7 +244,7 @@ export default function SalesImportDialog({
                                 className={primaryButton('md', 'good')}
                             >
                                 {toFill
-                                    ? (busy ? 'Filling in...' : 'Fill in the week')
+                                    ? (busy ? 'Importing...' : 'Import')
                                     : (busy ? 'Saving...' : 'Done')}
                             </button>
                         )}
@@ -285,7 +285,7 @@ function Questions({ read, unknown, active, restaurantName, answers, onAnswer })
         <div>
             <p className="text-sm text-muted mb-4">
                 The till has {unknown.length === 1 ? 'a line' : 'lines'} this restaurant does not
-                have a row for. Say where the money goes, or leave it out.
+                have a till receipt line for. Say where the money goes, or leave it out.
             </p>
 
             {unknown.map(m => {
@@ -305,10 +305,10 @@ function Questions({ read, unknown, active, restaurantName, answers, onAnswer })
                         </div>
                         <p className="text-xs text-muted mb-2">
                             {guess
-                                ? `Looks like your ${guess.label} row under the till's own name.`
+                                ? `Looks like your ${guess.label} line under the till's own name.`
                                 : m.retired
                                     ? `${m.name} is retired at ${restaurantName}, so this was probably rung up by mistake.`
-                                    : `${restaurantName} has no ${m.name} row on its till receipt.`}
+                                    : `${restaurantName} has no ${m.name} line on its till receipt.`}
                             {/* The days only when there are few enough to
                                 read. A mistake is usually one day, and that
                                 day is what somebody needs to go and check;
@@ -388,13 +388,13 @@ function Ready({ read, plan, onKeep }) {
 
             {toFill === 0 && plan.changed.length === 0 && (
                 <p className="text-sm text-gray-900 mb-3">
-                    Everything here already matches the till&apos;s report. There is nothing to fill in.
+                    Everything here already matches the till&apos;s report. There is nothing to import.
                 </p>
             )}
 
             <ul className="text-sm text-gray-900 space-y-1.5 mb-3">
                 {plan.filled.length > 0 && (
-                    <Line tick>{plan.filled.length} day{plan.filled.length === 1 ? '' : 's'} to fill in</Line>
+                    <Line tick>{plan.filled.length} day{plan.filled.length === 1 ? '' : 's'} to import</Line>
                 )}
                 {plan.same.length > 0 && toFill > 0 && (
                     <Line quiet>{plan.same.length} already exactly the same</Line>
@@ -507,7 +507,7 @@ function Steps() {
 const Line = ({ children, tick, quiet, warn }) => (
     <li className="flex gap-2">
         <span className={quiet ? 'text-muted' : warn ? 'text-accent-ink' : 'text-green-700'}>
-            {quiet ? '–' : warn ? '!' : tick ? '✓' : '•'}
+            {quiet ? '—' : warn ? '!' : tick ? '✓' : '•'}
         </span>
         <div className={quiet ? 'text-muted' : ''}>{children}</div>
     </li>

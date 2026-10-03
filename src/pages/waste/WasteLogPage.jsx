@@ -200,7 +200,7 @@ export default function WasteLogPage() {
 
         if (!selectedProduct) { setFormProblem('Pick a product'); return }
         const qty = parseFloat(quantity)
-        if (isNaN(qty) || qty <= 0) { setFormProblem('The quantity has to be above zero'); return }
+        if (isNaN(qty) || qty <= 0) { setFormProblem('Enter a quantity above 0'); return }
 
         setBasket(prev => [...prev, {
             // Only used as a React key while the item is unsaved.
@@ -291,7 +291,7 @@ export default function WasteLogPage() {
                         onClick={() => navigate('/waste/summary')}
                         className={secondaryButton}
                     >
-                        Weekly summary
+                        Waste summary
                     </button>
                 )}
             </PageHeader>
@@ -423,7 +423,7 @@ export default function WasteLogPage() {
                                 </span>
                             </div>
                             {reviewing && (
-                                <p className="text-xs text-muted mb-3">Once this is saved you cannot change it yourself.</p>
+                                <p className="text-xs text-muted mb-3">Once saved, only a manager can delete an entry.</p>
                             )}
 
                             <div className="border border-border rounded-lg divide-y divide-border mb-3 mt-3">
@@ -475,7 +475,7 @@ export default function WasteLogPage() {
                                         </button>
                                         <button onClick={confirmSave} disabled={saving}
                                             className={primaryButton('xl')}>
-                                            {saving ? 'Saving...' : 'Save it'}
+                                            {saving ? 'Saving...' : 'Save'}
                                         </button>
                                     </>
                                 ) : (
@@ -497,7 +497,7 @@ export default function WasteLogPage() {
                             {logDate === todayISO() ? 'Logged today' : `Logged on ${shortDate(logDate)}`}
                         </h3>
                         <span className="text-sm text-muted">
-                            total: <span className="font-semibold text-gray-900">{fmtMoney(dayTotal)}</span>
+                            Total: <span className="font-semibold text-gray-900">{fmtMoney(dayTotal)}</span>
                         </span>
                     </div>
 

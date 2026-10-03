@@ -91,7 +91,7 @@ beforeEach(() => {
     confirm.mockImplementation(() => Promise.resolve(true))
 })
 
-// Two screens on one day. The day view used to ask "Overwrite this day?"
+// Two screens on one day. The day view used to ask "Replace this day?"
 // whenever the day had a record, whether or not it had changed since it was
 // opened, so a correction made on a phone was written over without a word.
 describe('a day saved somewhere else since it was opened', () => {
@@ -100,7 +100,7 @@ describe('a day saved somewhere else since it was opened', () => {
         const user = await openDay()
         await user.click(screen.getByRole('button', { name: 'Update day' }))
         await waitFor(() => expect(confirm).toHaveBeenCalled())
-        expect(confirm.mock.calls[0][0].title).toBe('Overwrite this day?')
+        expect(confirm.mock.calls[0][0].title).toBe('Replace this day?')
     })
 
     it('says so when it has, and writes nothing unless told to', async () => {

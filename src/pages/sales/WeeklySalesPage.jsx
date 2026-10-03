@@ -551,7 +551,7 @@ export default function WeeklySalesPage() {
             if (movedOn.length) {
                 const one = movedOn.length === 1
                 const ok = await confirm({
-                    title: 'Saved somewhere else',
+                    title: 'Changed somewhere else',
                     message: `${dayList(movedOn)} ${one ? 'was' : 'were'} saved on another screen after you `
                         + `opened this week. Saving now replaces ${one ? 'it' : 'them'} with what is on this screen.`,
                     confirmLabel: 'Save anyway',
@@ -899,7 +899,7 @@ export default function WeeklySalesPage() {
                     <td colSpan={9} className="px-3 py-2 sticky left-0 bg-gray-600">
                         <span className="text-xs font-bold text-white uppercase tracking-wider">{title}</span>
                         <span className="text-xs text-white/60 ml-2">
-                            tracking only, outside the reconciliation
+                            for reference only, not part of the reconciliation
                         </span>
                     </td>
                 </tr>
@@ -1060,8 +1060,8 @@ export default function WeeklySalesPage() {
                 never going to be comfortable on a phone, so rather than pretend
                 otherwise it says so and points at the form that is. */}
             <Notice tone="info" className="md:hidden mb-4">
-                This grid is meant for a computer. On a phone the Day view above is easier to use. It takes one day
-                at a time and saves to exactly the same place, so it makes no difference which one you use.
+                This grid is easier on a computer. On a phone, use Day view above. Both save to the same
+                place.
             </Notice>
 
             <ErrorBanner className="mb-4">{error}</ErrorBanner>
@@ -1150,7 +1150,7 @@ export default function WeeklySalesPage() {
                                             checked={days[d]?.isClosed ?? false}
                                             onChange={() => toggleClosed(d)}
                                             className={checkbox}
-                                            aria-label={`Mark ${d} as closed`}
+                                            aria-label={`Mark ${fullDate(d)} as closed`}
                                         />
                                     </td>
                                 ))}
@@ -1212,7 +1212,7 @@ export default function WeeklySalesPage() {
                         <table className="w-full table-fixed">
                             {gridColumns()}
                             <thead>
-                                {trackingHeaderRow({ key: 'onlineHead', title: 'Online Platforms' })}
+                                {trackingHeaderRow({ key: 'onlineHead', title: 'Online platforms' })}
                                 {dayHeadRow('onlineDays')}
                             </thead>
                             <tbody>
@@ -1231,7 +1231,7 @@ export default function WeeklySalesPage() {
                                 {trackingHeaderRow({
                                     key: 'corporateHead',
                                     title: 'Corporate',
-                                    note: 'These start as whatever you typed on the till rows above, since the till now itemises them itself. Change one if the platform pays something different after commission, and it will stop following.',
+                                    note: 'These copy the till figures of the same name above. If a platform pays a different amount after commission, change it here and it stops copying.',
                                 })}
                                 {dayHeadRow('corporateDays')}
                             </thead>

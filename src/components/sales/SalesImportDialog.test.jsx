@@ -107,7 +107,7 @@ describe('filling the week in', () => {
 
     it('says what it will do before it does it', async () => {
         await answerOrdu('kiosk')
-        expect(screen.getByText('6 days to fill in')).toBeInTheDocument()
+        expect(screen.getByText('6 days to import')).toBeInTheDocument()
         expect(screen.getByText('Every day adds up to its gross')).toBeInTheDocument()
         expect(screen.getByText(/nothing on the till, so left empty/)).toHaveTextContent('Sun 6 Sept')
         expect(onFill).not.toHaveBeenCalled()
@@ -115,7 +115,7 @@ describe('filling the week in', () => {
 
     it('fills the boxes and hands them to the page', async () => {
         await answerOrdu('kiosk')
-        await userEvent.click(screen.getByRole('button', { name: 'Fill in the week' }))
+        await userEvent.click(screen.getByRole('button', { name: 'Import' }))
         await waitFor(() => expect(onFill).toHaveBeenCalled())
         const filled = onFill.mock.calls[0][0]
         expect(filled['2026-09-08'].tenderValues.kiosk).toBe('412.5')
@@ -127,7 +127,7 @@ describe('filling the week in', () => {
     // one is asked about.
     it('remembers the names that are ours and not the mistake', async () => {
         await answerOrdu('kiosk')
-        await userEvent.click(screen.getByRole('button', { name: 'Fill in the week' }))
+        await userEvent.click(screen.getByRole('button', { name: 'Import' }))
         await waitFor(() => expect(onFill).toHaveBeenCalled())
         expect(remembered()).toEqual([[
             { restaurant_id: 'r1', name: 'CASH', tender_key: 'cash', created_by: 'me' },
@@ -180,7 +180,7 @@ describe('a week read in again', () => {
         expect(keep).toBeChecked()
         expect(keep.closest('li')).toHaveTextContent('Tue 8 Sept')
 
-        await userEvent.click(screen.getByRole('button', { name: 'Fill in the week' }))
+        await userEvent.click(screen.getByRole('button', { name: 'Import' }))
         await waitFor(() => expect(onFill).toHaveBeenCalled())
         expect(onFill.mock.calls[0][0]).not.toHaveProperty('2026-09-08')
     })
@@ -189,7 +189,7 @@ describe('a week read in again', () => {
         await readIn({ days: correctedWeek() })
         await userEvent.click(screen.getByRole('checkbox', { name: /Keep what is here/ }))
 
-        await userEvent.click(screen.getByRole('button', { name: 'Fill in the week' }))
+        await userEvent.click(screen.getByRole('button', { name: 'Import' }))
         await waitFor(() => expect(onFill).toHaveBeenCalled())
         expect(onFill.mock.calls[0][0]['2026-09-08'].tenderValues.cash).toBe('20')
     })
@@ -204,7 +204,7 @@ describe('a week read in again', () => {
     // they were not: the only button that saved them went with the filling.
     it('still remembers the names when every day that would change is kept', async () => {
         await readIn()
-        await userEvent.click(screen.getByRole('button', { name: 'Fill in the week' }))
+        await userEvent.click(screen.getByRole('button', { name: 'Import' }))
         await waitFor(() => expect(onFill).toHaveBeenCalled())
         const days = { ...blankWeek(), ...onFill.mock.calls[0][0] }
         const tuesday = days['2026-09-08']

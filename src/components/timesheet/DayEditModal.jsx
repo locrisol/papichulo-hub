@@ -38,7 +38,7 @@ export default function DayEditModal({
 
                 {cell.rostered.length > 0 ? (
                     <p className="text-xs text-muted mb-4">
-                        Rostered {cell.rostered.map(s => `${shortClock(s.starts_at)}–${shortClock(s.ends_at)}`).join(', ')}
+                        Rostered {cell.rostered.map(s => `${shortClock(s.starts_at)} to ${shortClock(s.ends_at)}`).join(', ')}
                     </p>
                 ) : (
                     <p className="text-xs text-muted mb-4">Not rostered for this day.</p>
@@ -63,7 +63,7 @@ export default function DayEditModal({
                         {takesHours(cell.absence.kind) && (
                             <div>
                                 <label className={labelClass} htmlFor="holiday-hours">
-                                    Hours it comes to, for the whole holiday
+                                    Hours for the whole holiday
                                 </label>
                                 <input
                                     id="holiday-hours"
@@ -73,7 +73,7 @@ export default function DayEditModal({
                                         decimals: 2,
                                     })}
                                     disabled={!canEdit}
-                                    placeholder="Nobody has said yet"
+                                    placeholder="Not entered yet"
                                     className={cell.absence.hours == null ? askField : fieldClass}
                                 />
                                 {cell.absence.starts_on !== cell.absence.ends_on && cell.absence.hours != null && (

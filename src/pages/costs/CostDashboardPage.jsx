@@ -90,7 +90,7 @@ function KpiCard({ label, pct, target, amount, status, onEdit, temporaryUntil, f
         green: { text: 'On track', cls: 'bg-green-50 text-green-700' },
         amber: { text: 'Near limit', cls: 'bg-amber-50 text-amber-700' },
         red: { text: 'Over target', cls: 'bg-red-50 text-red-700' },
-        none: { text: 'No data', cls: 'bg-gray-100 text-gray-600' },
+        none: { text: pct == null ? 'No sales entered' : 'No target set', cls: 'bg-gray-100 text-gray-600' },
     }[status]
 
     const fill = pct != null && target ? Math.min((pct / target) * 100, 100) : 0
@@ -478,7 +478,7 @@ export default function CostDashboardPage() {
             <div className={`${card} p-6 mb-6`}>
                 <h2 className="font-serif text-base font-bold text-gray-900 mb-1">How the week was taken</h2>
                 <p className="text-xs text-muted mb-4">
-                    One share for every row on the till receipt. Change what the till takes and this follows it.
+                    Each line on the till receipt, as a share of the week's till total.
                 </p>
                 <WeekTakenChart rows={takenBy} />
             </div>
@@ -513,7 +513,7 @@ export default function CostDashboardPage() {
                             where sales doubled would show every cost rising and
                             nothing wrong. */}
                         {[
-                            { label: 'Food purchases', value: foodCost, target: foodTarget },
+                            { label: 'Food', value: foodCost, target: foodTarget },
                             { label: 'Packaging and cleaning', value: packagingCost, target: packagingTarget },
                             { label: 'Labour', value: labourCost, target: labourTarget },
                         ].map(r => {
@@ -563,7 +563,7 @@ export default function CostDashboardPage() {
                         <div className="flex justify-between gap-3 text-sm py-2 border-t border-border">
                             <span className="text-muted">
                                 Waste
-                                <span className="block text-xs text-muted">Already counted in food purchases</span>
+                                <span className="block text-xs text-muted">Already counted in the food cost</span>
                             </span>
                             <span className={`font-semibold whitespace-nowrap tabular-nums ${LINE_TONE.none}`}>
                                 {fmtMoney(wasteCost)}

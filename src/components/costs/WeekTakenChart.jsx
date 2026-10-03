@@ -37,7 +37,7 @@ export default function WeekTakenChart({ rows }) {
     if (slices.length === 0) {
         return (
             <p className="text-sm text-muted italic">
-                Nothing has been taken this week yet, so there is nothing to draw.
+                No sales entered for this week yet.
             </p>
         )
     }

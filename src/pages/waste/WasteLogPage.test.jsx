@@ -101,7 +101,7 @@ describe('an employee logging a MIX', () => {
 
         await clicker.click(screen.getByRole('button', { name: 'Add to list' }))
         await clicker.click(screen.getByRole('button', { name: 'Review and save' }))
-        await clicker.click(screen.getByRole('button', { name: 'Save it' }))
+        await clicker.click(screen.getByRole('button', { name: 'Save' }))
 
         await waitFor(() => expect(saved).toHaveLength(1))
         expect(saved[0]).toMatchObject({ product_id: 'm1', unit_cost: 2.5, waste_value: 5 })

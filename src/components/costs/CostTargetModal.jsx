@@ -65,7 +65,7 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
 
         const pct = parseFloat(value)
         if (isNaN(pct) || pct <= 0 || pct > 100) {
-            setError('The target has to be a percentage between 0 and 100')
+            setError('Enter a target above 0 and up to 100')
             return
         }
 
@@ -75,7 +75,7 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
         const effectiveUntil = isTemporary && until ? weekStartOf(until) : null
 
         if (isTemporary) {
-            if (!until) { setError('A target that only runs for a while needs an end week'); return }
+            if (!until) { setError('Pick an end week for a temporary target'); return }
             if (effectiveUntil < effectiveFrom) { setError('The end week cannot be before the start week'); return }
         }
 
@@ -160,9 +160,9 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
                                 onChange={e => setIsTemporary(e.target.checked)}
                                 className={checkbox} />
                             <div>
-                                <span className="text-sm font-medium text-gray-900">Only for a while</span>
+                                <span className="text-sm font-medium text-gray-900">Temporary</span>
                                 <p className={hintClass}>
-                                    When it ends, whatever was running before comes back on its own.
+                                    When it ends, the previous target applies again.
                                 </p>
                             </div>
                         </label>

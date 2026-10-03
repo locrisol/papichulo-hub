@@ -45,20 +45,20 @@ describe('the day, drawn the way the roster draws one', () => {
 describe('the two blocks, which is what this view is for', () => {
     it('draws what they were rostered for', () => {
         day({ shifts: [rostered] })
-        expect(screen.getByText('09:00 - 17:00')).toBeInTheDocument()
+        expect(screen.getByText('09:00 to 17:00')).toBeInTheDocument()
         expect(screen.getByTitle('Rostered 09:00 to 17:00')).toBeInTheDocument()
     })
 
     it('draws what the clock registered, to the second in its title', () => {
         day({ shifts: [rostered], entries: [worked] })
-        expect(screen.getByText('09:01 - 17:33')).toBeInTheDocument()
+        expect(screen.getByText('09:01 to 17:33')).toBeInTheDocument()
         expect(screen.getByTitle('09:01:22 to 17:33:16. Press to type it exactly.')).toBeInTheDocument()
     })
 
     it('shows both at once, so the difference is the thing you see', () => {
         day({ shifts: [rostered], entries: [worked] })
-        expect(screen.getByText('09:00 - 17:00')).toBeInTheDocument()
-        expect(screen.getByText('09:01 - 17:33')).toBeInTheDocument()
+        expect(screen.getByText('09:00 to 17:00')).toBeInTheDocument()
+        expect(screen.getByText('09:01 to 17:33')).toBeInTheDocument()
     })
 })
 
@@ -69,7 +69,7 @@ describe('somebody who worked a day nobody planned', () => {
 
     it('still draws the block', () => {
         day(only())
-        expect(screen.getByText('09:01 - 17:33')).toBeInTheDocument()
+        expect(screen.getByText('09:01 to 17:33')).toBeInTheDocument()
     })
 
     it('says there is nothing to compare it with', () => {
@@ -131,8 +131,8 @@ describe('the legend', () => {
     it('says what the colours mean', () => {
         day()
         expect(screen.getByText('what they were rostered for')).toBeInTheDocument()
-        expect(screen.getByText('the clock agreed with it')).toBeInTheDocument()
-        expect(screen.getByText(/more than 60 minutes out at either end/)).toBeInTheDocument()
+        expect(screen.getByText('within 60 minutes of the roster')).toBeInTheDocument()
+        expect(screen.getByText(/more than 60 minutes off the roster/)).toBeInTheDocument()
     })
 })
 
@@ -145,7 +145,7 @@ describe('correcting a clock time from the day view', () => {
         const onOpenDay = vi.fn()
         day({ shifts: [rostered], entries: [worked], onOpenDay })
 
-        await userEvent.click(screen.getByText('09:01 - 17:33'))
+        await userEvent.click(screen.getByText('09:01 to 17:33'))
         expect(onOpenDay).toHaveBeenCalledWith(aoife, expect.objectContaining({ date: DAY }))
     })
 
@@ -153,7 +153,7 @@ describe('correcting a clock time from the day view', () => {
         const onOpenDay = vi.fn()
         day({ shifts: [rostered], onOpenDay })
 
-        await userEvent.click(screen.getByText('09:00 - 17:00'))
+        await userEvent.click(screen.getByText('09:00 to 17:00'))
         expect(onOpenDay).toHaveBeenCalledWith(aoife, expect.objectContaining({ date: DAY }))
     })
 
@@ -181,7 +181,7 @@ describe('correcting a clock time from the day view', () => {
         // The click the browser sends after a drag that finished over the
         // block. This is the one that took the roster three goes: it lands on
         // the block, not on the handle, so stopping it there does nothing.
-        fireEvent.click(screen.getByText('09:01 - 17:33'))
+        fireEvent.click(screen.getByText('09:01 to 17:33'))
         expect(onOpenDay).not.toHaveBeenCalled()
         expect(onCorrect).toHaveBeenCalledTimes(1)
         const [person, cell, entry, startsAt, endsAt] = onCorrect.mock.calls[0]

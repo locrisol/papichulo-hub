@@ -210,12 +210,11 @@ export default function SendDialog({
             <Modal title={title} onClose={onClose} width="max-w-lg">
                 <div className="px-6 py-4">
                     <p className="text-sm text-gray-900 font-semibold mb-2">
-                        Nobody has said when the pay period starts.
+                        No pay period start date is set.
                     </p>
                     <p className="text-sm text-muted">
-                        The hours go out a pay period at a time, which is always a fortnight, so the
-                        Hub needs one date to count from. Any period start will do, however long
-                        ago, and it never has to be touched again.
+                        Hours are sent one pay period (two weeks) at a time, so the Hub needs a date
+                        to count from. Any pay period start date will do, however long ago.
                     </p>
                     {/* Settings is a store manager's page, so an owner sent
                         there would only be told they cannot open it. */}
@@ -261,8 +260,8 @@ export default function SendDialog({
 
                 {canSend && filedAt && !said && (
                     <p className="text-xs text-muted mb-4">
-                        Last sent {stampDateTime(filedAt)}. Sending again replaces nothing; it is a
-                        second mail with whatever the period says now.
+                        Last sent {stampDateTime(filedAt)}. Sending again sends a new email with the
+                        hours as they are now.
                     </p>
                 )}
 
@@ -344,14 +343,14 @@ export default function SendDialog({
                 {canSend && (
                     <div className="mt-4">
                         <label className={labelClass} htmlFor="timesheet-note">
-                            Anything to say at the top of it
+                            Note (optional)
                         </label>
                         <AutoTextarea
                             id="timesheet-note"
                             minRows={2}
                             disabled={busy}
                             className={fieldClass}
-                            placeholder="Two corrections in week two, both explained on the day..."
+                            placeholder="For example, two corrections in week 2, both explained on the day"
                             value={comment}
                             onChange={e => setComment(e.target.value)}
                         />
@@ -400,7 +399,7 @@ export default function SendDialog({
                                 : unsaid.length ? 'The period has a day nobody has accounted for'
                                     : 'The period has a clock in with no clock out'}
                         >
-                            {busy ? 'Sending...' : 'Send it'}
+                            {busy ? 'Sending...' : 'Send'}
                         </button>
                     </>
                 )}
