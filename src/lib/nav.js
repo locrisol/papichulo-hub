@@ -78,9 +78,11 @@ export const navItems = [
     { path: '/settings/changes', label: 'Changes', icon: 'undo', section: 'Settings', roles: ADMIN_ONLY },
     { path: '/settings/restaurant', label: 'Restaurant', icon: 'restaurant', section: 'Settings', roles: RESTAURANT_CONFIG },
 
-    // Yours, not the restaurant's. An owner sees nothing else under Settings,
-    // which is why this one is here rather than folded into Restaurant.
-    { path: '/settings/preferences', label: 'Preferences', icon: 'cog', section: 'Settings', roles: MANAGERS },
+    // Yours, not the restaurant's, and everybody's: it is where a password is
+    // changed. An owner sees nothing else under Settings, which is why this one
+    // is here rather than folded into Restaurant. The address is the one it had
+    // as Preferences, so a bookmark or a saved landing page still works.
+    { path: '/settings/preferences', label: 'Your account', icon: 'cog', section: 'Settings', roles: ALL_ROLES },
 ]
 
 // What this person could be offered as a landing page.

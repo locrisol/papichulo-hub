@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="x-apple-disable-message-reformatting" />
+<meta name="format-detection" content="telephone=no,date=no,address=no,email=no" />
+</head><body style="margin:0;padding:0;background:#F7F5F0;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F7F5F0;padding:24px 12px;">
+<tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border:1px solid #E8E3DB;border-radius:12px;overflow:hidden;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;">
+
+<tr><td style="background:#2E7D52;padding:18px 24px;">
+  <div style="font-size:12px;letter-spacing:1.6px;color:#CBDED4;font-weight:700;">PAPI CHULO</div>
+  <div style="font-size:18px;color:#ffffff;font-weight:700;margin-top:2px;">Choose a new password</div>
+</td></tr>
+
+<tr><td style="padding:24px;color:#282828;font-size:15px;line-height:1.5;">
+<p style="margin:0;">Somebody asked to change the password for {{ .Email }}. If that was you, press the button to choose a new one.</p>
+<table role="presentation" cellpadding="0" cellspacing="0" style="margin:20px 0 4px;">
+<tr><td style="background:#2E7D52;border-radius:8px;">
+  <a href="{{ .RedirectTo }}/set-password#token_hash={{ .TokenHash }}&amp;type=recovery" style="display:inline-block;padding:11px 22px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;">Choose a new password</a>
+</td></tr></table>
+</td></tr>
+
+<tr><td style="padding:16px 24px;background:#F7F5F0;border-top:1px solid #E8E3DB;color:#6B6459;font-size:12px;line-height:1.5;">
+The link works once and expires after an hour. If you did not ask for this, ignore this email and your password stays as it is.<br />Sent by the Papi Chulo Hub.
+</td></tr>
+
+</table>
+</td></tr>
+</table>
+</body></html>

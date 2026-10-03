@@ -1,6 +1,6 @@
 # Migrations
 
-**`001` to `034` are in here, all run on live, and the next one is `035`.**
+**`001` to `035` are in here. `001` to `034` are run on live, `035` is his to run, and the next one is `036`.**
 
 `028` to `034` were run on 1 October, `034` before development reached main.
 papichulo-hub.vercel.app still runs main, which reads the tables `034` closed
@@ -228,6 +228,21 @@ Anybody who had the Hub open from before the release has to reload it once
 after 034 runs. Until they do, staff see "We cannot open the Hub for you", and
 signing out and in again on that same page does not fix it, so tell anybody
 with a staff login to close the Hub and open it again.
+
+`035` adds `users.password_set_at`, when somebody last chose their own
+password. While it is empty the Hub asks them for one before anything else.
+Only Supabase Auth storing a new password fills it, through a trigger on
+`auth.users`, and a guard stops anybody writing it, or marking an account as
+a developer one, through the API. It also rewords two column notes that had
+gone out of date.
+
+**Set up custom SMTP and the templates first** (supabase/templates/README.md),
+then run `035`, then turn on Secure password change. From `035` everybody is
+asked to choose a password, and a session over a day old is sent a link to do
+it, which the built in mailer would only deliver to the Supabase team. The
+screens cope with `035` not being run yet: they just do not ask. On live,
+check the trigger is there afterwards with the query at the bottom of this
+file.
 
 ## What was here before
 

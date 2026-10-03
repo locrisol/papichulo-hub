@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { navItems, landingChoices, landingFor, pageLabel, navTarget, activeNavPath } from '@/lib/nav'
+import { can } from '@/lib/access'
 
 const person = (role, extra = {}) => ({ id: 'u1', role, ...extra })
 
@@ -69,6 +70,13 @@ describe('which item is lit for the page', () => {
 describe('what somebody can be offered as a landing page', () => {
     // His wording, and it is the whole rule. An employee lands where an
     // employee lands.
+    // Every role changes its own password there.
+    it('shows Your account to every role', () => {
+        for (const role of ['employee', 'owner', 'store_manager', 'super_admin']) {
+            expect(navItems.filter(n => can(person(role), n.roles)).map(n => n.label)).toContain('Your account')
+        }
+    })
+
     it('offers an employee nothing', () => {
         expect(landingChoices(person('employee'))).toEqual([])
     })

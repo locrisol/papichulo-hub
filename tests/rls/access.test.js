@@ -881,6 +881,19 @@ maybe('what each role can see and do', () => {
         it('is not stopped by the rules when adding an account', async () => {
             expect(await accountRefusal(superadmin, ownRestaurantId, 'employee')).toBe(PAST_THE_RULES)
         })
+
+        // Since 035. A super admin can write any users row, so without the
+        // guard a click could say somebody chose a password they never chose,
+        // and the Hub would stop asking them. Their own row, which the guard
+        // refuses before anything is written.
+        it('cannot say a password was chosen when it was not', async () => {
+            const { data: auth } = await superadmin.auth.getUser()
+            const { data, error } = await superadmin
+                .from('users').update({ password_set_at: new Date().toISOString() })
+                .eq('id', auth.user.id).select('id')
+            expect(data).toBeNull()
+            expect(error?.message).toMatch(/Only choosing a password can say a password was chosen/)
+        })
     })
 
     describe('waste at the other restaurant', () => {

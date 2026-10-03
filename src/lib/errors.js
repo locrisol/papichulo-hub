@@ -35,6 +35,15 @@ const BY_CODE = {
     // .single() got no rows, or more than one. Usually a permission problem
     // wearing a different hat: the rows are there, this role cannot see them.
     'PGRST116': 'That could not be found, or you do not have permission to see it.',
+
+    // Supabase Auth, when a password is chosen or a link is used.
+    'weak_password': 'That password is too easy to guess. Use at least 12 characters.',
+    'same_password': 'That is your current password. Choose a different one.',
+    'current_password_mismatch': 'That is not the password you signed in with.',
+    'current_password_required': 'Enter the password you signed in with.',
+    'otp_expired': 'That link has expired or has already been used.',
+    'over_email_send_rate_limit': 'An email was sent less than a minute ago. Check your inbox.',
+    'email_exists': 'That email already has an account.',
 }
 
 // Phrases in the message when there is no code to go on.

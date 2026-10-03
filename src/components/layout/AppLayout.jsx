@@ -215,8 +215,11 @@ export default function AppLayout({ children }) {
     const mainRef = useRef(null)
     const shellRef = useRef(null)
 
+    // This device only. The default signs out every device, which on a
+    // manager's phone also ended their laptop session. Your account has the
+    // button for everywhere, for a lost phone.
     async function handleSignOut() {
-        await supabase.auth.signOut()
+        await supabase.auth.signOut({ scope: 'local' })
         navigate('/login')
     }
 
@@ -314,7 +317,12 @@ export default function AppLayout({ children }) {
 
                 {/* Signed-in user and sign out */}
                 <div className="px-5 py-4 border-t border-sidebar-active">
-                    <div className="flex items-center gap-3 mb-3">
+                    {/* Your name opens Your account, where the password is. */}
+                    <button
+                        type="button"
+                        onClick={() => { navigate('/settings/preferences'); setSidebarOpen(false) }}
+                        className="w-full text-left flex items-center gap-3 mb-3 rounded-lg -mx-1 px-1 py-1 hover:bg-sidebar-active transition-colors"
+                    >
                         <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
                             {user?.full_name?.[0]?.toUpperCase() || 'U'}
                         </div>
@@ -322,7 +330,7 @@ export default function AppLayout({ children }) {
                             <p className="text-sm font-semibold text-white truncate">{user?.full_name || 'User'}</p>
                             <p className="text-xs text-green-400">{roleLabel(user?.role)}</p>
                         </div>
-                    </div>
+                    </button>
                     <button
                         onClick={handleSignOut}
                         className="w-full text-left text-xs text-green-500 hover:text-white transition-colors py-1"

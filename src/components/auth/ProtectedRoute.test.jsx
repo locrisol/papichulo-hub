@@ -48,6 +48,36 @@ describe('ProtectedRoute', () => {
         expect(screen.getByText('the app')).toBeInTheDocument()
     })
 
+    // Every account so far was made with a password somebody else picked.
+    describe('somebody who has never chosen their own password', () => {
+        it('is asked to choose one before anything else', () => {
+            Object.assign(auth, { loading: false, session: { user: { id: 'u1' } }, user: { id: 'u1', password_set_at: null } })
+            show()
+            expect(screen.getByRole('heading', { name: 'Choose your own password' })).toBeInTheDocument()
+            expect(screen.queryByText('the app')).not.toBeInTheDocument()
+        })
+
+        it('goes straight in once they have', () => {
+            Object.assign(auth, { loading: false, session: { user: { id: 'u1' } }, user: { id: 'u1', password_set_at: '2026-10-03T12:00:00Z' } })
+            show()
+            expect(screen.getByText('the app')).toBeInTheDocument()
+        })
+
+        // Before 035 runs there is no column at all, and nothing could fill it.
+        it('does not ask while the database cannot record the answer', () => {
+            Object.assign(auth, { loading: false, session: { user: { id: 'u1' } }, user: { id: 'u1' } })
+            show()
+            expect(screen.getByText('the app')).toBeInTheDocument()
+        })
+
+        // The database tests sign in as these with the password they have.
+        it('is never a developer account', () => {
+            Object.assign(auth, { loading: false, session: { user: { id: 'u1' } }, user: { id: 'u1', password_set_at: null, is_test: true } })
+            show()
+            expect(screen.getByText('the app')).toBeInTheDocument()
+        })
+    })
+
     // The three below are the ones that used to have no answer. Each of them
     // left every page sitting at Loading with the reason only in the console.
     it('says so when the signed-in user cannot be read, instead of waiting forever', () => {
