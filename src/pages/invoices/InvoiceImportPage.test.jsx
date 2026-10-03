@@ -187,7 +187,7 @@ async function choose(...names) {
 }
 
 async function importThem() {
-    await userEvent.click(await screen.findByRole('button', { name: 'Import them' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Import' }))
 }
 
 const cardOf = name => screen.getByText(name).closest('div.p-4')
@@ -231,7 +231,7 @@ describe('a second batch in the same visit', () => {
         renderImport()
 
         await choose('a.pdf', 'b.pdf')
-        await userEvent.click(within(cardOf('b.pdf')).getByRole('button', { name: 'Take it off' }))
+        await userEvent.click(within(cardOf('b.pdf')).getByRole('button', { name: 'Remove' }))
         await importThem()
         expect(await screen.findByText(/1 document imported/)).toBeInTheDocument()
 
@@ -270,7 +270,7 @@ describe('a second batch in the same visit', () => {
         await choose('a.pdf', 'junk.pdf')
         failing.add('supplier_accounts')
         await importThem()
-        expect(await screen.findByText(/could not be read again, so nothing more can go in until they are/))
+        expect(await screen.findByText(/could not be loaded again, so nothing more can be imported until it is/))
             .toBeInTheDocument()
         expect(screen.getByText(/1 document imported/)).toBeInTheDocument()
         expect(screen.getByRole('button', { name: 'Choose the PDFs' })).toBeDisabled()
@@ -332,10 +332,10 @@ describe('after an import', () => {
         renderImport()
         await choose('a.pdf', 'slow.pdf')
         expect(await within(cardOf('a.pdf')).findByText('Ready to import')).toBeInTheDocument()
-        expect(screen.getByRole('button', { name: 'Import them' })).toBeDisabled()
+        expect(screen.getByRole('button', { name: 'Import' })).toBeDisabled()
 
         release()
-        await waitFor(() => expect(screen.getByRole('button', { name: 'Import them' })).toBeEnabled())
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Import' })).toBeEnabled())
     })
 
     it('opens Review over a document that is already here', async () => {
@@ -361,7 +361,7 @@ describe('after an import', () => {
         renderImport()
         await choose('a.pdf')
         await userEvent.click(await screen.findByRole('button', { name: 'Fill that one in' }))
-        await userEvent.click(await screen.findByRole('button', { name: 'Fill it in' }))
+        await userEvent.click(await screen.findByRole('button', { name: 'Fill in invoice' }))
         expect(await screen.findByText(`On Review: Filled in. ${SAID_ON_REVIEW}`)).toBeInTheDocument()
     })
 })
@@ -381,7 +381,7 @@ describe('a note from the door waiting on the invoice imported', () => {
         await choose('a.pdf')
         await importThem()
         expect(await screen.findByText('1 document imported. 1 delivery problem logged at the door is on invoice '
-            + '45000001. Say which line on Delivery problems. Nothing is waiting on Review.')).toBeInTheDocument()
+            + '45000001. Pick the line for it on Delivery problems. Nothing is waiting on Review.')).toBeInTheDocument()
         expect(writes.filter(w => w.table === 'invoice_line_claims')).toEqual([])
     })
 
@@ -411,7 +411,7 @@ describe('a note from the door waiting on the invoice imported', () => {
         renderImport()
         await choose('a.pdf')
         await userEvent.click(await screen.findByRole('button', { name: 'Fill that one in' }))
-        await userEvent.click(await screen.findByRole('button', { name: 'Fill it in' }))
+        await userEvent.click(await screen.findByRole('button', { name: 'Fill in invoice' }))
         expect(await screen.findByText(/1 delivery problem logged at the door is on invoice 45000001\./))
             .toBeInTheDocument()
     })
@@ -442,7 +442,7 @@ describe('a credit whose docket names a delivery problem on another invoice', ()
         const warned = await screen.findByText(new RegExp(
             '^The credit note C45000009 matches a delivery problem by its docket, but that problem is on '
             + 'invoice 44000001\\. Until that is put right, the problem\'s own amount comes off rather than the '
-            + 'credit for it\\. Check it on Delivery problems\\. If it is on the wrong invoice, use Not this line, '
+            + 'credit for it\\. Check it on Delivery problems\\. If it is on the wrong invoice, press Not this line, '
             + 'then delete this credit note and import it again\\.',
         ))
         // Amber and apart, not in the green message that goes with the next tap.
@@ -541,7 +541,7 @@ describe('an invoice whose credit came in first', () => {
         renderImport()
         await choose('a.pdf')
         await userEvent.click(await screen.findByRole('button', { name: 'Fill that one in' }))
-        await userEvent.click(await screen.findByRole('button', { name: 'Fill it in' }))
+        await userEvent.click(await screen.findByRole('button', { name: 'Fill in invoice' }))
         await screen.findByText(/Filled in/)
         expect(tables.invoices.find(i => i.id === 'cr').credit_of_invoice_id).toBe('typed')
     })
@@ -560,7 +560,7 @@ describe('filling in a typed invoice', () => {
         renderImport()
         await choose('a.pdf')
         await userEvent.click(await screen.findByRole('button', { name: 'Fill that one in' }))
-        await userEvent.click(await screen.findByRole('button', { name: 'Fill it in' }))
+        await userEvent.click(await screen.findByRole('button', { name: 'Fill in invoice' }))
         await screen.findByText(/On Review/)
 
         const code = c => tables.supplier_codes.find(r => r.supplier_code === c)
@@ -578,7 +578,7 @@ describe('filling in a typed invoice', () => {
         renderImport()
         await choose('a.pdf')
         await userEvent.click(await screen.findByRole('button', { name: 'Fill that one in' }))
-        await userEvent.click(await screen.findByRole('button', { name: 'Fill it in' }))
+        await userEvent.click(await screen.findByRole('button', { name: 'Fill in invoice' }))
     }
 
     it('keeps who typed it in', async () => {
@@ -597,7 +597,7 @@ describe('filling in a typed invoice', () => {
             .toMatchObject({ invoice_number: null, total_amount: 23.7, entry_method: 'manual' }))
         expect(await screen.findByRole('alert')).toBeInTheDocument()
 
-        await userEvent.click(screen.getByRole('button', { name: 'Fill it in' }))
+        await userEvent.click(screen.getByRole('button', { name: 'Fill in invoice' }))
         await screen.findByText(/On Review/)
         expect(tables.invoice_lines).toHaveLength(2)
     })
@@ -609,7 +609,7 @@ describe('filling in a typed invoice', () => {
         expect(await screen.findByText(/Its codes were not all recorded/)).toBeInTheDocument()
         expect(screen.getByText('Filled in.')).toBeInTheDocument()
         expect(screen.queryByText('a.pdf')).toBeNull()
-        expect(screen.queryByRole('button', { name: 'Fill it in' })).toBeNull()
+        expect(screen.queryByRole('button', { name: 'Fill in invoice' })).toBeNull()
         expect(tables.invoice_lines).toHaveLength(2)
     })
 })
@@ -627,7 +627,7 @@ describe('a document dated a day with invoices typed in', () => {
         DOCS['a.pdf'] = doc('45000001', '2026-09-28', [RICE])
         renderImport()
         await choose('a.pdf')
-        expect(await screen.findByText('There are 2 typed in for that day.')).toBeInTheDocument()
+        expect(await screen.findByText('2 invoices were typed in for that day.')).toBeInTheDocument()
         expect(screen.getByRole('button', { name: 'Fill in the one for €14.50' })).toBeInTheDocument()
         expect(screen.getByRole('button', { name: 'Fill in the one for €50.00' })).toBeInTheDocument()
     })
@@ -637,7 +637,7 @@ describe('a document dated a day with invoices typed in', () => {
         DOCS['a.pdf'] = doc('45000001', '2026-09-28', [RICE])
         renderImport()
         await choose('a.pdf')
-        await userEvent.click(await screen.findByRole('button', { name: 'It is a different delivery, import it as new' }))
+        await userEvent.click(await screen.findByRole('button', { name: 'Import as new delivery' }))
         expect(within(cardOf('a.pdf')).getByText('Ready to import')).toBeInTheDocument()
 
         await importThem()
@@ -654,7 +654,7 @@ describe('a document dated a day with invoices typed in', () => {
         ask = async options => { asked.push(options); return false }
         renderImport()
         await choose('a.pdf')
-        await userEvent.click(await screen.findByRole('button', { name: 'It is a different delivery, import it as new' }))
+        await userEvent.click(await screen.findByRole('button', { name: 'Import as new delivery' }))
         expect(asked[0].message).toMatch(/^€14.50 was typed in for .* with no document behind it\. Import 45000001 \(€14.50\)/)
         expect(within(cardOf('a.pdf')).getByText('Entered by hand')).toBeInTheDocument()
     })
@@ -664,8 +664,8 @@ describe('a document dated a day with invoices typed in', () => {
         DOCS['a.pdf'] = doc('45000001', '2026-09-28', [RICE])
         renderImport()
         await choose('a.pdf')
-        await userEvent.click(await screen.findByRole('button', { name: 'It is a different delivery, import it as new' }))
-        await userEvent.click(within(cardOf('a.pdf')).getByRole('button', { name: 'Take it off' }))
+        await userEvent.click(await screen.findByRole('button', { name: 'Import as new delivery' }))
+        await userEvent.click(within(cardOf('a.pdf')).getByRole('button', { name: 'Remove' }))
         await choose('a.pdf')
         expect(await within(cardOf('a.pdf')).findByText('Entered by hand')).toBeInTheDocument()
     })
@@ -679,8 +679,8 @@ describe('a document dated a day with invoices typed in', () => {
             { kind: 'credit', orderReference: '45000002' })
         renderImport()
         await choose('b.pdf', 'c.pdf')
-        expect(await within(cardOf('c.pdf')).findByText('Already taken off?')).toBeInTheDocument()
-        await userEvent.click(await screen.findByRole('button', { name: 'It is a different delivery, import it as new' }))
+        expect(await within(cardOf('c.pdf')).findByText('May already be counted')).toBeInTheDocument()
+        await userEvent.click(await screen.findByRole('button', { name: 'Import as new delivery' }))
         expect(await within(cardOf('c.pdf')).findByText('Ready to import')).toBeInTheDocument()
     })
 
@@ -693,7 +693,7 @@ describe('a document dated a day with invoices typed in', () => {
         renderImport()
         await choose('a.pdf', 'slow.pdf')
         expect(await screen.findByRole('button', { name: 'Fill that one in' })).toBeDisabled()
-        expect(screen.getByRole('button', { name: 'It is a different delivery, import it as new' })).toBeDisabled()
+        expect(screen.getByRole('button', { name: 'Import as new delivery' })).toBeDisabled()
         release()
         await waitFor(() => expect(screen.getByRole('button', { name: 'Fill that one in' })).toBeEnabled())
     })

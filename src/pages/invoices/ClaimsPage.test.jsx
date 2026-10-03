@@ -94,8 +94,8 @@ beforeEach(() => {
 
 async function attach() {
     renderWithRouter(<ClaimsPage />)
-    await userEvent.click(await screen.findByRole('button', { name: 'That is the one' }))
-    await userEvent.click(await screen.findByRole('button', { name: 'Yes, that line' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Pick this line' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Use this line' }))
     await waitFor(() => expect(updated).toHaveLength(1))
     return updated[0]
 }
@@ -105,36 +105,36 @@ async function attach() {
 describe('asking before a claim goes on a line', () => {
     it('shows the working, the invoice and the week, and writes nothing until it is said yes', async () => {
         renderWithRouter(<ClaimsPage />)
-        await userEvent.click(await screen.findByRole('button', { name: 'That is the one' }))
+        await userEvent.click(await screen.findByRole('button', { name: 'Pick this line' }))
         expect(await screen.findByText('1 case at €18.16 a case, with its VAT: €22.34')).toBeInTheDocument()
         expect(screen.getByText(`On invoice 45690932 of ${shortDate(DELIVERED)}, COKE ZERO 24X330ML.`)).toBeInTheDocument()
         expect(screen.getByText(`It comes off the week of ${shortDate(DELIVERY_WEEK)}.`)).toBeInTheDocument()
-        expect(screen.queryByText(/the one written on the note/)).toBeNull()
+        expect(screen.queryByText(/the docket number logged/)).toBeNull()
         expect(updated).toEqual([])
 
-        await userEvent.click(screen.getByRole('button', { name: 'Never mind' }))
-        expect(screen.queryByRole('button', { name: 'Yes, that line' })).toBeNull()
+        await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+        expect(screen.queryByRole('button', { name: 'Use this line' })).toBeNull()
         expect(updated).toEqual([])
     })
 
     it('says before which week it comes off when the delivery\'s report has gone out', async () => {
         tables.weekly_reports = [{ id: 'w1', restaurant_id: 'r1', week_start: DELIVERY_WEEK, status: 'published' }]
         renderWithRouter(<ClaimsPage />)
-        await userEvent.click(await screen.findByRole('button', { name: 'That is the one' }))
-        expect(await screen.findByText(`The report for the week of ${shortDate(DELIVERY_WEEK)} has gone out, `
+        await userEvent.click(await screen.findByRole('button', { name: 'Pick this line' }))
+        expect(await screen.findByText(`The report for the week of ${shortDate(DELIVERY_WEEK)} has been sent, `
             + `so it comes off the week of ${shortDate(NOTED_WEEK)}.`)).toBeInTheDocument()
     })
 
     it('asks the price first on a price query, then reads it back the same way', async () => {
         tables.invoice_line_claims = [{ ...CLAIM, kind: 'price' }]
         renderWithRouter(<ClaimsPage />)
-        await userEvent.click(await screen.findByRole('button', { name: 'That is the one' }))
-        await userEvent.type(screen.getByLabelText(/What should they have charged/), '16.16')
-        await userEvent.click(screen.getByRole('button', { name: 'That is the price' }))
+        await userEvent.click(await screen.findByRole('button', { name: 'Pick this line' }))
+        await userEvent.type(screen.getByLabelText(/What should the supplier have charged/), '16.16')
+        await userEvent.click(screen.getByRole('button', { name: 'Use this price' }))
         expect(await screen.findByText('1 case, €2.00 a case over the agreed price, with its VAT: €2.46'))
             .toBeInTheDocument()
         expect(updated).toEqual([])
-        await userEvent.click(screen.getByRole('button', { name: 'Yes, that line' }))
+        await userEvent.click(screen.getByRole('button', { name: 'Use this line' }))
         await waitFor(() => expect(updated).toHaveLength(1))
         expect(updated[0].row).toMatchObject({ amount: 2.46 })
     })
@@ -153,13 +153,13 @@ describe('asking before a claim goes on a line', () => {
             }],
         }]
         renderWithRouter(<ClaimsPage />)
-        await userEvent.click(await screen.findByRole('button', { name: 'Say which line this was' }))
+        await userEvent.click(await screen.findByRole('button', { name: 'Pick the invoice line' }))
         await userEvent.click(screen.getByRole('button', { name: /CABBAGE WHITE/ }))
-        expect(screen.getByLabelText(/What should they have charged/)).toHaveValue('14.30')
+        expect(screen.getByLabelText(/What should the supplier have charged/)).toHaveValue('14.30')
         expect(screen.getByText('It starts at €14.30 a case, from the €1.43 each the Hub costs it at.')).toBeInTheDocument()
 
         // It said it started at whatever was typed, and at €0.00 once cleared.
-        const box = screen.getByLabelText(/What should they have charged/)
+        const box = screen.getByLabelText(/What should the supplier have charged/)
         await userEvent.clear(box)
         expect(screen.getByText('It starts at €14.30 a case, from the €1.43 each the Hub costs it at.')).toBeInTheDocument()
         await userEvent.type(box, '13.50')
@@ -176,8 +176,8 @@ describe('asking before a claim goes on a line', () => {
             }],
         }]
         renderWithRouter(<ClaimsPage />)
-        await userEvent.click(await screen.findByRole('button', { name: 'That is the one' }))
-        expect(screen.getByLabelText(/What should they have charged/)).toHaveValue('16.16')
+        await userEvent.click(await screen.findByRole('button', { name: 'Pick this line' }))
+        expect(screen.getByLabelText(/What should the supplier have charged/)).toHaveValue('16.16')
         expect(screen.queryByText(/^It starts at/)).toBeNull()
     })
 
@@ -185,9 +185,9 @@ describe('asking before a claim goes on a line', () => {
         tables.invoice_line_claims = [{ ...CLAIM, cases: 2 }]
         tables.invoices = [{ ...INVOICE, invoice_lines: [{ ...INVOICE.invoice_lines[0], cases: 1, units: 0 }] }]
         renderWithRouter(<ClaimsPage />)
-        await userEvent.click(await screen.findByRole('button', { name: 'That is the one' }))
-        expect(await screen.findByText(/^That line only billed 1 case, less than this claim\./)).toBeInTheDocument()
-        expect(screen.queryByRole('button', { name: 'Yes, that line' })).toBeNull()
+        await userEvent.click(await screen.findByRole('button', { name: 'Pick this line' }))
+        expect(await screen.findByText(/^That line only billed 1 case, less than the count on this problem\./)).toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: 'Use this line' })).toBeNull()
         expect(updated).toEqual([])
     })
 
@@ -196,10 +196,10 @@ describe('asking before a claim goes on a line', () => {
         tables.invoice_line_claims = [{ ...CLAIM, cases: 2, docket_number: null }]
         tables.invoices = [{ ...INVOICE, invoice_lines: [{ ...INVOICE.invoice_lines[0], cases: 1, units: 0 }] }]
         renderWithRouter(<ClaimsPage />)
-        await userEvent.click(await screen.findByRole('button', { name: 'Say which line this was' }))
+        await userEvent.click(await screen.findByRole('button', { name: 'Pick the invoice line' }))
         await userEvent.click(screen.getByRole('button', { name: /COKE ZERO 24X330ML/ }))
         expect(await screen.findByText(/^That line only billed 1 case/)).toBeInTheDocument()
-        await userEvent.click(screen.getByRole('button', { name: 'Never mind' }))
+        await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
         expect(screen.queryByText(/^That line only billed 1 case/)).toBeNull()
     })
 })
@@ -209,7 +209,7 @@ describe('putting a note from the door against its line', () => {
         const { table, row } = await attach()
         expect(table).toBe('invoice_line_claims')
         expect(row).toMatchObject({ invoice_line_id: 'line1', amount: 22.34, counted_week: DELIVERY_WEEK })
-        expect(await screen.findByText('€22.34 is coming off the week that delivery landed in.')).toBeInTheDocument()
+        expect(await screen.findByText('€22.34 comes off the costs for the week of that delivery.')).toBeInTheDocument()
     })
 
     // A week is closed once its report is sent, and money put into it is in
@@ -253,8 +253,8 @@ describe('putting a note from the door against its line', () => {
     it('says nothing changed when it moved on before the yes, not where the money goes', async () => {
         reply = () => ({ data: [], error: null })
         await attach()
-        expect(await screen.findByText(/^Nothing changed: that problem has moved on/)).toBeInTheDocument()
-        expect(screen.queryByText(/is coming off the week/)).toBeNull()
+        expect(await screen.findByText(/^Nothing was changed, because this problem was updated/)).toBeInTheDocument()
+        expect(screen.queryByText(/comes off the costs for the week of that delivery/)).toBeNull()
     })
 
     it('still moves it when that week\'s report is only a draft', async () => {
@@ -290,7 +290,7 @@ describe('a note whose docket is not in the Hub yet', () => {
         expect(await screen.findByText(
             'Invoice 45747318 isn\'t in the Hub yet. Once it\'s imported, its lines show here.',
         )).toBeInTheDocument()
-        expect(screen.queryByRole('button', { name: 'Say which line this was' })).toBeNull()
+        expect(screen.queryByRole('button', { name: 'Pick the invoice line' })).toBeNull()
         expect(screen.queryByRole('button', { name: /CHORIZO CUBES/ })).toBeNull()
     })
 
@@ -301,18 +301,18 @@ describe('a note whose docket is not in the Hub yet', () => {
         renderWithRouter(<ClaimsPage />)
         await userEvent.click(await screen.findByRole('button', { name: 'Log a problem' }))
         await userEvent.click(screen.getByRole('button', { name: 'Save the note' }))
-        expect(await screen.findByText('Logged. Say which line it was below.')).toBeInTheDocument()
+        expect(await screen.findByText('Logged. Pick the invoice line for it below.')).toBeInTheDocument()
 
         await userEvent.click(await screen.findByRole('button', { name: 'Log a problem' }))
         doorNote = { ...doorNote, docket: '45747318' }
         await userEvent.click(screen.getByRole('button', { name: 'Save the note' }))
-        expect(await screen.findByText('Logged. Once its invoice is imported, say which line it was below.'))
+        expect(await screen.findByText('Logged. Once its invoice is imported, pick the line for it below.'))
             .toBeInTheDocument()
     })
 
     it('offers the deliveries around that day, under their own invoice, when it was a different one', async () => {
         renderWithRouter(<ClaimsPage />)
-        await userEvent.click(await screen.findByRole('button', { name: 'It was a different delivery' }))
+        await userEvent.click(await screen.findByRole('button', { name: 'Show other deliveries' }))
         expect(screen.getByText('None of these is invoice 45747318.')).toBeInTheDocument()
         expect(screen.getByText(`Invoice 45730001, ${shortDate('2026-09-30')}`)).toBeInTheDocument()
         expect(screen.getAllByRole('button', { name: /CHORIZO CUBES/ })).toHaveLength(1)
@@ -322,13 +322,13 @@ describe('a note whose docket is not in the Hub yet', () => {
 
     it('says plainly that it is not the invoice on the note before it goes on, and prices it per bag', async () => {
         renderWithRouter(<ClaimsPage />)
-        await userEvent.click(await screen.findByRole('button', { name: 'It was a different delivery' }))
+        await userEvent.click(await screen.findByRole('button', { name: 'Show other deliveries' }))
         await userEvent.click(screen.getByRole('button', { name: /CHORIZO CUBES/ }))
-        expect(await screen.findByText('This isn\'t invoice 45747318, the one written on the note.')).toBeInTheDocument()
+        expect(await screen.findByText('This isn\'t invoice 45747318, the docket number logged with this problem.')).toBeInTheDocument()
         expect(screen.getByText('3 of the 4 x 500 g in a case at €27.99 a case: €21.00')).toBeInTheDocument()
         expect(updated).toEqual([])
 
-        await userEvent.click(screen.getByRole('button', { name: 'Yes, that line' }))
+        await userEvent.click(screen.getByRole('button', { name: 'Use this line' }))
         await waitFor(() => expect(updated).toHaveLength(1))
         expect(updated[0].row).toMatchObject({ invoice_id: 'near', invoice_line_id: 'near-l', amount: 21 })
     })
@@ -350,21 +350,21 @@ describe('a claim on a line', () => {
         tables.invoice_line_claims = [ON]
         renderWithRouter(<ClaimsPage />)
         const said = await screen.findByText(`On invoice 45607444 of ${shortDate('2026-09-13')}, CHORIZO CUBES 1X500 GM`, { exact: false })
-        expect(said).toHaveTextContent('not the invoice written on the note')
+        expect(said).toHaveTextContent('not the docket number logged')
     })
 
     it('does not say it is another invoice when it is the one on the note', async () => {
         tables.invoice_line_claims = [{ ...ON, docket_number: '45607444' }]
         renderWithRouter(<ClaimsPage />)
         await screen.findByText(/On invoice 45607444/)
-        expect(screen.queryByText(/not the invoice written on the note/)).toBeNull()
+        expect(screen.queryByText(/not the docket number logged/)).toBeNull()
     })
 
     it('comes off the line after asking, and waits for the right invoice again', async () => {
         tables.invoice_line_claims = [ON]
         renderWithRouter(<ClaimsPage />)
         await userEvent.click(await screen.findByRole('button', { name: 'Not this line' }))
-        expect(asked[0].message).toBe(`Take it off invoice 45607444 of ${shortDate('2026-09-13')}? `
+        expect(asked[0].message).toBe(`Remove it from invoice 45607444 of ${shortDate('2026-09-13')}? `
             + `€41.99 stops coming off the week of ${shortDate(DELIVERY_WEEK)}, and it waits for the right invoice again.`)
         await waitFor(() => expect(updated).toHaveLength(1))
         expect(updated[0].row).toEqual({
@@ -382,8 +382,8 @@ describe('a claim on a line', () => {
         reply = () => ({ data: [], error: null })
         renderWithRouter(<ClaimsPage />)
         await userEvent.click(await screen.findByRole('button', { name: 'Not this line' }))
-        expect(await screen.findByText(/^Nothing changed: that problem has moved on/)).toBeInTheDocument()
-        expect(screen.queryByText(/^It is off invoice/)).toBeNull()
+        expect(await screen.findByText(/^Nothing was changed, because this problem was updated/)).toBeInTheDocument()
+        expect(screen.queryByText(/^Removed from invoice/)).toBeNull()
     })
 
     it('writes nothing when told no', async () => {
@@ -416,14 +416,14 @@ describe('closing a claim, and opening it again', () => {
         tables.invoice_line_claims = [PRICED]
         ask = async () => false
         renderWithRouter(<ClaimsPage />)
-        await userEvent.click(await screen.findByRole('button', { name: 'They said no' }))
+        await userEvent.click(await screen.findByRole('button', { name: 'Mark as refused' }))
         await waitFor(() => expect(asked).toHaveLength(1))
         expect(asked[0]).toMatchObject({
-            title: 'They said no?', confirmLabel: 'They said no', details: [{ label: 'Problem', value: 'COKE ZERO 24X330ML' }],
+            title: 'Mark as refused?', confirmLabel: 'Mark as refused', details: [{ label: 'Problem', value: 'COKE ZERO 24X330ML' }],
         })
         expect(asked[0].message).toBe('This problem will be marked as refused. '
             + `€22.34 stops coming off the week of ${shortDate(DELIVERY_WEEK)}. `
-            + 'If they credit it after all, use Ask again under Finished first.')
+            + 'If the supplier credits it after all, press Reopen under Finished first.')
         expect(updated).toEqual([])
     })
 
@@ -434,30 +434,30 @@ describe('closing a claim, and opening it again', () => {
         tables.invoice_line_claims = [{ ...PRICED, what }]
         ask = async () => false
         renderWithRouter(<ClaimsPage />)
-        await userEvent.click(await screen.findByRole('button', { name: 'They said no' }))
-        await userEvent.click(await screen.findByRole('button', { name: 'Take it back' }))
+        await userEvent.click(await screen.findByRole('button', { name: 'Mark as refused' }))
+        await userEvent.click(await screen.findByRole('button', { name: 'Cancel problem' }))
         await waitFor(() => expect(asked).toHaveLength(2))
         for (const question of asked) {
             expect(question.message).not.toContain('Chorizo')
             expect(question.details).toEqual([{ label: 'Problem', value: what }])
         }
-        expect(asked[1].message).toBe('It will be removed from the list and won\'t count anywhere. '
+        expect(asked[1].message).toBe('It moves to Finished and won\'t count anywhere. '
             + `€22.34 stops coming off the week of ${shortDate(DELIVERY_WEEK)}.`)
     })
 
     it('marks it refused once said yes, only while it is still open, and says how to undo it', async () => {
         tables.invoice_line_claims = [PRICED]
         renderWithRouter(<ClaimsPage />)
-        await userEvent.click(await screen.findByRole('button', { name: 'They said no' }))
+        await userEvent.click(await screen.findByRole('button', { name: 'Mark as refused' }))
         await waitFor(() => expect(updated).toHaveLength(1))
         expect(updated[0].row).toEqual({ status: 'refused', settled_on: todayISO() })
         expect(updated[0].guards).toEqual(expect.arrayContaining([['eq', 'status', 'open']]))
-        expect(await screen.findByText('Marked as refused. You can still ask again from Finished.')).toBeInTheDocument()
+        expect(await screen.findByText('Marked as refused. You can reopen it from Finished.')).toBeInTheDocument()
     })
 
     it('says nothing comes off any week for a note with no money on it', async () => {
         renderWithRouter(<ClaimsPage />)
-        await userEvent.click(await screen.findByRole('button', { name: 'They said no' }))
+        await userEvent.click(await screen.findByRole('button', { name: 'Mark as refused' }))
         await waitFor(() => expect(asked).toHaveLength(1))
         expect(asked[0].message).toMatch(/will be marked as refused\. Nothing comes off any week for it\./)
     })
@@ -466,13 +466,13 @@ describe('closing a claim, and opening it again', () => {
     // refusal, saying something no longer true.
     it('clears what was said about the money before saying what changed', async () => {
         await attach()
-        expect(await screen.findByText('€22.34 is coming off the week that delivery landed in.')).toBeInTheDocument()
+        expect(await screen.findByText('€22.34 comes off the costs for the week of that delivery.')).toBeInTheDocument()
         // The refusal fails, so nothing replaces the old message: only the
         // clearing takes it away.
         reply = n => (n === 2 ? { data: null, error: { message: 'the write failed' } } : { data: [{ id: 'c1' }], error: null })
-        await userEvent.click(await screen.findByRole('button', { name: 'They said no' }))
+        await userEvent.click(await screen.findByRole('button', { name: 'Mark as refused' }))
         expect(await screen.findByText('the write failed')).toBeInTheDocument()
-        expect(screen.queryByText('€22.34 is coming off the week that delivery landed in.')).toBeNull()
+        expect(screen.queryByText('€22.34 comes off the costs for the week of that delivery.')).toBeNull()
         expect(screen.queryByText(/^Marked as refused/)).toBeNull()
     })
 
@@ -480,8 +480,8 @@ describe('closing a claim, and opening it again', () => {
         tables.invoice_line_claims = [PRICED]
         reply = () => ({ data: [], error: null })
         renderWithRouter(<ClaimsPage />)
-        await userEvent.click(await screen.findByRole('button', { name: 'They said no' }))
-        expect(await screen.findByText(/^Nothing changed: that problem has moved on/)).toBeInTheDocument()
+        await userEvent.click(await screen.findByRole('button', { name: 'Mark as refused' }))
+        expect(await screen.findByText(/^Nothing was changed, because this problem was updated/)).toBeInTheDocument()
         expect(screen.queryByText(/Marked as refused/)).toBeNull()
     })
 
@@ -489,19 +489,19 @@ describe('closing a claim, and opening it again', () => {
         tables.invoice_line_claims = [{ ...PRICED, status: 'refused', settled_on: '2026-10-01' }]
         reply = () => ({ data: [], error: null })
         renderWithRouter(<ClaimsPage />)
-        await userEvent.click(await screen.findByRole('button', { name: 'Ask again' }))
-        expect(await screen.findByText(/^Nothing changed: that problem has moved on/)).toBeInTheDocument()
-        expect(screen.queryByText(/is coming off the week/)).toBeNull()
+        await userEvent.click(await screen.findByRole('button', { name: 'Reopen' }))
+        expect(await screen.findByText(/^Nothing was changed, because this problem was updated/)).toBeInTheDocument()
+        expect(screen.queryByText(/comes off the costs for the week of that delivery/)).toBeNull()
     })
 
     // It can be undone now, so the dialog must not say it cannot.
     it('asks before taking it back, without saying it cannot be undone', async () => {
         tables.invoice_line_claims = [PRICED]
         renderWithRouter(<ClaimsPage />)
-        await userEvent.click(await screen.findByRole('button', { name: 'Take it back' }))
+        await userEvent.click(await screen.findByRole('button', { name: 'Cancel problem' }))
         await waitFor(() => expect(updated).toHaveLength(1))
         expect(asked[0]).toMatchObject({
-            title: 'Take it back?', confirmLabel: 'Take it back', tone: 'danger', dangerNote: 'You can ask again from Finished.',
+            title: 'Cancel this problem?', confirmLabel: 'Cancel problem', tone: 'danger', dangerNote: 'You can reopen it from Finished.',
         })
         expect(updated[0].row).toEqual({ status: 'void', settled_on: todayISO() })
     })
@@ -509,12 +509,12 @@ describe('closing a claim, and opening it again', () => {
     it('asks again from Finished, back to waiting in the same week', async () => {
         tables.invoice_line_claims = [{ ...PRICED, status: 'refused', settled_on: '2026-10-01' }]
         renderWithRouter(<ClaimsPage />)
-        await userEvent.click(await screen.findByRole('button', { name: 'Ask again' }))
+        await userEvent.click(await screen.findByRole('button', { name: 'Reopen' }))
         await waitFor(() => expect(updated).toHaveLength(1))
-        expect(asked[0].title).toBe('Ask again?')
+        expect(asked[0].title).toBe('Reopen this problem?')
         expect(updated[0].row).toEqual({ status: 'open', settled_on: null })
         expect(updated[0].guards).toEqual(expect.arrayContaining([['eq', 'status', 'refused']]))
-        expect(await screen.findByText('€22.34 is coming off the week that delivery landed in.')).toBeInTheDocument()
+        expect(await screen.findByText('€22.34 comes off the costs for the week of that delivery.')).toBeInTheDocument()
     })
 
     // Taken back before that report went out, so the report never had it.
@@ -524,10 +524,10 @@ describe('closing a claim, and opening it again', () => {
             id: 'w1', restaurant_id: 'r1', week_start: DELIVERY_WEEK, status: 'published', published_at: '2026-10-02T09:00:00+00:00',
         }]
         renderWithRouter(<ClaimsPage />)
-        await userEvent.click(await screen.findByRole('button', { name: 'Ask again' }))
+        await userEvent.click(await screen.findByRole('button', { name: 'Reopen' }))
         await waitFor(() => expect(updated).toHaveLength(1))
         expect(asked[0].message.startsWith(`It goes back on Still waiting. The report for the week of ${shortDate(DELIVERY_WEEK)} `
-            + `has gone out, so €22.34 comes off the week of ${shortDate(NOTED_WEEK)} instead.`)).toBe(true)
+            + `has been sent, so €22.34 comes off the week of ${shortDate(NOTED_WEEK)} instead.`)).toBe(true)
         expect(updated[0].row).toEqual({ status: 'open', settled_on: null, counted_week: NOTED_WEEK })
         expect(await screen.findByText(
             `The report for the week of ${shortDate(DELIVERY_WEEK)} has already been sent, `
@@ -544,7 +544,7 @@ describe('closing a claim, and opening it again', () => {
             id: 'w1', restaurant_id: 'r1', week_start: DELIVERY_WEEK, status: 'published', published_at: '2026-10-02T09:00:00+00:00',
         }]
         renderWithRouter(<ClaimsPage />)
-        await userEvent.click(await screen.findByRole('button', { name: 'Ask again' }))
+        await userEvent.click(await screen.findByRole('button', { name: 'Reopen' }))
         await waitFor(() => expect(updated).toHaveLength(1))
         expect(asked[0].message.startsWith(
             `It goes back on Still waiting, and €22.34 comes off the week of ${shortDate(DELIVERY_WEEK)} again.`,
@@ -596,7 +596,7 @@ describe('changing a claim after it was logged', () => {
         await userEvent.click(await screen.findByRole('button', { name: 'Edit' }))
         await userEvent.click(screen.getByRole('button', { name: 'Save the note' }))
         expect(await screen.findByText('3 of the 4 x 500 g in a case at €27.99 a case: €21.00')).toBeInTheDocument()
-        expect(screen.getByText('This changes the claim from €83.97 to €21.00.')).toBeInTheDocument()
+        expect(screen.getByText('This changes the amount from €83.97 to €21.00.')).toBeInTheDocument()
         expect(screen.getByText(`On invoice 45747318 of ${shortDate('2026-10-01')}, CHORIZO CUBES 4X500 GM.`)).toBeInTheDocument()
         expect(screen.getByText(`It still comes off the week of ${shortDate(NOTED_WEEK)}.`)).toBeInTheDocument()
         expect(updated).toEqual([])
@@ -608,7 +608,7 @@ describe('changing a claim after it was logged', () => {
             ['eq', 'id', 'c1'], ['eq', 'status', 'open'], ['eq', 'credited_amount', 0],
             ['is', 'credit_invoice_id', null], ['eq', 'invoice_line_id', 'ch-l'],
         ]))
-        expect(await screen.findByText('Changes saved. The claim is €21.00 now.')).toBeInTheDocument()
+        expect(await screen.findByText('Changes saved. The amount is now €21.00.')).toBeInTheDocument()
 
         // The mock hands the line over whatever is asked for, so what the
         // working needs is checked on the read itself.
@@ -633,7 +633,7 @@ describe('changing a claim after it was logged', () => {
         expect(updated[0].row).toEqual({
             kind: 'short', what: 'Chorizo, the bags', cases: 3, units: 0, note: 'Rang them', amount: 83.97,
         })
-        expect(screen.queryByText(/^This changes the claim/)).toBeNull()
+        expect(screen.queryByText(/^This changes the amount/)).toBeNull()
         expect(await screen.findByText('Changes saved.')).toBeInTheDocument()
         expect(answered).toBeNull()
     })
@@ -646,8 +646,8 @@ describe('changing a claim after it was logged', () => {
         await userEvent.click(await screen.findByRole('button', { name: 'Edit' }))
         tables.weekly_reports = [{ id: 'w1', restaurant_id: 'r1', week_start: NOTED_WEEK, status: 'published' }]
         await userEvent.click(screen.getByRole('button', { name: 'Save the note' }))
-        await waitFor(() => expect(answered).toBe(`The report for the week of ${shortDate(NOTED_WEEK)} has gone out, `
-            + 'so this claim stays at €83.97. Only what it was and the note can change now.'))
+        await waitFor(() => expect(answered).toBe(`The report for the week of ${shortDate(NOTED_WEEK)} has been sent, `
+            + 'so the amount stays at €83.97. Only what it was and the note can change now.'))
         expect(updated).toEqual([])
     })
 
@@ -658,10 +658,10 @@ describe('changing a claim after it was logged', () => {
         renderWithRouter(<ClaimsPage />)
         await userEvent.click(await screen.findByRole('button', { name: 'Edit' }))
         await userEvent.click(screen.getByRole('button', { name: 'Save the note' }))
-        await screen.findByText('This changes the claim from €83.97 to €21.00.')
+        await screen.findByText('This changes the amount from €83.97 to €21.00.')
         tables.weekly_reports = [{ id: 'w1', restaurant_id: 'r1', week_start: NOTED_WEEK, status: 'published' }]
         await userEvent.click(screen.getByRole('button', { name: 'Save changes' }))
-        expect(await screen.findByText(/so this claim stays at €83\.97\./)).toBeInTheDocument()
+        expect(await screen.findByText(/so the amount stays at €83\.97\./)).toBeInTheDocument()
         expect(updated).toEqual([])
     })
 
@@ -671,9 +671,9 @@ describe('changing a claim after it was logged', () => {
         renderWithRouter(<ClaimsPage />)
         await userEvent.click(await screen.findByRole('button', { name: 'Edit' }))
         await userEvent.click(screen.getByRole('button', { name: 'Save the note' }))
-        await waitFor(() => expect(answered).toMatch(/^That line only billed 3 cases, less than this claim\./))
+        await waitFor(() => expect(answered).toMatch(/^That line only billed 3 cases, less than the count on this problem\./))
         // There is no list of lines on the form, only Not this line.
-        expect(answered).toMatch(/use Not this line/)
+        expect(answered).toMatch(/press Not this line/)
         expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull()
         expect(updated).toEqual([])
     })
@@ -686,8 +686,8 @@ describe('changing a claim after it was logged', () => {
         renderWithRouter(<ClaimsPage />)
         await userEvent.click(await screen.findByRole('button', { name: 'Edit' }))
         await userEvent.click(screen.getByRole('button', { name: 'Save the note' }))
-        await waitFor(() => expect(answered).toMatch(/^That line only billed 3 cases, less than this claim\./))
-        expect(screen.queryByLabelText(/What should they have charged/)).toBeNull()
+        await waitFor(() => expect(answered).toMatch(/^That line only billed 3 cases, less than the count on this problem\./))
+        expect(screen.queryByLabelText(/What should the supplier have charged/)).toBeNull()
         expect(updated).toEqual([])
     })
 
@@ -703,16 +703,16 @@ describe('changing a claim after it was logged', () => {
         renderWithRouter(<ClaimsPage />)
         await userEvent.click(await screen.findByRole('button', { name: 'Edit' }))
         await userEvent.click(screen.getByRole('button', { name: 'Save the note' }))
-        const box = await screen.findByLabelText(/What should they have charged/)
+        const box = await screen.findByLabelText(/What should the supplier have charged/)
         // The price it was worked out on, not one it never had.
         expect(box).toHaveValue('16.16')
-        expect(screen.getByText('It starts at €16.16 a case, the price this claim was worked out on.')).toBeInTheDocument()
+        expect(screen.getByText('It starts at €16.16 a case, the price it was last worked out on.')).toBeInTheDocument()
         await userEvent.clear(box)
         await userEvent.type(box, '15.16')
-        await userEvent.click(screen.getByRole('button', { name: 'That is the price' }))
+        await userEvent.click(screen.getByRole('button', { name: 'Use this price' }))
         expect(await screen.findByText('12 single items, taking a case as 24 of them, €3.00 a case over the agreed price, '
             + 'with its VAT: €1.85')).toBeInTheDocument()
-        expect(screen.getByText('This changes the claim from €2.46 to €1.85.')).toBeInTheDocument()
+        expect(screen.getByText('This changes the amount from €2.46 to €1.85.')).toBeInTheDocument()
         await userEvent.click(screen.getByRole('button', { name: 'Save changes' }))
         await waitFor(() => expect(updated).toHaveLength(1))
         expect(updated[0].row).toMatchObject({ kind: 'price', cases: 0, units: 12, amount: 1.85 })
@@ -727,7 +727,7 @@ describe('changing a claim after it was logged', () => {
         await userEvent.click(await screen.findByRole('button', { name: 'Edit' }))
         await userEvent.click(screen.getByRole('button', { name: 'Save the note' }))
         await waitFor(() => expect(updated).toHaveLength(1))
-        expect(screen.queryByLabelText(/What should they have charged/)).toBeNull()
+        expect(screen.queryByLabelText(/What should the supplier have charged/)).toBeNull()
         expect(updated[0].row).toEqual({
             kind: 'price', what: 'Coke Zero, 24 cans', cases: 1, units: 0, note: 'Rang them', amount: 2.46,
         })
@@ -742,7 +742,7 @@ describe('changing a claim after it was logged', () => {
         renderWithRouter(<ClaimsPage />)
         await userEvent.click(await screen.findByRole('button', { name: 'Edit' }))
         await userEvent.click(screen.getByRole('button', { name: 'Save the note' }))
-        expect(await screen.findByText(/^Nothing changed: that problem has moved on/)).toBeInTheDocument()
+        expect(await screen.findByText(/^Nothing was changed, because this problem was updated/)).toBeInTheDocument()
         expect(screen.queryByText('Changes saved.')).toBeNull()
     })
 
@@ -773,8 +773,8 @@ describe('how a claim reads back on its row', () => {
     it('leaves out a nought cases part on a price query', async () => {
         tables.invoice_line_claims = [{ ...CLAIM, kind: 'price', cases: 0, units: 3 }]
         renderWithRouter(<ClaimsPage />)
-        await userEvent.click(await screen.findByRole('button', { name: 'That is the one' }))
-        expect(screen.getByText('The claim is the difference on 3 single items, not the whole line.')).toBeInTheDocument()
+        await userEvent.click(await screen.findByRole('button', { name: 'Pick this line' }))
+        expect(screen.getByText('The amount is the difference on 3 single items, not the whole line.')).toBeInTheDocument()
     })
 })
 
@@ -833,9 +833,9 @@ describe('an employee looking at their own', () => {
         tables.my_claims = [MINE, { ...DONE, status: 'refused' }]
         renderWithRouter(<ClaimsPage />)
         await screen.findByText('Lettuce warm')
-        expect(screen.queryByRole('button', { name: 'Ask again' })).toBeNull()
+        expect(screen.queryByRole('button', { name: 'Reopen' })).toBeNull()
         expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull()
-        expect(screen.queryByRole('button', { name: 'They said no' })).toBeNull()
+        expect(screen.queryByRole('button', { name: 'Mark as refused' })).toBeNull()
     })
 
     it('still says which are waiting and which are finished', async () => {

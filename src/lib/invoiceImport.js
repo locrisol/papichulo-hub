@@ -707,14 +707,14 @@ export function documentBlocks(doc) {
         }
     }
     if (!doc.checks?.cases?.ok) {
-        out.push(`The lines come to ${fixed(doc.checks?.cases?.got)} cases and the header says `
-            + `${fixed(doc.checks?.cases?.expected)}, so a line is missing or doubled.`)
+        out.push(`The lines come to ${caseCount(doc.checks?.cases?.got)} cases and the case total says `
+            + `${caseCount(doc.checks?.cases?.expected)}, so a line is missing or counted twice.`)
     }
     return out
 }
 
-function fixed(n) {
-    return n == null ? 'nothing' : Number(n).toFixed(2)
+function caseCount(n) {
+    return n == null ? 'nothing' : String(round2(n))
 }
 
 function euros(n) {
@@ -805,7 +805,7 @@ export function fillInClaim(plan, { invoice, doc, restaurantId, supplierId, rais
         raised_on: doc.date,
         raised_by: raisedBy || null,
         counted_week: weekStartOf(doc.date),
-        note: `The total typed in was ${fmtMoney(plan.net)} and the document says `
+        note: `The total typed in was ${fmtMoney(plan.net)} and the invoice says `
             + `${fmtMoney(plan.gross)}.`,
     }
 }

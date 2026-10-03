@@ -124,7 +124,7 @@ describe('taking the note at the door', () => {
     })
 
     it.each([
-        [{ supplierId: '' }, 'who delivered'],
+        [{ supplierId: '' }, 'Pick a supplier'],
         [{ kind: '' }, 'what was wrong'],
         [{ what: '  ' }, 'in your own words'],
         [{ cases: '', units: '' }, 'how many'],
@@ -136,27 +136,27 @@ describe('taking the note at the door', () => {
     // is still not required: a note with no number is worth far more than no
     // note at all.
     it('wants the note when the reason is something else', () => {
-        expect(doorClaimProblem({ ...filled, kind: 'something_else' })).toContain('under Anything else')
+        expect(doorClaimProblem({ ...filled, kind: 'something_else' })).toBe('Add a note saying what was wrong.')
         expect(doorClaimProblem({ ...filled, kind: 'something_else', note: 'Box soaked through' })).toBeNull()
     })
 
     it('wants to know what should have come when it was the wrong item', () => {
-        expect(doorClaimProblem({ ...filled, kind: 'wrong_item' })).toBe('Say what we should have got, under Anything else.')
+        expect(doorClaimProblem({ ...filled, kind: 'wrong_item' })).toBe('Add a note saying what we should have received.')
         expect(doorClaimProblem({ ...filled, kind: 'wrong_item', note: 'Should be the 12 inch' })).toBeNull()
     })
 
     it('asks how many in the words of the reason', () => {
-        expect(doorClaimProblem({ ...filled, cases: '', units: '' })).toBe('Say how many are missing.')
+        expect(doorClaimProblem({ ...filled, cases: '', units: '' })).toBe('Enter how many are missing.')
         expect(doorClaimProblem({ ...filled, kind: 'price', cases: '', units: '' }))
-            .toBe('Say how many were charged the wrong price.')
+            .toBe('Enter how many were charged the wrong price.')
         expect(doorClaimProblem({ ...filled, kind: 'something_else', note: 'x', cases: '', units: '' }))
-            .toBe('Say how many were affected.')
+            .toBe('Enter how many were affected.')
         // The error is made from the question, so every question has to
         // still read as a sentence once it is turned round.
         for (const kind of CLAIM_KINDS) {
             const said = doorClaimProblem({ ...filled, kind: kind.value, note: 'x', cases: '', units: '' })
-            expect(said).toMatch(/^Say how many .+\.$/)
-            expect(said).not.toMatch(/^Say how many (does|do|did) /)
+            expect(said).toMatch(/^Enter how many .+\.$/)
+            expect(said).not.toMatch(/^Enter how many (does|do|did) /)
         }
     })
 
@@ -164,9 +164,9 @@ describe('taking the note at the door', () => {
     // 15 with nothing said. Now it stays and is refused.
     it('refuses part of a case or of an item', () => {
         expect(doorClaimProblem({ ...filled, cases: '', units: '1.5' })).toBe(
-            'Count whole ones only. Half a case goes under Single items, as the bags or tins that make it up.',
+            'Enter whole numbers only. For part of a case, enter the bags or tins under Single items.',
         )
-        expect(doorClaimProblem({ ...filled, cases: '0.5', units: '' })).toMatch(/^Count whole ones only\./)
+        expect(doorClaimProblem({ ...filled, cases: '0.5', units: '' })).toMatch(/^Enter whole numbers only\./)
         expect(doorClaimProblem({ ...filled, cases: '', units: '3' })).toBeNull()
     })
 
@@ -350,8 +350,8 @@ describe('the working shown before a claim goes on a line', () => {
     // than the whole line, and nothing said so.
     it('refuses a claim for more than the line billed, and says what the line had', () => {
         const out = claimWorking({ cases: 2, units: 0 }, chorizo)
-        expect(out.problem).toBe('That line only billed 1 case, less than this claim. '
-            + 'Pick another line, or check the numbers on the note.')
+        expect(out.problem).toBe('That line only billed 1 case, less than the count on this problem. '
+            + 'Pick another line, or check the count that was logged.')
         expect(claimWorking({ cases: 0, units: 5 }, chorizo).problem).toMatch(/^That line only billed 1 case,/)
         expect(claimWorking({ cases: 0, units: 4 }, chorizo).problem).toBeNull()
     })
@@ -360,8 +360,8 @@ describe('the working shown before a claim goes on a line', () => {
     // pick another from, only Not this line.
     it('says to use Not this line when a claim on it is changed to more than it billed', () => {
         expect(claimWorking({ cases: 2, units: 0 }, chorizo, {}, { changing: true }).problem)
-            .toBe('That line only billed 1 case, less than this claim. '
-                + 'Check the numbers, or use Not this line if it is on the wrong line.')
+            .toBe('That line only billed 1 case, less than the count on this problem. '
+                + 'Check the count, or press Not this line if it is on the wrong line.')
     })
 
     // A price query has no money until its price is typed, and the count can
@@ -387,9 +387,9 @@ describe('the working shown before a claim goes on a line', () => {
 
     it('says why when there is nothing to work it out from', () => {
         expect(claimWorking({ cases: 1 }, { ...chorizo, price_per_case: 0, units_per_case: 0 }).problem)
-            .toBe('That line has no price on it to work the claim out from.')
+            .toBe('That line has no price to work the amount out from.')
         expect(claimWorking({ kind: 'price', cases: 1 }, chorizo).problem)
-            .toBe('Say what they should have charged a case, and it has to be less than what they did.')
+            .toBe('Enter what the supplier should have charged per case. It must be less than the price on the invoice.')
     })
 
     // Lower than they charged, and still nothing once split over the cans.

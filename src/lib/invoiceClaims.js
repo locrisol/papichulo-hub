@@ -97,7 +97,7 @@ export const CLAIM_KINDS = [
         value: 'out_of_date',
         label: 'Out of date',
         at_door: 'Past its date, or too close to it to use',
-        ask: 'How many are out of date or too close?',
+        ask: 'How many are out of date, or too close to their date?',
         example: 'Only those ones, not the whole delivery.',
         counted: 'out of date',
         soft: 'bg-pink-50 text-pink-800 border-pink-200',
@@ -120,7 +120,7 @@ export const CLAIM_KINDS = [
         label: 'Wrong item',
         at_door: 'They sent something we did not order',
         ask: 'How many of the wrong thing came?',
-        example: 'Say what we should have got under Anything else.',
+        example: 'Add a note saying what we should have received.',
         counted: 'sent in error',
         soft: 'bg-purple-50 text-purple-800 border-purple-200',
         dot: 'bg-purple-500',
@@ -151,9 +151,9 @@ export const CLAIM_KINDS = [
     {
         value: 'something_else',
         label: 'Something else',
-        at_door: 'Say what under Anything else',
+        at_door: 'Describe it in the note',
         ask: 'How many were affected?',
-        example: 'Say what was wrong under Anything else.',
+        example: 'Add a note saying what was wrong.',
         counted: 'affected',
         soft: 'bg-stone-100 text-stone-800 border-stone-300',
         dot: 'bg-stone-500',
@@ -208,25 +208,25 @@ export function emptyDoorClaim() {
 // and it is still not required: a note with no number is worth far more than no
 // note.
 export function doorClaimProblem(form) {
-    if (!form?.supplierId) return 'Say who delivered it.'
-    if (!form?.kind) return 'Say what was wrong.'
-    if (!String(form?.what || '').trim()) return 'Say what it was, in your own words.'
-    // In the reason's own words: "Say how many are missing."
+    if (!form?.supplierId) return 'Pick a supplier.'
+    if (!form?.kind) return 'Pick what was wrong.'
+    if (!String(form?.what || '').trim()) return 'Enter what it was, in your own words.'
+    // In the reason's own words: "Enter how many are missing."
     if (num(form.cases) <= 0 && num(form.units) <= 0) {
         const ask = claimKind(form.kind).ask
-        return ask ? ask.replace(/^How many/, 'Say how many').replace(/\?$/, '.') : 'Say how many.'
+        return ask ? ask.replace(/^How many/, 'Enter how many').replace(/\?$/, '.') : 'Enter how many.'
     }
     // Things counted, so a dot is a mistake: 1.5 meant as one and a half, or
     // as kilos. Refused rather than dropped, which made it 15.
     if (!Number.isInteger(num(form.cases)) || !Number.isInteger(num(form.units))) {
-        return 'Count whole ones only. Half a case goes under Single items, as the bags or tins that make it up.'
+        return 'Enter whole numbers only. For part of a case, enter the bags or tins under Single items.'
     }
     // The one reason that means nothing without words, so the words are the
     // reason. And the wrong item, which says what came but not what should
     // have.
     const note = String(form?.note || '').trim()
-    if (form.kind === 'something_else' && !note) return 'Say what was wrong, under Anything else.'
-    if (form.kind === 'wrong_item' && !note) return 'Say what we should have got, under Anything else.'
+    if (form.kind === 'something_else' && !note) return 'Add a note saying what was wrong.'
+    if (form.kind === 'wrong_item' && !note) return 'Add a note saying what we should have received.'
     return null
 }
 
@@ -369,8 +369,8 @@ export function claimWorking(claim, line, priced = {}, { changing = false } = {}
             words: '',
             problem: tiny ? 'That difference comes to less than a cent.'
                 : claim?.kind === 'price'
-                    ? 'Say what they should have charged a case, and it has to be less than what they did.'
-                    : 'That line has no price on it to work the claim out from.',
+                    ? 'Enter what the supplier should have charged per case. It must be less than the price on the invoice.'
+                    : 'That line has no price to work the amount out from.',
         }
     }
 
@@ -415,10 +415,10 @@ export function claimOverLine(claim, line, { changing = false } = {}) {
     const billed = per ? had.cases * per + had.units : null
     if (!billed || cases * per + units <= billed + 0.0001) return null
     return `That line only billed ${countWords(had.cases, had.units, null, { units_per_case: 0 }, false)}, `
-        + 'less than this claim. '
+        + 'less than the count on this problem. '
         + (changing
-            ? 'Check the numbers, or use Not this line if it is on the wrong line.'
-            : 'Pick another line, or check the numbers on the note.')
+            ? 'Check the count, or press Not this line if it is on the wrong line.'
+            : 'Pick another line, or check the count that was logged.')
 }
 
 // Where the box asking what they should have charged a case starts: what the
@@ -577,7 +577,7 @@ export function keepsItsAmount(claim, form) {
         && num(form.cases) === num(claim.cases) && num(form.units) === num(claim.units)
 }
 
-// Asking again after "They said no" or "Take it back", both pressed by mistake
+// Reopening after "Mark as refused" or "Cancel problem", both pressed by mistake
 // at least once. Open again with no end date. What it had been credited stays,
 // because a part credit is still part of it.
 //

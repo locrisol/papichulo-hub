@@ -136,8 +136,8 @@ export default function InvoiceImportPage() {
                 // Read again after a batch: said after whatever the batch
                 // said, and nothing more is read off a file, because the old
                 // lists are exactly what went wrong before.
-                const again = 'The lists the import works from could not be read again, so nothing '
-                    + `more can go in until they are. ${friendlyError(failed)} Reload the page to try again.`
+                const again = 'What is already in the Hub could not be loaded again, so nothing '
+                    + `more can be imported until it is. ${friendlyError(failed)} Reload the page to try again.`
                 setError(said => (said ? `${said} ${again}` : again))
                 return
             }
@@ -297,7 +297,7 @@ export default function InvoiceImportPage() {
                 + `Import ${file.doc.number} (${fmtMoney(documentTotal(file.doc))}) as well only if it is `
                 + 'another delivery that day. If it is one of those, fill that one in instead, or the '
                 + 'delivery is counted twice.',
-            confirmLabel: 'Import it as new',
+            confirmLabel: 'Import as new',
         })
         if (ok) setAsNew(all => new Set(all).add(file.key))
     }
@@ -618,8 +618,8 @@ export default function InvoiceImportPage() {
             const { error: e3 } = await supabase.from('invoice_line_claims').insert(claim)
             claimed = !e3
             if (e3) {
-                after.push(`The ${fmtMoney(claim.amount)} taken off by hand did not go on the claims list, `
-                    + `so that week is up by it: ${friendlyError(e3)} Log it on Delivery problems.`)
+                after.push(`The ${fmtMoney(claim.amount)} taken off by hand could not be added to Delivery problems, `
+                    + `so that week's costs are up by that amount: ${friendlyError(e3)} Log it on Delivery problems.`)
             }
         }
 
@@ -630,7 +630,7 @@ export default function InvoiceImportPage() {
         const seen = new Map()
         gather(seen, file)
         const failedCodes = await writeCodes(seen)
-        if (failedCodes) after.push(`Its codes were not all recorded: ${failedCodes} The next import records them.`)
+        if (failedCodes) after.push(`Its codes were not all recorded: ${failedCodes} They will be recorded when they next appear on an imported invoice.`)
 
         setFillingIn(null)
         readAgain()
@@ -647,7 +647,7 @@ export default function InvoiceImportPage() {
         await pairEarlierCredits(doc, invoice.id, where)
         const notes = notesSaid([{ number: doc.number, count: await doorNotesOn(doc, where) }])
         const filled = claimed
-            ? `Filled in. ${fmtMoney(claim.amount)} is on the claims list as a shortage.${notes}`
+            ? `Filled in. ${fmtMoney(claim.amount)} has been added to Delivery problems as a shortage.${notes}`
             : `Filled in.${notes}`
         if (after.length) {
             setSaid(filled)
@@ -673,7 +673,7 @@ export default function InvoiceImportPage() {
         <>
             <PageHeader title="Import invoices" subtitle={activeRestaurant?.name}>
                 <Link to="/invoices/documents" className={secondaryButton}>
-                    What the supplier says it sent
+                    Supplier documents
                 </Link>
                 <Link to="/invoices/review" className={secondaryButton}>Review</Link>
                 <Link to="/invoices" className={secondaryButton}>Invoices</Link>
@@ -721,9 +721,9 @@ export default function InvoiceImportPage() {
                         )}
                     </div>
                     <p className={hintClass}>
-                        A week at a time is about twenty of them, and the credits are usually in the
-                        same batch as the invoices they belong to. Nothing is written until you
-                        press Import, and the files never leave this machine.
+                        Import a week at a time, with the credit notes in the same batch as their
+                        invoices. Nothing is saved until you press Import, and the files stay on
+                        this device.
                     </p>
                 </div>
             </div>
@@ -781,7 +781,7 @@ export default function InvoiceImportPage() {
                             onClick={importAll}
                             className={primaryButton('md', 'good')}
                         >
-                            {saving ? 'Importing...' : 'Import them'}
+                            {saving ? 'Importing...' : 'Import'}
                         </button>
                     </div>
                 </>
@@ -856,7 +856,7 @@ function notesSaid(notes) {
     const each = on.map(({ number, count }) => (count === 1
         ? `1 delivery problem logged at the door is on invoice ${number}.`
         : `${count} delivery problems logged at the door are on invoice ${number}.`))
-    return ` ${each.join(' ')} Say which line on Delivery problems.`
+    return ` ${each.join(' ')} Pick the line for ${on.length === 1 && on[0].count === 1 ? 'it' : 'each'} on Delivery problems.`
 }
 
 // A credit that matched a delivery problem by its docket and left it alone,
@@ -874,7 +874,7 @@ function astraySaid(astray) {
         + `${on ? `invoice ${on}` : 'another invoice'}. Until that is put right, the problem's own amount `
         + 'comes off rather than the credit for it. '
         + (detach
-            ? 'Check it on Delivery problems. If it is on the wrong invoice, use Not this line, then delete this '
+            ? 'Check it on Delivery problems. If it is on the wrong invoice, press Not this line, then delete this '
                 + 'credit note and import it again. Nothing comes off for it between the two, so do them together.'
             : 'Something has already been credited on that problem, so it cannot come off that invoice. '
                 + 'Check it on Delivery problems.')
