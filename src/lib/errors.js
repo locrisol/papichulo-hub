@@ -16,8 +16,12 @@ const BY_CODE = {
     // Row level security refused it. Almost always means the role is not
     // allowed to do this, rather than anything being broken.
     '42501': 'You do not have permission to do that.',
-    // Supabase reports an RLS refusal on insert with this code.
-    'PGRST301': 'You do not have permission to do that.',
+    // PostgREST could not accept the sign in token: expired, or no longer
+    // valid. It used to be read as a permission refusal, so the weekly sales
+    // grid threw away a typed week that would have saved after signing in
+    // again. PGRST303 is the expired one on newer PostgREST.
+    'PGRST301': 'You have been signed out. Sign in again and try once more.',
+    'PGRST303': 'You have been signed out. Sign in again and try once more.',
     // Unique constraint. The caller usually knows which one, so this is a
     // fallback for when it does not.
     '23505': 'That already exists.',
@@ -91,6 +95,34 @@ export function friendlyError(error) {
 // never accept.
 export function isPermissionError(error) {
     if (!error) return false
-    if (error.code === '42501' || error.code === 'PGRST301') return true
+    if (error.code === '42501') return true
     return (error.message || '').toLowerCase().includes('violates row-level security')
+}
+// What the sign in screen says when it did not work.
+//
+// It said "Invalid email or password" for everything, so a phone with no
+// signal, or somebody locked out for a few minutes after too many tries, was
+// told their password was wrong, and tried it again. A wrong email or password
+// still gets the one sentence that never says which, so the screen is no list
+// of who works here.
+export function signInProblem(error) {
+    if (!error) return ''
+    const status = Number(error.status)
+    if (error.name === 'AuthRetryableFetchError' || status === 0
+        || /failed to fetch|networkerror|load failed/i.test(error.message || '')) {
+        return 'Could not reach the Hub. Check your connection and try again.'
+    }
+    if (status === 429 || /rate_limit/.test(error.code || '')) {
+        return 'Too many attempts. Wait a few minutes and try again.'
+    }
+    if (status >= 500) return 'Signing in is not working right now. Try again in a few minutes.'
+    return 'Invalid email or password'
+}
+
+// Whether a failure was the connection rather than the Hub, from the error or
+// its message. Opening the app with no signal showed "TypeError: Failed to
+// fetch" and said signing out would fix it, which with no signal it cannot.
+export function isConnectionError(error) {
+    const text = typeof error === 'string' ? error : `${error?.name || ''} ${error?.message || ''}`
+    return /failed to fetch|networkerror|load failed|AuthRetryableFetchError/i.test(text)
 }

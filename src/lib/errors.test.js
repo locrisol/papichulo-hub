@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { friendlyError, isPermissionError, functionError, functionSaid } from '@/lib/errors'
+import { friendlyError, isPermissionError, functionError, functionSaid, signInProblem, isConnectionError } from '@/lib/errors'
 
 describe('friendlyError', () => {
     it('gives nothing when there is no error', () => {
@@ -61,6 +61,14 @@ describe('isPermissionError', () => {
     it('is false when there is no error', () => {
         expect(isPermissionError(null)).toBe(false)
     })
+
+    // An expired sign in is not a refusal: the weekly sales grid threw away a
+    // typed week on it, which would have saved after signing in again.
+    it('does not take an expired sign in for a refusal, and says to sign in', () => {
+        expect(isPermissionError({ code: 'PGRST301' })).toBe(false)
+        expect(isPermissionError({ code: 'PGRST303' })).toBe(false)
+        expect(friendlyError({ code: 'PGRST301', message: 'JWSError' })).toBe('You have been signed out. Sign in again and try once more.')
+    })
 })
 // supabase.functions.invoke treats any non-2xx as an error, hands back a
 // FunctionsHttpError with the response hanging off it, and leaves data null. So
@@ -100,5 +108,48 @@ describe('what a function actually said', () => {
         await expect(functionSaid({ message: 'boom', context: { json: async () => { throw new Error('read') } } }))
             .resolves.toBe('')
         await expect(functionSaid(null)).resolves.toBe('')
+    })
+})
+
+// It said "Invalid email or password" for everything, no signal included.
+describe('signInProblem', () => {
+    it('keeps the one sentence for a wrong email or password', () => {
+        expect(signInProblem({ status: 400, code: 'invalid_credentials', message: 'Invalid login credentials' }))
+            .toBe('Invalid email or password')
+    })
+
+    it('says when the Hub could not be reached', () => {
+        expect(signInProblem({ name: 'AuthRetryableFetchError', status: 0, message: 'Failed to fetch' }))
+            .toBe('Could not reach the Hub. Check your connection and try again.')
+        expect(signInProblem({ message: 'TypeError: Load failed' }))
+            .toBe('Could not reach the Hub. Check your connection and try again.')
+    })
+
+    it('says to wait after too many tries', () => {
+        expect(signInProblem({ status: 429, code: 'over_request_rate_limit' }))
+            .toBe('Too many attempts. Wait a few minutes and try again.')
+    })
+
+    it('says when signing in itself is down', () => {
+        expect(signInProblem({ status: 503, message: 'Service Unavailable' }))
+            .toBe('Signing in is not working right now. Try again in a few minutes.')
+    })
+
+    it('says nothing when nothing went wrong', () => {
+        expect(signInProblem(null)).toBe('')
+    })
+})
+
+describe('isConnectionError', () => {
+    it('knows a connection failure by its message or its name', () => {
+        expect(isConnectionError('TypeError: Failed to fetch')).toBe(true)
+        expect(isConnectionError({ message: 'NetworkError when attempting to fetch resource.' })).toBe(true)
+        expect(isConnectionError({ name: 'AuthRetryableFetchError', message: '' })).toBe(true)
+        expect(isConnectionError({ message: 'Load failed' })).toBe(true)
+    })
+
+    it('does not take anything else for one', () => {
+        expect(isConnectionError('JSON object requested, multiple (or no) rows returned')).toBe(false)
+        expect(isConnectionError(null)).toBe(false)
     })
 })
