@@ -5,8 +5,8 @@ import {
 } from '@/lib/bankHolidays'
 import { card, closeButton } from '@/lib/controlStyles'
 import { bandsForWeek, kindDot, kindRing, scopeLabel, timeLabel } from '@/lib/diary'
-import DiaryChip from './DiaryChip'
-import DiaryBand from './DiaryBand'
+import DiaryChip from '@/components/diary/DiaryChip'
+import DiaryBand from '@/components/diary/DiaryBand'
 
 // The month, as six weeks that do not change height as you step through them.
 //

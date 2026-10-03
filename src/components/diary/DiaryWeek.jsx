@@ -1,8 +1,8 @@
 import { weekDates, dayLabel } from '@/lib/dates'
 import { bandsForWeek } from '@/lib/diary'
 import { iconButton } from '@/lib/controlStyles'
-import DiaryChip from './DiaryChip'
-import DiaryBand from './DiaryBand'
+import DiaryChip from '@/components/diary/DiaryChip'
+import DiaryBand from '@/components/diary/DiaryBand'
 
 // One week, which is the shape anybody rostering is actually working in.
 //
