@@ -19,6 +19,7 @@ import AppLayout from '@/components/layout/AppLayout'
 import LoginPage from '@/pages/auth/LoginPage'
 import UnauthorisedPage from '@/pages/auth/UnauthorisedPage'
 import NotFoundPage from '@/pages/auth/NotFoundPage'
+import SetPasswordPage from '@/pages/auth/SetPasswordPage'
 import RequireRole from '@/components/auth/RequireRole'
 import { ALL_ROLES, MANAGERS, RESTAURANT_CONFIG, ADMIN_ONLY } from '@/lib/access'
 import { useAuth } from '@/context/auth'
@@ -84,6 +85,8 @@ export default function App() {
     <Suspense fallback={<div className="p-8 text-sm text-gray-500">Loading...</div>}>
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      {/* Where every emailed link lands: an invite, a forgotten password, a change. */}
+      <Route path="/set-password" element={<SetPasswordPage />} />
       <Route path="/unauthorised" element={<UnauthorisedPage />} />
       <Route path="/allergens/:slug" element={<PublicAllergensPage />} />
       <Route
