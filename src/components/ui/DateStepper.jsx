@@ -1,3 +1,5 @@
+import { shortDate, addDays } from '@/lib/dates'
+
 // Stepping back and forward through days and weeks.
 //
 // The same control on six screens, written six times, and wrong in the same
@@ -25,6 +27,11 @@
 //
 // A screen that only opens so many weeks turns the arrow off at the edge,
 // rather than stepping into a week it then has nothing to show for.
+//
+// Given weekStart and nothing else for the middle, it writes the week itself.
+// Six screens wrote it, three as "x - y" in one weight and three as "x to y"
+// in another. The longest week, 31 Aug to 6 Sept, fits the middle's width on
+// a computer with room to spare.
 export default function DateStepper({
     onBack,
     onNext,
@@ -33,6 +40,7 @@ export default function DateStepper({
     backDisabled = false,
     nextDisabled = false,
     jump = null,
+    weekStart = null,
     children,
 }) {
     const arrow =
@@ -55,7 +63,11 @@ export default function DateStepper({
                 {/* Everything that is left, and no less. A date box that cannot
                     show its own date is the fault this was built to fix. */}
                 <span className="flex-1 min-w-0 sm:flex-none sm:w-44 flex items-center justify-center">
-                    {children}
+                    {children ?? (weekStart && (
+                        <span className="text-sm font-semibold text-gray-800 whitespace-nowrap text-center">
+                            {shortDate(weekStart)} to {shortDate(addDays(weekStart, 6))}
+                        </span>
+                    ))}
                 </span>
 
                 <button type="button" onClick={onNext} disabled={nextDisabled} aria-label={nextLabel} className={arrow}>

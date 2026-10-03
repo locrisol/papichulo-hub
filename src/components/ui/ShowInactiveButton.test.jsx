@@ -54,3 +54,18 @@ describe('ShowInactiveButton', () => {
         expect(onToggle).toHaveBeenCalledOnce()
     })
 })
+
+describe('ShowInactiveButton, how it looks', () => {
+    it('is the ordinary secondary button when off', async () => {
+        const { secondaryButton } = await import('@/lib/controlStyles')
+        asRole('owner')
+        render(<ShowInactiveButton showing={false} onToggle={() => {}} />)
+        expect(screen.getByRole('button').className).toBe(secondaryButton)
+    })
+
+    it('is amber when on', () => {
+        asRole('owner')
+        render(<ShowInactiveButton showing onToggle={() => {}} />)
+        expect(screen.getByRole('button').className).toContain('bg-amber-50 text-amber-800')
+    })
+})

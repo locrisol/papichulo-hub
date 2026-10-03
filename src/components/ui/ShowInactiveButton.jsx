@@ -1,5 +1,6 @@
 import { useAuth } from '@/context/auth'
 import { can, SEES_INACTIVE } from '@/lib/access'
+import { secondaryButton } from '@/lib/controlStyles'
 
 // Show Inactive, written once and refusing employees on its own.
 //
@@ -17,6 +18,12 @@ import { can, SEES_INACTIVE } from '@/lib/access'
 // It returns nothing at all for anybody below the line. Not disabled: a control
 // that is on screen and refuses you is a worse answer than a control that was
 // never offered, and there is nothing here for an employee to ask about.
+//
+// Off, it is the ordinary secondary button. It had kept the faded cream edge
+// with no background that every other secondary button lost. On, it is amber,
+// so a list showing switched off rows says so at a glance.
+const ON = 'px-4 py-2 border border-amber-300 bg-amber-50 text-amber-800 text-sm font-semibold rounded-lg shadow-sm transition-colors hover:bg-amber-100 whitespace-nowrap'
+
 export default function ShowInactiveButton({ showing, onToggle }) {
     const { user } = useAuth()
     if (!can(user, SEES_INACTIVE)) return null
@@ -26,11 +33,7 @@ export default function ShowInactiveButton({ showing, onToggle }) {
             type="button"
             onClick={onToggle}
             aria-pressed={showing}
-            className={`px-4 py-2 border text-sm font-medium rounded-lg transition-colors ${
-                showing
-                    ? 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100'
-                    : 'border-border text-gray-600 hover:bg-gray-50'
-            }`}
+            className={showing ? ON : secondaryButton}
         >
             {showing ? 'Hide Inactive' : 'Show Inactive'}
         </button>

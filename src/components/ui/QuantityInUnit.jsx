@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { numberField } from '@/lib/numberInput'
+import { fieldClass, compactField } from '@/lib/controlStyles'
 
 // A quantity typed in whichever unit suits the hand writing it.
 //
@@ -47,35 +48,47 @@ export default function QuantityInUnit({ value, onChange, unit, disabled = false
         onChange(small ? (num / 1000).toString() : next)
     }
 
+    // The shared boxes, so they are 16px on a phone like every other box and an
+    // iPhone does not zoom in on them. Both carry w-full, so the widths are on
+    // the wrappers: the amount takes whatever the unit leaves, and the unit is
+    // wide enough for "Litre" and no wider, which leaves the amount most of a
+    // 360px row. The wrapper is a flex box so the unit stretches to the
+    // amount's height.
+    const off = 'disabled:bg-gray-100 disabled:text-gray-400'
+
     return (
         <div className={`flex gap-2 ${className}`}>
-            <input
-                {...numberField({ value: shown(), onChange: typed })}
-                disabled={disabled}
-                className="flex-1 min-w-0 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white disabled:bg-gray-100 disabled:text-gray-400"
-            />
-            {canSplit ? (
-                <select
-                    value={displayUnit}
-                    onChange={e => setDisplayUnit(e.target.value)}
-                    aria-label="Unit"
+            <div className="flex-1 min-w-0">
+                <input
+                    {...numberField({ value: shown(), onChange: typed })}
                     disabled={disabled}
-                    className="border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white disabled:bg-gray-100 disabled:text-gray-400"
-                >
-                    {unit === 'KG' ? (
-                        <>
-                            <option value="KG">KG</option>
-                            <option value="g">g</option>
-                        </>
-                    ) : (
-                        <>
-                            <option value="Litre">Litre</option>
-                            <option value="ml">ml</option>
-                        </>
-                    )}
-                </select>
+                    className={`${fieldClass} ${off}`}
+                />
+            </div>
+            {canSplit ? (
+                <div className="w-24 flex-shrink-0 flex">
+                    <select
+                        value={displayUnit}
+                        onChange={e => setDisplayUnit(e.target.value)}
+                        aria-label="Unit"
+                        disabled={disabled}
+                        className={`${compactField} ${off}`}
+                    >
+                        {unit === 'KG' ? (
+                            <>
+                                <option value="KG">KG</option>
+                                <option value="g">g</option>
+                            </>
+                        ) : (
+                            <>
+                                <option value="Litre">Litre</option>
+                                <option value="ml">ml</option>
+                            </>
+                        )}
+                    </select>
+                </div>
             ) : (
-                <span className="px-3 py-2 text-sm text-gray-500 border border-border rounded-lg bg-gray-50 whitespace-nowrap">
+                <span className="flex items-center px-3 py-2 text-sm text-muted border border-border rounded-lg bg-gray-50 whitespace-nowrap">
                     {unit || 'unit'}
                 </span>
             )}

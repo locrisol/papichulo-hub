@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { forDropdown } from '@/lib/sections'
 import { matches } from '@/lib/search'
+import { fieldClass } from '@/lib/controlStyles'
 
 // Picking a product out of a few hundred.
 //
@@ -19,8 +20,11 @@ import { matches } from '@/lib/search'
 //
 // The keyboard drives all of it, because the two screens this is on are worked
 // through one line after another: type, down, enter, on to the next.
+//
+// large is for the waste screen, which is worked one handed on a phone, so
+// its rows are a thumb's height rather than a mouse's.
 export default function ProductSelect({
-    value, onChange, products, placeholder = 'Select a product...', inputRef, className = '',
+    value, onChange, products, placeholder = 'Select a product...', inputRef, className = '', large = false,
 }) {
     const [open, setOpen] = useState(false)
     const [term, setTerm] = useState('')
@@ -92,14 +96,17 @@ export default function ProductSelect({
             }
             return
         }
+        // Inside a dialog the same press would close the dialog too, with
+        // whatever was typed in it. Marking it handled leaves the dialog be,
+        // so the first Escape shuts the list and only a second one the dialog.
         if (e.key === 'Escape') {
+            if (open) e.preventDefault()
             setOpen(false)
             setTerm('')
         }
     }
 
-    const field = className
-        || 'w-full border border-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent'
+    const field = className || fieldClass
 
     return (
         <div ref={box} className="relative">
@@ -170,7 +177,7 @@ export default function ProductSelect({
                                         // input loses focus and the list is
                                         // gone before the click lands.
                                         onMouseDown={e => { e.preventDefault(); pick(product) }}
-                                        className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 ${
+                                        className={`w-full text-left px-3 ${large ? 'py-2.5' : 'py-2'} text-sm flex items-center gap-2 ${
                                             isActive ? 'bg-accent-light' : 'hover:bg-gray-50'
                                         }`}
                                     >
