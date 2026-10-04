@@ -37,7 +37,7 @@ export default function ProductForm({
   priceForm, onPriceChange, priceErrors, suppliers, nameClash,
   formats, onFormatsChange,
   recipe, onRecipeChange, ingredientOptions,
-  allergens, onAllergenChange, allergensAnswered, onNoAllergens, allergensUnread = false,
+  allergens, onAllergenChange, allergensAnswered, onNoAllergens, allergensUnread = false, allergensElsewhere = false,
   extras, openExtra, onOpenExtra,
   otherPriceCount = 0, onOpenPrices, recipeBlock = true, saving = false,
 }) {
@@ -628,11 +628,12 @@ export default function ProductForm({
             title="Allergens"
             summary={(() => {
               if (allergensUnread) return 'Could not be read'
+              if (allergensElsewhere) return 'On the Allergens page'
               const set = declaredCount(allergens)
               if (set > 0) return `${set} of 14`
               return allergensAnswered ? 'None of the 14' : 'Not answered'
             })()}
-            action={!allergensUnread && !allergensAnswered && declaredCount(allergens) === 0 && (
+            action={!allergensUnread && !allergensElsewhere && !allergensAnswered && declaredCount(allergens) === 0 && (
               <button type="button" onClick={onNoAllergens} className={sectionBarAction}>
                 Declare the product has no allergens
               </button>
@@ -647,6 +648,11 @@ export default function ProductForm({
               {allergensUnread ? (
                 <p className="text-xs text-muted mb-3">
                   The allergens could not be read. Close this and open it again to change them.
+                </p>
+              ) : allergensElsewhere ? (
+                <p className="text-xs text-muted mb-3">
+                  This product has no price here for the form to follow, so its allergens are set
+                  version by version on its Allergens page.
                 </p>
               ) : (
                 <>

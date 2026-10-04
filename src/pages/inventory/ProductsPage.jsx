@@ -201,6 +201,19 @@ export default function ProductsPage() {
   // that declares it has none, and saving wrote that over the real answer.
   // So the form offers nothing for them and the save leaves them alone.
   const [allergensUnread, setAllergensUnread] = useState(false)
+  // A product with versions and no price here for the form to follow: its
+  // allergens are set version by version on the Allergens page, and the form
+  // neither shows nor writes any. Written from here they would land on a
+  // version nobody read them from.
+  const [allergensElsewhere, setAllergensElsewhere] = useState(false)
+  // Where the answers in the form were read from: { version } or { product }.
+  // They are only ever written back there, or onto a version this very save
+  // started for a product that had none. The review of 4 October: a form
+  // opened at the other restaurant, or with its supplier changed, wrote old
+  // answers over a version another restaurant had since corrected.
+  const allergenFrom = useRef(null)
+  // Which read of the answers is the latest: they depend on the restaurant open.
+  const answering = useRef(0)
   // Which product the form is for, so a read for one opened earlier that
   // lands late does not fill in the one open now.
   const editingId = useRef(null)
@@ -343,6 +356,7 @@ export default function ProductsPage() {
   // What is answered depends on what the restaurant open buys, so it is read
   // again when that changes.
   const fetchAnswers = useCallback(async () => {
+    const ticket = ++answering.current
     const reads = await Promise.all([
       // At the restaurant open, from the versions it buys (lib/allergensAt).
       readAllergensAt(activeRestaurant?.id),
@@ -350,6 +364,8 @@ export default function ProductsPage() {
       everyRow(() => supabase.from('menu_item_components')
         .select('id, menu_item_id, product_id').order('id')),
     ])
+    // A read for the restaurant open before, answering late, is dropped.
+    if (ticket !== answering.current) return
     if (!everyReadArrived(reads)) { setAnswers(null); setAnswersFailed(true); return }
     const [allergens, menuItems, components] = reads.map(r => r.data)
     setAnswersFailed(false)
@@ -680,7 +696,7 @@ export default function ProductsPage() {
       const missing = []
       if (!wantsPrice) missing.push('a supplier price')
       // Nothing to ask about a bottle of bleach or a paper container.
-      if (!allergensTouched && declaresAllergens(formData)) missing.push('allergens')
+      if (!allergensTouched && !allergensElsewhere && declaresAllergens(formData)) missing.push('allergens')
 
       // Allergens nobody entered are not none. Until they are set, the
       // allergen sheet asks customers about any dish the product goes into
@@ -816,12 +832,22 @@ export default function ProductsPage() {
       // off a product is what the Prices screen is for, and doing it silently
       // because somebody cleared a field would be a poor way to lose a cost.
 
-      if (allergensTouched && !allergensUnread && declaresAllergens(formData)) {
+      // Back to the version they were read from. Read from the product's own
+      // row, which only a product with no versions has, they go onto the
+      // version this save started, or stay on the product. A price moved to
+      // another version by this save leaves them alone: that version has its
+      // own answers, or none, which the sheet says to ask staff about.
+      const from = allergenFrom.current
+      const target = from?.version ? (versionId === from.version ? versionId : undefined) : versionId
+      if (target === undefined && allergensTouched && declaresAllergens(formData)) {
+        setError(was => [was, 'The price is on a different version now, so its allergens are set on the Allergens page.'].filter(Boolean).join(' '))
+      }
+      if (target !== undefined && allergensTouched && !allergensUnread && !allergensElsewhere && declaresAllergens(formData)) {
         // On the version when there is one, which is what the sheet reads;
         // the product's own row only for a MIX or a product never priced.
-        const { error: allergenErr } = versionId
+        const { error: allergenErr } = target
           ? await supabase.from('version_allergens')
-              .upsert({ version_id: versionId, ...allergens, updated_at: new Date().toISOString() },
+              .upsert({ version_id: target, ...allergens, updated_at: new Date().toISOString() },
                 { onConflict: 'version_id' })
           : await supabase.from('product_allergens')
               .upsert({ product_id: editingProduct.id, ...allergens, updated_at: new Date().toISOString() },
@@ -987,6 +1013,8 @@ export default function ProductsPage() {
     setAllergens(emptyAllergens())
     setAllergensTouched(false)
     setAllergensUnread(false)
+    setAllergensElsewhere(false)
+    allergenFrom.current = { product: true }
     editingId.current = null
     setOpenExtra(null)
     setEditingProduct(null)
@@ -1056,12 +1084,34 @@ export default function ProductsPage() {
     setAllergens(emptyAllergens())
     setAllergensTouched(false)
     setAllergensUnread(false)
+    setAllergensElsewhere(false)
+    allergenFrom.current = null
     editingId.current = product.id
-    // The version the form's price is on, when there is one: that is what
-    // the form edits and what the sheet reads.
-    const { data: row, error: rowError } = price?.version_id
-      ? await supabase.from('version_allergens').select('*').eq('version_id', price.version_id).maybeSingle()
-      : await supabase.from('product_allergens').select('*').eq('product_id', product.id).maybeSingle()
+
+    // The version the form's price is on, when there is one: that is what the
+    // form edits and what the sheet reads. With no price here, the product's
+    // own row, unless it has versions, whose answers live on the Allergens page.
+    let row = null
+    let rowError
+    if (price?.version_id) {
+      ({ data: row, error: rowError } = await supabase.from('version_allergens')
+        .select('*').eq('version_id', price.version_id).maybeSingle())
+      if (!rowError) allergenFrom.current = { version: price.version_id }
+    } else {
+      const { count, error: countError } = await supabase.from('product_versions')
+        .select('id', { count: 'exact', head: true }).eq('product_id', product.id)
+      if (editingId.current !== product.id) return
+      if (countError) {
+        rowError = countError
+      } else if (count > 0) {
+        setAllergensElsewhere(true)
+        return
+      } else {
+        ({ data: row, error: rowError } = await supabase.from('product_allergens')
+          .select('*').eq('product_id', product.id).maybeSingle())
+        if (!rowError) allergenFrom.current = { product: true }
+      }
+    }
 
     // Another product was opened, or the form shut, while this was on its way.
     if (editingId.current !== product.id) return
@@ -1385,6 +1435,7 @@ export default function ProductsPage() {
               onAllergenChange={handleAllergenChange}
               allergensAnswered={allergensTouched}
               allergensUnread={allergensUnread}
+              allergensElsewhere={allergensElsewhere}
               onNoAllergens={handleNoAllergens}
               recipe={recipe}
               onRecipeChange={setRecipe}
@@ -1760,6 +1811,7 @@ export default function ProductsPage() {
               onAllergenChange={handleAllergenChange}
               allergensAnswered={allergensTouched}
               allergensUnread={allergensUnread}
+              allergensElsewhere={allergensElsewhere}
               onNoAllergens={handleNoAllergens}
               recipe={recipe}
               onRecipeChange={setRecipe}

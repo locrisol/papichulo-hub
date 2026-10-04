@@ -899,3 +899,76 @@ describe('the filters above the list', () => {
         expect(all).toHaveAttribute('aria-pressed', 'false')
     })
 })
+
+// Since 4 October a bought product's allergens live on its versions, and the
+// form writes them back only where it read them. The review of that day: a
+// form opened at the other restaurant, or with its supplier changed, wrote
+// old answers over a version another restaurant had since corrected.
+describe('the allergens on the product form, with versions', () => {
+    const versionAnswer = { version_id: 'v1', ...emptyAllergens(), gluten: 'contains' }
+    // The trigger that points a price at its version is in the database, so
+    // the update hands back the version the test says it moved to.
+    function pricesAnswerWith(versionId) {
+        const answer = db.from.getMockImplementation() || (t => tableOf(tables[t] || []))
+        db.from.mockImplementation(table => {
+            const q = answer(table)
+            if (table === 'product_supplier_prices') {
+                q.update = vi.fn(row => {
+                    written.push({ table, how: 'update', row })
+                    return makeQuery({ data: { ...SYSCO, ...row, version_id: versionId }, error: null })
+                })
+            }
+            if (table === 'version_allergens') {
+                q.upsert = vi.fn(row => { written.push({ table, how: 'upsert', row }); return makeQuery({ data: null, error: null }) })
+            }
+            return q
+        })
+    }
+
+    it('writes them back onto the version they were read from', async () => {
+        tables.product_supplier_prices = [{ ...SYSCO, version_id: 'v1' }]
+        tables.version_allergens = [versionAnswer]
+        pricesAnswerWith('v1')
+        const clicker = userEvent.setup()
+        const dialog = await editPeppers(clicker)
+        await clicker.click(dialog.getByRole('button', { name: 'Save changes' }))
+
+        await waitFor(() => expect(written.some(w => w.table === 'version_allergens')).toBe(true))
+        const put = written.find(w => w.table === 'version_allergens').row
+        expect(put.version_id).toBe('v1')
+        expect(put.gluten).toBe('contains')
+        expect(written.some(w => w.table === 'product_allergens')).toBe(false)
+    })
+
+    it('does not carry them onto another version when the price moves to one', async () => {
+        tables.product_supplier_prices = [{ ...SYSCO, version_id: 'v1' }]
+        tables.version_allergens = [versionAnswer]
+        pricesAnswerWith('v2')
+        const clicker = userEvent.setup()
+        const dialog = await editPeppers(clicker)
+        await clicker.click(dialog.getByRole('button', { name: 'Save changes' }))
+
+        await waitFor(() => expect(written.some(w => w.table === 'product_supplier_prices')).toBe(true))
+        expect(await screen.findByText(/its allergens are set on the Allergens page/)).toBeInTheDocument()
+        expect(written.some(w => w.table === 'version_allergens' || w.table === 'product_allergens')).toBe(false)
+    })
+
+    // Bought at the other restaurant only: there is no price here to follow.
+    it('leaves them to the Allergens page when it has versions and no price here', async () => {
+        tables.product_supplier_prices = []
+        tables.product_allergens = [{ product_id: 'p1', ...emptyAllergens() }]
+        const answer = db.from.getMockImplementation()
+        db.from.mockImplementation(table => (table === 'product_versions'
+            ? makeQuery({ data: [{ id: 'v1', product_id: 'p1' }], error: null, count: 1 })
+            : answer(table)))
+        const clicker = userEvent.setup()
+        renderWithRouter(<ProductsPage />)
+        await clicker.click((await screen.findAllByRole('button', { name: 'Edit' }))[0])
+        const dialog = within(screen.getByRole('dialog'))
+        expect(await dialog.findByText('On the Allergens page')).toBeInTheDocument()
+        await clicker.click(dialog.getByRole('button', { name: 'Save changes' }))
+
+        await waitFor(() => expect(written.some(w => w.table === 'products')).toBe(true))
+        expect(written.some(w => w.table === 'version_allergens' || w.table === 'product_allergens')).toBe(false)
+    })
+})

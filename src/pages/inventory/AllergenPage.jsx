@@ -66,8 +66,13 @@ export default function AllergenPage() {
   // The same, for the read after a save to keep the version asked about
   // without reading again every time another one is picked.
   const kept = useRef(null)
+  // Which read is the latest, so one for the restaurant open before, answering
+  // late, does not land on this one.
+  const reading = useRef(0)
 
   const loadAll = useCallback(async () => {
+    const ticket = ++reading.current
+    const stale = () => ticket !== reading.current
     setLoading(true)
 
     const { data: productData, error: productError } = await supabase
@@ -106,6 +111,7 @@ export default function AllergenPage() {
       // which is the case for a product that has never had allergens set.
       supabase.from('product_allergens').select('*').eq('product_id', id).maybeSingle(),
     ])
+    if (stale()) return
     const failed = versionsRes.error || productRowRes.error
     if (failed) {
       setError(friendlyError(failed))
@@ -123,6 +129,7 @@ export default function AllergenPage() {
             .eq('restaurant_id', activeRestaurant.id).in('version_id', ids)
           : Promise.resolve({ data: [] }),
       ])
+      if (stale()) return
       const failedToo = answersRes.error || boughtRes.error
       if (failedToo) {
         setError(friendlyError(failedToo))

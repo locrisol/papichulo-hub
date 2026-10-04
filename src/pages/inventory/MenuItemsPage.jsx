@@ -1,5 +1,5 @@
 import { fmtMoney, fmtPct } from '@/lib/format'
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { readAllergensAt } from '@/lib/allergensAt'
@@ -102,9 +102,14 @@ export default function MenuItemsPage() {
   // is a page that has lost its place rather than one being helpful.
   useKeepScroll('menu-items', !loading, to => to.startsWith('/catalogue/menu-items/'))
 
+  // Which read is the latest. The allergens depend on the restaurant open, so
+  // a read for the one before that answers late must not land on this one.
+  const reading = useRef(0)
+
   // Read again when the restaurant changes: the allergens depend on what it
   // buys.
   const fetchAll = useCallback(async ({ quiet = false } = {}) => {
+    const ticket = ++reading.current
     if (!quiet) setLoading(true)
     const [
       menuItemsRes, categoriesRes, componentsRes, productsRes,
@@ -124,6 +129,7 @@ export default function MenuItemsPage() {
     // the allergens put None against every dish on the menu, and a failed
     // read of the components made every dish look empty. So one failed read
     // shows the failure and no list, the same as the customer page.
+    if (ticket !== reading.current) return
     const reads = [menuItemsRes, categoriesRes, componentsRes, productsRes, recipeLinesRes, allergensRes]
     if (!everyReadArrived(reads)) {
       const failed = reads.find(r => r.error)?.error
