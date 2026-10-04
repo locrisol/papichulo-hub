@@ -26,3 +26,22 @@ export function orderFormats(formats) {
         return String(a.label ?? '').localeCompare(String(b.label ?? ''))
     })
 }
+
+// The packs to save, with the one still in the boxes when somebody presses
+// Save or Close without pressing Add pack first.
+//
+// Add pack reads as "add another one", so a pack typed and left in the boxes
+// was meant to be kept. It used to be dropped without a word. Typed whole, it
+// goes in with the rest; typed half, it is a question rather than a guess.
+// `problem` is a sentence, or '' when it can be saved.
+export function packsToSave(packs, draft, unit) {
+    const list = packs || []
+    const label = String(draft?.label ?? '').trim()
+    const typed = String(draft?.factor ?? '').trim()
+    if (!label && !typed) return { packs: list, problem: '' }
+    const factor = parseFloat(typed)
+    if (!label) return { packs: list, problem: 'Give the pack a name, like Box, Bag or Tin, or clear its boxes.' }
+    if (!(factor > 0)) return { packs: list, problem: `Enter how many ${unit || 'units'} are in one ${label}, or clear its boxes.` }
+    if (list.some(p => p.label === label)) return { packs: list, problem: `There is already a pack called ${label}.` }
+    return { packs: [...list, { label, factor }], problem: '' }
+}

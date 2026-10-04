@@ -313,6 +313,31 @@ describe('the pack sizes on an edit', () => {
         const packs = written.filter(w => w.table === 'price_count_units')
         expect(packs.map(w => w.how)).toEqual(['insert', 'delete'])
     })
+
+    // His, 4 October: Add pack reads as "add another one", so the pack still
+    // in the boxes is the one he meant.
+    it('saves a pack typed in and never added', async () => {
+        tables.price_count_units = [{ id: 'cu1', price_id: 'pr1', label: 'Box', factor: 5, sort_order: 0, is_active: true }]
+        const clicker = userEvent.setup()
+        const dialog = await editPeppers(clicker)
+        await clicker.type(dialog.getByPlaceholderText('Box, Bag, Tin'), 'Bag')
+        await clicker.type(dialog.getByPlaceholderText('KG'), '1')
+        await clicker.click(dialog.getByRole('button', { name: 'Save changes' }))
+
+        await waitFor(() => expect(written.some(w => w.table === 'price_count_units' && w.how === 'insert')).toBe(true))
+        const put = written.find(w => w.table === 'price_count_units' && w.how === 'insert').row
+        expect(put.map(p => [p.label, p.factor])).toEqual([['Box', 5], ['Bag', 1]])
+    })
+
+    it('asks about a pack typed half way instead of saving', async () => {
+        const clicker = userEvent.setup()
+        const dialog = await editPeppers(clicker)
+        await clicker.type(dialog.getByPlaceholderText('Box, Bag, Tin'), 'Tin')
+        await clicker.click(dialog.getByRole('button', { name: 'Save changes' }))
+
+        expect(await dialog.findByText('Enter how many KG are in one Tin, or clear its boxes.')).toBeInTheDocument()
+        expect(written.some(w => w.table === 'product_supplier_prices')).toBe(false)
+    })
 })
 
 // Adding a product with half of it left for later, and what the save asks.

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useConfirm } from '@/context/confirm'
 import { supabase } from '@/lib/supabase'
 import { friendlyError } from '@/lib/errors'
-import { orderFormats } from '@/lib/countUnits'
+import { orderFormats, packsToSave } from '@/lib/countUnits'
 import { rowButton, checkbox, labelClass, fieldClass, primaryButton } from '@/lib/controlStyles'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 
@@ -96,6 +96,17 @@ export default function PriceCountUnitsEditor({ price, unit, onClose }) {
         setFormats(prev => [...prev, data])
         setLabel('')
         setFactor('')
+        return true
+    }
+
+    // A pack left in the boxes was meant to be kept, the same as on the
+    // product form (packsToSave): saved on the way out, or asked about when it
+    // is only half typed, and the editor stays open.
+    async function close() {
+        if (!label.trim() && !String(factor).trim()) { onClose(); return }
+        const { problem } = packsToSave(formats, { label, factor }, unit)
+        if (problem) { setError(problem); return }
+        if (await handleAdd()) onClose()
     }
 
     async function handleDelete(formatId) {
@@ -141,7 +152,7 @@ export default function PriceCountUnitsEditor({ price, unit, onClose }) {
             <div className="flex items-center justify-between">
                 <h4 className="text-sm font-semibold text-gray-900">Packs</h4>
                 {onClose && (
-                    <button onClick={onClose} className={rowButton()}>
+                    <button onClick={close} className={rowButton()}>
                         Close
                     </button>
                 )}

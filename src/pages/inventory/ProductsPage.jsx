@@ -25,7 +25,7 @@ import Modal from '@/components/ui/Modal'
 import { friendlyError } from '@/lib/errors'
 import { claimCode } from '@/lib/invoiceReview'
 import { matches } from '@/lib/search'
-import { orderFormats } from '@/lib/countUnits'
+import { orderFormats, packsToSave } from '@/lib/countUnits'
 import {
   tableHeadRow, tableHeadCell, badge, mixBadge, inactiveBadge, card, cardEdge, cardHeader, rowButton, chip,
   primaryButton, secondaryButton, urgentNote,
@@ -560,14 +560,14 @@ export default function ProductsPage() {
   // out, and the old ones go by their own ids. It used to delete first and
   // check nothing, so a put in that failed lost every pack and the dialog
   // closed as if it had saved. Hands back the error, or nothing.
-  async function replacePacks(priceId) {
+  async function replacePacks(priceId, packs) {
     const { data: old, error: readErr } = await supabase
       .from('price_count_units').select('id').eq('price_id', priceId)
     if (readErr) return readErr
 
-    if (formats.packs.length > 0) {
+    if (packs.length > 0) {
       const { error: insertErr } = await supabase.from('price_count_units').insert(
-        formats.packs.map((pack, order) => ({
+        packs.map((pack, order) => ({
           price_id: priceId,
           label: pack.label,
           factor: pack.factor,
@@ -609,6 +609,8 @@ export default function ProductsPage() {
     // alone it is not an error, it is the normal case.
     const wantsPrice = !formData.is_mix && hasPrice(priceForm)
     const newPriceErrors = wantsPrice ? priceProblem(priceForm) : {}
+    // A pack left in the boxes without Add pack goes in with the rest.
+    const { packs, problem: packProblem } = packsToSave(formats.packs, formats.draft, formData.unit)
 
     // The same code from the same supplier, against what this screen already
     // holds. Only that supplier: two of them using one code for two different
@@ -623,11 +625,12 @@ export default function ProductsPage() {
       }
     }
 
-    if (Object.keys(newErrors).length > 0 || Object.keys(newPriceErrors).length > 0) {
+    if (Object.keys(newErrors).length > 0 || Object.keys(newPriceErrors).length > 0 || (wantsPrice && packProblem)) {
       setErrors(newErrors)
       setPriceErrors(newPriceErrors)
       // A message inside a section that is shut is a message nobody reads.
-      if (Object.keys(newPriceErrors).length > 0) setOpenExtra('supplier')
+      if (Object.keys(newPriceErrors).length > 0 || (wantsPrice && packProblem)) setOpenExtra('supplier')
+      if (wantsPrice && packProblem) setFormProblem(packProblem)
       return
     }
     setErrors({})
@@ -778,7 +781,7 @@ export default function ProductsPage() {
         if (notes.length) setError(notes.join(' '))
 
         if (saved) {
-          const packsErr = await replacePacks(saved.id)
+          const packsErr = await replacePacks(saved.id, packs)
           if (packsErr) {
             setFormProblem(savedButNot(formData.name,
               [{ what: 'packs', plural: true, error: packsErr, next: 'Press Save changes to try again.' }]))
@@ -885,14 +888,14 @@ export default function ProductsPage() {
         if (priceErr) {
           missed.push({ what: 'price', error: priceErr, next: 'Add the price from its Prices page.' })
           // The packs typed in go with it, since they have nothing to hang off.
-          if (formats.packs.length > 0) missed.push({ ...packsMissed, error: priceErr })
+          if (packs.length > 0) missed.push({ ...packsMissed, error: priceErr })
         } else {
           notes.push(...await afterPrice(data.id, newPrice, null))
 
           // The packs, which belong to the price rather than to the product and
           // so have to wait for it the same way the recipe waits for the product.
           if (newPrice) {
-            const packsErr = await replacePacks(newPrice.id)
+            const packsErr = await replacePacks(newPrice.id, packs)
             if (packsErr) missed.push({ ...packsMissed, error: packsErr })
           }
         }
