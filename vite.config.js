@@ -40,6 +40,10 @@ export default defineConfig({
     //
     setupFiles: ['./src/test/setup.js'],
 
+    // Room for the five seconds a screen test may now wait for something to
+    // appear (setup.js), plus the rest of the test around it.
+    testTimeout: 15000,
+
     // Placeholders, on purpose, and they are not a secret.
     //
     // lib/supabase builds its client the moment it is imported, and
