@@ -62,7 +62,12 @@ vi.mock('@/lib/supabase', async importOriginal => ({
     everyRow: (await importOriginal()).everyRow,
     supabase: new Proxy({}, { get: (_, k) => db[k] }),
 }))
-vi.mock('@/context/auth', () => ({ useAuth: () => ({ user: { id: 'u1', role: 'store_manager' } }) }))
+// An owner, who keeps the brand's list, unless a test says otherwise: since
+// 4 October a store manager asks for a product instead of adding one.
+let me
+vi.mock('@/context/auth', () => ({ useAuth: () => ({ user: me }) }))
+const emailTheReview = vi.fn()
+vi.mock('@/lib/rosterMail', () => ({ emailTheReview: id => emailTheReview(id) }))
 // One restaurant object for the whole test, the way the real context keeps
 // one. A new one on every render made the prices fetch run again on every
 // render, so the page never stopped reading and a test could not wait for it.
@@ -81,6 +86,8 @@ beforeAll(() => {
 })
 
 beforeEach(() => {
+    me = { id: 'u1', role: 'owner' }
+    emailTheReview.mockClear()
     written = []
     refused = null
     held = null
@@ -970,5 +977,68 @@ describe('the allergens on the product form, with versions', () => {
 
         await waitFor(() => expect(written.some(w => w.table === 'products')).toBe(true))
         expect(written.some(w => w.table === 'version_allergens' || w.table === 'product_allergens')).toBe(false)
+    })
+})
+
+// His design of 4 October: the brand's list is the owners'. A store manager
+// asks for a product instead of adding one, and cannot rename or switch one
+// off; an owner answers what was sent for review here.
+describe('the brand\'s list', () => {
+    it('gives a store manager Request a product instead of Add product', async () => {
+        me = { id: 'u1', role: 'store_manager' }
+        renderWithRouter(<ProductsPage />)
+        expect(await screen.findByRole('button', { name: 'Request a product' })).toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: '+ Add product' })).toBeNull()
+        expect(screen.queryByRole('button', { name: 'Reviewers' })).toBeNull()
+        expect(screen.queryAllByRole('button', { name: 'Deactivate' })).toEqual([])
+    })
+
+    it('sends what a store manager asks for to the owners', async () => {
+        me = { id: 'u1', role: 'store_manager' }
+        const user = userEvent.setup()
+        renderWithRouter(<ProductsPage />)
+        await user.click(await screen.findByRole('button', { name: 'Request a product' }))
+        const dialog = within(screen.getByRole('dialog'))
+        await user.type(dialog.getByLabelText('What should it be called?'), 'Oat milk')
+        await user.selectOptions(dialog.getByLabelText('Supplier, if you know one'), 's1')
+        await user.type(dialog.getByLabelText('Why do we need it?'), 'For the coffee.')
+        await user.click(dialog.getByRole('button', { name: 'Send for review' }))
+
+        await waitFor(() => expect(written.filter(w => w.table === 'product_requests')).toHaveLength(1))
+        expect(written.find(w => w.table === 'product_requests').row).toEqual({
+            restaurant_id: 'r1', kind: 'new', name: 'Oat milk', reason: 'For the coffee.', supplier_id: 's1', sent_by: 'u1',
+        })
+        expect(emailTheReview).toHaveBeenCalled()
+        expect(await screen.findByText(/Sent for review. Oat milk is answered by the owners/)).toBeInTheDocument()
+    })
+
+    it('does not let a store manager rename a product', async () => {
+        me = { id: 'u1', role: 'store_manager' }
+        const user = userEvent.setup()
+        renderWithRouter(<ProductsPage />)
+        await user.click((await screen.findAllByRole('button', { name: 'Edit' }))[0])
+        const dialog = within(screen.getByRole('dialog'))
+        expect(dialog.getByDisplayValue('Green Peppers')).toBeDisabled()
+        expect(dialog.getByText('Only an owner can rename a product.')).toBeInTheDocument()
+    })
+
+    it('shows an owner what was sent for review, with what they need to answer it', async () => {
+        tables.product_requests = [{
+            id: 'q1', restaurant_id: 'r1', kind: 'new', name: 'Corn Tortilla 6 inch', reason: 'For the taco special.',
+            supplier_id: 's1', supplier_code: '5019120', description: 'MISSION CORN TORTILLA 6" 12X30 EA',
+            price_per_case: 41.8, sent_at: '2026-10-02T09:00:00Z', answer: null,
+            sender: { full_name: 'Maria', role: 'store_manager' }, restaurants: { name: 'Point Campus' },
+            suppliers: { name: 'Sysco Ireland' },
+        }]
+        renderWithRouter(<ProductsPage />)
+        expect(await screen.findByText('Corn Tortilla 6 inch')).toBeInTheDocument()
+        expect(screen.getByText('Maria, Point Campus')).toBeInTheDocument()
+        expect(screen.getByText('Fri 2 Oct')).toBeInTheDocument()
+        expect(screen.getByText('5019120')).toBeInTheDocument()
+        expect(screen.getByText(/For the taco special/)).toBeInTheDocument()
+        for (const name of ['Add it as a new product', 'A version of one we have', 'Not stock', 'Do not buy it']) {
+            expect(screen.getByRole('button', { name })).toBeInTheDocument()
+        }
+        expect(screen.getByRole('button', { name: 'Reviewers' })).toBeInTheDocument()
     })
 })

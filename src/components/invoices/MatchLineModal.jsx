@@ -18,7 +18,10 @@ import {
 // in units_per_case depends on how the product itself is counted. Getting it
 // wrong quietly moves the cost of every dish the product goes into, which is
 // why the division is shown as it is typed, exactly as the product form does.
-export default function MatchLineModal({ row, products, onClose, onMatch }) {
+//
+// Without `withPack` there is no line, only something asked for from
+// Products, so it asks for the product alone.
+export default function MatchLineModal({ row, products, onClose, onMatch, withPack = true }) {
     const line = row.line
     const [productId, setProductId] = useState('')
     const [perPack, setPerPack] = useState(
@@ -39,13 +42,15 @@ export default function MatchLineModal({ row, products, onClose, onMatch }) {
     return (
         <Modal title="Which product is this?" onClose={onClose} width="max-w-lg">
             <div className="px-6 py-4">
-                <p className={captionClass}>On the invoice</p>
+                <p className={captionClass}>{withPack ? 'On the invoice' : 'Asked for'}</p>
                 <p className="text-sm font-bold text-gray-900 mt-1">{line.description}</p>
-                <p className="text-xs text-muted mb-4">
-                    Code {line.code}
-                    {line.pack_size ? `, ${line.pack_size}` : ''}, {fmtMoney(line.price_per_case)} a
-                    case
-                </p>
+                {withPack ? (
+                    <p className="text-xs text-muted mb-4">
+                        Code {line.code}
+                        {line.pack_size ? `, ${line.pack_size}` : ''}, {fmtMoney(line.price_per_case)} a
+                        case
+                    </p>
+                ) : <div className="mb-4" />}
 
                 <label className={labelClass} htmlFor="match-product">Product</label>
                 <ProductSelect
@@ -54,12 +59,14 @@ export default function MatchLineModal({ row, products, onClose, onMatch }) {
                     products={products}
                     placeholder="Search the catalogue..."
                 />
-                <p className={hintClass}>
-                    Answered once. Every document that carries code {line.code} matches itself after
-                    this.
-                </p>
+                {withPack && (
+                    <p className={hintClass}>
+                        Answered once. Every document that carries code {line.code} matches itself after
+                        this.
+                    </p>
+                )}
 
-                <div className="mt-4">
+                {withPack && <div className="mt-4">
                     <label className={labelClass} htmlFor="match-units">
                         How many {product?.unit || 'units'} in a case
                     </label>
@@ -76,14 +83,14 @@ export default function MatchLineModal({ row, products, onClose, onMatch }) {
                             <> That makes it {fmtUnitCost(perUnit)} a {product?.unit || 'unit'}.</>
                         )}
                     </p>
-                </div>
+                </div>}
             </div>
 
             <div className={modalFooter}>
                 <button type="button" onClick={onClose} className={secondaryButton}>Cancel</button>
                 <button
                     type="button"
-                    disabled={!productId || !(units > 0) || busy}
+                    disabled={!productId || (withPack && !(units > 0)) || busy}
                     onClick={go}
                     className={primaryButton('md', 'good')}
                 >

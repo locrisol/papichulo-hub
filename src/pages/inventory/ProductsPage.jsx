@@ -37,6 +37,12 @@ import Notice from '@/components/ui/Notice'
 import PageHeader from '@/components/ui/PageHeader'
 import ShowInactiveButton from '@/components/ui/ShowInactiveButton'
 import useShowInactive from '@/components/ui/useShowInactive'
+import SentForReview from '@/components/inventory/SentForReview'
+import ReviewersModal from '@/components/inventory/ReviewersModal'
+import SendForReviewModal from '@/components/inventory/SendForReviewModal'
+import { can, BRAND_CHOICES } from '@/lib/access'
+import { requestForProduct } from '@/lib/productRequests'
+import { emailTheReview } from '@/lib/rosterMail'
 
 // Every column in the table, in the order it appears.
 //
@@ -151,6 +157,14 @@ export default function ProductsPage() {
   const { user } = useAuth()
   const { activeRestaurant } = useRestaurant()
   const navigate = useNavigate()
+  // The brand's list is the owners' and the super admin's: they add, rename
+  // and switch off products, and answer what was sent for review. A store
+  // manager asks for a product instead (his design, 4 October), and the
+  // database holds the same line (brand_choice_guard).
+  const keepsTheList = can(user, BRAND_CHOICES)
+  const [showReviewers, setShowReviewers] = useState(false)
+  const [requesting, setRequesting] = useState(false)
+  const [requestSaid, setRequestSaid] = useState('')
   const [products, setProducts] = useState([])
   const [prices, setPrices] = useState([])
   const [recipeLines, setRecipeLines] = useState([])
@@ -181,7 +195,7 @@ export default function ProductsPage() {
   // screen is built and never again, so typing over it cannot be undone by a
   // render, and the same snapshot decides that the form should be open at all.
   const [params] = useSearchParams()
-  const [fromLink] = useState(() => prefillFrom(params))
+  const [fromLink] = useState(() => (keepsTheList ? prefillFrom(params) : null))
   // Where saving the product the link asked for goes back to. Only that one:
   // the form closed, the next product added is an ordinary one.
   const backTo = useRef(fromLink?.back || null)
@@ -1177,7 +1191,7 @@ export default function ProductsPage() {
         { label: 'Allergens', onClick: () => navigate(`/catalogue/products/${p.id}/allergens`) },
         p.is_mix && { label: 'Recipe', onClick: () => navigate(`/catalogue/products/${p.id}/recipe`) },
         { label: 'Prices', onClick: () => navigate(`/catalogue/products/${p.id}/prices`) },
-        {
+        keepsTheList && {
           label: p.is_active ? 'Deactivate' : 'Reactivate',
           tone: p.is_active ? 'danger' : 'good',
           onClick: () => toggleActive(p),
@@ -1394,16 +1408,47 @@ export default function ProductsPage() {
     <div>
       <PageHeader title="Products" subtitle={`Showing prices for ${activeRestaurant?.name ?? ''}`}>
         <ShowInactiveButton showing={showInactive} onToggle={() => setShowInactive(on => !on)} />
-        <button
-          onClick={() => { resetForm(); setShowForm(true) }}
-          className={primaryButton()}
-        >
-          + Add product
-        </button>
+        {keepsTheList ? (
+          <>
+            <button onClick={() => setShowReviewers(true)} className={secondaryButton}>
+              Reviewers
+            </button>
+            <button
+              onClick={() => { resetForm(); setShowForm(true) }}
+              className={primaryButton()}
+            >
+              + Add product
+            </button>
+          </>
+        ) : (
+          <button onClick={() => { setRequestSaid(''); setRequesting(true) }} className={primaryButton()}>
+            Request a product
+          </button>
+        )}
       </PageHeader>
 
       {error && (
         <ErrorBanner className="mb-4">{error}</ErrorBanner>
+      )}
+      <Notice tone="good" className="mb-4">{requestSaid}</Notice>
+
+      {keepsTheList && <SentForReview onChanged={fetchProducts} />}
+      {showReviewers && <ReviewersModal onClose={() => setShowReviewers(false)} />}
+      {requesting && (
+        <SendForReviewModal
+          suppliers={activeSuppliers}
+          onClose={() => setRequesting(false)}
+          onSend={async said => {
+            const { data: made, error: e1 } = await supabase.from('product_requests')
+              .insert(requestForProduct({ restaurantId: activeRestaurant?.id, userId: user?.id, ...said }))
+              .select('id').single()
+            if (e1) return friendlyError(e1)
+            emailTheReview(made.id)
+            setRequesting(false)
+            setRequestSaid(`Sent for review. ${said.name.trim()} is answered by the owners on Products.`)
+            return null
+          }}
+        />
       )}
 
       {/* The whole form takes the lightest shade of whatever section is chosen,
@@ -1795,6 +1840,7 @@ export default function ProductsPage() {
               onSubmit={handleSave}
               onCancel={resetForm}
               submitLabel="Save changes"
+              nameLocked={!keepsTheList}
               saving={saving && !asking}
               errors={errors}
               nameClash={nameClash}

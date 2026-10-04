@@ -140,12 +140,20 @@ export default function AppLayout({ children }) {
 
     // The count at the end of an item, if it has one, and the words a screen
     // reader says for it instead of a bare number.
+    //
+    // Products carries two: food with no allergen answer, red, and what was
+    // sent for review, which my_badges counts. One number, red while any
+    // product has no answer, and the words name both.
     function countOn(path) {
         if (path === PRODUCTS.path && noAllergens > 0) {
+            const sent = badges[path]
             return {
-                count: noAllergens,
+                count: noAllergens + (sent?.count || 0),
                 tone: 'urgent',
-                words: `Allergens not set for ${noAllergens} ${noAllergens === 1 ? 'product' : 'products'}`,
+                words: [
+                    `Allergens not set for ${noAllergens} ${noAllergens === 1 ? 'product' : 'products'}`,
+                    sent?.words,
+                ].filter(Boolean).join(', '),
             }
         }
         return badges[path] || null

@@ -22,8 +22,12 @@ import AddButton from '@/components/ui/AddButton'
 // same on both screens that use this: the report goes to the owners and back to
 // whoever wrote it, and the week's hours go to whoever does the payroll. The
 // rest, the chips, the adding, the taking off, is the same job twice.
+//
+// Reviewers on Products is the third, for the whole brand: the super admin
+// is the one always on it, so each fixed person can carry a `label` other
+// than owner, and `summary` replaces the line counting who it goes to.
 export default function Recipients({
-    owners = [], extras = [], canEdit, onChange, busy, title = 'Who gets it', note,
+    owners = [], extras = [], canEdit, onChange, busy, title = 'Who gets it', note, summary,
 }) {
     const [open, setOpen] = useState(false)
     const [typed, setTyped] = useState('')
@@ -41,7 +45,7 @@ export default function Recipients({
         <div className={`${card} p-4`}>
             <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
                 <p className="text-xs font-bold text-muted uppercase tracking-wider">{title}</p>
-                <p className="text-xs text-muted">{recipientSummary({ owners, extras })}</p>
+                <p className="text-xs text-muted">{summary || recipientSummary({ owners, extras })}</p>
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -52,7 +56,7 @@ export default function Recipients({
                             bg-app-bg border border-border text-sm text-sidebar"
                     >
                         {owner.full_name}
-                        <span className="text-xs text-muted">owner</span>
+                        <span className="text-xs text-muted">{owner.label || 'owner'}</span>
                     </span>
                 ))}
 

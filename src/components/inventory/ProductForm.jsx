@@ -12,7 +12,7 @@
 import { numberField } from '@/lib/numberInput'
 import {
   checkbox, labelClass, captionClass, fieldClass, hintClass, fieldError, primaryButton, secondaryButton,
-  removeButton, chip,
+  removeButton, chip, lockedField,
 } from '@/lib/controlStyles'
 import { PriceFields } from '@/components/inventory/PriceForm'
 import ProductSelect from '@/components/ui/ProductSelect'
@@ -39,7 +39,7 @@ export default function ProductForm({
   recipe, onRecipeChange, ingredientOptions,
   allergens, onAllergenChange, allergensAnswered, onNoAllergens, allergensUnread = false, allergensElsewhere = false,
   extras, openExtra, onOpenExtra,
-  otherPriceCount = 0, onOpenPrices, recipeBlock = true, saving = false,
+  otherPriceCount = 0, onOpenPrices, recipeBlock = true, saving = false, nameLocked = false,
 }) {
   // Both of these only make sense for something you buy. A mix has no supplier
   // by definition, and its allergens come from its recipe rather than from
@@ -78,12 +78,17 @@ export default function ProductForm({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
         <div>
           <label className={labelClass}>Name</label>
+          {/* Locked for a store manager: the brand's list is the owners', so
+              renaming is theirs (brand_choice_guard says the same). */}
           <input
             type="text"
             value={formData.name}
             onChange={e => onChange('name', e.target.value)}
-            className={fieldClass}
+            disabled={nameLocked}
+            readOnly={nameLocked}
+            className={nameLocked ? `${lockedField} w-full px-3 py-2.5 text-base` : fieldClass}
           />
+          {nameLocked && <p className={hintClass}>Only an owner can rename a product.</p>}
           {errors.name && <p className={fieldError}>{errors.name}</p>}
           {/* Said while it is being typed rather than after it is saved, and it
               stops the save. Two products with the same name is one added

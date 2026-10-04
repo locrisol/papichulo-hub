@@ -120,6 +120,14 @@ describe('the badges', () => {
         expect(badges['/inventory/public-allergens']).toEqual({ dot: true, tone: 'urgent', words: 'A new allergen sheet needs printing' })
     })
 
+    // His design of 4 October: whoever answers what store managers sent for
+    // review sees how many are waiting, on Products.
+    it('counts what was sent for review on Products', () => {
+        expect(badgesFrom({ ...manager, role: 'owner', requests: 2 })['/catalogue/products'])
+            .toEqual({ count: 2, tone: 'waiting', words: '2 things sent for review' })
+        expect(badgesFrom({ ...manager, role: 'owner', requests: 0 })['/catalogue/products']).toBeUndefined()
+    })
+
     it('marks it amber when it has simply never been printed', () => {
         expect(badgesFrom({ ...manager, sheet: { ...manager.sheet, printed_at: null } })['/inventory/public-allergens'].tone).toBe('waiting')
     })
