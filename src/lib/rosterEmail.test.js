@@ -5,7 +5,7 @@ import {
     requestEmail, answerEmail,
     swapHalves, halfWords, swapAskEmail, swapAnswerEmail, swapDeskEmail, swapDecisionEmail,
     deliverable, isJustTheGoodbye, replyToFor, recordName, switchedOff,
-    fresh, tooLate, FRESH_MINUTES,
+    fresh, tooLate, FRESH_MINUTES, reviewEmail,
 } from '../../supabase/functions/roster-email/email'
 import { readFileSync } from 'node:fs'
 import { recordName as appRecordName } from '@/lib/timeOffPdf'
@@ -238,8 +238,11 @@ describe('the same mail again', () => {
 
     it('is asked by the function, and a time off request has to be waiting', () => {
         const source = readFileSync('supabase/functions/roster-email/index.ts', 'utf8')
-        expect(source.match(/tooLate\(event, /g)).toHaveLength(2)
+        expect(source.match(/tooLate\(event, /g)).toHaveLength(3)
         expect(source).toContain("absence.status !== 'requested'")
+        // Something sent for review, only while it waits.
+        expect(source).toContain("if (ask.answer) return json({ sent: 0, why: 'already answered' })")
+        expect(source).toMatch(/\.from\('product_requests'\)[\s\S]{0,120}?\.select\('[^']*sent_at/)
         // The swap row has to be read with the two times the rule needs.
         expect(source).toMatch(/\.from\('shift_requests'\)\s*\.select\([^)]*created_at[^)]*answered_at/)
     })
@@ -734,7 +737,17 @@ describe('no line ends in a space', () => {
 })
 
 // Every mail this function sends, for the checks that hold for all of them.
+const corn = (extra = {}) => ({
+    id: 'q1', kind: 'new', name: 'Corn Tortilla 6 inch', reason: 'For the new <taco> special.',
+    supplier_code: '5019120', description: 'MISSION CORN TORTILLA 6" 12X30 EA', price_per_case: 41.8,
+    sent_at: NOW, answer: null, ...extra,
+})
+
 const everyMail = () => [
+    reviewEmail({
+        request: corn(), restaurantName: 'Point Campus', supplierName: 'Sysco Ireland',
+        senderName: 'Maria', appUrl: 'https://hub.ie',
+    }),
     requestEmail({
         absence: holiday(), employeeName: 'Majo', restaurantName: 'Point Campus',
         clashes: [shift('2026-10-12', '09:00', '17:00')], appUrl: 'https://hub.ie', now: NOW,
@@ -779,5 +792,52 @@ describe('the head of every mail', () => {
             expect(html).toContain('<meta name="format-detection" content="telephone=no,date=no,address=no,email=no" />')
             expect(html).toContain('</head><body ')
         }
+    })
+})
+
+// His design of 4 October: a store manager sends something for review, and
+// the reviewers get everything they need to answer it without the invoice.
+describe('sent for review', () => {
+    const mail = reviewEmail({
+        request: corn(), restaurantName: 'Point Campus', supplierName: 'Sysco Ireland',
+        senderName: 'Maria', appUrl: 'https://hub.ie',
+    })
+
+    it('names what it is and where it came from', () => {
+        expect(mail.subject).toBe('Sent for review: Corn Tortilla 6 inch, Point Campus')
+        expect(mail.text).toContain('Sent by: Maria, Point Campus')
+        expect(mail.text).toContain('They say: Something new we should stock')
+        expect(mail.text).toContain('Supplier: Sysco Ireland')
+        expect(mail.text).toContain('Code: 5019120')
+        expect(mail.text).toContain('On the invoice: MISSION CORN TORTILLA 6" 12X30 EA')
+        expect(mail.text).toContain('Price: \u20ac41.80 a case')
+    })
+
+    it('sends them to Products to answer it', () => {
+        expect(mail.html).toContain('href="https://hub.ie/catalogue/products"')
+        expect(mail.text).toContain('https://hub.ie/catalogue/products')
+    })
+
+    it('keeps what the manager typed out of the HTML', () => {
+        expect(mail.html).toContain('For the new &lt;taco&gt; special.')
+        expect(mail.html).not.toContain('<taco>')
+    })
+
+    it('leaves out what a product asked for from Products does not have', () => {
+        const asked = reviewEmail({
+            request: corn({ supplier_code: null, description: null, price_per_case: null, reason: null }),
+            restaurantName: 'Point Campus', supplierName: '', senderName: 'Maria', appUrl: '',
+        })
+        expect(asked.text).not.toContain('Code:')
+        expect(asked.text).not.toContain('Price:')
+        expect(asked.text).not.toContain('Supplier:')
+        expect(asked.html).not.toContain('href=')
+    })
+
+    // Only right after it was sent: a second post of the same id later
+    // sends nothing.
+    it('goes only while it is fresh', () => {
+        expect(tooLate('review-asked', corn(), NOW)).toBe(false)
+        expect(tooLate('review-asked', corn(), '2026-09-04T11:12:00Z')).toBe(true)
     })
 })

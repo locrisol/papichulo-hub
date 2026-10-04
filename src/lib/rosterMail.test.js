@@ -78,6 +78,13 @@ describe('swapping a shift', () => {
     })
 })
 
+describe('sent for review', () => {
+    it('sends it as review-asked', () => {
+        mail.emailTheReview('q1')
+        expect(sent()).toMatchObject({ productRequestId: 'q1', event: 'review-asked' })
+    })
+})
+
 // A missing id would post an event the function cannot look anything up for,
 // and it would answer 400 into a console nobody is reading.
 describe('nothing to send about', () => {
@@ -86,6 +93,7 @@ describe('nothing to send about', () => {
         mail.emailTheShiftAsk(undefined)
         mail.emailTheShiftAnswer('')
         mail.emailTheShiftDecision(null)
+        mail.emailTheReview(null)
         expect(invoke).not.toHaveBeenCalled()
     })
 })

@@ -45,6 +45,46 @@ async function accountRefusal(client, restaurantId, role) {
     return error?.code ?? null
 }
 
+// Something sent for review from a supplier that cannot exist, so no row is
+// made: refused by the rules, or let through to fail on the missing supplier.
+async function requestRefusal(client, restaurantId) {
+    const { data: auth } = await client.auth.getUser()
+    const { error } = await client.from('product_requests').insert({
+        restaurant_id: restaurantId,
+        kind: 'new',
+        name: 'RLS test request, should never exist',
+        supplier_id: NOBODY,
+        supplier_code: 'RLS-TEST',
+        sent_by: auth.user.id,
+    })
+    return error?.code ?? null
+}
+
+// A product only an owner may add, written so that it can never be added: a
+// section the database does not have. The guard refuses a store manager
+// before that is looked at; an owner gets past it to the section.
+const GUARDED = 'P0001'
+const BAD_SECTION = '23514'
+async function productRefusal(client) {
+    const { error } = await client.from('products').insert({
+        name: 'RLS test product, should never exist',
+        section: 'Nowhere',
+        unit: 'Units',
+    })
+    return error?.code ?? null
+}
+
+// Saying a code is not stock, for a supplier that cannot exist.
+async function notStockRefusal(client, restaurantId) {
+    const { error } = await client.from('supplier_codes').insert({
+        supplier_id: NOBODY,
+        restaurant_id: restaurantId,
+        supplier_code: 'RLS-TEST',
+        ignored: true,
+    })
+    return error?.code ?? null
+}
+
 // The first and last day of the weeks My shifts opens: nine weeks either side
 // of today in Ireland. roster_colleagues, roster_away and roster_published
 // keep to them since 1 October.
@@ -514,6 +554,14 @@ maybe('what each role can see and do', () => {
             }
         })
 
+        it('cannot send anything for review or read what was sent', async () => {
+            expect(await requestRefusal(employee, ownRestaurantId)).toBe(REFUSED_BY_THE_RULES)
+            for (const table of ['product_requests', 'brand_settings']) {
+                const { count } = await countVisible(employee, table)
+                expect(count, `an employee can read ${table}`).toBe(0)
+            }
+        })
+
         it('still reads the allergen page the way a customer does', async () => {
             for (const view of ['public_menu_items', 'public_menu_item_components', 'public_product_allergens',
                 'public_product_versions', 'public_version_allergens', 'public_restaurant_versions']) {
@@ -644,7 +692,9 @@ maybe('what each role can see and do', () => {
                 .insert({ product_id: NOBODY, gluten: null })
             expect(allergen?.code, 'an allergen can be left empty').toBe(EMPTY)
 
-            const { error: product } = await manager.from('products').insert({
+            // Asked as an owner: since 4 October a store manager cannot add a
+            // product at all (brand_choice_guard), which stops it sooner.
+            const { error: product } = await owner.from('products').insert({
                 name: 'RLS test product, should never exist', section: 'Nowhere', unit: 'KG', is_mix: null,
             })
             expect(product?.code, 'whether a product is a MIX can be left empty').toBe(EMPTY)
@@ -752,6 +802,34 @@ maybe('what each role can see and do', () => {
             }
         })
 
+        // His design of 4 October: the brand's list is the owners'. A store
+        // manager sends a product for review instead of adding it, and cannot
+        // set a line aside or say a code is not stock.
+        it('sends things for review at their own restaurant only', async () => {
+            expect(await requestRefusal(manager, ownRestaurantId)).toBe(PAST_THE_RULES)
+            expect(await requestRefusal(manager, otherRestaurantId)).toBe(REFUSED_BY_THE_RULES)
+        })
+
+        it('cannot add a product', async () => {
+            expect(await productRefusal(manager)).toBe(GUARDED)
+        })
+
+        it('cannot say a code is not stock, or set a line aside', async () => {
+            expect(await notStockRefusal(manager, ownRestaurantId)).toBe(GUARDED)
+            const { error } = await manager.from('invoice_lines').insert({
+                invoice_id: NOBODY, supplier_code: 'RLS-TEST', decision: 'ignored',
+            })
+            expect(error?.code, 'a manager set a line aside').toBe(GUARDED)
+        })
+
+        it('cannot read or change who reviews', async () => {
+            const { count } = await countVisible(manager, 'brand_settings')
+            expect(count).toBe(0)
+            const { data } = await manager.from('brand_settings')
+                .update({ updated_at: new Date().toISOString() }).eq('id', true).select('id')
+            expect(data || []).toEqual([])
+        })
+
         it('cannot stamp the other restaurant allergen sheet as printed', async () => {
             const { error } = await manager.rpc('allergen_sheet_printed', { restaurant: otherRestaurantId })
             expect(error, 'a manager stamped the other restaurant allergen sheet').not.toBeNull()
@@ -813,6 +891,24 @@ maybe('what each role can see and do', () => {
                 .eq('id', ownRestaurantId).single()
             expect(error).toBeNull()
             expect(data.food_cost_target).not.toBeUndefined()
+        })
+
+        // What the brand decides is theirs: adding a product, saying a code is
+        // not stock, and who reviews.
+        it('gets past the guard on adding a product and saying a code is not stock', async () => {
+            expect(await productRefusal(owner)).toBe(BAD_SECTION)
+            expect(await notStockRefusal(owner, ownRestaurantId)).toBe(PAST_THE_RULES)
+        })
+
+        it('reads who reviews', async () => {
+            const { count, error } = await countVisible(owner, 'brand_settings')
+            expect(error).toBeNull()
+            expect(count).toBe(1)
+        })
+
+        it('sends for review at their own restaurant only', async () => {
+            expect(await requestRefusal(owner, ownRestaurantId)).toBe(PAST_THE_RULES)
+            expect(await requestRefusal(owner, otherRestaurantId)).toBe(REFUSED_BY_THE_RULES)
         })
 
         it('is refused when creating a restaurant', async () => {
@@ -1124,6 +1220,7 @@ maybe('what each role can see and do', () => {
                 'restaurants', 'products', 'menu_items', 'menu_categories',
                 'menu_item_components', 'mix_recipes', 'product_allergens',
                 'product_versions', 'version_allergens', 'product_supplier_prices',
+                'product_requests', 'brand_settings',
             ]) {
                 const { count } = await countVisible(anon, table)
                 expect(count, `${table} is still readable by anybody`).toBe(0)
@@ -1318,6 +1415,16 @@ maybe('what each role can see and do', () => {
             expect(data).toHaveProperty('claims_late')
             expect(data).toHaveProperty('timesheet')
             expect(data).toHaveProperty('permits')
+        })
+
+        // What was sent for review is counted for whoever answers it.
+        it('counts what was sent for review for an owner and the super admin, not a manager', async () => {
+            const { data: mine } = await manager.rpc('my_badges', { restaurant: ownRestaurantId })
+            expect(mine).not.toHaveProperty('requests')
+            const { data: theirs } = await owner.rpc('my_badges', { restaurant: ownRestaurantId })
+            expect(typeof theirs.requests).toBe('number')
+            const { data: all } = await superadmin.rpc('my_badges', { restaurant: ownRestaurantId })
+            expect(typeof all.requests).toBe('number')
         })
 
         it('does not answer somebody signed out', async () => {

@@ -216,6 +216,9 @@ export function badgesFrom(answer, extras = {}) {
     }) : null
     if (due) dot('/inventory/public-allergens', 'A new allergen sheet needs printing', due.reason === 'changed' ? 'urgent' : 'waiting')
 
+    // What store managers sent for review, for an owner or the super admin.
+    // AppLayout adds the products with no allergen answer to it.
+    count('/catalogue/products', a.requests || 0, n => `${plural(n, 'thing', 'things')} sent for review`)
     count('/catalogue/menu-items', a.empty_dishes || 0, n => `${plural(n, 'dish', 'dishes')} on the allergen sheet with no ingredients`)
     if (a.stock_open > 0) dot('/inventory/stock-takes', 'A stock take has been left open for a day')
     count('/invoices/claims', a.claims_late || 0, n => `${plural(n, 'delivery problem', 'delivery problems')} with no credit after a week`)

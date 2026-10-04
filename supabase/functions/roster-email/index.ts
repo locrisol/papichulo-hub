@@ -12,6 +12,8 @@
 //   swap-asked      somebody wants a shift covered, and it is your Saturday
 //   swap-answered   they said yes or no, and a yes is now a manager's to approve
 //   swap-decided    a manager decided, and both of them need to know
+//   review-asked    a store manager sent something for review, and the
+//                   reviewers answer it on Products (4 October 2026)
 //
 // It was called time-off-email until 19 September 2026, when the swaps moved in
 // and the name stopped being true. **Deploy the new name before deleting the
@@ -63,7 +65,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
     requestEmail, answerEmail, isPartDay,
-    swapHalves, swapAskEmail, swapAnswerEmail, swapDeskEmail, swapDecisionEmail,
+    swapHalves, swapAskEmail, swapAnswerEmail, swapDeskEmail, swapDecisionEmail, reviewEmail,
     senderFor, heldNotice, deliverable, isJustTheGoodbye, replyToFor, recordName, switchedOff,
     tooLate,
 } from './email.js'
@@ -367,6 +369,7 @@ Deno.serve(async (request) => {
     let payload: {
         absenceId?: string
         requestId?: string
+        productRequestId?: string
         event?: string
         pdf?: string
         // Still sent by the app and not used: the name is made here, see
@@ -376,7 +379,7 @@ Deno.serve(async (request) => {
     }
     try { payload = await request.json() } catch { return json({ error: 'Bad request' }, 400) }
 
-    const { absenceId, requestId, event, pdf, origin } = payload
+    const { absenceId, requestId, productRequestId, event, pdf, origin } = payload
 
     // Somebody who could answer one of these. Three of the five events are only
     // ever set off by a manager.
@@ -384,7 +387,8 @@ Deno.serve(async (request) => {
 
     const SWAPS = ['swap-asked', 'swap-answered', 'swap-decided']
     const TIME_OFF = ['asked', 'answered']
-    if (!event || (!SWAPS.includes(event) && !TIME_OFF.includes(event))) {
+    const REVIEW = ['review-asked']
+    if (!event || (!SWAPS.includes(event) && !TIME_OFF.includes(event) && !REVIEW.includes(event))) {
         return json({ error: 'Bad request' }, 400)
     }
 
@@ -467,6 +471,67 @@ Deno.serve(async (request) => {
     }
 
     try {
+        // ---------- something sent for review ----------
+        if (REVIEW.includes(event)) {
+            if (!productRequestId) return json({ error: 'Bad request' }, 400)
+
+            const { data: ask } = await admin
+                .from('product_requests')
+                // One string, so the client knows the row's shape.
+                .select('id, restaurant_id, kind, name, reason, supplier_id, supplier_code, description, price_per_case, sent_by, sent_at, answer')
+                .eq('id', productRequestId).maybeSingle()
+            if (!ask) return json({ error: 'Not found' }, 404)
+            if (me.role !== 'super_admin' && me.restaurant_id !== ask.restaurant_id) {
+                return json({ error: 'Not found' }, 404)
+            }
+            // Only whoever sent it, and only while it waits and in the ten
+            // minutes after: nobody else can set the reviewers' mail off, and
+            // a post of the same id later sends nothing (tooLate).
+            if (ask.sent_by !== me.id) return json({ error: 'Not yours' }, 403)
+            if (ask.answer) return json({ sent: 0, why: 'already answered' })
+            if (tooLate(event, ask, new Date().toISOString())) {
+                return json({ sent: 0, why: 'too long after it happened' })
+            }
+
+            // The super admin always, and whoever is on Reviewers.
+            const to: string[] = []
+            const { data: admins } = await admin
+                .from('users').select('id')
+                .eq('role', 'super_admin').eq('is_active', true).eq('is_test', false)
+            for (const person of admins || []) {
+                const address = await addressFor(person.id)
+                if (address && !to.includes(address)) to.push(address)
+            }
+            const { data: settings } = await admin
+                .from('brand_settings').select('review_recipients').maybeSingle()
+            for (const typed of settings?.review_recipients || []) {
+                const address = String(typed || '').trim()
+                if (address && deliverable(address) && !to.includes(address)) to.push(address)
+            }
+            if (to.length === 0) return json({ sent: 0, why: 'nobody to send to' })
+
+            const [house, supplier] = await Promise.all([
+                houseOf(ask.restaurant_id),
+                ask.supplier_id
+                    ? admin.from('suppliers').select('name').eq('id', ask.supplier_id).maybeSingle()
+                    : Promise.resolve({ data: null }),
+            ])
+            const mail = reviewEmail({
+                request: ask,
+                restaurantName: house.name,
+                supplierName: supplier.data?.name || '',
+                senderName: me.full_name || '',
+                appUrl,
+            })
+            await send({
+                to,
+                from: from(house.name, house.address),
+                replyTo: house.address || undefined,
+                subject: mail.subject, html: mail.html, text: mail.text,
+            })
+            return json({ sent: to.length })
+        }
+
         // ---------- somebody wants a shift covered ----------
         if (SWAPS.includes(event)) {
             if (!requestId) return json({ error: 'Bad request' }, 400)
