@@ -507,14 +507,16 @@ maybe('what each role can see and do', () => {
         // thing goes into it. No staff screen reads them, and the allergen
         // page reads the public_ views, which leave all of that out.
         it('cannot read the menu, what goes into each dish or the allergen tables', async () => {
-            for (const table of ['menu_items', 'menu_item_components', 'product_allergens', 'menu_categories']) {
+            for (const table of ['menu_items', 'menu_item_components', 'product_allergens', 'menu_categories',
+                'product_versions', 'version_allergens']) {
                 const { count } = await countVisible(employee, table)
                 expect(count, `an employee can read ${table}`).toBe(0)
             }
         })
 
         it('still reads the allergen page the way a customer does', async () => {
-            for (const view of ['public_menu_items', 'public_menu_item_components', 'public_product_allergens']) {
+            for (const view of ['public_menu_items', 'public_menu_item_components', 'public_product_allergens',
+                'public_product_versions', 'public_version_allergens', 'public_restaurant_versions']) {
                 const { count, error } = await countVisible(employee, view)
                 expect(error).toBeNull()
                 expect(count, `an employee cannot read ${view}`).toBeGreaterThan(0)
@@ -742,7 +744,8 @@ maybe('what each role can see and do', () => {
         // The menu pages, the allergen pages and the preview of the customer
         // page all read these straight off the tables.
         it('still reads the menu, its prices and what goes into each dish', async () => {
-            for (const table of ['menu_items', 'menu_item_components', 'product_allergens', 'menu_categories']) {
+            for (const table of ['menu_items', 'menu_item_components', 'product_allergens', 'menu_categories',
+                'product_versions', 'version_allergens']) {
                 const { count, error } = await countVisible(manager, table)
                 expect(error).toBeNull()
                 expect(count, `a manager cannot read ${table}`).toBeGreaterThan(0)
@@ -1120,6 +1123,7 @@ maybe('what each role can see and do', () => {
             for (const table of [
                 'restaurants', 'products', 'menu_items', 'menu_categories',
                 'menu_item_components', 'mix_recipes', 'product_allergens',
+                'product_versions', 'version_allergens', 'product_supplier_prices',
             ]) {
                 const { count } = await countVisible(anon, table)
                 expect(count, `${table} is still readable by anybody`).toBe(0)
@@ -1154,6 +1158,17 @@ maybe('what each role can see and do', () => {
             if (products?.length) {
                 expect(Object.keys(products[0]).sort()).toEqual(['id', 'is_mix', 'name', 'section'])
             }
+
+            // Since 4 October. Which versions there are and which a
+            // restaurant buys, never the supplier, the code or the price.
+            const { data: versions } = await anon.from('public_product_versions').select('*').limit(1)
+            if (versions?.length) {
+                expect(Object.keys(versions[0]).sort()).toEqual(['id', 'is_active', 'is_recommended', 'product_id'])
+            }
+            const { data: bought } = await anon.from('public_restaurant_versions').select('*').limit(1)
+            if (bought?.length) {
+                expect(Object.keys(bought[0]).sort()).toEqual(['restaurant_id', 'version_id'])
+            }
         })
 
         // Reading them is the whole point; changing anything through them is
@@ -1169,6 +1184,10 @@ maybe('what each role can see and do', () => {
                 ['public_mix_recipes', 'id', { mix_product_id: NOBODY }],
                 ['public_products', 'id', { name: 'x' }],
                 ['public_restaurants', 'id', { name: 'x' }],
+                // Since 4 October: what a restaurant's sheet is built from.
+                ['public_version_allergens', 'version_id', { gluten: 'none' }],
+                ['public_product_versions', 'id', { is_recommended: true }],
+                ['public_restaurant_versions', 'version_id', { version_id: NOBODY }],
             ]
             for (const [view, key, change] of views) {
                 expect(await changesRefused(anon, view, key, change), `${view} can be changed by anybody`).toBe(true)
