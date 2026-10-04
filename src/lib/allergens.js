@@ -172,7 +172,7 @@ export function emptyAllergens() {
   return obj
 }
 
-function worst(a, b) {
+export function worst(a, b) {
   // Returns the more severe of two allergen states.
   return SEVERITY[a] >= SEVERITY[b] ? a : b
 }

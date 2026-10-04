@@ -30,9 +30,16 @@ const db = {
     }),
 }
 
-vi.mock('@/lib/supabase', () => ({ supabase: new Proxy({}, { get: (_, k) => db[k] }) }))
+// The real everyRow, paging through the mock: the allergens are read with it.
+vi.mock('@/lib/supabase', async importOriginal => ({
+    everyRow: (await importOriginal()).everyRow,
+    supabase: new Proxy({}, { get: (_, k) => db[k] }),
+}))
 vi.mock('@/context/auth', () => ({ useAuth: () => ({ user: { id: 'u1', role: 'store_manager' } }) }))
-vi.mock('@/context/restaurant', () => ({ useRestaurant: () => ({ activeRestaurant: { id: 'r1', name: 'Point Campus' } }) }))
+// One restaurant object for the whole test, the way the real context keeps
+// one. A new one on every render reads the menu again on every render.
+const RESTAURANT = { id: 'r1', name: 'Point Campus' }
+vi.mock('@/context/restaurant', () => ({ useRestaurant: () => ({ activeRestaurant: RESTAURANT }) }))
 vi.mock('@/context/confirm', () => ({ useConfirm: () => vi.fn(async () => true) }))
 vi.mock('@/context/scroll', () => ({ useKeepScroll: () => {} }))
 
@@ -121,6 +128,7 @@ describe('a second tap on Save', () => {
         )
         await clicker.click(await screen.findByRole('button', { name: '+ Add price' }))
         await clicker.selectOptions(box(screen, 'Supplier', 'select'), 's1')
+        await clicker.type(box(screen, 'Supplier code'), '483508')
         await clicker.type(box(screen, 'Price per case (€)'), '11.5')
         await clicker.type(box(screen, 'Units per case (KG)'), '5')
 

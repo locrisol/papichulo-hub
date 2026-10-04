@@ -38,6 +38,8 @@ const TABLES = {
     product_supplier_prices: 'Supplier price',
     product_aliases: 'Product alias',
     product_allergens: 'Allergen',
+    product_versions: 'Product version',
+    version_allergens: 'Version allergens',
     mix_recipes: 'Recipe',
     price_count_units: 'Pack',
     menu_items: 'Menu item',

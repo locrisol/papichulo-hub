@@ -10,6 +10,7 @@ import { can, roleLabel } from '@/lib/access'
 import { navItems, navTarget, activeNavPath } from '@/lib/nav'
 import { noAllergensDeclared } from '@/lib/allergens'
 import { everyReadArrived } from '@/lib/allergenSheet'
+import { readAllergensAt } from '@/lib/allergensAt'
 import { onAllergensChanged } from '@/lib/allergensChanged'
 import { navBadge, navDot, menuDot } from '@/lib/controlStyles'
 import { useBadges } from '@/components/layout/useBadges'
@@ -117,7 +118,9 @@ export default function AppLayout({ children }) {
             const reads = await Promise.all([
                 everyRow(() => supabase.from('products')
                     .select('id, section, is_mix, is_active, held_for').order('id')),
-                everyRow(() => supabase.from('product_allergens').select('product_id').order('product_id')),
+                // At the restaurant picked: what is answered depends on the
+                // versions it buys (lib/allergensAt).
+                readAllergensAt(activeRestaurant?.id),
                 everyRow(() => supabase.from('mix_recipes')
                     .select('id, mix_product_id, ingredient_product_id').order('id')),
                 everyRow(() => supabase.from('menu_items').select('id, is_active').order('id')),
@@ -133,7 +136,7 @@ export default function AppLayout({ children }) {
         }
         count()
         return () => { live = false }
-    }, [seesProducts, cataloguePage, allergensSaved])
+    }, [seesProducts, cataloguePage, allergensSaved, activeRestaurant?.id])
 
     // The count at the end of an item, if it has one, and the words a screen
     // reader says for it instead of a bare number.

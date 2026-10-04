@@ -2,6 +2,7 @@ import { fmtUnitCost } from '@/lib/format'
 import { useState, useEffect, useRef, Fragment, useCallback } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase, everyRow } from '@/lib/supabase'
+import { readAllergensAt } from '@/lib/allergensAt'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
 import { useConfirm } from '@/context/confirm'
@@ -328,8 +329,8 @@ export default function ProductsPage() {
   useEffect(() => {
     fetchProducts()
     fetchSuppliers()
-    fetchAnswers()
   }, [])
+
 
   // Whether each product has an allergen row, and what is in each dish on
   // sale. Only the columns the rule reads: what the allergens actually are is
@@ -338,9 +339,13 @@ export default function ProductsPage() {
   // Every row, a page at a time, each in an order that cannot tie. Read
   // short, every answered product past the first thousand rows would be
   // marked as not set.
-  async function fetchAnswers() {
+  //
+  // What is answered depends on what the restaurant open buys, so it is read
+  // again when that changes.
+  const fetchAnswers = useCallback(async () => {
     const reads = await Promise.all([
-      everyRow(() => supabase.from('product_allergens').select('product_id').order('product_id')),
+      // At the restaurant open, from the versions it buys (lib/allergensAt).
+      readAllergensAt(activeRestaurant?.id),
       everyRow(() => supabase.from('menu_items').select('id, is_active').order('id')),
       everyRow(() => supabase.from('menu_item_components')
         .select('id, menu_item_id, product_id').order('id')),
@@ -349,7 +354,15 @@ export default function ProductsPage() {
     const [allergens, menuItems, components] = reads.map(r => r.data)
     setAnswersFailed(false)
     setAnswers({ allergens, menuItems, components })
-  }
+  }, [activeRestaurant])
+
+  useEffect(() => {
+    // The fetch sets state when it answers, which this rule would rather
+    // avoid. The alternative is a mark from the last restaurant staying on
+    // the list under the new one's name until something else reads again.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchAnswers()
+  }, [fetchAnswers])
 
   
 
