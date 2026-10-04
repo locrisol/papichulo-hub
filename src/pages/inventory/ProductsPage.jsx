@@ -1501,6 +1501,7 @@ export default function ProductsPage() {
           boughtHere={boughtHere}
           canRecommend={keepsTheList}
           onClose={() => setVersionsOf(null)}
+          onAddPrice={() => navigate(`/catalogue/products/${versionsOf}/prices`)}
           // A recommendation can change which version a restaurant's
           // allergen sheet reads, so the sidebar counts them again.
           onChanged={async () => { allergensChanged(); await Promise.all([fetchProducts(), fetchPrices()]) }}

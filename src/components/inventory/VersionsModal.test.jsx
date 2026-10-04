@@ -11,6 +11,10 @@ let written
 const db = {
     from: vi.fn(table => {
         const q = makeQuery()
+        q.insert = vi.fn(row => {
+            written.push({ table, inserted: row })
+            return makeQuery({ data: null, error: null })
+        })
         q.update = vi.fn(patch => {
             const step = makeQuery()
             step.eq = vi.fn((column, value) => { written.push({ table, patch, [column]: value }); return step })
@@ -35,9 +39,12 @@ const PLAIN = {
     id: 'v2', product_id: 'p1', supplier_id: 's1', supplier_code: '5013972', name: 'Flour plain wraps 12"',
     is_recommended: false, is_active: true, section: null, also_in: null,
 }
-const SUPPLIERS = [{ id: 's1', name: 'Sysco Ireland' }]
+const SUPPLIERS = [
+    { id: 's1', name: 'Sysco Ireland', is_active: true },
+    { id: 's2', name: 'Local', is_active: true, works_without_codes: true },
+]
 
-function open({ canRecommend = true, product = TORTILLA, onChanged = vi.fn() } = {}) {
+function open({ canRecommend = true, product = TORTILLA, onChanged = vi.fn(), onAddPrice = vi.fn() } = {}) {
     render(
         <VersionsModal
             product={product}
@@ -47,6 +54,7 @@ function open({ canRecommend = true, product = TORTILLA, onChanged = vi.fn() } =
             canRecommend={canRecommend}
             onClose={() => {}}
             onChanged={onChanged}
+            onAddPrice={onAddPrice}
         />,
     )
     return onChanged
@@ -110,5 +118,45 @@ describe('the versions of a product', () => {
         expect(row('Flour plain wraps').getByLabelText('Kept in')).toHaveValue('Dry')
         await userEvent.click(row('Flour plain wraps').getByRole('button', { name: 'Cold Room' }))
         expect(written).toEqual([{ table: 'product_versions', patch: { section: 'Dry', also_in: ['Cold Room'] }, id: 'v2' }])
+    })
+})
+
+// His ask of 4 October: a store manager could add a price and saw no way to
+// add a version. A price is how a version starts, and the dialog says so.
+describe('adding a version', () => {
+    it('says a version starts with a price, and goes to the prices for everybody', async () => {
+        const onAddPrice = vi.fn()
+        open({ canRecommend: false, onAddPrice })
+        expect(screen.getByText(/A version is added when a price is saved/)).toBeInTheDocument()
+        await userEvent.click(screen.getByRole('button', { name: 'Add a price' }))
+        expect(onAddPrice).toHaveBeenCalled()
+        expect(screen.queryByRole('button', { name: 'Add a version' })).toBeNull()
+    })
+
+    it('lets an owner add one nobody buys yet, recommended', async () => {
+        const changed = open()
+        await userEvent.click(screen.getByRole('button', { name: 'Add a version' }))
+        await userEvent.selectOptions(screen.getByLabelText('Supplier'), 's1')
+        await userEvent.type(screen.getByLabelText('Supplier code'), ' 497871 ')
+        await userEvent.type(screen.getByLabelText('Name', { selector: '#new-version-name' }), 'Santa Maria wrap 10"')
+        await userEvent.click(screen.getByRole('button', { name: 'Add the version' }))
+        await waitFor(() => expect(changed).toHaveBeenCalled())
+        expect(written).toEqual([{
+            table: 'product_versions',
+            inserted: { product_id: 'p1', supplier_id: 's1', supplier_code: '497871', name: 'Santa Maria wrap 10"', is_recommended: true },
+        }])
+    })
+
+    it('needs a code unless the supplier works without codes', async () => {
+        open()
+        await userEvent.click(screen.getByRole('button', { name: 'Add a version' }))
+        await userEvent.selectOptions(screen.getByLabelText('Supplier'), 's1')
+        await userEvent.click(screen.getByRole('button', { name: 'Add the version' }))
+        expect(screen.getByRole('alert')).toHaveTextContent('Sysco Ireland uses codes, so say which one.')
+        expect(written).toEqual([])
+        await userEvent.selectOptions(screen.getByLabelText('Supplier'), 's2')
+        await userEvent.click(screen.getByRole('button', { name: 'Add the version' }))
+        await waitFor(() => expect(written).toHaveLength(1))
+        expect(written[0].inserted).toMatchObject({ supplier_id: 's2', supplier_code: null })
     })
 })
