@@ -170,12 +170,42 @@ export function costTone(share, target) {
 //
 // The break is a <br />, so it happens in the same place every time rather
 // than wherever the width runs out.
+//
+// The share on top and the money under it, his order of 4 October: the share
+// against target is what a cost is judged by, so it is what is read first.
+// It wears the target's colour; the money is quiet.
 export function withShare(amount, share, tone) {
     const rate = pct(share)
     if (!rate) return money(amount)
-    const colour = tone || MUTED
-    return `${money(amount)}<br /><span style="color:${colour};font-size:13px;
-        font-weight:400;">(${rate})</span>`
+    const top = tone ? `<span style="color:${tone};">${rate}</span>` : rate
+    return `${top}<br /><span style="color:${MUTED};font-size:13px;
+        font-weight:400;">${money(amount)}</span>`
+}
+
+// The fixed overheads worth a line of their own.
+//
+// All of them the first time, when nothing has been carried from an earlier
+// week. After that only one that moved, or one new this week: a list of
+// eleven lines that are the same as last week's is eleven lines nobody reads,
+// and the one that changed was hidden among them. The total is always shown.
+export function overheadsToShow(items) {
+    const list = items || []
+    const first = list.length > 0 && list.every(i => i.carried_from == null)
+    if (first) return { first, lines: list }
+    return {
+        first,
+        lines: list.filter(i => i.carried_from == null
+            || Math.abs(num(i.amount) - num(i.carried_from)) >= 0.005),
+    }
+}
+
+// Third party delivery as one figure: what the platforms cost, as a share of
+// what the online platforms took this week.
+export function deliverySummary(f) {
+    const online = (f?.platforms || []).filter(p => p.bucket === 'online_platform')
+    const taken = online.reduce((t, p) => t + num(p.taken), 0)
+    const total = num(f?.deliveryTotal)
+    return { total, taken, rate: taken > 0 ? (total / taken) * 100 : null }
 }
 
 export function fmtDate(iso) {
@@ -391,17 +421,17 @@ function comments(items) {
 // gone black, floating with nothing round it. Sitting it in a white card with
 // a border and some padding makes that look meant rather than broken, and
 // costs nothing in the light.
-function chart(url, caption) {
+function chart(url, caption, alt = caption) {
     if (!url) return ''
     return `<tr><td style="padding:18px 0 0;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
             style="background:#ffffff;border-top:1px solid ${BORDER};border-bottom:1px solid ${BORDER};">
             <tr><td style="padding:6px 0;">
-                <img src="${escapeHtml(url)}" width="100%" alt="${escapeHtml(caption)}"
+                <img src="${escapeHtml(url)}" width="100%" alt="${escapeHtml(alt)}"
                     style="display:block;width:100%;max-width:${WIDTH}px;height:auto;border:0;" />
             </td></tr>
         </table>
-        <div style="margin-top:7px;padding:0 ${SIDE}px;font-family:${FONT};font-size:12px;color:${MUTED};">${escapeHtml(caption)}</div>
+        ${caption ? `<div style="margin-top:7px;padding:0 ${SIDE}px;font-family:${FONT};font-size:12px;color:${MUTED};">${escapeHtml(caption)}</div>` : ''}
     </td></tr>`
 }
 
@@ -435,7 +465,7 @@ function salesAndCosts(section, f, charts) {
     // wrong way round: by then you have already done the work the picture was
     // going to save you.
     return heading(section.title, section.number)
-        + chart(charts.sales, 'Net sales against what it cost to make, week by week.')
+        + chart(charts.sales, '', 'Net sales against what it cost to make, week by week.')
         + figures([
         line({ label: 'Net sales', value: money(f.net), total: true }),
         line({ label: 'Gross sales', value: money(f.gross), tone: MUTED }),
@@ -447,114 +477,52 @@ function salesAndCosts(section, f, charts) {
         }),
         line({ label: 'Cost of sales', value: withShare(f.costOfSales, f.costOfSalesPct), total: true }),
     ])
-        + note('Every percentage is of net sales.'
-            + (targetNote
-                ? ` Green is at or under target, amber within two points over, red past that. This week was judged against ${targetNote}.`
-                : ''))
+        + (targetNote ? note(`Current targets: ${targetNote}.`) : '')
         + comments(sectionComments(section))
-}
-
-// What a platform cost the week, and the share it kept.
-//
-// Since figures version 2 the platform carries both, worked out from its
-// Monday to Sunday statement. A report frozen before that has only the typed
-// figure, which was the cost, and a share against what it took in our week.
-function deliveryOf(item, platform) {
-    if (platform && platform.cost != null) {
-        return {
-            cost: num(platform.cost),
-            rate: platform.rate == null ? null : num(platform.rate),
-            // What the share was worked out against: the platform's own
-            // takings over its statement's Monday to Sunday.
-            against: platform.statementTaken == null ? null : num(platform.statementTaken),
-        }
-    }
-    const sales = num(platform?.taken)
-    return {
-        cost: num(item.amount),
-        rate: sales > 0 ? (num(item.amount) / sales) * 100 : null,
-    }
 }
 
 function profitAndLoss(section, f, charts) {
     const overheads = of(section, 'overhead')
     const delivery = of(section, 'delivery')
-    const platforms = f.platforms || []
+    const t = f.targets || {}
 
-    const rows = []
-    for (const item of overheads) {
-        rows.push(line({
-            label: escapeHtml(item.label || 'Overhead'), value: money(item.amount), indent: true,
-        }))
-    }
+    // Every line the first time, then only what changed and what it was.
+    const shown = overheadsToShow(overheads)
+    const rows = shown.lines.map(item => line({
+        label: escapeHtml(item.label || 'Overhead')
+            + (!shown.first && item.carried_from != null ? small(`was ${money(item.carried_from)}`) : '')
+            + (!shown.first && item.carried_from == null ? small('new this week') : ''),
+        value: money(item.amount),
+        indent: true,
+    }))
     if (overheads.length > 0) {
-        rows.push(line({ label: 'Fixed overheads', value: money(f.standing), total: true }))
-    }
-
-    // The delivery platforms get a table of their own, and that is the whole of
-    // the overhead fix.
-    //
-    // A table gives every row in it the same columns, and a column comes out as
-    // wide as the widest thing anywhere in it. The share beside a platform is a
-    // line that cannot break, so in one table it was setting the figure column
-    // for the eleven overheads above it as well, and each of those labels got
-    // whatever was left of a phone screen. Two tables and the overheads are
-    // measured against their own money again.
-    //
-    // Nothing moves. Both tables fill the same cell and the figures are right
-    // aligned in both, so the money still reads as one column, and the rule
-    // under the last overhead meets the first platform with no gap.
-    const paidFrom = rows.length
-
-    for (const item of delivery) {
-        // What is worth knowing about a platform's bill is what share of that
-        // platform's own takings it was. Against total sales it would look
-        // small on every platform and say nothing about any of them.
-        //
-        // It goes UNDER the name, not beside the figure. Beside it, the two
-        // together were a line of forty three characters that could not break,
-        // and in this table that is the widest thing in the figure column: it
-        // squeezed the platform names into two lines and "Third party delivery
-        // costs" into four. Splitting the tables took that string off the
-        // overheads; this takes it off the platforms as well.
-        const platform = platforms.find(p => p.id === item.key)
-        //
-        // Since 27 September it says what the share was taken against and
-        // over which days, his words: "the percentage is calculated against X
-        // amount and done Monday to Sunday as that's the way the cost reports
-        // comes". A report frozen before the statement week keeps saying what
-        // it said.
-        const { cost, rate, against } = deliveryOf(item, platform)
-        const over = against != null && f.statement?.words
-            ? `${pct(rate)} of the ${money(against)} it took ${escapeHtml(f.statement.words)}, the days its statement covers`
-            : `${pct(rate)} of what it took`
         rows.push(line({
-            label: escapeHtml(item.label || 'Platform')
-                + (rate != null
-                    ? `<br /><span style="color:${MUTED};font-size:13px;">${over}</span>`
-                    : ''),
-            colour: platform?.colour,
-            value: money(cost),
-            indent: true,
-        }))
-    }
-    if (delivery.length > 0) {
-        rows.push(line({
-            label: 'Third party delivery costs', value: money(f.deliveryTotal), total: true,
+            label: 'Fixed overheads' + (!shown.first && shown.lines.length === 0 ? small('No change from last week') : ''),
+            value: money(f.standing),
+            total: true,
         }))
     }
 
-    // The platform costs go under the platform costs, and net earnings is what
-    // is left after them, so the picture of what they cost belongs on the near
-    // side of that box rather than three screens past it.
-    return heading(section.title, section.number) + figures(rows.slice(0, paidFrom))
-        + (rows.length > paidFrom ? figures(rows.slice(paidFrom)) : '')
-        + (delivery.length > 0 && f.statement?.words
-            ? note('The platforms bill Monday to Sunday, a day behind our week. Each share is what '
-                + `the platform kept on its statement for ${f.statement.words}, and the cost is that `
-                + 'share of what it took this week.')
-            : '')
-        + chart(charts.delivery, 'What each platform has cost, week by week.')
+    // One line for the platforms, his of 4 October: what they cost against
+    // what the online platforms took. The platform by platform figures are on
+    // the report in the Hub, and the chart under this says which one moved.
+    const d = deliverySummary(f)
+    const deliveryRow = delivery.length > 0
+        ? figures([line({
+            label: 'Third party delivery costs'
+                + (d.rate != null ? small(`of ${money(d.taken)} online sales`) : ''),
+            value: d.rate != null ? withShare(d.total, d.rate, costTone(d.rate, t.delivery)) : money(d.total),
+            total: true,
+        })])
+        : ''
+
+    return heading(section.title, section.number)
+        + (rows.length ? figures(rows) : '')
+        + deliveryRow
+        + (delivery.length > 0 && f.statement?.words ? note(`Calculated ${escapeHtml(f.statement.words)}.`) : '')
+        + chart(charts.delivery,
+            t.delivery ? `What each platform kept of its sales. The dashed line is the ${t.delivery}% target.` : '',
+            'What each platform kept of its sales, week by week.')
         + bigFigure({
             label: 'Net earnings',
             value: money(f.earnings),
@@ -562,7 +530,7 @@ function profitAndLoss(section, f, charts) {
             tone: num(f.earnings) < 0 ? RED : GREEN,
         })
         + note('Net earnings is net sales minus food, labour, packaging and cleaning, fixed '
-            + 'overheads and third party delivery costs. The percentage under it is of net sales.')
+            + 'overheads and third party delivery costs.')
         + chart(charts.earnings, 'Net earnings, week by week.')
         + comments(sectionComments(section))
 }
@@ -1012,22 +980,6 @@ function cappedText(all, shown, toLine) {
     return lines
 }
 
-// The headlines, one to a line, with what kind of thing it is in bold: his
-// choice on 26 September for the mail (B). The label is everything before the
-// first colon, which is how the app writes them.
-function wordsBlock(words) {
-    if (!words?.length) return ''
-    const one = w => {
-        const at = w.indexOf(': ')
-        return at === -1
-            ? escapeHtml(w)
-            : `<strong style="color:${DARK};">${escapeHtml(w.slice(0, at + 1))}</strong>&#32;${escapeHtml(w.slice(at + 2))}`
-    }
-    return `<tr><td style="padding:14px ${SIDE}px 0;font-family:${FONT};font-size:14px;line-height:1.6;color:${INK};">`
-        + words.map(w => `<div style="margin:0 0 8px;">${one(w)}</div>`).join('')
-        + '</td></tr>'
-}
-
 export function pricesSection(section, f) {
     const p = f.prices
     if (!p) {
@@ -1038,35 +990,9 @@ export function pricesSection(section, f) {
     const t = p.totals || {}
     const shown = pricesInMail(p)
 
-    // The four figures an owner reads first, as rows, with what each one is
-    // under its name rather than beside the money.
-    const summary = figures([
-        line({
-            label: 'Same product, new price'
-                + small(p.moves.length ? `${p.moves.length} ${p.moves.length === 1 ? 'product' : 'products'}` : 'Every code cost what it did'),
-            value: p.moves.length ? signedMoney(t.moves) : 'None',
-            tone: toneFor(t.moves),
-        }),
-        line({
-            label: 'Bought as something else'
-                + small(p.switches.length ? `${p.switches.length} ${p.switches.length === 1 ? 'product' : 'products'}` : 'Everything was the usual one'),
-            value: p.switches.length ? signedMoney(t.switches) : 'None',
-            tone: toneFor(t.switches),
-        }),
-        line({
-            label: 'Recipes out of line'
-                + small(t.cannot ? `and ${t.cannot} that cannot be compared` : `more than ${p.threshold}% off what we pay`),
-            value: String(t.recipes || 0),
-            tone: t.recipes ? AMBER : MUTED,
-        }),
-        line({
-            label: 'Came back'
-                + small(`${p.back.length} credit ${p.back.length === 1 ? 'note' : 'notes'}`
-                    + (t.owedCount ? `, ${t.owedCount} still owed` : '')),
-            value: money(t.back),
-        }),
-    ])
-
+    // His of 4 October: the mail carries the cards and nothing above them.
+    // The four figures, the sentences and where the prices were read from
+    // all said again what the cards say, and stay on the report in the Hub.
     const moves = priceCard('Same product, new price', p.moves.length ? signedMoney(t.moves) : '', toneFor(t.moves),
         [
             ...cappedRows(p.moves, shown.moves, m => line({
@@ -1123,19 +1049,22 @@ export function pricesSection(section, f) {
     // still owed. The reasons are lines of their own rather than a bar, which
     // a mail cannot be trusted to draw.
     const backRows = [
-        ...(p.reasons || []).map(r => line({
-            inset: 14,
-            label: `<span style="color:${r.colour};">&#9632;</span>&nbsp;${escapeHtml(r.label)}`,
-            value: money(r.money),
-        })),
-        ...p.back.map(b => line({
-            inset: 14,
-            label: escapeHtml(b.what)
-                + small(`${escapeHtml(b.number || 'Credit note')} of ${dayMonth(b.date)}: `
-                    + b.parts.map(part => escapeHtml(part.label)).join(', ')),
-            value: money(b.money),
-            tone: GREEN,
-        })),
+        // Each reason with its total, and under it what came back for it, so
+        // the reason is said once rather than on every line. A credit note
+        // with two reasons is under both, with each one's share of it.
+        ...backByReason(p).flatMap(({ reason, rows }) => [
+            line({
+                inset: 14,
+                label: `<span style="color:${reason.colour};">&#9632;</span>&nbsp;<strong>${escapeHtml(reason.label)}</strong>`,
+                value: `<strong>${money(reason.money)}</strong>`,
+            }),
+            ...rows.map(r => line({
+                inset: 28,
+                label: escapeHtml(r.what) + small(`${escapeHtml(r.number || 'Credit note')} of ${dayMonth(r.date)}`),
+                value: money(r.money),
+                tone: GREEN,
+            })),
+        ]),
         ...(p.owed.length ? [subHeading('Still waiting for a credit')] : []),
         ...p.owed.map(o => line({
             inset: 14,
@@ -1163,27 +1092,28 @@ export function pricesSection(section, f) {
     // has to know which suppliers were only a typed total. Absent on anything
     // frozen before it existed.
     return heading(section.title, section.number)
-        + (p.readFrom?.words ? wordsBlock([p.readFrom.words]) : '')
-        + summary
-        + wordsBlock(p.words)
         + moves + switches + recipes + back
         + fresh
         + note(`Recipes checked on ${fmtDate(p.checkedOn)}. Prices are without VAT, as printed on the invoices.`)
         + comments(sectionComments(section))
 }
 
+// The credit notes under each reason, biggest reason first, each with the
+// part of it that reason covers.
+export function backByReason(p) {
+    return (p?.reasons || []).map(reason => ({
+        reason,
+        rows: (p.back || []).flatMap(b => b.parts
+            .filter(part => part.kind === reason.kind)
+            .map(part => ({ what: b.what, number: b.number, date: b.date, money: part.money }))),
+    }))
+}
+
 function pricesText(p) {
     if (!p) return ['  Prices were not read for this week.']
     const t = p.totals || {}
     const shown = pricesInMail(p)
-    const out = [
-        ...(p.readFrom?.words ? [`  ${p.readFrom.words}`] : []),
-        `  Same product, new price: ${p.moves.length ? signedMoney(t.moves) : 'none'}`,
-        `  Bought as something else: ${p.switches.length ? signedMoney(t.switches) : 'none'}`,
-        `  Recipes out of line: ${t.recipes || 0}${t.cannot ? `, and ${t.cannot} that cannot be compared` : ''}`,
-        `  Came back: ${money(t.back)} on ${p.back.length} credit ${p.back.length === 1 ? 'note' : 'notes'}`,
-    ]
-    for (const w of p.words || []) out.push(`  - ${w}`)
+    const out = []
     if (p.moves.length) {
         out.push('  Same product, new price')
         out.push(...cappedText(p.moves, shown.moves, m => `    ${m.name}: ${priceOf(m.was, m.per)} to ${priceOf(m.now, m.per)} ${m.per}, ${change(m.change)}, ${signedMoney(m.effect)}`
@@ -1201,11 +1131,13 @@ function pricesText(p) {
             : `recipes ${unitMoney(r.recipe)}, paid ${unitMoney(r.paid)} ${r.unit}, ${change(r.gap)}`)))
     }
     if (p.back.length) {
-        out.push('  Came back')
-        for (const b of p.back) {
-            out.push(`    ${b.what}: ${money(b.money)}, ${b.parts.map(part => part.label).join(', ')}`)
+        out.push(`  Came back: ${money(t.back)}`)
+        for (const { reason, rows } of backByReason(p)) {
+            out.push(`    ${reason.label}: ${money(reason.money)}`)
+            for (const r of rows) out.push(`      ${r.what}: ${money(r.money)}`)
         }
     }
+    if (!out.length) out.push('  Nothing moved on prices this week and nothing came back.')
     if (p.owed.length) {
         out.push('  Still waiting for a credit')
         for (const o of p.owed) out.push(`    ${o.what}: ${o.money == null ? 'not priced' : money(o.money)}, since ${dayMonth(o.since)}`)
@@ -1405,7 +1337,7 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
     const out = []
     const weekStart = report.week_start
     const share = (label, amount, rate) =>
-        `  ${label}: ${money(amount)}${rate == null ? '' : ` (${pct(rate)})`}`
+        `  ${label}: ${rate == null ? money(amount) : `${pct(rate)} (${money(amount)})`}`
 
     out.push(`${restaurant?.name || 'The restaurant'} weekly summary report`)
     out.push(`Week ${weekNumber(weekStart)} (${slashDate(weekStart)} to ${slashDate(weekEnd(weekStart))})`)
@@ -1437,13 +1369,17 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
             out.push(share('Packaging and cleaning', f.packaging, f.packagingPct))
             out.push(share('Cost of sales', f.costOfSales, f.costOfSalesPct))
         } else if (section.key === 'profit_loss') {
-            for (const item of of(section, 'overhead')) out.push(share(item.label, item.amount, null))
-            out.push(share('Fixed overheads', f.standing, null))
-            for (const item of of(section, 'delivery')) {
-                const platform = (f.platforms || []).find(p => p.id === item.key)
-                out.push(share(item.label, deliveryOf(item, platform).cost, null))
+            const shown = overheadsToShow(of(section, 'overhead'))
+            for (const item of shown.lines) {
+                out.push(share(item.label, item.amount, null)
+                    + (!shown.first && item.carried_from != null ? `, was ${money(item.carried_from)}` : ''))
             }
-            out.push(share('Third party delivery costs', f.deliveryTotal, null))
+            out.push(share('Fixed overheads', f.standing, null))
+            if (of(section, 'delivery').length) {
+                const d = deliverySummary(f)
+                out.push(share('Third party delivery costs', d.total, d.rate)
+                    + (d.rate != null ? ` of ${money(d.taken)} online sales` : ''))
+            }
             out.push(share('Net earnings', f.earnings, f.earningsPct))
         } else if (section.key === 'prices_suppliers') {
             out.push(...pricesText(f.prices))

@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { fmtMoney } from '@/lib/format'
 import { shortDate } from '@/lib/dates'
 import { CLAIM_KINDS } from '@/lib/invoiceClaims'
-import { decisionsFrom } from '@/lib/invoiceReport'
+import { backByReason, decisionsFrom } from '@/lib/invoiceReport'
 import { renumberPlan, alternatePlan } from '@/lib/priceEvents'
 import {
     badge, rowButton, compactField, tableHeadRow, tableHeadCell,
@@ -635,51 +635,36 @@ function Back({ back, reasons, owed, earlier = [], total, canEdit, jobs, busy, o
             empty="Nothing came back this week and nothing is owed."
             count={listed}
         >
-            {reasons.length > 0 && (
-                <div className="px-3 pt-3 pb-1">
-                    <div className="flex h-3 rounded-md overflow-hidden gap-0.5" role="img" aria-label="What came back, by reason">
-                        {reasons.map(r => (
-                            <i
-                                key={r.kind}
-                                className="block h-full"
-                                style={{ width: `${(100 * r.money) / (total || 1)}%`, background: r.colour }}
-                            />
-                        ))}
-                    </div>
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-gray-700">
-                        {reasons.map(r => (
-                            <span key={r.kind} className="inline-flex items-center gap-1.5">
-                                <i className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: r.colour }} />
-                                {r.label} <b className="tabular-nums">{fmtMoney(r.money)}</b>
-                            </span>
-                        ))}
-                    </div>
-                </div>
-            )}
-
-            {back.map(b => (
-                <Row key={b.id}>
-                    <div className="min-w-0">
-                        <p className="text-sm font-semibold text-gray-900">{b.what}</p>
-                        <p className="text-xs text-muted">
-                            {b.number || 'Credit note'} of {shortDate(b.date)}
-                            {b.against ? `, on ${b.against.number || 'an invoice'} of ${shortDate(b.against.date)}` : ''}
-                        </p>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                        {b.parts.map(part => (
-                            <span
-                                key={part.kind}
-                                className={`${badge} border bg-white text-gray-800`}
-                                style={{ borderColor: part.colour }}
-                            >
-                                {part.label}{b.parts.length > 1 ? ` ${fmtMoney(part.money)}` : ''}
-                            </span>
-                        ))}
-                        {b.given && <span className="text-xs text-muted self-center">given afterwards</span>}
-                    </div>
-                    <p className="text-sm font-bold tabular-nums text-green-700 sm:text-right">{fmtMoney(b.money)}</p>
-                </Row>
+            {/* Each reason with its total on top and what came back for it
+                underneath, so the reason is said once (his, 4 October). */}
+            {backByReason(reasons, back).map(({ reason, rows }) => (
+                <Fragment key={reason.kind}>
+                    <p className="px-3 py-2 bg-app-bg border-y border-border flex items-center justify-between gap-3 text-sm">
+                        <span className="inline-flex items-center gap-2 font-bold text-gray-900">
+                            <i className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: reason.colour }} />
+                            {reason.label}
+                        </span>
+                        <b className="tabular-nums text-green-700">{fmtMoney(reason.money)}</b>
+                    </p>
+                    {rows.map(b => (
+                        <Row key={`${reason.kind}-${b.id}`}>
+                            <div className="min-w-0">
+                                <p className="text-sm font-semibold text-gray-900">{b.what}</p>
+                                <p className="text-xs text-muted">
+                                    {b.number || 'Credit note'} of {shortDate(b.date)}
+                                    {b.against ? `, on ${b.against.number || 'an invoice'} of ${shortDate(b.against.date)}` : ''}
+                                </p>
+                            </div>
+                            <div>
+                                {b.whole !== b.money && (
+                                    <span className="text-xs text-muted">Part of {fmtMoney(b.whole)}</span>
+                                )}
+                                {b.given && <span className="text-xs text-muted">Reason given afterwards</span>}
+                            </div>
+                            <p className="text-sm font-bold tabular-nums text-green-700 sm:text-right">{fmtMoney(b.money)}</p>
+                        </Row>
+                    ))}
+                </Fragment>
             ))}
 
             {owed.length > 0 && (

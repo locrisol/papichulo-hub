@@ -921,6 +921,19 @@ export function reasonsOf(back) {
     return [...by.values()].sort((a, b) => b.money - a.money)
 }
 
+// The credit notes under each reason, biggest reason first, each with the part
+// of it that reason covers, so the reason is said once with its total rather
+// than on every line (his, 4 October). A credit note with two reasons is under
+// both. The mail has its own copy, kept equal by a test.
+export function backByReason(reasons, back) {
+    return (reasons || []).map(reason => ({
+        reason,
+        rows: (back || []).flatMap(b => b.parts
+            .filter(part => part.kind === reason.kind)
+            .map(part => ({ ...b, money: part.money, whole: b.money }))),
+    }))
+}
+
 // What somebody has to decide, for the box at the top.
 //
 // Recipes that are off, a version bought three times in a row, and a credit
