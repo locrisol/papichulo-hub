@@ -759,6 +759,10 @@ export default function ProductsPage() {
       // a product asks for. Written here so changing any of them is done where
       // you are rather than on two other screens.
       const existing = getPreferredPrice(editingProduct.id)
+      // The version the form's price is on, whose allergens the form edits.
+      // The price's own after saving, since a new code can move it to a new
+      // version (see price_version in schema.sql).
+      let versionId = existing?.version_id || null
 
       if (wantsPrice) {
         const row = {
@@ -792,6 +796,7 @@ export default function ProductsPage() {
 
         const notes = await afterPrice(editingProduct.id, saved, existing || null)
         if (notes.length) setError(notes.join(' '))
+        if (saved?.version_id) versionId = saved.version_id
 
         if (saved) {
           const packsErr = await replacePacks(saved.id, packs)
@@ -812,10 +817,15 @@ export default function ProductsPage() {
       // because somebody cleared a field would be a poor way to lose a cost.
 
       if (allergensTouched && !allergensUnread && declaresAllergens(formData)) {
-        const { error: allergenErr } = await supabase
-          .from('product_allergens')
-          .upsert({ product_id: editingProduct.id, ...allergens, updated_at: new Date().toISOString() },
-            { onConflict: 'product_id' })
+        // On the version when there is one, which is what the sheet reads;
+        // the product's own row only for a MIX or a product never priced.
+        const { error: allergenErr } = versionId
+          ? await supabase.from('version_allergens')
+              .upsert({ version_id: versionId, ...allergens, updated_at: new Date().toISOString() },
+                { onConflict: 'version_id' })
+          : await supabase.from('product_allergens')
+              .upsert({ product_id: editingProduct.id, ...allergens, updated_at: new Date().toISOString() },
+                { onConflict: 'product_id' })
 
         if (allergenErr) {
           setFormProblem(savedButNot(formData.name,
@@ -878,6 +888,8 @@ export default function ProductsPage() {
       // with the form, and a product with no allergen row reads to a customer
       // as having none of the fourteen.
       const missed = []
+      // The version the new price started, whose allergens the form set.
+      let createdVersion = null
       // Things that happened after the price, that it is worth knowing did not.
       const notes = []
 
@@ -903,6 +915,7 @@ export default function ProductsPage() {
           // The packs typed in go with it, since they have nothing to hang off.
           if (packs.length > 0) missed.push({ ...packsMissed, error: priceErr })
         } else {
+          createdVersion = newPrice?.version_id || null
           notes.push(...await afterPrice(data.id, newPrice, null))
 
           // The packs, which belong to the price rather than to the product and
@@ -937,9 +950,11 @@ export default function ProductsPage() {
       // Not written for anything that has none to declare, even if the boxes
       // were ticked before the section was changed to Cleaning.
       if (allergensTouched && declaresAllergens(formData) && data) {
-        const { error: allergenErr } = await supabase
-          .from('product_allergens')
-          .insert({ product_id: data.id, ...allergens })
+        // On the version its price started, which is what the sheet reads.
+        // A product with no price yet keeps them on itself.
+        const { error: allergenErr } = createdVersion
+          ? await supabase.from('version_allergens').insert({ version_id: createdVersion, ...allergens })
+          : await supabase.from('product_allergens').insert({ product_id: data.id, ...allergens })
 
         if (allergenErr) {
           missed.push({ what: 'allergens', plural: true, error: allergenErr, next: 'Set the allergens from its Allergens page.' })
@@ -1042,11 +1057,11 @@ export default function ProductsPage() {
     setAllergensTouched(false)
     setAllergensUnread(false)
     editingId.current = product.id
-    const { data: row, error: rowError } = await supabase
-      .from('product_allergens')
-      .select('*')
-      .eq('product_id', product.id)
-      .maybeSingle()
+    // The version the form's price is on, when there is one: that is what
+    // the form edits and what the sheet reads.
+    const { data: row, error: rowError } = price?.version_id
+      ? await supabase.from('version_allergens').select('*').eq('version_id', price.version_id).maybeSingle()
+      : await supabase.from('product_allergens').select('*').eq('product_id', product.id).maybeSingle()
 
     // Another product was opened, or the form shut, while this was on its way.
     if (editingId.current !== product.id) return
