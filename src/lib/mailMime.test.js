@@ -152,6 +152,9 @@ describe('a heavy week', () => {
                 key: 'online_sales', title: 'Online sales', sort_order: 3, items: [
                     ...rows('review', i => ({ key: 'p1', meta: { stars: 2, count: 1 }, note: `A review about the food, number ${i}` })),
                     ...rows('refund', i => ({ key: 'p1', note: `Missing item ${i}`, meta: { claimed: true } })),
+                    // Added on 4 October when the shorter mail took the week
+                    // under the mark: the same weight as before, in reviews.
+                    ...rows('review', i => ({ key: 'p1', meta: { stars: 1, count: 1 }, note: `A second review about the wait, number ${i}` })),
                 ],
             },
             { key: 'people_ops', title: 'People and operations', sort_order: 4, items: [] },

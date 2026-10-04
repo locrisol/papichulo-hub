@@ -24,7 +24,7 @@ import { paperworkFor } from '@/lib/reportPeople'
 import { reprintDue } from '@/lib/allergenSheet'
 import { weeksBack, byWeek } from '@/lib/reportChart'
 import { FOOD, PACKAGING } from '@/lib/invoiceCategories'
-import { chartSpecs } from '@/lib/reportCharts'
+import { chartSpecs, deliveryRates } from '@/lib/reportCharts'
 import { brandFor } from '@/lib/platformBrand'
 import { uploadCharts, sendReport, sendWords } from '@/lib/reportMail'
 import ReportComments from '@/components/reports/ReportComments'
@@ -255,7 +255,7 @@ export default function ReportPage() {
         }]
         : []
     const held = [...deliveryHeld, ...reviewHeld]
-    const specs = chartSpecs({ onlinePlatforms, corporatePlatforms })
+    const specs = chartSpecs({ onlinePlatforms, corporatePlatforms, deliveryTarget: targets.delivery })
 
     // How the last send went, so somebody who presses publish is told whether
     // five people have the week or nobody does.
@@ -586,7 +586,8 @@ export default function ReportPage() {
                         - pl.standing - pl.deliveryTotal
                 }
 
-                return row
+                // What each platform kept of what it took, for the delivery chart.
+                return { ...row, ...deliveryRates(row, shownPlatforms) }
             }))
 
             // The team, for the paperwork lines. Only the fields the
@@ -612,6 +613,9 @@ export default function ReportPage() {
                 food: resolveTarget(overrides || [], 'food', weekStart, num(activeRestaurant?.food_cost_target)),
                 labour: resolveTarget(overrides || [], 'labour', weekStart, num(activeRestaurant?.labour_cost_target)),
                 packaging: resolveTarget(overrides || [], 'packaging', weekStart, num(activeRestaurant?.packaging_cost_target)),
+                // What each delivery platform should keep under, of what it
+                // took. Drawn on the delivery chart as its line.
+                delivery: resolveTarget(overrides || [], 'delivery', weekStart, num(activeRestaurant?.delivery_cost_target)),
             })
 
             setReadFailed('')
@@ -859,6 +863,7 @@ export default function ReportPage() {
             // stopping the report.
             const charts = await uploadCharts({
                 reportId: report.id, rows: history, onlinePlatforms, corporatePlatforms,
+                deliveryTarget: targets.delivery,
             })
 
             // What the last mail said, kept so the next one can say what
@@ -947,7 +952,8 @@ export default function ReportPage() {
         setSaving(true)
         try {
             const charts = await uploadCharts({
-                reportId: report.id, rows: history, onlinePlatforms, corporatePlatforms, test: true,
+                reportId: report.id, rows: history, onlinePlatforms, corporatePlatforms,
+                deliveryTarget: targets.delivery, test: true,
             })
             const result = await sendReport({
                 reportId: report.id, test: true, figures: frozenFigures(), charts,

@@ -2,13 +2,13 @@ import { describe, it, expect } from 'vitest'
 import {
     reportEmail, money, negative, pct, withShare, weekWords, weekNumber, slashDate,
     escapeHtml, tidy, stars, starColour, costTone, senderFor, heldNotice, WIDTH, SIDE,
-    renewalWords, escapeLines, page, headline,
+    renewalWords, escapeLines, page, headline, overheadsToShow, backByReason,
     deliverable, isJustTheGoodbye, replyToFor, switchedOff, whatToSend, correctionSend,
 } from '../../supabase/functions/weekly-report-email/email'
 import { readFileSync } from 'node:fs'
 import { MAIL_WIDTH } from '@/lib/reportChartImage'
 import { changesSince } from '../../supabase/functions/weekly-report-email/changes'
-import { priceWeek } from '@/lib/invoiceReport'
+import { priceWeek, backByReason as webBackByReason } from '@/lib/invoiceReport'
 import { weekCleaning } from '@/lib/checklists'
 
 const figures = {
@@ -161,25 +161,20 @@ describe('reportEmail', () => {
         expect(mail.html).toContain('€16,450.00')
     })
 
-    it('puts the share on the line under the money', () => {
-        // Beside it, a figure and its share together were the widest thing
-        // in the column, and a column is as wide as its widest thing, so
-        // "Net sales" and "Cost of sales" broke in two to make room for a
-        // bracket. Stacked, the column is only as wide as the money and
-        // every label in the section gets those points back.
-        expect(mail.html).toContain('€4,720.00<br /><span')
-        expect(mail.html).toContain('(32.00%)</span>')
+    it('puts the share first and the money on the line under it', () => {
+        // Stacked, the column is only as wide as the money. The share is on
+        // top since 4 October, his order: it is what a cost is judged by.
+        expect(mail.html).toContain('32.00%</span><br /><span')
+        expect(mail.html).toContain('€4,720.00</span>')
     })
 
-    it('shows a platform cost against that platform own takings', () => {
-        // Deliveroo cost 800 of the 3200 it took, which is 25%, not 5.4% of
-        // total sales. The share against the whole week would look small on
-        // every platform and say nothing about any of them.
-        //
-        // Under the name, not beside the figure. Beside it the two together
-        // were the widest unbreakable thing in that table, and it squeezed the
-        // platform names onto two lines and the total onto four.
-        expect(mail.html).toContain('25.00% of what it took')
+    // His of 4 October: one line, the platforms' total against what the
+    // online platforms took. 1,180 of 5,300 is 22.26%.
+    it('gives third party delivery as one line, against online sales', () => {
+        expect(mail.html).toContain('Third party delivery costs')
+        expect(mail.html).toContain('22.26%')
+        expect(mail.html).toContain('of €5,300.00 online sales')
+        expect(mail.html).not.toContain('of what it took')
     })
 
     it('never prints a total for the three delivery platforms that was typed', () => {
@@ -266,7 +261,7 @@ describe('reportEmail', () => {
         expect(mail.text).toContain('Point Campus weekly summary report')
         expect(mail.text).toContain('Week 35 (30/08/2026 to 05/09/2026)')
         expect(mail.text).toContain('Net sales: €14,750.00')
-        expect(mail.text).toContain('Net earnings: €1,840.00 (12.47%)')
+        expect(mail.text).toContain('Net earnings: 12.47% (€1,840.00)')
         expect(mail.text).toContain('Fryer thermostat')
         expect(mail.text).toContain('    - Joao Silva')
     })
@@ -519,9 +514,9 @@ describe('starColour', () => {
 })
 
 describe('withShare', () => {
-    it('puts the share under the money, in brackets', () => {
-        expect(withShare(284, 1.54)).toContain('€284.00<br />')
-        expect(withShare(284, 1.54)).toContain('(1.54%)')
+    it('puts the share first and the money under it', () => {
+        expect(withShare(284, 1.54)).toMatch(/^1\.54%<br \/>/)
+        expect(withShare(284, 1.54)).toContain('>€284.00</span>')
     })
 
     it('gives the money alone when there is no share to give', () => {
@@ -584,27 +579,27 @@ describe('the cost colours in the mail', () => {
         // Food is 32.00% against a 30% target: two points over, so amber.
         // Labour is 30.50%, also amber. Packaging is 4.14% against 4%, amber.
         const mail = reportEmail(base)
-        expect(mail.html).toContain(`color:${costTone(32, 30)};`)
-        expect(mail.html).toContain('(32.00%)</span>')
+        expect(mail.html).toContain(`<span style="color:${costTone(32, 30)};">32.00%</span>`)
     })
 
     it('goes red once it is more than two points over', () => {
         const mail = reportEmail({
             ...base, figures: { ...figures, foodPct: 34.5 },
         })
-        expect(mail.html).toContain(`color:${costTone(34.5, 30)};`)
-        expect(mail.html).toContain('(34.50%)</span>')
+        expect(mail.html).toContain(`<span style="color:${costTone(34.5, 30)};">34.50%</span>`)
         expect(costTone(34.5, 30)).not.toBe(costTone(32, 30))
     })
 
-    it('says which targets the week was judged against', () => {
-        expect(reportEmail(base).html).toContain('food 30%, labour 30%, packaging 4%')
+    // His wording of 4 October, in place of the paragraph on the colours.
+    it('says which targets the week was judged against, in one line', () => {
+        expect(reportEmail(base).html).toContain('Current targets: food 30%, labour 30%, packaging 4%.')
+        expect(reportEmail(base).html).not.toContain('Every percentage is of net sales')
     })
 
     it('leaves the shares uncoloured when no target was ever set', () => {
         const mail = reportEmail({ ...base, figures: { ...figures, targets: {} } })
-        expect(mail.html).toContain('(32.00%)')
-        expect(mail.html).not.toContain('judged against')
+        expect(mail.html).toContain('32.00%<br />')
+        expect(mail.html).not.toContain('Current targets')
     })
 })
 
@@ -815,7 +810,7 @@ describe('the profit and loss section is two tables, not one', () => {
         // And the platforms' own table is measured against its own money too,
         // because the share sits under the name rather than beside the figure.
         expect(widestIn(bodies[1]).length).toBeLessThan(12)
-        expect(bodies[1]).toContain('of what it took')
+        expect(bodies[1]).toContain('online sales')
     })
 
     it('keeps the money in one column across both tables', () => {
@@ -1049,8 +1044,7 @@ describe('the figure column is only as wide as the money', () => {
     })
 
     it('keeps the target colour on the share where there is one', () => {
-        expect(mail.html).toContain('(32.00%)</span>')
-        expect(mail.html).toContain(`color:${costTone(32, 30)};`)
+        expect(mail.html).toContain(`<span style="color:${costTone(32, 30)};">32.00%</span>`)
     })
 })
 
@@ -1404,18 +1398,13 @@ describe('prices and suppliers', () => {
         expect(mail.html.indexOf('Prices and suppliers')).toBeLessThan(mail.html.indexOf('Online sales'))
     })
 
-    it('opens with the four figures', () => {
-        for (const label of ['Same product, new price', 'Bought as something else', 'Recipes out of line', 'Came back']) {
-            expect(mail.html).toContain(label)
-        }
+    // His of 4 October: the cards and nothing above them. The four figures
+    // and the sentences said again what the cards say.
+    it('goes straight to the cards', () => {
+        expect(mail.html).toContain('Same product, new price')
         expect(mail.html).toContain('-€3.15')
-    })
-
-    // A headline a kind, what kind of thing it is in bold: his choice for the
-    // mail on 26 September.
-    it('says the week a headline a kind, with the kind in bold', () => {
-        expect(prices.words[0]).toMatch(/^Cheaper on the same code: /)
-        expect(mail.html).toContain('>Cheaper on the same code:</strong>')
+        expect(mail.html).not.toContain('Recipes out of line')
+        expect(mail.html).not.toContain('>Cheaper on the same code:</strong>')
     })
 
     it('lists each price that moved with what it was worth', () => {
@@ -1423,12 +1412,9 @@ describe('prices and suppliers', () => {
         expect(mail.html).toContain('-26.8%')
     })
 
-    it('opens by saying which suppliers it was read from, before the figures', () => {
-        const at = mail.html.indexOf('>Read from:</strong>')
-        expect(at).toBeGreaterThan(mail.html.indexOf('Prices and suppliers'))
-        expect(at).toBeLessThan(mail.html.indexOf('Same product, new price'))
-        expect(mail.html).toContain('BWG Foodservice was typed in as a total (1 invoice, €98.50)')
-        expect(mail.text).toContain('Read from: Sysco Ireland (1 invoice).')
+    it('leaves which suppliers it was read from to the report in the Hub', () => {
+        expect(mail.html).not.toContain('Read from:')
+        expect(mail.text).not.toContain('Read from:')
     })
 
     it('leaves the line out of a report frozen before it existed', () => {
@@ -1532,33 +1518,28 @@ describe('delivery costed from the Monday to Sunday statement', () => {
     }
     const mail = reportEmail({ ...base, figures: costed })
 
-    it('prints what each platform cost this week, not its statement', () => {
-        expect(mail.html).toContain('€775.76')
-        expect(mail.html).toContain('€362.73')
-        expect(mail.html).not.toContain('€800.00')
+    // The total is what each platform cost this week, added up: 1,111.11 of
+    // the 5,300 the online platforms took is 20.96%.
+    it('prints the total for the week, not the statements', () => {
+        expect(mail.html).toContain('€1,111.11')
+        expect(mail.html).toContain('20.96%')
+        expect(mail.html).not.toContain('€775.76')
     })
 
-    // His words, 27 September: say what the percentage was worked out
-    // against, and that it runs Monday to Sunday.
-    it('gives the share it kept on its statement, against what and over which days', () => {
-        expect(mail.html).toContain('24.24% of the €3,300.00 it took Monday 31 August to Sunday 6 September, the days its statement covers')
-        expect(mail.html).toContain('17.27% of the €2,200.00 it took Monday 31 August to Sunday 6 September')
+    // His of 4 October, in place of the sentence on why the weeks differ.
+    it('says which days it was calculated over, and no more', () => {
+        expect(mail.html).toContain('Calculated Monday 31 August to Sunday 6 September.')
+        expect(mail.html).not.toContain('The platforms bill Monday to Sunday')
     })
 
-    it('says why the two weeks differ, in words', () => {
-        expect(mail.html).toContain('The platforms bill Monday to Sunday, a day behind our week.')
-        expect(mail.html).toContain('Monday 31 August to Sunday 6 September')
+    it('puts the same figure in the plain text', () => {
+        expect(mail.text).toContain('Third party delivery costs: 20.96% (€1,111.11) of €5,300.00 online sales')
     })
 
-    it('puts the same cost in the plain text', () => {
-        expect(mail.text).toContain('775.76')
-    })
-
-    it('keeps a report frozen before this saying what it said', () => {
+    it('says nothing about a statement on a report frozen before them', () => {
         const old = reportEmail(base)
-        expect(old.html).toContain('€800.00')
-        expect(old.html).toContain('25.00% of what it took')
-        expect(old.html).not.toContain('The platforms bill Monday to Sunday')
+        expect(old.html).toContain('€1,180.00')
+        expect(old.html).not.toContain('Calculated ')
     })
 })
 
@@ -1996,5 +1977,89 @@ describe('a heavy week', () => {
         expect(light.text.indexOf('Wide gap:')).toBeLessThan(light.text.indexOf('Narrow gap:'))
         expect(light.text.indexOf('Narrow gap:')).toBeLessThan(light.text.indexOf('No compare:'))
         expect(more(light.html)).toEqual([])
+    })
+})
+
+// His of 4 October: every overhead the first time a report goes out, then only
+// what changed and what it was. The total always.
+describe('the fixed overheads in the mail', () => {
+    const rent = { kind: 'overhead', key: 'rent', label: 'Rent', amount: 1500, sort_order: 0 }
+    const insurance = { kind: 'overhead', key: 'insurance', label: 'Insurance', amount: 400, sort_order: 1 }
+    const withOverheads = items => sections.map(s => (s.key === 'profit_loss'
+        ? { ...s, items: [...items, ...s.items.filter(i => i.kind !== 'overhead')] }
+        : s))
+
+    it('shows every line the first time, when nothing was carried', () => {
+        expect(overheadsToShow([rent, insurance])).toEqual({ first: true, lines: [rent, insurance] })
+    })
+
+    it('shows only the line that moved, or one new this week, after that', () => {
+        const moved = { ...rent, amount: 1600, carried_from: 1500 }
+        const same = { ...insurance, carried_from: 400 }
+        const added = { kind: 'overhead', key: 'bins', label: 'Bins', amount: 60, sort_order: 2 }
+        expect(overheadsToShow([moved, same, added]).lines).toEqual([moved, added])
+    })
+
+    it('says what a changed line was, and keeps the total', () => {
+        const mail = reportEmail({
+            ...base,
+            sections: withOverheads([{ ...rent, amount: 1600, carried_from: 1500 }, { ...insurance, carried_from: 400 }]),
+        })
+        expect(mail.html).toContain('was €1,500.00')
+        expect(mail.html).not.toContain('Insurance')
+        expect(mail.html).toContain('Fixed overheads')
+        expect(mail.text).toContain('Rent: €1,600.00, was €1,500.00')
+    })
+
+    it('says there was no change rather than showing nothing', () => {
+        const mail = reportEmail({
+            ...base,
+            sections: withOverheads([{ ...rent, carried_from: 1500 }, { ...insurance, carried_from: 400 }]),
+        })
+        expect(mail.html).toContain('No change from last week')
+        expect(mail.html).not.toContain('Rent')
+    })
+})
+
+// His of 4 October: each reason with its total on top, and the lines under it
+// without the reason said again.
+describe('what came back, by reason', () => {
+    const prices = {
+        moves: [], doubtful: [], switches: [], recipes: [], owed: [], earlier: [], newCodes: [],
+        totals: { back: 118.41 }, threshold: 5, checkedOn: '2026-09-06',
+        reasons: [
+            { kind: 'mistake', label: 'Ordered by mistake', colour: '#B45309', money: 97.42 },
+            { kind: 'short', label: 'Short', colour: '#1D4ED8', money: 20.99 },
+        ],
+        back: [
+            { what: 'Burrito Bowl (750ml)', number: 'C101', date: '2026-09-02', money: 60, parts: [{ kind: 'mistake', label: 'Ordered by mistake', money: 60 }] },
+            { what: 'Limes, Coriander', number: 'C102', date: '2026-09-03', money: 58.41, parts: [
+                { kind: 'mistake', label: 'Ordered by mistake', money: 37.42 },
+                { kind: 'short', label: 'Short', money: 20.99 },
+            ] },
+        ],
+    }
+
+    it('puts each credit note under each reason it covers, with that part of it', () => {
+        const groups = backByReason(prices)
+        expect(groups.map(g => [g.reason.label, g.rows.map(r => [r.what, r.money])])).toEqual([
+            ['Ordered by mistake', [['Burrito Bowl (750ml)', 60], ['Limes, Coriander', 37.42]]],
+            ['Short', [['Limes, Coriander', 20.99]]],
+        ])
+    })
+
+    // The page has its own copy, since the mail cannot import the app's.
+    it('groups exactly as the report in the Hub does', () => {
+        const shape = groups => groups.map(g => [g.reason.kind, g.rows.map(r => [r.what, r.money])])
+        expect(shape(backByReason(prices))).toEqual(shape(webBackByReason(prices.reasons, prices.back)))
+    })
+
+    it('says each reason once, with its total', () => {
+        const withPrices = [...sections, { key: 'prices_suppliers', title: 'Prices and suppliers', sort_order: 9, items: [] }]
+        const mail = reportEmail({ ...base, sections: withPrices, figures: { ...figures, prices } })
+        expect(mail.html.match(/Ordered by mistake/g)).toHaveLength(1)
+        expect(mail.html).toContain('<strong>€97.42</strong>')
+        expect(mail.text).toContain('    Ordered by mistake: €97.42')
+        expect(mail.text).toContain('      Limes, Coriander: €37.42')
     })
 })

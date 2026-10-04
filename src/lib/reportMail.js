@@ -37,8 +37,8 @@ const origin = typeof window === 'undefined' ? '' : window.location.origin
 //
 // A chart with nothing to draw is left out rather than uploaded blank, and the
 // mail leaves the picture out to match.
-export async function uploadCharts({ reportId, rows, onlinePlatforms, corporatePlatforms, test = false }) {
-    const specs = chartSpecs({ onlinePlatforms, corporatePlatforms })
+export async function uploadCharts({ reportId, rows, onlinePlatforms, corporatePlatforms, deliveryTarget = null, test = false }) {
+    const specs = chartSpecs({ onlinePlatforms, corporatePlatforms, deliveryTarget })
     const urls = {}
     const stamp = Date.now()
 
@@ -61,6 +61,7 @@ export async function uploadCharts({ reportId, rows, onlinePlatforms, corporateP
                 zero: spec.zero !== false,
                 width: MAIL_WIDTH,
                 title: spec.title,
+                target: spec.target,
             })
         } catch (err) {
             // One chart that would not draw is not a reason to stop a report
