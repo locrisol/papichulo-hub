@@ -607,6 +607,61 @@ ${button(appUrl ? `${appUrl}/my-shifts` : '', 'Open My shifts')}`
 // the phone that gave it and a phone's clock can be a little out. The app posts
 // within a second or two, so nothing real is ever that late.
 //
+// ------------------------------------------------------ sent for review
+
+// What the manager said it is, as the reviewers read it.
+const REVIEW_KINDS = {
+    new: 'Something new we should stock',
+    not_stock: 'Not stock: a charge, a deposit, a delivery fee',
+    mistake: 'Ordered by mistake, sent back',
+}
+
+const euros = value => `\u20ac${Number(value).toFixed(2)}`
+
+// To the reviewers when a store manager sends something for review: the super
+// admin and whoever is on Reviewers on Products. Everything they need to
+// answer it without opening the invoice, and the button to where they do.
+export function reviewEmail({ request, restaurantName, supplierName, senderName, appUrl }) {
+    const what = request.name || request.description || 'Something'
+    const subject = `Sent for review: ${what}, ${restaurantName}`
+    const sentBy = [senderName, restaurantName].filter(Boolean).join(', ')
+    const price = request.price_per_case != null ? `${euros(request.price_per_case)} a case` : null
+
+    const rows = [
+        ['Sent by', escapeHtml(sentBy)],
+        ['They say', escapeHtml(REVIEW_KINDS[request.kind] || '')],
+        supplierName ? ['Supplier', escapeHtml(supplierName)] : null,
+        request.supplier_code ? ['Code', escapeHtml(request.supplier_code)] : null,
+        request.description ? ['On the invoice', escapeHtml(request.description)] : null,
+        price ? ['Price', escapeHtml(price)] : null,
+        request.reason ? ['Why', `<em>&ldquo;${escapeHtml(request.reason)}&rdquo;</em>`] : null,
+    ]
+
+    const body = `<p style="margin:0;font-size:17px;font-weight:700;">${escapeHtml(what)}</p>
+${detailRows(rows)}
+${button(appUrl ? `${appUrl}/catalogue/products` : '', 'Answer it on Products')}
+<p style="margin:14px 0 0;color:${MUTED};font-size:13px;">While it waits, its lines are not asked about on Review and they do not hold the weekly report.</p>`
+
+    const footer = 'You are getting this because you are on Reviewers in the Hub.'
+
+    const text = [
+        `${what}, sent for review.`,
+        '',
+        `Sent by: ${sentBy}`,
+        `They say: ${REVIEW_KINDS[request.kind] || ''}`,
+        supplierName ? `Supplier: ${supplierName}` : null,
+        request.supplier_code ? `Code: ${request.supplier_code}` : null,
+        request.description ? `On the invoice: ${request.description}` : null,
+        price ? `Price: ${price}` : null,
+        request.reason ? `Why: "${request.reason}"` : null,
+        '',
+        'While it waits, its lines are not asked about on Review and they do not hold the weekly report.',
+        appUrl ? `${appUrl}/catalogue/products` : null,
+    ].filter(v => v !== null).join('\n')
+
+    return { subject, html: shell({ restaurantName, bandColour: GREEN, bandText: restaurantName, body, footer }), text }
+}
+
 // The two a manager sends, answered and swap-decided, are left alone. Only a
 // manager can set them off, and a manager who changes an answer has to be able
 // to tell the person again.
@@ -626,6 +681,7 @@ export function fresh(stamp, now, minutes = FRESH_MINUTES) {
 // The moment each of the three is about, off its own row.
 const CHANGED_AT = {
     'asked': 'created_at',
+    'review-asked': 'sent_at',
     'swap-asked': 'created_at',
     'swap-answered': 'answered_at',
 }

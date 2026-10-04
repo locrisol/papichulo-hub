@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { makeQuery, renderWithRouter } from '@/test/helpers'
@@ -31,22 +31,35 @@ function lines(rows) {
         .then(resolve, reject)
     return q
 }
+let inserted
 const db = {
-    from: vi.fn(table => (table === 'invoice_lines'
-        ? lines(tables.invoice_lines)
-        : makeQuery({ data: tables[table] || [], error: null }))),
+    from: vi.fn(table => {
+        if (table === 'invoice_lines') return lines(tables.invoice_lines)
+        const q = makeQuery({ data: tables[table] || [], error: null })
+        q.insert = vi.fn(row => {
+            inserted.push({ table, row })
+            return makeQuery({ data: { id: 'q1' }, error: null })
+        })
+        return q
+    }),
 }
 vi.mock('@/lib/supabase', async () => ({
     ...(await vi.importActual('@/lib/supabase')),
     supabase: new Proxy({}, { get: (_, k) => db[k] }),
 }))
-vi.mock('@/context/auth', () => ({ useAuth: () => ({ user: { id: 'u1', role: 'store_manager' } }) }))
+let me
+vi.mock('@/context/auth', () => ({ useAuth: () => ({ user: me }) }))
+const emailTheReview = vi.fn()
+vi.mock('@/lib/rosterMail', () => ({ emailTheReview: id => emailTheReview(id) }))
 vi.mock('@/context/restaurant', () => ({ useRestaurant: () => ({ activeRestaurant: { id: 'r1', name: 'Point Campus' } }) }))
 vi.mock('@/context/confirm', () => ({ useConfirm: () => vi.fn(() => Promise.resolve(true)) }))
 
 const { default: InvoiceReviewPage } = await import('./InvoiceReviewPage')
 
 beforeEach(() => {
+    me = { id: 'u1', role: 'store_manager' }
+    inserted = []
+    emailTheReview.mockClear()
     tables = {
         suppliers: [{ id: 's1', name: 'Sysco Ireland', category: 'food' }],
         products: [],
@@ -113,6 +126,7 @@ describe('opened by an import', () => {
     it('keeps what has to be put right until it is seen, whatever is decided', async () => {
         const warned = 'The credit note C45000009 matches a delivery problem by its docket.'
         tables.invoice_lines = [line('l1', '777001', 'BASMATI RICE', 14.5)]
+        me = { id: 'u2', role: 'owner' }
         render(
             <MemoryRouter initialEntries={[{ pathname: '/invoices/review', state: { said: '3 documents imported.', warned } }]}>
                 <InvoiceReviewPage />
@@ -124,5 +138,76 @@ describe('opened by an import', () => {
         expect(screen.getByText(warned)).toBeInTheDocument()
         await userEvent.click(screen.getByRole('button', { name: 'Got it' }))
         expect(screen.queryByText(warned)).toBeNull()
+    })
+})
+
+// His design of 4 October: the brand's list is the owners'. A store manager
+// says which of our products a new code is, or sends it for review, and
+// cannot set a line aside or start a product from one.
+describe('a code nobody has bought before', () => {
+    it('gives a store manager two answers', async () => {
+        tables.invoice_lines = [line('l1', '5019120', 'MISSION CORN TORTILLA 6" 12X30 EA', 41.8)]
+        renderWithRouter(<InvoiceReviewPage />)
+        expect(await screen.findByRole('button', { name: 'One of our products' })).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Send for review' })).toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: 'Leave this one' })).toBeNull()
+        expect(screen.queryByRole('button', { name: 'Not stock' })).toBeNull()
+        expect(screen.queryByRole('link', { name: 'Make it a new product' })).toBeNull()
+    })
+
+    it('keeps every answer for an owner', async () => {
+        me = { id: 'u2', role: 'owner' }
+        tables.invoice_lines = [line('l1', '5019120', 'MISSION CORN TORTILLA 6" 12X30 EA', 41.8)]
+        renderWithRouter(<InvoiceReviewPage />)
+        expect(await screen.findByRole('button', { name: 'One of our products' })).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Leave this one' })).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Not stock' })).toBeInTheDocument()
+        expect(screen.getByRole('link', { name: 'Make it a new product' })).toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: 'Send for review' })).toBeNull()
+    })
+
+    it('sends it with what the owners need to answer, and tells them', async () => {
+        tables.invoice_lines = [line('l1', '5019120', 'MISSION CORN TORTILLA 6" 12X30 EA', 41.8)]
+        renderWithRouter(<InvoiceReviewPage />)
+        await userEvent.click(await screen.findByRole('button', { name: 'Send for review' }))
+        const name = screen.getByLabelText('What should it be called?')
+        await userEvent.clear(name)
+        await userEvent.type(name, 'Corn Tortilla 6 inch')
+        await userEvent.type(screen.getByLabelText('Why do we need it?'), 'For the taco special.')
+        await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Send for review' }))
+
+        await waitFor(() => expect(inserted).toHaveLength(1))
+        expect(inserted[0]).toEqual({
+            table: 'product_requests',
+            row: expect.objectContaining({
+                restaurant_id: 'r1', kind: 'new', name: 'Corn Tortilla 6 inch', reason: 'For the taco special.',
+                supplier_id: 's1', supplier_code: '5019120', description: 'MISSION CORN TORTILLA 6" 12X30 EA',
+                price_per_case: 41.8, invoice_line_id: 'l1', sent_by: 'u1',
+            }),
+        })
+        expect(emailTheReview).toHaveBeenCalledWith('q1')
+    })
+
+    it('asks for a name before sending something new', async () => {
+        tables.invoice_lines = [line('l1', '5019120', 'MISSION CORN TORTILLA 6" 12X30 EA', 41.8)]
+        renderWithRouter(<InvoiceReviewPage />)
+        await userEvent.click(await screen.findByRole('button', { name: 'Send for review' }))
+        await userEvent.clear(screen.getByLabelText('What should it be called?'))
+        await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Send for review' }))
+        expect(await screen.findByText('Say what it should be called.')).toBeInTheDocument()
+        expect(inserted).toHaveLength(0)
+    })
+
+    it('stops asking about a code sent for review, and says it is waiting', async () => {
+        tables.invoice_lines = [line('l1', '5019120', 'MISSION CORN TORTILLA 6" 12X30 EA', 41.8)]
+        tables.product_requests = [{
+            id: 'q1', kind: 'new', supplier_id: 's1', supplier_code: '5019120',
+            description: 'MISSION CORN TORTILLA 6" 12X30 EA', sent_at: '2026-10-02T09:00:00Z',
+        }]
+        renderWithRouter(<InvoiceReviewPage />)
+        expect(await screen.findByText('Sent for review')).toBeInTheDocument()
+        expect(screen.getByText('Something new, code 5019120, sent Fri 2 Oct')).toBeInTheDocument()
+        expect(screen.queryByText('Never bought before')).toBeNull()
+        expect(screen.getByText('Point Campus · nothing waiting')).toBeInTheDocument()
     })
 })

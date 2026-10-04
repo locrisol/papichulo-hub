@@ -24,26 +24,34 @@ import { friendlyError } from '@/lib/errors'
 // **Nor does a line on a code marked Not stock.** Review never shows one, so
 // counting it would hold a report with nothing on Review to press. `notStock`
 // is those codes, each with its supplier.
-export function stillToDecide(lines, credits, notStock = []) {
+//
+// **Nor a line whose code was sent for review**, while it waits. It is the
+// owners' question then, not the manager's, and a waiting answer does not
+// hold the weekly report (his design, 4 October). `sent` is the waiting
+// requests, each with its supplier and code.
+export function stillToDecide(lines, credits, notStock = [], sent = []) {
     const gone = sentBack(lines || [], credits || [])
     const ignored = new Set((notStock || []).map(c => `${c.supplier_id}|${c.supplier_code}`))
+    const waiting = new Set((sent || []).filter(r => r.supplier_code).map(r => `${r.supplier_id}|${r.supplier_code}`))
     return (lines || []).filter(line => (
         line.invoices.document_type !== 'credit'
         && !voidedBy(line.invoices, credits || [])
         && !gone.has(line.id)
         && !ignored.has(`${line.invoices.supplier_id}|${line.supplier_code}`)
+        && !waiting.has(`${line.invoices.supplier_id}|${line.supplier_code}`)
     ))
 }
 
 // Read and filtered, for one restaurant, optionally only on invoices dated up
-// to a day.
+// to a day. `sent` comes back too: what is waiting on a review there.
+// `withSent` keeps the lines those are about, for whoever answers them.
 //
 // Every credit is read whatever its date, because a delivery on the Saturday
 // can be reversed by a credit dated the Monday after, and it was still never
 // bought. Both reads are paged: with no cut-off, a few weeks nobody reviewed
 // is past the thousand rows one read hands back.
-export async function readToDecide(restaurantId, { upTo = null } = {}) {
-    const [lines, credits, notStock] = await Promise.all([
+export async function readToDecide(restaurantId, { upTo = null, withSent = false } = {}) {
+    const [lines, credits, notStock, sent] = await Promise.all([
         everyRow(() => {
             let q = supabase.from('invoice_lines')
                 .select('*, invoices!inner(id, invoice_number, invoice_date, supplier_id, document_type, restaurant_id, total_amount)')
@@ -63,11 +71,21 @@ export async function readToDecide(restaurantId, { upTo = null } = {}) {
             .eq('restaurant_id', restaurantId)
             .eq('ignored', true)
             .order('id')),
+        everyRow(() => supabase.from('product_requests')
+            .select('*')
+            .eq('restaurant_id', restaurantId)
+            .is('answer', null)
+            .order('sent_at')
+            .order('id')),
     ])
 
-    const error = lines.error || credits.error || notStock.error || null
-    if (error) return { lines: null, error }
-    return { lines: stillToDecide(lines.data, credits.data, notStock.data), error: null }
+    const error = lines.error || credits.error || notStock.error || sent.error || null
+    if (error) return { lines: null, sent: null, error }
+    return {
+        lines: stillToDecide(lines.data, credits.data, notStock.data, withSent ? [] : sent.data),
+        sent: sent.data || [],
+        error: null,
+    }
 }
 
 // A code the invoices already know, with nothing behind it, means this price
