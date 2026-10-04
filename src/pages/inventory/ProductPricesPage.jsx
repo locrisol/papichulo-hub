@@ -202,9 +202,32 @@ export default function ProductPricesPage() {
             else {
                 await recordPrice(typedPriceEvent({ id }, saved, who()))
                 await findsItsCode(saved)
-                fetchPrices(); resetForm()
+                resetForm()
+                await askToCostFrom(saved)
+                fetchPrices()
             }
         }
+    }
+
+    // A second price for a product that already has one: whether recipes and
+    // the stock take cost from it now, asked the way the import asks when a
+    // line comes in at a new pack (his ask, 4 October). Kept as an extra price
+    // otherwise, to compare against.
+    async function askToCostFrom(saved) {
+        const now = prices.find(p => p.is_preferred && p.id !== saved.id)
+        if (!now) return
+        const yes = await confirm({
+            title: 'Cost from this price?',
+            message: `Recipes and the stock take cost ${product?.name || 'this product'} from the price marked `
+                + 'preferred. Say whether this one takes its place.',
+            details: [
+                { label: 'Costed from now', value: `${getSupplierName(now.supplier_id)}, ${fmtUnitCost(parseFloat(now.price_per_unit))}` },
+                { label: 'This price', value: `${getSupplierName(saved.supplier_id)}, ${fmtUnitCost(parseFloat(saved.price_per_unit))}` },
+            ],
+            confirmLabel: 'Cost from this one',
+            cancelLabel: 'Keep it as an extra price',
+        })
+        if (yes) await setAsPreferred(saved)
     }
 
     // Who is changing a price, where, and when, for the event that says so.
