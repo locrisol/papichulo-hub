@@ -1,4 +1,5 @@
 import { supabase, everyRow } from '@/lib/supabase'
+import { readAllergensAt } from '@/lib/allergensAt'
 import { everyReadArrived, reprintDue } from '@/lib/allergenSheet'
 import { friendlyError } from '@/lib/errors'
 import { qrCardPdf, allergenListPdf } from '@/lib/allergenPdf'
@@ -127,7 +128,8 @@ export default function PublicAllergensPreviewPage() {
             everyRow(() => supabase.from('menu_item_components').select('*').order('id')),
             everyRow(() => supabase.from('products').select('*').order('name').order('id')),
             everyRow(() => supabase.from('mix_recipes').select('*').order('id')),
-            everyRow(() => supabase.from('product_allergens').select('*').order('product_id')),
+            // This restaurant's, from the versions it buys (lib/allergensAt).
+            readAllergensAt(activeRestaurant.id),
         ])
         if (changedRes.error || !everyReadArrived(reads)) return null
 

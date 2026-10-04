@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, Fragment, useCallback } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
+import { readAllergensAt } from '@/lib/allergensAt'
 import { useRestaurant } from '@/context/restaurant'
 import {
   menuItemCost, costInside, deactivatedIn, missingIn, menuMargin, marginTone, MARGIN_GREEN, MARGIN_AMBER,
@@ -147,7 +148,12 @@ export default function MenuItemPage() {
     }
   }, [componentForm.product_id, showComponentForm])
 
+  // Which read is the latest. The allergens depend on the restaurant open, so
+  // a read for the one before that answers late must not land on this one.
+  const reading = useRef(0)
+
   const fetchAll = useCallback(async () => {
+    const ticket = ++reading.current
     setLoading(true)
     const [
       itemRes, categoriesRes, productsRes, componentsRes, recipesRes, allergensRes,
@@ -166,7 +172,8 @@ export default function MenuItemPage() {
       supabase.from('products').select('*').order('name'),
       supabase.from('menu_item_components').select('*').eq('menu_item_id', id),
       supabase.from('mix_recipes').select('*'),
-      supabase.from('product_allergens').select('*'),
+      // At the restaurant open, from the versions it buys (lib/allergensAt).
+      readAllergensAt(activeRestaurant?.id),
       supabase.from('menu_items').select('*').eq('is_active', true).order('name'),
       supabase.from('menu_item_components').select('*'),
     ])
@@ -176,6 +183,7 @@ export default function MenuItemPage() {
     // the allergens left every component with none, and the panel at the
     // bottom said Not present for all fourteen. So one failed read shows the
     // failure and nothing else, the same as the customer page.
+    if (ticket !== reading.current) return
     const reads = [categoriesRes, productsRes, componentsRes, recipesRes, allergensRes, allItemsRes, allComponentsRes]
     if (itemRes.error || !itemRes.data || !everyReadArrived(reads)) {
       const failed = itemRes.error || reads.find(r => r.error)?.error
@@ -198,7 +206,7 @@ export default function MenuItemPage() {
     setAllComponents(allComponentsRes.data)
 
     setLoading(false)
-    }, [id])
+    }, [id, activeRestaurant?.id])
 
   useEffect(() => {
     // The fetch sets a loading state before it starts, which is one render

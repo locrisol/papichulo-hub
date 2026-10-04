@@ -11,7 +11,12 @@ let db
 // switcher does.
 const POINT_CAMPUS = { id: 'r1', name: 'Point Campus' }
 let restaurant = POINT_CAMPUS
-vi.mock('@/lib/supabase', () => ({ supabase: new Proxy({}, { get: (_, k) => db[k] }) }))
+// The real everyRow, paging through the mock the way it pages through the API.
+// The allergens are read with it (lib/allergensAt).
+vi.mock('@/lib/supabase', async importOriginal => ({
+    everyRow: (await importOriginal()).everyRow,
+    supabase: new Proxy({}, { get: (_, k) => db[k] }),
+}))
 vi.mock('@/context/restaurant', () => ({
     useRestaurant: () => ({ activeRestaurant: restaurant }),
 }))
