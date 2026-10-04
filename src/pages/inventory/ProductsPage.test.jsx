@@ -85,7 +85,11 @@ beforeAll(() => {
     globalThis.IntersectionObserver = class { observe() {} disconnect() {} }
 })
 
+// One test swaps how a table answers; every test starts from the real one.
+const realFrom = db.from.getMockImplementation()
+
 beforeEach(() => {
+    db.from.mockImplementation(realFrom)
     me = { id: 'u1', role: 'owner' }
     emailTheReview.mockClear()
     written = []
@@ -1040,5 +1044,39 @@ describe('the brand\'s list', () => {
             expect(screen.getByRole('button', { name })).toBeInTheDocument()
         }
         expect(screen.getByRole('button', { name: 'Reviewers' })).toBeInTheDocument()
+    })
+})
+
+// What the brand recommends, said under the supplier it is bought from, and
+// where each version is kept here (his design, 4 October).
+describe('the brand\'s versions on a row', () => {
+    const versions = (recommendedId) => [
+        { id: 'v1', product_id: 'p1', supplier_id: 's1', supplier_code: '483508', name: null, is_recommended: recommendedId === 'v1', is_active: true },
+        { id: 'v2', product_id: 'p1', supplier_id: 's1', supplier_code: '5018758', name: 'Green peppers 5 kg', is_recommended: recommendedId === 'v2', is_active: true },
+    ]
+
+    it('says it is recommended when this restaurant buys a recommended version', async () => {
+        tables.product_supplier_prices = [{ ...SYSCO, version_id: 'v1' }]
+        tables.product_versions = versions('v1')
+        renderWithRouter(<ProductsPage />)
+        expect((await screen.findAllByText('Recommended')).length).toBeGreaterThan(0)
+        expect(screen.queryByText(/^Brand:/)).toBeNull()
+    })
+
+    it('names what the brand recommends when it buys another version', async () => {
+        tables.product_supplier_prices = [{ ...SYSCO, version_id: 'v1' }]
+        tables.product_versions = versions('v2')
+        renderWithRouter(<ProductsPage />)
+        expect((await screen.findAllByText('Not recommended')).length).toBeGreaterThan(0)
+        expect(screen.getAllByText('Brand: Green peppers 5 kg').length).toBeGreaterThan(0)
+    })
+
+    it('shows the places each version it buys is kept in', async () => {
+        tables.restaurant_kept_in = [
+            { restaurant_id: 'r1', product_id: 'p1', section: 'Cold Room', also_in: [] },
+            { restaurant_id: 'r1', product_id: 'p1', section: 'Freezer', also_in: [] },
+        ]
+        renderWithRouter(<ProductsPage />)
+        expect((await screen.findAllByText('Freezer', { selector: 'span' })).length).toBeGreaterThan(0)
     })
 })

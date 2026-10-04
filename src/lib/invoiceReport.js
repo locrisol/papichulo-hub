@@ -37,7 +37,7 @@
 
 import { num, fmtMoney, fmtQty, namesList, round2, round4 } from '@/lib/format'
 import { renumberPlan } from '@/lib/priceEvents'
-import { addDays, dayMonth } from '@/lib/dates'
+import { addDays, dayMonth, stampDay } from '@/lib/dates'
 import { samePrice, sameWords, SAME_WORDS, byPieceWeight } from '@/lib/invoiceImport'
 import { readPackSize, mend } from '@/lib/invoiceSysco'
 import {
@@ -824,7 +824,7 @@ export function readFrom(documents = []) {
     for (const d of documents || []) {
         const name = d.suppliers?.name || 'A supplier with no name'
         const into = num(d.invoice_lines?.[0]?.count) > 0 ? read : typed
-        const s = into.get(name) || { name, invoices: 0, credits: 0, money: 0 }
+        const s = into.get(name) || { name, invoices: 0, credits: 0, money: 0, withoutCodes: !!d.suppliers?.works_without_codes }
         if (d.document_type === 'credit') s.credits += 1
         else s.invoices += 1
         s.money = round2(s.money + num(d.total_amount))
@@ -850,12 +850,111 @@ export function readFrom(documents = []) {
             + `so ${one ? 'its' : 'their'} prices are not checked here.`
     }
 
-    return { read: readList, typed: typedList, words: `Read from: ${first}${second}` }
+    return {
+        read: readList,
+        typed: typedList,
+        words: `Read from: ${first}${second}`,
+        // Only what was read, for the page once Not checked says the rest.
+        readWords: `Read from: ${first}`,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The brand's recommendations
+// ---------------------------------------------------------------------------
+
+// What was bought this week that the brand does not recommend, each product
+// once: what was bought beside what the brand recommends, each at its price
+// per unit here, so 1 kg bags and a 5 kg case are both a price a kg (layout
+// D, his pick of 4 October).
+//
+// Only lines read off an invoice can say which version was bought. Not a
+// product the brand leaves free (recommends any), nor one with nothing
+// recommended yet, which would have nothing to set beside it. `versions` are
+// the brand's versions of the products bought; `prices` this restaurant's,
+// which say which version each line was bought as.
+//
+// A line waiting on a review is said under that, not here as well.
+export function notAsRecommended(all, { weekStart, weekEnd, prices = [], versions = [], requests = [] }) {
+    const priceById = new Map((prices || []).map(p => [p.id, p]))
+    const waiting = new Set((requests || []).filter(r => r.supplier_code && !r.answer)
+        .map(r => versionKey(r.supplier_id, r.supplier_code)))
+    const out = new Map()
+    for (const d of all) {
+        if (d.date < weekStart || d.date > weekEnd || !d.productId || !d.priceId) continue
+        if (waiting.has(d.key)) continue
+        if (d.product?.recommends === 'any') continue
+        const bought = (versions || []).find(v => v.id === priceById.get(d.priceId)?.version_id)
+        if (!bought || bought.is_recommended) continue
+        const recommended = (versions || [])
+            .filter(v => v.product_id === d.productId && v.is_recommended && v.is_active !== false)
+        if (!recommended.length) continue
+
+        const seen = out.get(d.productId)
+        if (seen) {
+            seen.cases += d.cases
+            seen.money = round2(seen.money + d.cost)
+            continue
+        }
+        // The recommended version this restaurant has a price for, when one
+        // does, so its price can stand beside what was paid.
+        const priced = recommended
+            .map(v => ({ v, price: (prices || []).find(p => p.version_id === v.id) }))
+        const best = priced.find(x => x.price) || priced[0]
+        const name = d.product?.name || nameOf(d)
+        out.set(d.productId, {
+            name,
+            unit: unitOf(d),
+            // Not a per piece price shown as a price a kg.
+            bought: { name: bought.name || nameOf({ description: d.description }), per: cannotCompare(d) ? null : d.perUnit },
+            recommended: {
+                name: best.v.name || name,
+                per: best.price && num(best.price.price_per_unit) > 0 ? num(best.price.price_per_unit) : null,
+            },
+            others: recommended.length - 1,
+            cases: d.cases,
+            money: round2(d.cost),
+        })
+    }
+    return [...out.values()].sort((a, b) => b.money - a.money || a.name.localeCompare(b.name))
+}
+
+// What was bought this week that is waiting on a review: the lines carrying a
+// code a store manager sent for review, with when it was sent. It does not
+// hold the report (his answer, 3 October), so it is said here instead.
+export function waitingOnReview(all, requests = [], { weekStart, weekEnd }) {
+    return (requests || [])
+        .filter(r => r.supplier_code && !r.answer)
+        .map(r => {
+            const key = versionKey(r.supplier_id, r.supplier_code)
+            const lines = all.filter(d => d.key === key && d.date >= weekStart && d.date <= weekEnd)
+            if (!lines.length) return null
+            return {
+                name: r.name || nameOf({ description: r.description || lines[0].description }),
+                cases: lines.reduce((t, d) => t + d.cases, 0),
+                loose: lines.reduce((t, d) => t + d.loose, 0),
+                money: round2(lines.reduce((t, d) => t + d.cost, 0)),
+                sent: stampDay(r.sent_at),
+            }
+        })
+        .filter(Boolean)
+        .sort((a, b) => b.money - a.money || a.name.localeCompare(b.name))
+}
+
+// The money this week that nothing here could check, supplier by supplier:
+// typed in as a total, either because the supplier works without codes or
+// because its invoices are not read line by line yet.
+export function notChecked(read) {
+    return (read?.typed || []).map(s => ({
+        name: s.name,
+        money: s.money,
+        why: s.withoutCodes ? 'works without codes' : 'not read line by line yet',
+    }))
 }
 
 export function priceWeek({
     weekStart, weekEnd, lines = [], credits = [], invoices = [], prices = [], codes = [], claims = [],
-    documents = [], threshold = DEFAULT_RECIPE_GAP, today = null,
+    documents = [], versions = [], requests = [], threshold = DEFAULT_RECIPE_GAP, today = null,
 }) {
     const all = deliveriesFrom(lines, credits)
     const scope = { weekStart, weekEnd, prices, codes, threshold }
@@ -872,13 +971,20 @@ export function priceWeek({
     // against, so each one knows the day its delivery landed.
     const earlier = fromEarlierWeeks(claims, invoices, weekStart)
     const fresh = newCodes(all, scope)
+    const read = readFrom(documents)
+    const brand = notAsRecommended(all, { weekStart, weekEnd, prices, versions, requests })
+    const waiting = waitingOnReview(all, requests, { weekStart, weekEnd })
+    const unchecked = notChecked(read)
 
     const section = {
         weekStart,
         weekEnd,
         checkedOn: today,
         threshold: num(threshold),
-        readFrom: readFrom(documents),
+        readFrom: read,
+        notRecommended: brand,
+        waiting,
+        notChecked: unchecked,
         moves,
         doubtful,
         switches,
@@ -902,6 +1008,9 @@ export function priceWeek({
             earlier: round2(earlier.reduce((t, e) => t + e.money, 0)),
             earlierCount: earlier.length,
             newCodes: fresh.length,
+            notRecommended: brand.length,
+            waiting: round2(waiting.reduce((t, w) => t + w.money, 0)),
+            notChecked: round2(unchecked.reduce((t, u) => t + u.money, 0)),
         },
     }
     return { ...section, words: priceWords(section) }

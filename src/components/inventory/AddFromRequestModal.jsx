@@ -5,7 +5,7 @@ import { fmtMoney, fmtUnitCost, num } from '@/lib/format'
 import { FOOD_SECTIONS } from '@/lib/stockTakeSummary'
 import {
     modalFooter, secondaryButton, primaryButton, labelClass, fieldClass, hintClass, errorBanner,
-    checkbox, checkRow,
+    checkbox, checkRow, chip,
 } from '@/lib/controlStyles'
 
 const SECTIONS = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
@@ -22,6 +22,7 @@ export default function AddFromRequestModal({ request, onClose, onAdd }) {
     const onLine = !!request.supplier_code
     const [name, setName] = useState(request.name || '')
     const [section, setSection] = useState('Dry')
+    const [alsoIn, setAlsoIn] = useState([])
     const [unit, setUnit] = useState('Units')
     const [perPack, setPerPack] = useState(request.units_per_case != null ? String(num(request.units_per_case)) : '')
     const [recommend, setRecommend] = useState(true)
@@ -36,7 +37,10 @@ export default function AddFromRequestModal({ request, onClose, onAdd }) {
         if (!name.trim()) { setProblem('Give it a name.'); return }
         if (onLine && !(units > 0)) { setProblem(`Say how many ${unitWord(unit)} are in a case.`); return }
         setBusy(true)
-        const failed = await onAdd({ name, section, unit, unitsPerCase: onLine ? units : null, recommend, food })
+        const failed = await onAdd({
+            name, section, alsoIn: alsoIn.filter(place => place !== section), unit,
+            unitsPerCase: onLine ? units : null, recommend, food,
+        })
         setBusy(false)
         if (failed) setProblem(failed)
     }
@@ -81,6 +85,26 @@ export default function AddFromRequestModal({ request, onClose, onAdd }) {
                         <select id="add-unit" value={unit} onChange={e => setUnit(e.target.value)} className={fieldClass}>
                             {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
                         </select>
+                    </div>
+                </div>
+
+                <div>
+                    <p className={labelClass}>Also kept in</p>
+                    <div className="flex flex-wrap gap-1.5">
+                        {SECTIONS.filter(place => place !== section).map(place => {
+                            const on = alsoIn.includes(place)
+                            return (
+                                <button
+                                    key={place}
+                                    type="button"
+                                    aria-pressed={on}
+                                    onClick={() => setAlsoIn(list => (on ? list.filter(x => x !== place) : [...list, place]))}
+                                    className={chip(on)}
+                                >
+                                    {place}
+                                </button>
+                            )
+                        })}
                     </div>
                 </div>
 

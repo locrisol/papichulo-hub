@@ -1412,6 +1412,50 @@ describe('prices and suppliers', () => {
         expect(mail.html).toContain('-26.8%')
     })
 
+    // His design of 4 October: what was not checked, supplier by supplier.
+    it('lists what was not checked, with why', () => {
+        expect(mail.html).toContain('Not checked')
+        expect(mail.html).toContain('BWG Foodservice')
+        expect(mail.html).toContain('not read line by line yet')
+        expect(mail.text).toContain('  Not checked: €98.50')
+        expect(mail.text).toContain('    BWG Foodservice: €98.50, not read line by line yet')
+    })
+
+    // Layout D, his pick of 4 October: two boxes a product.
+    it('sets what was bought beside what the brand recommends, and what waits on a review', () => {
+        const brand = reportEmail({
+            ...base, sections: withPrices, figures: {
+                ...figures,
+                prices: {
+                    ...prices,
+                    notRecommended: [{
+                        name: 'Flour Tortilla (Burritos)', unit: 'each', cases: 3, money: 99.09, others: 0,
+                        bought: { name: 'Plain wraps 12"', per: 0.3303 },
+                        recommended: { name: 'Santa Maria wrap 12"', per: 0.303 },
+                    }],
+                    waiting: [{ name: 'Corn Tortilla 6 inch', cases: 1, loose: 0, money: 41.8, sent: '2026-09-18' }],
+                    totals: { ...prices.totals, notRecommended: 1, waiting: 41.8 },
+                },
+            },
+        })
+        expect(brand.html).toContain('Not as the brand recommends')
+        expect(brand.html).toContain('BOUGHT')
+        expect(brand.html).toContain('Plain wraps 12&quot;')
+        expect(brand.html).toContain('RECOMMENDED')
+        expect(brand.html).toContain('€0.30 each')
+        expect(brand.html.indexOf('Not as the brand recommends')).toBeLessThan(brand.html.indexOf('Same product, new price'))
+        expect(brand.text).toContain('      Bought: Plain wraps 12", €0.33 each')
+        expect(brand.text).toContain('      Recommended: Santa Maria wrap 12", €0.30 each')
+        expect(brand.text).toContain('    Corn Tortilla 6 inch: 1 case, €41.80, sent 18 Sept')
+    })
+
+    it('leaves the card out when everything bought was what the brand recommends, and on a report frozen before', () => {
+        expect(mail.html).not.toContain('Not as the brand recommends')
+        const old = reportEmail({ ...base, sections: withPrices, figures: { ...figures, prices: { ...prices, notRecommended: undefined, notChecked: undefined } } })
+        expect(old.html).not.toContain('Not as the brand recommends')
+        expect(old.html).not.toContain('Not checked')
+    })
+
     it('leaves which suppliers it was read from to the report in the Hub', () => {
         expect(mail.html).not.toContain('Read from:')
         expect(mail.text).not.toContain('Read from:')

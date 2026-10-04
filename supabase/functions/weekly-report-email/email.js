@@ -980,6 +980,77 @@ function cappedText(all, shown, toLine) {
     return lines
 }
 
+// ---------------------------------------------------------------------------
+// The brand's recommendations
+// ---------------------------------------------------------------------------
+//
+// Layout D, his pick of 4 October: each product bought that the brand does
+// not recommend, with two boxes side by side, what was bought and what the
+// brand recommends, each at its price per unit. Two half width cells in a
+// table, which every client lays out the same; the words wrap inside them,
+// so nothing holds the mail wider than a phone.
+
+const cases = (n, loose = 0) => [
+    n ? `${n} ${n === 1 ? 'case' : 'cases'}` : '',
+    loose ? `${loose} loose` : '',
+].filter(Boolean).join(' and ')
+
+function brandBox(label, name, per, unit, colour, ground, more = 0) {
+    return `<td width="50%" valign="top" style="padding:10px 12px;background:${ground};border:1px solid ${BORDER};
+        border-radius:8px;font-family:${FONT};${BREAKS}">
+        <div style="font-size:11px;letter-spacing:0.6px;font-weight:700;color:${colour};">${escapeHtml(label).toUpperCase()}</div>
+        <div style="font-size:14px;line-height:1.4;color:${INK};margin-top:2px;">${escapeHtml(name)}</div>
+        <div style="font-size:14px;font-weight:700;color:${INK};margin-top:2px;">${per != null
+            ? `${escapeHtml(money(per))} ${escapeHtml(unit)}`
+            : `<span style="font-weight:400;color:${MUTED};">No price here</span>`}</div>
+        ${more > 0 ? `<div style="font-size:12px;color:${MUTED};margin-top:2px;">and ${more} more recommended</div>` : ''}
+    </td>`
+}
+
+function brandRows(rows) {
+    return rows.map(r => `<tr><td colspan="2" style="padding:12px 14px;border-bottom:1px solid ${BORDER};">
+        <div style="font-family:${FONT};font-size:15px;font-weight:700;color:${INK};${BREAKS}">${escapeHtml(r.name)}</div>
+        <div style="font-family:${FONT};font-size:13px;color:${MUTED};margin:2px 0 8px;">${escapeHtml([cases(r.cases), money(r.money)].filter(Boolean).join(', '))}</div>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;border-spacing:0;">
+            <tr>
+                ${brandBox('Bought', r.bought.name, r.bought.per, r.unit, AMBER, '#FEF6E7')}
+                <td width="8" style="width:8px;min-width:8px;font-size:1px;line-height:1px;">&nbsp;</td>
+                ${brandBox('Recommended', r.recommended.name, r.recommended.per, r.unit, GREEN, '#EEF6F1', r.others)}
+            </tr>
+        </table>
+    </td></tr>`)
+}
+
+// The three that came with the brand's recommendations, as cards, each only
+// when it has something in it: the mail is kept short (his list of 4
+// October), and the report in the Hub says when everything was as
+// recommended. Nothing on a report frozen before they existed.
+function brandCards(p) {
+    const t = p.totals || {}
+    let out = ''
+    if (p.notRecommended?.length) {
+        out += priceCard('Not as the brand recommends', String(p.notRecommended.length), AMBER,
+            brandRows(p.notRecommended), '')
+    }
+    if (p.waiting?.length) {
+        out += priceCard('Waiting on a review', money(t.waiting), MUTED,
+            p.waiting.map(w => line({
+                inset: 14,
+                label: escapeHtml(w.name) + small(escapeHtml([cases(w.cases, w.loose), `sent ${dayMonth(w.sent)}`].filter(Boolean).join(', '))),
+                value: money(w.money),
+            })), '')
+    }
+    if (p.notChecked?.length) {
+        out += priceCard('Not checked', money(t.notChecked), MUTED,
+            p.notChecked.map(u => line({
+                inset: 14,
+                label: escapeHtml(u.name) + small(escapeHtml(u.why)),
+                value: money(u.money),
+            })), '')
+    }
+    return out
+}
+
 export function pricesSection(section, f) {
     const p = f.prices
     if (!p) {
@@ -1092,6 +1163,7 @@ export function pricesSection(section, f) {
     // has to know which suppliers were only a typed total. Absent on anything
     // frozen before it existed.
     return heading(section.title, section.number)
+        + brandCards(p)
         + moves + switches + recipes + back
         + fresh
         + note(`Recipes checked on ${fmtDate(p.checkedOn)}. Prices are without VAT, as printed on the invoices.`)
@@ -1114,6 +1186,22 @@ function pricesText(p) {
     const t = p.totals || {}
     const shown = pricesInMail(p)
     const out = []
+    if (p.notRecommended?.length) {
+        out.push('  Not as the brand recommends')
+        for (const r of p.notRecommended) {
+            out.push(`    ${r.name}, ${[cases(r.cases), money(r.money)].filter(Boolean).join(', ')}`)
+            out.push(`      Bought: ${r.bought.name}, ${r.bought.per != null ? `${money(r.bought.per)} ${r.unit}` : 'no price here'}`)
+            out.push(`      Recommended: ${r.recommended.name}, ${r.recommended.per != null ? `${money(r.recommended.per)} ${r.unit}` : 'no price here'}`)
+        }
+    }
+    if (p.waiting?.length) {
+        out.push(`  Waiting on a review: ${money(t.waiting)}`)
+        for (const w of p.waiting) out.push(`    ${w.name}: ${[cases(w.cases, w.loose), money(w.money), `sent ${dayMonth(w.sent)}`].filter(Boolean).join(', ')}`)
+    }
+    if (p.notChecked?.length) {
+        out.push(`  Not checked: ${money(t.notChecked)}`)
+        for (const u of p.notChecked) out.push(`    ${u.name}: ${money(u.money)}, ${u.why}`)
+    }
     if (p.moves.length) {
         out.push('  Same product, new price')
         out.push(...cappedText(p.moves, shown.moves, m => `    ${m.name}: ${priceOf(m.was, m.per)} to ${priceOf(m.now, m.per)} ${m.per}, ${change(m.change)}, ${signedMoney(m.effect)}`

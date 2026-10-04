@@ -1,6 +1,6 @@
 import { Fragment, useState } from 'react'
 import { fmtMoney } from '@/lib/format'
-import { shortDate } from '@/lib/dates'
+import { shortDate, dayLabel } from '@/lib/dates'
 import { CLAIM_KINDS } from '@/lib/invoiceClaims'
 import { backByReason, decisionsFrom } from '@/lib/invoiceReport'
 import { renumberPlan, alternatePlan } from '@/lib/priceEvents'
@@ -58,7 +58,14 @@ export default function ReportPrices({
         <div>
             {/* Where it came from, before anything else: only a document read
                 line by line says anything about a price. See readFrom. */}
-            {section.readFrom && <ReadFrom words={section.readFrom.words} />}
+            {/* Once Not checked lists the typed suppliers, this says only
+                what was read. A report sent before it keeps the whole line. */}
+            {section.readFrom && (
+                <ReadFrom words={section.notChecked && section.readFrom.readWords
+                    ? section.readFrom.readWords
+                    : section.readFrom.words}
+                />
+            )}
 
             {decisions.length > 0 && (
                 <Decisions
@@ -109,6 +116,10 @@ export default function ReportPrices({
             </div>
 
             <WeekInShort section={section} />
+
+            <NotRecommended rows={section.notRecommended} />
+            <Waiting rows={section.waiting} total={t.waiting} />
+            <NotChecked rows={section.notChecked} total={t.notChecked} />
 
             <Moves moves={section.moves} doubtful={section.doubtful || []} />
             <Switches switches={section.switches} canDecide={canDecide} busy={busy} onBuyBoth={onBuyBoth} />
@@ -733,6 +744,108 @@ function Back({ back, reasons, owed, earlier = [], total, canEdit, jobs, busy, o
                     ))}
                 </>
             )}
+        </Card>
+    )
+}
+
+// ---------------------------------------------------------------------------
+// The brand's recommendations
+// ---------------------------------------------------------------------------
+
+const quantity = (cases, loose = 0) => [
+    cases ? `${cases} ${cases === 1 ? 'case' : 'cases'}` : '',
+    loose ? `${loose} loose` : '',
+].filter(Boolean).join(' and ')
+
+// What was bought that the brand does not recommend, each product with two
+// boxes: what was bought and what the brand recommends, each at its price per
+// unit here (layout D, his pick of 4 October). Absent on a report sent before
+// it existed.
+function NotRecommended({ rows }) {
+    if (!rows) return null
+    return (
+        <Card
+            title="Not as the brand recommends"
+            sub={rows.length ? `${rows.length} ${rows.length === 1 ? 'product' : 'products'}` : ''}
+            empty="Everything bought was what the brand recommends."
+            count={rows.length}
+        >
+            <ul>
+                {rows.map(r => (
+                    <li key={r.name} className="px-3 py-3 border-b border-border last:border-b-0">
+                        <p className="text-sm font-bold text-gray-900">{r.name}</p>
+                        <p className="text-xs text-muted mb-2">{[quantity(r.cases), fmtMoney(r.money)].filter(Boolean).join(', ')}</p>
+                        <div className="grid grid-cols-2 gap-2">
+                            <BrandBox label="Bought" name={r.bought.name} per={r.bought.per} unit={r.unit} tone="not" />
+                            <BrandBox
+                                label="Recommended"
+                                name={r.recommended.name}
+                                per={r.recommended.per}
+                                unit={r.unit}
+                                tone="good"
+                                more={r.others}
+                            />
+                        </div>
+                    </li>
+                ))}
+            </ul>
+        </Card>
+    )
+}
+
+function BrandBox({ label, name, per, unit, tone, more = 0 }) {
+    const look = tone === 'good' ? 'border-green-200 bg-green-50' : 'border-amber-200 bg-amber-50'
+    return (
+        <div className={`rounded-lg border p-2.5 min-w-0 ${look}`}>
+            <p className="text-xs font-semibold text-muted uppercase tracking-wider">{label}</p>
+            <p className="text-sm text-gray-900 mt-0.5 break-words">{name}</p>
+            <p className="text-sm font-bold tabular-nums text-gray-900 mt-0.5">
+                {per != null ? `${priceText(per)} ${unit}` : <span className="font-normal text-muted">No price here</span>}
+            </p>
+            {more > 0 && <p className="text-xs text-muted mt-0.5">and {more} more recommended</p>}
+        </div>
+    )
+}
+
+// Bought under a code that is waiting on a review. It does not hold the
+// report, so it is said here.
+function Waiting({ rows, total }) {
+    if (!rows?.length) return null
+    return (
+        <Card title="Waiting on a review" sub={fmtMoney(total)} count={rows.length}>
+            <ul>
+                {rows.map(r => (
+                    <li key={r.name} className="flex items-baseline justify-between gap-3 px-3 py-2.5 border-b border-border last:border-b-0">
+                        <span className="min-w-0">
+                            <span className="block text-sm text-gray-900 break-words">{r.name}</span>
+                            <span className="block text-xs text-muted">
+                                {[quantity(r.cases, r.loose), `sent ${dayLabel(r.sent)}`].filter(Boolean).join(', ')}
+                            </span>
+                        </span>
+                        <span className="text-sm font-bold tabular-nums text-gray-900">{fmtMoney(r.money)}</span>
+                    </li>
+                ))}
+            </ul>
+        </Card>
+    )
+}
+
+// What was spent with suppliers whose invoices are only a total here.
+function NotChecked({ rows, total }) {
+    if (!rows?.length) return null
+    return (
+        <Card title="Not checked" sub={fmtMoney(total)} count={rows.length}>
+            <ul>
+                {rows.map(r => (
+                    <li key={r.name} className="flex items-baseline justify-between gap-3 px-3 py-2.5 border-b border-border last:border-b-0">
+                        <span className="min-w-0">
+                            <span className="block text-sm text-gray-900">{r.name}</span>
+                            <span className="block text-xs text-muted">{r.why}</span>
+                        </span>
+                        <span className="text-sm font-bold tabular-nums text-gray-900">{fmtMoney(r.money)}</span>
+                    </li>
+                ))}
+            </ul>
         </Card>
     )
 }
