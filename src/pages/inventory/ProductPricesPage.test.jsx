@@ -20,7 +20,7 @@ const SYSCO = {
 }
 const MUSGRAVE = {
     id: 'pr2', product_id: 'p1', restaurant_id: 'r1', supplier_id: 's2', purchase_type: 'case',
-    supplier_code: null, price_per_case: 10.5, units_per_case: 5, price_per_unit: 2.1, is_preferred: false,
+    supplier_code: 'M-4471', price_per_case: 10.5, units_per_case: 5, price_per_unit: 2.1, is_preferred: false,
 }
 
 let tables
@@ -127,6 +127,7 @@ describe('typing a price', () => {
         await clicker.click(await screen.findByRole('button', { name: '+ Add price' }))
 
         await clicker.selectOptions(screen.getByRole('combobox'), 's1')
+        await clicker.type(box(screen, 'Supplier code'), '483508')
         await clicker.type(box(screen, 'Price per case (€)'), '11.5')
         await clicker.type(box(screen, 'Units per case (KG)'), '5')
         await clicker.click(screen.getByRole('button', { name: 'Add price' }))
@@ -144,7 +145,7 @@ describe('typing a price', () => {
         await clicker.click(await screen.findByRole('button', { name: '+ Add price' }))
 
         await clicker.selectOptions(screen.getByRole('combobox'), 's1')
-        await clicker.type(box(screen, 'Supplier code (optional)'), '483508')
+        await clicker.type(box(screen, 'Supplier code'), '483508')
         await clicker.type(box(screen, 'Price per case (€)'), '11.5')
         await clicker.type(box(screen, 'Units per case (KG)'), '5')
         await clicker.click(screen.getByRole('button', { name: 'Add price' }))

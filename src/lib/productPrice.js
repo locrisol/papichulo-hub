@@ -33,11 +33,21 @@ export function hasPrice(form) {
     return !!form?.supplier_id
 }
 
-export function priceProblem(form) {
+// Whether this supplier's prices need a code. Every supplier's do since 4
+// October, the code being what names the version bought, except one marked
+// as working without codes: a local shop, or codes not worth keeping.
+export function needsCode(supplierId, suppliers = []) {
+    const supplier = (suppliers || []).find(s => s.id === supplierId)
+    return !!supplierId && !supplier?.works_without_codes
+}
+
+export function priceProblem(form, suppliers = []) {
     const errors = {}
 
     if (!form.supplier_id) {
         errors.supplier_id = 'Pick a supplier'
+    } else if (needsCode(form.supplier_id, suppliers) && !String(form.supplier_code || '').trim()) {
+        errors.supplier_code = "Enter the supplier's code. It is beside the product on their invoice."
     }
 
     if (form.purchase_type === 'case') {

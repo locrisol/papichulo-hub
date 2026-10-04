@@ -17,7 +17,7 @@
 import { fmtUnitCost } from '@/lib/format'
 import { labelClass, fieldClass, fieldError, primaryButton, secondaryButton } from '@/lib/controlStyles'
 import { numberField } from '@/lib/numberInput'
-import { perUnitPreview } from '@/lib/productPrice'
+import { perUnitPreview, needsCode } from '@/lib/productPrice'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // The boxes on their own, with no form around them.
@@ -74,7 +74,9 @@ export function PriceFields({ formData, onChange, errors = {}, suppliers, unit }
       </div>
 
       <div className="mb-4">
-        <label className={labelClass}>Supplier code (optional)</label>
+        <label className={labelClass}>
+          {needsCode(formData.supplier_id, suppliers) || !formData.supplier_id ? 'Supplier code' : 'Supplier code (this supplier works without codes)'}
+        </label>
         <input
           type="text"
           value={formData.supplier_code}

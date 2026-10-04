@@ -142,7 +142,7 @@ export default function ProductPricesPage() {
         setFormData({ ...formData, [field]: value })
     }
 
-    const validate = () => priceProblem(formData)
+    const validate = () => priceProblem(formData, suppliers)
 
     // A second tap on Save while the first was on its way added the price
     // twice, and a first price twice is two prices both marked preferred. See

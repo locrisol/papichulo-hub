@@ -146,6 +146,7 @@ describe('the price on the product form', () => {
         await clicker.type(box(form, 'Name'), 'Red Onions')
         await clicker.click(form.getByRole('button', { name: /Supplier and price/ }))
         await clicker.selectOptions(form.getByText('Supplier').parentElement.querySelector('select'), 's1')
+        await clicker.type(box(form, 'Supplier code'), '777001')
         await clicker.type(box(form, 'Price per case (€)'), '9')
         await clicker.type(box(form, 'Units per case (KG)'), '10')
         await clicker.click(form.getByRole('button', { name: 'Add product' }))
@@ -168,6 +169,7 @@ describe('adding a product when part of it does not save', () => {
         await clicker.type(box(form, 'Name'), 'Red Onions')
         await clicker.click(form.getByRole('button', { name: /Supplier and price/ }))
         await clicker.selectOptions(form.getByText('Supplier').parentElement.querySelector('select'), 's1')
+        await clicker.type(box(form, 'Supplier code'), '777001')
         await clicker.type(box(form, 'Price per case (€)'), '9')
         await clicker.type(box(form, 'Units per case (KG)'), '10')
         return form

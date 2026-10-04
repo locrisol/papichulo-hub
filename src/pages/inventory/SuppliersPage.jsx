@@ -3,7 +3,7 @@ import { useSaveOnce } from '@/components/ui/useSaveOnce'
 import { useConfirm } from '@/context/confirm'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
-import { can, MANAGERS } from '@/lib/access'
+import { can, MANAGERS, BRAND_CHOICES } from '@/lib/access'
 import ShowInactiveButton from '@/components/ui/ShowInactiveButton'
 import useShowInactive from '@/components/ui/useShowInactive'
 import { friendlyError } from '@/lib/errors'
@@ -61,6 +61,7 @@ export default function SuppliersPage() {
         contact_email: '',
         contact_phone: '',
         notes: '',
+        works_without_codes: false,
     })
     const [showInactive, setShowInactive] = useShowInactive('suppliersShowInactive')
 
@@ -143,7 +144,7 @@ export default function SuppliersPage() {
 
     function resetForm() {
         setFormProblem('')
-        setFormData({ name: '', category: 'food', contact_email: '', contact_phone: '', notes: '' })
+        setFormData({ name: '', category: 'food', contact_email: '', contact_phone: '', notes: '', works_without_codes: false })
         setEditingSupplier(null)
         setShowForm(false)
     }
@@ -156,6 +157,7 @@ export default function SuppliersPage() {
             contact_email: supplier.contact_email || '',
             contact_phone: supplier.contact_phone || '',
             notes: supplier.notes || '',
+            works_without_codes: !!supplier.works_without_codes,
         })
         setEditingSupplier(supplier)
         setShowForm(true)
@@ -218,6 +220,7 @@ export default function SuppliersPage() {
                             onCancel={resetForm}
                             submitLabel="Add supplier"
                             saving={saving}
+                            canChooseCodes={can(user, BRAND_CHOICES)}
                         />
                     </div>
                 </div>
@@ -375,6 +378,7 @@ export default function SuppliersPage() {
                             onCancel={resetForm}
                             submitLabel="Save changes"
                             saving={saving}
+                            canChooseCodes={can(user, BRAND_CHOICES)}
                         />
                     </div>
                 </Modal>

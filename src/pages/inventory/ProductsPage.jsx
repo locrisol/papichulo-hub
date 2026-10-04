@@ -621,7 +621,7 @@ export default function ProductsPage() {
     // The price block is only checked if somebody started filling it in. Left
     // alone it is not an error, it is the normal case.
     const wantsPrice = !formData.is_mix && hasPrice(priceForm)
-    const newPriceErrors = wantsPrice ? priceProblem(priceForm) : {}
+    const newPriceErrors = wantsPrice ? priceProblem(priceForm, suppliers) : {}
     // A pack left in the boxes without Add pack goes in with the rest.
     const { packs, problem: packProblem } = packsToSave(formats.packs, formats.draft, formData.unit)
 
