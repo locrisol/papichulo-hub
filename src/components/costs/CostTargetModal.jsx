@@ -28,6 +28,7 @@ const TYPE_LABELS = {
     food: 'Food',
     packaging: 'Packaging and cleaning',
     labour: 'Labour',
+    delivery: 'Delivery platforms',
 }
 
 export default function CostTargetModal({ targetType, restaurantId, currentValue, weekStart, onClose, onSaved }) {
@@ -150,7 +151,7 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
 
                     <form onSubmit={handleSave}>
                         <div className="mb-3">
-                            <label className={labelClass}>Target as a percentage of net sales</label>
+                            <label className={labelClass}>{targetType === 'delivery' ? 'Target as a percentage of what each platform took' : 'Target as a percentage of net sales'}</label>
                             <input {...numberField({ value, onChange: setValue })}
                                 className={`${fieldClass} text-right`} placeholder="30" />
                         </div>

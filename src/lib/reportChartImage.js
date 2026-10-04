@@ -51,6 +51,8 @@ const PAD = { left: 64, right: 16, top: 14, bottom: 34 }
 
 const MUTED = '#6B6459'
 const RULE = '#E8E3DB'
+// The page chart's target colour, so the two pictures agree.
+const TARGET_INK = '#B42318'
 const PAPER = '#FFFFFF'
 
 const FONT = (size, weight = '400') =>
@@ -118,7 +120,7 @@ function drawKey(c, rows, top) {
 // no business knowing about SCALE and would get it wrong once.
 export function drawChart(canvas, {
     rows, series, stacked = [], format, formatAxis, zero = true,
-    width = MAIL_WIDTH, height = HEIGHT, range = DEFAULT_RANGE, title,
+    width = MAIL_WIDTH, height = HEIGHT, range = DEFAULT_RANGE, title, target = null,
 }) {
     const { shown, anything } = chartPlan({ rows, series, range })
     if (!anything) return false
@@ -158,6 +160,7 @@ export function drawChart(canvas, {
         stacked,
         lines: series.filter(s => !stacked.includes(s.key)).map(s => s.key),
         zero,
+        reach: target ? [target.value] : [],
     })
 
     const x = i => (shown.length === 1 ? PAD.left + iw / 2 : PAD.left + (i / (shown.length - 1)) * iw)
@@ -177,6 +180,23 @@ export function drawChart(canvas, {
         c.fillStyle = MUTED
         c.textAlign = 'right'
         c.fillText((formatAxis || format)(value), PAD.left - 8, gy + 3.5)
+    }
+
+    // ---- the target, dashed, with its words at the right ----
+    if (target) {
+        const ty = Math.round(y(target.value)) + 0.5
+        c.strokeStyle = TARGET_INK
+        c.lineWidth = 1.5
+        c.setLineDash([5, 4])
+        c.beginPath()
+        c.moveTo(PAD.left, ty)
+        c.lineTo(width - PAD.right, ty)
+        c.stroke()
+        c.setLineDash([])
+        c.font = FONT(10, '600')
+        c.fillStyle = TARGET_INK
+        c.textAlign = 'right'
+        c.fillText(target.label, width - PAD.right, ty - 5)
     }
 
     // ---- the stacked bands, bottom up ----

@@ -34,6 +34,10 @@ import { num } from '@/lib/format'
 // see chartHeight.
 
 const PAD = { left: 58, right: 14, top: 12, bottom: 30 }
+
+// The target line and its words. Red 700, 6.5 to 1 on the white, so the words
+// read at ten pixels.
+const TARGET_INK = '#B42318'
 // Narrow enough that a laptop does not get a chart half a screen tall, and the
 // least a phone can show without the weeks running together.
 const MIN_W = 300
@@ -46,8 +50,10 @@ const MIN_W = 300
 // cost against net sales. On the delivery costs it cannot: what is worth
 // knowing about Deliveroo's bill is what share of Deliveroo's own takings it
 // was, not what share of the bill it was.
+// `target` is a dashed line across the chart, { value, label }: the 30% a
+// platform is meant to keep under, on the delivery chart.
 export default function WeekChart({
-    rows, series, stacked = [], shareOf, format, formatAxis, zero = true, empty,
+    rows, series, stacked = [], shareOf, format, formatAxis, zero = true, empty, target = null,
 }) {
     const [range, setRange] = useState(DEFAULT_RANGE)
     const [at, setAt] = useState(null)
@@ -84,6 +90,7 @@ export default function WeekChart({
         stacked,
         lines: lines.map(s => s.key),
         zero,
+        reach: target ? [target.value] : [],
     })
 
     const x = i => (shown.length === 1 ? PAD.left + iw / 2 : PAD.left + (i / (shown.length - 1)) * iw)
@@ -191,6 +198,21 @@ export default function WeekChart({
                             </text>
                         </g>
                     ))}
+
+                    {target && (
+                        <g>
+                            <line
+                                x1={PAD.left} y1={y(target.value)} x2={W - PAD.right} y2={y(target.value)}
+                                stroke={TARGET_INK} strokeWidth="1.5" strokeDasharray="5 4"
+                            />
+                            <text
+                                x={W - PAD.right} y={y(target.value) - 5}
+                                textAnchor="end" fontSize="10" fontWeight="600" fill={TARGET_INK}
+                            >
+                                {target.label}
+                            </text>
+                        </g>
+                    )}
 
                     {bands.map(b => (
                         <g key={b.key}>

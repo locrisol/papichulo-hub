@@ -39,6 +39,9 @@ const TARGET_TYPES = [
     { key: 'food', label: 'Food cost', column: 'food_cost_target' },
     { key: 'labour', label: 'Labour cost', column: 'labour_cost_target' },
     { key: 'packaging', label: 'Packaging and cleaning', column: 'packaging_cost_target' },
+    // Of what each delivery platform took, not of net sales: what a platform
+    // keeps is judged against its own takings.
+    { key: 'delivery', label: 'Delivery platforms', column: 'delivery_cost_target' },
 ]
 
 export default function RestaurantPage() {

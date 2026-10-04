@@ -94,6 +94,7 @@ CREATE TABLE IF NOT EXISTS "public"."restaurants" (
     "recipe_gap_percent" numeric(5,2) DEFAULT 5.00 NOT NULL,
     "allergen_sheet_printed_at" timestamp with time zone,
     "allergen_sheet_every_months" integer DEFAULT 3 NOT NULL,
+    "delivery_cost_target" numeric(5,2) DEFAULT 30.00,
     -- The payroll list, and nobody is on it by role. See the comment below.,
     CONSTRAINT "restaurants_recipe_gap_percent_check" CHECK ((("recipe_gap_percent" >= (0)::numeric) AND ("recipe_gap_percent" <= (100)::numeric))),
     CONSTRAINT "restaurants_allergen_sheet_every_months_check" CHECK ((("allergen_sheet_every_months" >= 1) AND ("allergen_sheet_every_months" <= 24))),
@@ -107,6 +108,7 @@ COMMENT ON COLUMN "public"."restaurants"."timesheet_recipients" IS 'Who the week
 COMMENT ON COLUMN "public"."restaurants"."pay_period_start" IS 'The first day of any one pay period, which is always a fortnight. Every other period is worked out from this by counting in fourteens, so the exact one that was typed does not matter as long as it really was a period start. It is read back as the Sunday of its own week, because a period that began mid week would put its boundary inside a Hub week and leave the two halves belonging to different weeks. Empty means nobody has said yet, and the hours cannot be sent until they do.';
 COMMENT ON COLUMN "public"."restaurants"."recipe_gap_percent" IS 'How far what recipes cost a product at can be from what was last paid for the version usually bought, before the weekly report lists it. Either way: 5 means five per cent dearer or cheaper. It stays on every report until the two are closer than this.';
 COMMENT ON COLUMN "public"."restaurants"."allergen_sheet_printed_at" IS 'When the allergen sheet was last printed from the Hub for this restaurant, stamped by allergen_sheet_printed(). Null means never, which counts as due.';
+COMMENT ON COLUMN "public"."restaurants"."delivery_cost_target" IS 'What each delivery platform should keep, as a percentage of what that platform took, not of net sales. The line on the weekly report''s delivery chart. Overridden from a given week in cost_target_overrides, as the other three are.';
 COMMENT ON COLUMN "public"."restaurants"."allergen_sheet_every_months" IS 'How many months the printed allergen sheet stays up before it is due again when nothing on it has changed. A change makes it due straight away whatever this says.';
 COMMENT ON COLUMN "public"."restaurants"."watch_city_events" IS 'Whether something big a few kilometres away is worth a badge. On by default and worth turning off for a restaurant nowhere near a city, where it would only ever be noise.';
 COMMENT ON COLUMN "public"."restaurants"."google_calendar_id" IS 'The Google calendar this restaurant writes to, owned by hub@ rather than by a manager, because a secondary calendar is deleted along with the account that owns it and managers leave. Null means it has none yet and its entries stay in the Hub.';
@@ -1065,7 +1067,7 @@ CREATE TABLE IF NOT EXISTS "public"."cost_target_overrides" (
     "effective_until" "date",
     "created_by" "uuid",
     "created_at" timestamp with time zone DEFAULT "now"(),
-    CONSTRAINT "cost_target_overrides_target_type_check" CHECK (("target_type" IN ('food', 'labour', 'packaging')))
+    CONSTRAINT "cost_target_overrides_target_type_check" CHECK (("target_type" IN ('food', 'labour', 'packaging', 'delivery')))
 );
 
 ALTER TABLE ONLY "public"."cost_target_overrides"

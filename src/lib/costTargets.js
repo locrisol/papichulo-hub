@@ -9,7 +9,8 @@ import { addDays } from '@/lib/dates'
 // The override in force for a week, as a row, or null when none is and the
 // restaurant's own figure applies.
 //
-// targetType is 'food', 'labour' or 'packaging'.
+// targetType is 'food', 'labour', 'packaging' or 'delivery'. Delivery is a
+// share of what the platforms took rather than of net sales.
 //
 // Everything that says anything about a week's target asks this, so the
 // figure on a card and the words beside it are about the same target. The
