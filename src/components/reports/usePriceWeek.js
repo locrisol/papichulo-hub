@@ -34,11 +34,11 @@ export default function usePriceWeek({ restaurantId, weekStart, threshold, enabl
         const from = lookBackFrom(weekStart)
 
         async function load() {
-            const [lines, credits, prices, codes, claims, documents] = await Promise.all([
+            const [lines, credits, prices, codes, claims, documents, versions, requests] = await Promise.all([
                 everyRow(() => supabase.from('invoice_lines')
                     .select('id, invoice_id, supplier_code, product_id, price_id, raw_description, pack_size, '
                         + 'units_per_case, price_per_case, unit_price, cases, units, line_no, line_total, decision, '
-                        + 'products(id, name, unit, category, section, piece_weight), '
+                        + 'products(id, name, unit, category, section, piece_weight, recommends), '
                         + 'invoices!inner(id, invoice_number, invoice_date, supplier_id, document_type, total_amount, restaurant_id)')
                     .eq('invoices.restaurant_id', restaurantId)
                     .gte('invoices.invoice_date', from)
@@ -55,7 +55,7 @@ export default function usePriceWeek({ restaurantId, weekStart, threshold, enabl
                 // page as surely as the lines do.
                 everyRow(() => supabase.from('product_supplier_prices')
                     .select('id, product_id, supplier_id, supplier_code, price_per_case, units_per_case, '
-                        + 'price_per_unit, is_preferred, purchase_type')
+                        + 'price_per_unit, is_preferred, purchase_type, version_id')
                     .eq('restaurant_id', restaurantId)
                     .order('id')),
                 everyRow(() => supabase.from('supplier_codes')
@@ -72,14 +72,23 @@ export default function usePriceWeek({ restaurantId, weekStart, threshold, enabl
                 // which suppliers the section was read from and which are only
                 // a typed total. See readFrom.
                 supabase.from('invoices')
-                    .select('id, document_type, total_amount, suppliers(name), invoice_lines(count)')
+                    .select('id, document_type, total_amount, suppliers(name, works_without_codes), invoice_lines(count)')
                     .eq('restaurant_id', restaurantId)
                     .gte('invoice_date', weekStart)
                     .lte('invoice_date', weekEnd),
+                // The brand's versions, for what was bought that it does not
+                // recommend, and what is waiting on a review here.
+                everyRow(() => supabase.from('product_versions')
+                    .select('id, product_id, name, is_recommended, is_active')
+                    .order('id')),
+                supabase.from('product_requests')
+                    .select('id, supplier_id, supplier_code, name, description, sent_at, answer')
+                    .eq('restaurant_id', restaurantId)
+                    .is('answer', null),
             ])
 
             if (!alive) return
-            const failed = [lines, credits, prices, codes, claims, documents].map(r => r.error).find(Boolean)
+            const failed = [lines, credits, prices, codes, claims, documents, versions, requests].map(r => r.error).find(Boolean)
             if (failed) { setError(friendlyError(failed)); return }
 
             // The invoices the credits are against, to tell a whole delivery
@@ -111,6 +120,8 @@ export default function usePriceWeek({ restaurantId, weekStart, threshold, enabl
                 codes: codes.data || [],
                 claims: claims.data || [],
                 documents: documents.data || [],
+                versions: versions.data || [],
+                requests: requests.data || [],
                 threshold: threshold ?? DEFAULT_RECIPE_GAP,
                 today: todayISO(),
             }))

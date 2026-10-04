@@ -3,7 +3,7 @@ import {
     deliveriesFrom, priceMoves, switchesIn, usualSuggestions, recipeGaps, cameBack, stillOwed,
     newCodes, priceWeek, priceWords, decisionsFrom, reasonsOf, lineageOf, nameOf, unitWord,
     cannotCompare, usualFor, looksRenumbered, claimKey, claimActions, claimLabel, lookBackFrom,
-    outOfReason, eachWords, readFrom,
+    outOfReason, eachWords, readFrom, notAsRecommended, waitingOnReview, notChecked,
 } from '@/lib/invoiceReport'
 
 // The first real fortnight, cut down to what each rule needs. Sysco is s1.
@@ -1076,5 +1076,91 @@ describe('readFrom', () => {
     it('says so when nothing was read', () => {
         expect(readFrom([doc('BWG Foodservice', 0, 98.5)]).words).toMatch(/^Read from: none of this week's invoices\. BWG/)
         expect(readFrom([]).words).toBe('Read from: no invoices this week.')
+    })
+})
+
+// His design of 4 October, layout D: what was bought beside what the brand
+// recommends, each product once, each at its price per unit here.
+describe('not as the brand recommends', () => {
+    const SANTA = { id: 'v-santa', product_id: 'tor', name: 'Santa Maria wrap 12"', is_recommended: true, is_active: true }
+    const PLAIN = { id: 'v-plain', product_id: 'tor', name: 'Plain wraps 12"', is_recommended: false, is_active: true }
+    const prices = [
+        price({ id: 'p-santa', product_id: 'tor', version_id: 'v-santa', price_per_unit: 0.303 }),
+        price({ id: 'p-plain', product_id: 'tor', version_id: 'v-plain', price_per_unit: 0.3303, is_preferred: false }),
+    ]
+    const wraps = (date, cases = 1) => line({ code: '5013972', product: TORTILLA, priceId: 'p-plain', date, perCase: 33.03, units: 100, cases })
+
+    it('sets what was bought beside what the brand recommends, once a product', () => {
+        const all = deliveriesFrom([wraps('2026-09-14'), wraps('2026-09-17', 2)])
+        expect(notAsRecommended(all, { ...WEEK, prices, versions: [SANTA, PLAIN] })).toEqual([{
+            name: 'Flour Tortilla (Burritos)',
+            unit: 'each',
+            bought: { name: 'Plain wraps 12"', per: expect.closeTo(0.3303, 4) },
+            recommended: { name: 'Santa Maria wrap 12"', per: 0.303 },
+            others: 0,
+            cases: 3,
+            money: 99.09,
+        }])
+    })
+
+    it('says nothing of a recommended version, a product left free, or one with nothing recommended', () => {
+        const all = deliveriesFrom([wraps('2026-09-14')])
+        expect(notAsRecommended(all, { ...WEEK, prices, versions: [SANTA, { ...PLAIN, is_recommended: true }] })).toEqual([])
+        const free = deliveriesFrom([{ ...wraps('2026-09-14'), products: { ...TORTILLA, recommends: 'any' } }])
+        expect(notAsRecommended(free, { ...WEEK, prices, versions: [SANTA, PLAIN] })).toEqual([])
+        expect(notAsRecommended(all, { ...WEEK, prices, versions: [{ ...SANTA, is_recommended: false }, PLAIN] })).toEqual([])
+    })
+
+    it('leaves a line waiting on a review to that card', () => {
+        const all = deliveriesFrom([wraps('2026-09-14')])
+        const requests = [{ supplier_id: 's1', supplier_code: '5013972', answer: null }]
+        expect(notAsRecommended(all, { ...WEEK, prices, versions: [SANTA, PLAIN], requests })).toEqual([])
+    })
+
+    it('only looks at the week', () => {
+        const all = deliveriesFrom([wraps('2026-09-07')])
+        expect(notAsRecommended(all, { ...WEEK, prices, versions: [SANTA, PLAIN] })).toEqual([])
+    })
+
+    it('has no price for the recommended one when this restaurant does not buy it', () => {
+        const all = deliveriesFrom([wraps('2026-09-14')])
+        const [row] = notAsRecommended(all, { ...WEEK, prices: [prices[1]], versions: [SANTA, PLAIN] })
+        expect(row.recommended).toEqual({ name: 'Santa Maria wrap 12"', per: null })
+    })
+})
+
+describe('waiting on a review', () => {
+    const corn = line({ code: '5019120', date: '2026-09-17', perCase: 41.8, units: null, description: 'MISSION CORN TORTILLA 6" 12X30 EA', decision: null })
+
+    it('lists what was bought this week under a code sent for review', () => {
+        const all = deliveriesFrom([corn])
+        const requests = [{ supplier_id: 's1', supplier_code: '5019120', name: 'Corn Tortilla 6 inch', sent_at: '2026-09-18T10:00:00Z', answer: null }]
+        expect(waitingOnReview(all, requests, WEEK)).toEqual([
+            { name: 'Corn Tortilla 6 inch', cases: 1, loose: 0, money: 41.8, sent: '2026-09-18' },
+        ])
+    })
+
+    it('leaves out one answered, one with no lines this week, and one asked for from Products', () => {
+        const all = deliveriesFrom([corn])
+        expect(waitingOnReview(all, [
+            { supplier_id: 's1', supplier_code: '5019120', name: 'Corn', sent_at: '2026-09-18T10:00:00Z', answer: 'version' },
+            { supplier_id: 's1', supplier_code: '999', name: 'Other', sent_at: '2026-09-18T10:00:00Z', answer: null },
+            { supplier_id: 's1', supplier_code: null, name: 'Oat milk', sent_at: '2026-09-18T10:00:00Z', answer: null },
+        ], WEEK)).toEqual([])
+    })
+})
+
+describe('not checked', () => {
+    it('is every supplier typed in as a total, saying why', () => {
+        const read = readFrom([
+            { document_type: 'invoice', total_amount: 312.4, suppliers: { name: 'Henderson Foodservice' }, invoice_lines: [{ count: 0 }] },
+            { document_type: 'invoice', total_amount: 48, suppliers: { name: 'Local', works_without_codes: true }, invoice_lines: [{ count: 0 }] },
+            { document_type: 'invoice', total_amount: 900, suppliers: { name: 'Sysco Ireland' }, invoice_lines: [{ count: 20 }] },
+        ])
+        expect(notChecked(read)).toEqual([
+            { name: 'Henderson Foodservice', money: 312.4, why: 'not read line by line yet' },
+            { name: 'Local', money: 48, why: 'works without codes' },
+        ])
+        expect(read.readWords).toBe('Read from: Sysco Ireland (1 invoice).')
     })
 })
