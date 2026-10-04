@@ -3502,8 +3502,9 @@ begin
             new.version_id := old.version_id;
             return new;
         end if;
-        insert into public.product_versions (product_id, supplier_id, supplier_code, name, section, also_in, created_by)
-        select new.product_id, new.supplier_id, code, v.name, v.section, v.also_in, auth.uid()
+        insert into public.product_versions (product_id, supplier_id, supplier_code, name, section, also_in,
+                                             is_recommended, created_by)
+        select new.product_id, new.supplier_id, code, v.name, v.section, v.also_in, v.is_recommended, auth.uid()
           from public.product_versions v where v.id = old.version_id
         returning id into found;
         insert into public.version_allergens (version_id, gluten, crustaceans, eggs, fish, peanuts, soybeans, milk,
@@ -3551,7 +3552,11 @@ begin
                                  or new.supplier_id is distinct from old.supplier_id) then
             raise exception 'A version stays with its product and supplier';
         end if;
-        if (tg_op = 'INSERT' and new.is_recommended)
+        -- The one insert that may carry a recommendation for a store manager:
+        -- price_version's copy of a renumbered version, which keeps what the
+        -- brand already said about it. It comes from inside that trigger, so
+        -- it is a level deeper than anything the app writes.
+        if (tg_op = 'INSERT' and new.is_recommended and pg_trigger_depth() < 2)
            or (tg_op = 'UPDATE' and new.is_recommended is distinct from old.is_recommended) then
             raise exception 'Only an owner can choose what the brand recommends';
         end if;
