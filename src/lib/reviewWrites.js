@@ -562,7 +562,7 @@ async function stillWaiting(request) {
 // Nothing is added for a request somebody already answered, nor under a
 // name the list already has, which is the same product twice on every
 // stock take.
-export async function addFromRequest(request, { name, section, unit, unitsPerCase, recommend, userId }) {
+export async function addFromRequest(request, { name, section, alsoIn = [], unit, unitsPerCase, recommend, userId }) {
     const nothing = error => ({ error, productId: null, answered: false, said: '' })
     const waiting = await stillWaiting(request)
     if (waiting.error) return nothing(waiting.error)
@@ -573,7 +573,7 @@ export async function addFromRequest(request, { name, section, unit, unitsPerCas
     if (taken) return nothing(`${taken.name} is already on the list. Answer with A version of one we have instead.`)
 
     const { data: made, error: e1 } = await supabase.from('products')
-        .insert({ name: String(name || '').trim(), section, unit })
+        .insert({ name: String(name || '').trim(), section, also_in: alsoIn, unit })
         .select('id').single()
     if (e1) return nothing(friendlyError(e1))
 

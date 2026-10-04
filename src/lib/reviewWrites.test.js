@@ -125,7 +125,7 @@ describe('adding it as a new product', () => {
             name: ' Corn Tortilla ', section: 'Dry', unit: 'Units', unitsPerCase: 360, recommend: true, userId: 'u9',
         })
         expect(out).toMatchObject({ error: null, productId: 'products-new' })
-        expect(wrote('products', 'insert')[0].payload).toEqual({ name: 'Corn Tortilla', section: 'Dry', unit: 'Units' })
+        expect(wrote('products', 'insert')[0].payload).toEqual({ name: 'Corn Tortilla', section: 'Dry', also_in: [], unit: 'Units' })
         expect(wrote('product_supplier_prices', 'insert')[0].payload).toMatchObject({ product_id: 'products-new', restaurant_id: 'r2' })
         const [recommended] = wrote('product_versions', 'update')
         expect(recommended.payload).toEqual({ is_recommended: true })

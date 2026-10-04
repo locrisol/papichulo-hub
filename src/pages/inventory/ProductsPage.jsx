@@ -40,6 +40,8 @@ import useShowInactive from '@/components/ui/useShowInactive'
 import SentForReview from '@/components/inventory/SentForReview'
 import ReviewersModal from '@/components/inventory/ReviewersModal'
 import SendForReviewModal from '@/components/inventory/SendForReviewModal'
+import VersionsModal from '@/components/inventory/VersionsModal'
+import { placesFor, recommendationAt, versionLabel } from '@/lib/brandVersions'
 import { can, BRAND_CHOICES } from '@/lib/access'
 import { requestForProduct } from '@/lib/productRequests'
 import { emailTheReview } from '@/lib/rosterMail'
@@ -165,6 +167,12 @@ export default function ProductsPage() {
   const [showReviewers, setShowReviewers] = useState(false)
   const [requesting, setRequesting] = useState(false)
   const [requestSaid, setRequestSaid] = useState('')
+  // The brand's versions of every product, where each product is kept at this
+  // restaurant, and which versions it buys (lib/brandVersions).
+  const [versions, setVersions] = useState([])
+  const [kept, setKept] = useState([])
+  const [boughtHere, setBoughtHere] = useState(() => new Set())
+  const [versionsOf, setVersionsOf] = useState(null)
   const [products, setProducts] = useState([])
   const [prices, setPrices] = useState([])
   const [recipeLines, setRecipeLines] = useState([])
@@ -436,6 +444,22 @@ export default function ProductsPage() {
     if (!data) return
     setPrices(data)
 
+    // What the row says about the brand's recommendations and where it is
+    // kept here. A failed read leaves what was there: the row then says
+    // less, rather than something wrong.
+    const [versionsRead, keptRead] = await Promise.all([
+      everyRow(() => supabase.from('product_versions')
+        .select('id, product_id, supplier_id, supplier_code, name, is_recommended, is_active, section, also_in')
+        .order('id')),
+      everyRow(() => supabase.from('restaurant_kept_in')
+        .select('*')
+        .eq('restaurant_id', activeRestaurant.id)
+        .order('product_id')
+        .order('section')),
+    ])
+    if (!versionsRead.error) setVersions(versionsRead.data || [])
+    if (!keptRead.error) setKept(keptRead.data || [])
+
     // The packs hanging off those prices. Fetched here rather than in its own
     // effect because it is meaningless without them: a pack belongs to a price
     // and there is nothing to look up until we know which prices are preferred.
@@ -455,7 +479,7 @@ export default function ProductsPage() {
     // carrying more than one row per product.
     const { data: everyPrice } = await supabase
       .from('product_supplier_prices')
-      .select('product_id')
+      .select('product_id, version_id')
       .eq('restaurant_id', activeRestaurant.id)
 
     const counts = {}
@@ -463,6 +487,7 @@ export default function ProductsPage() {
       counts[row.product_id] = (counts[row.product_id] || 0) + 1
     }
     setPriceCounts(counts)
+    if (everyPrice) setBoughtHere(new Set(everyPrice.map(row => row.version_id)))
     }, [activeRestaurant])
 
   useEffect(() => {
@@ -1190,6 +1215,7 @@ export default function ProductsPage() {
       items: [
         { label: 'Allergens', onClick: () => navigate(`/catalogue/products/${p.id}/allergens`) },
         p.is_mix && { label: 'Recipe', onClick: () => navigate(`/catalogue/products/${p.id}/recipe`) },
+        !p.is_mix && { label: 'Versions', onClick: () => setVersionsOf(p.id) },
         { label: 'Prices', onClick: () => navigate(`/catalogue/products/${p.id}/prices`) },
         keepsTheList && {
           label: p.is_active ? 'Deactivate' : 'Reactivate',
@@ -1210,6 +1236,39 @@ export default function ProductsPage() {
         {a.label}
       </button>
     ))
+  }
+
+  // Where it is kept here: each version it buys says where
+  // (lib/brandVersions). The first is the solid badge, the product's own
+  // section when it is one of them, so the badge and the filter agree.
+  function mainPlace(p) {
+    return placesFor(p, kept)[0]
+  }
+  function otherPlaces(p) {
+    return placesFor(p, kept).slice(1)
+  }
+
+  // Whether what this restaurant costs it from is what the brand recommends,
+  // under the supplier it is bought from.
+  function brandMark(p) {
+    const said = recommendationAt(p, versions, getPreferredPrice(p.id))
+    if (!said) return null
+    const look = {
+      good: 'bg-green-100 text-green-800',
+      not: 'bg-amber-100 text-amber-800',
+      any: 'bg-gray-100 text-gray-700',
+      none: 'bg-white text-gray-600 border border-gray-300',
+    }[said.tone]
+    return (
+      <span className="block mt-1">
+        <span className={`${badge} ${look}`}>{said.label}</span>
+        {said.instead && (
+          <span className="block text-xs text-muted mt-0.5">
+            Brand: {said.instead.map(v => versionLabel(v, p, getSupplierName(v.supplier_id))).join(', ')}
+          </span>
+        )}
+      </span>
+    )
   }
 
   // Everything a product shows that is not simply a column off the record,
@@ -1364,7 +1423,7 @@ export default function ProductsPage() {
     // places at once in the sense an and would mean, so picking Freezer and
     // Cold Room together can only sensibly be asking to see both.
     .filter(p => activeSections.length === 0
-      || activeSections.some(place => p.section === place || (p.also_in || []).includes(place)))
+      || activeSections.some(place => placesFor(p, kept).includes(place)))
     .filter(p => activeKind === 'All'
       || (activeKind === 'Drinks' ? p.category === 'drink' : p.category !== 'drink'))
     .filter(p => matches(p.name, search))
@@ -1434,6 +1493,19 @@ export default function ProductsPage() {
 
       {keepsTheList && <SentForReview onChanged={fetchProducts} />}
       {showReviewers && <ReviewersModal onClose={() => setShowReviewers(false)} />}
+      {versionsOf && products.some(p => p.id === versionsOf) && (
+        <VersionsModal
+          product={products.find(p => p.id === versionsOf)}
+          versions={versions}
+          suppliers={suppliers}
+          boughtHere={boughtHere}
+          canRecommend={keepsTheList}
+          onClose={() => setVersionsOf(null)}
+          // A recommendation can change which version a restaurant's
+          // allergen sheet reads, so the sidebar counts them again.
+          onChanged={async () => { allergensChanged(); await Promise.all([fetchProducts(), fetchPrices()]) }}
+        />
+      )}
       {requesting && (
         <SendForReviewModal
           suppliers={activeSuppliers}
@@ -1595,10 +1667,10 @@ export default function ProductsPage() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2 mt-2">
-                  <span className={`${badge} ${sectionBadge(p.section, p.is_active).className}`}>
-                    {p.section}
+                  <span className={`${badge} ${sectionBadge(mainPlace(p), p.is_active).className}`}>
+                    {mainPlace(p)}
                   </span>
-                  {(p.also_in || []).map(place => (
+                  {otherPlaces(p).map(place => (
                     <span
                       key={place}
                       className={`${badge} ${extraPlaceBadge(place, p.is_active).className}`}
@@ -1647,6 +1719,7 @@ export default function ProductsPage() {
                     <dt className="text-muted">Supplier</dt>
                     <dd className={`text-right ${p.is_active ? 'text-gray-700' : 'text-muted'} ${p.is_mix ? 'italic' : ''}`}>
                       {v.supplier}
+                      {brandMark(p)}
                     </dd>
                   </div>
                   <div className="flex items-baseline justify-between gap-3">
@@ -1772,10 +1845,10 @@ export default function ProductsPage() {
                       </td>
                       <td className="px-4 py-3">
                         <span className="flex flex-wrap gap-1">
-                          <span className={`${badge} ${sectionBadge(p.section, p.is_active).className}`}>
-                            {p.section}
+                          <span className={`${badge} ${sectionBadge(mainPlace(p), p.is_active).className}`}>
+                            {mainPlace(p)}
                           </span>
-                          {(p.also_in || []).map(place => (
+                          {otherPlaces(p).map(place => (
                             <span
                               key={place}
                               className={`${badge} ${extraPlaceBadge(place, p.is_active).className}`}
@@ -1801,6 +1874,7 @@ export default function ProductsPage() {
                       </td>
                       <td className={`px-4 py-3 ${p.is_active ? 'text-gray-700' : 'text-muted'}`}>
                         {p.is_mix ? <span className="italic">House-made</span> : getSupplierName(price?.supplier_id)}
+                        {brandMark(p)}
                       </td>
                       <td className={`px-4 py-3 font-medium ${p.is_active ? 'text-gray-900' : 'text-muted'}`}>
                         {p.is_mix
