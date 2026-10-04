@@ -846,6 +846,64 @@ CREATE UNIQUE INDEX "supplier_codes_one_per_price" ON "public"."supplier_codes" 
 CREATE INDEX "idx_supplier_codes_alternate_group" ON "public"."supplier_codes" USING "btree" ("alternate_group") WHERE ("alternate_group" IS NOT NULL);
 COMMENT ON COLUMN "public"."supplier_codes"."alternate_group" IS 'Codes for the same thing that are bought either way, depending on what the supplier has. Every code in a group keeps its own price and none is ever bought instead of another; recipes cost from the one chosen and are checked against what the group cost on average. Empty for a code on its own, which is nearly all of them.';
 
+-- -- Settings for the whole brand ---------------------------------------------
+
+create table if not exists public.brand_settings (
+    id boolean default true not null primary key,
+    review_recipients text[] default '{}'::text[] not null,
+    updated_at timestamp with time zone default now() not null,
+    constraint brand_settings_one_row check (id)
+);
+
+comment on table public.brand_settings is 'What belongs to the brand rather than to one restaurant. Always one row.';
+comment on column public.brand_settings.review_recipients is 'Addresses typed in that get an email when a store manager sends something for review. The super admin always gets it as well. Owners and the super admin set it.';
+
+-- -- What was sent for review --------------------------------------------------
+
+create table if not exists public.product_requests (
+    id uuid default gen_random_uuid() not null primary key,
+    restaurant_id uuid not null references public.restaurants(id) on delete cascade,
+    kind text not null,
+    name text,
+    reason text,
+    supplier_id uuid references public.suppliers(id) on delete set null,
+    supplier_code text,
+    description text,
+    pack_size text,
+    price_per_case numeric(10,4),
+    units_per_case numeric(10,3),
+    invoice_line_id uuid references public.invoice_lines(id) on delete set null,
+    sent_by uuid references public.users(id) on delete set null,
+    sent_at timestamp with time zone default now() not null,
+    answer text,
+    product_id uuid references public.products(id) on delete set null,
+    answered_by uuid references public.users(id) on delete set null,
+    answered_at timestamp with time zone,
+    constraint product_requests_kind_known check (kind in ('new', 'not_stock', 'mistake')),
+    constraint product_requests_answer_known
+        check (answer is null or answer in ('new_product', 'version', 'not_stock', 'do_not_buy', 'leave')),
+    constraint product_requests_answered_together check ((answer is null) = (answered_at is null)),
+    constraint product_requests_new_has_name check (kind <> 'new' or nullif(btrim(name), '') is not null),
+    constraint product_requests_line_has_code check (kind = 'new' or supplier_code is not null)
+);
+
+comment on table public.product_requests is 'Something a store manager sent for review: a code on an invoice nobody has bought before, or a product asked for from the Products page. Waiting while answer is empty. While it waits, the lines carrying its code at its restaurant are not asked about on Review and do not hold the weekly report.';
+comment on column public.product_requests.kind is 'What the manager says it is. new: something we should stock. not_stock: a charge, a deposit, a delivery fee. mistake: ordered by mistake and sent back.';
+comment on column public.product_requests.name is 'What the manager thinks it should be called on the brand''s list. Needed for something new.';
+comment on column public.product_requests.supplier_code is 'The code on the invoice. Every line with this code at this restaurant is settled by the answer. Empty for a product asked for from the Products page.';
+comment on column public.product_requests.description is 'The line as the supplier printed it.';
+comment on column public.product_requests.units_per_case is 'How many of the product''s units the Hub read in the pack when it was sent. A starting point for whoever answers.';
+comment on column public.product_requests.answer is 'new_product: added to the brand''s list. version: a version of a product we have. not_stock: the code is not stock. do_not_buy: the brand does not want it bought. leave: ordered by mistake, left as it is. Empty while it waits.';
+comment on column public.product_requests.product_id is 'The product the answer settled it on, for new_product and version.';
+
+create unique index if not exists product_requests_one_waiting
+    on public.product_requests (restaurant_id, supplier_id, supplier_code)
+    where answer is null and supplier_code is not null;
+create index if not exists idx_product_requests_waiting
+    on public.product_requests (restaurant_id) where answer is null;
+
+comment on index public.product_requests_one_waiting is 'One waiting request per code at a restaurant: the same code on three deliveries is one question.';
+
 -- What a product's cost did, and why. The decision log, as against the evidence.
 --
 -- An invoice proves what a supplier charged. It proves nothing about what the
@@ -3472,10 +3530,10 @@ create or replace function public.brand_choice_guard() returns trigger
     as $$
 begin
     if nullif(current_setting('request.jwt.claims', true), '') is null then
-        return new;
+        return coalesce(new, old);
     end if;
     if public.get_my_role() in ('owner', 'super_admin') then
-        return new;
+        return coalesce(new, old);
     end if;
     if tg_table_name = 'product_versions' then
         -- A version is one supplier's code for one product. Moved to another
@@ -3490,8 +3548,16 @@ begin
             raise exception 'Only an owner can choose what the brand recommends';
         end if;
     elsif tg_table_name = 'products' then
-        if (tg_op = 'INSERT' and new.recommends <> 'versions')
-           or (tg_op = 'UPDATE' and new.recommends is distinct from old.recommends) then
+        if tg_op = 'INSERT' then
+            raise exception 'Only an owner can add a product. Send it for review instead';
+        end if;
+        if tg_op = 'DELETE' then
+            raise exception 'Only an owner can remove a product';
+        end if;
+        if new.name is distinct from old.name or new.is_active is distinct from old.is_active then
+            raise exception 'Only an owner can rename a product or switch it off';
+        end if;
+        if new.recommends is distinct from old.recommends then
             raise exception 'Only an owner can choose what the brand recommends';
         end if;
     elsif tg_table_name = 'suppliers' then
@@ -3500,10 +3566,40 @@ begin
             raise exception 'Only an owner can say a supplier works without codes';
         end if;
     end if;
+    return coalesce(new, old);
+end $$;
+
+comment on function public.brand_choice_guard() is 'Keeps to owners and the super admin what the brand decides: adding, renaming and switching off a product, the recommendations, and the suppliers that work without codes. Store managers write the same rows for everything else.';
+create or replace function public.set_aside_guard() returns trigger
+    language plpgsql
+    set search_path to 'public', 'pg_temp'
+    as $$
+begin
+    if nullif(current_setting('request.jwt.claims', true), '') is null then
+        return new;
+    end if;
+    if public.get_my_role() in ('owner', 'super_admin') then
+        return new;
+    end if;
+    if tg_table_name = 'supplier_codes' then
+        if new.ignored and (tg_op = 'INSERT' or not old.ignored) then
+            raise exception 'Only an owner can say a code is not stock. Send it for review instead';
+        end if;
+    elsif tg_table_name = 'invoice_lines' then
+        if new.decision = 'ignored'
+           and (tg_op = 'INSERT' or old.decision is distinct from 'ignored')
+           and not exists (
+               select 1 from public.invoices i
+                 join public.supplier_codes c
+                   on c.restaurant_id = i.restaurant_id and c.supplier_id = i.supplier_id
+                where i.id = new.invoice_id and c.supplier_code = new.supplier_code and c.ignored) then
+            raise exception 'Only an owner can set an invoice line aside. Send it for review instead';
+        end if;
+    end if;
     return new;
 end $$;
 
-comment on function public.brand_choice_guard() is 'Keeps the recommendations and the suppliers that work without codes to owners and the super admin. Store managers write the same rows for everything else.';
+comment on function public.set_aside_guard() is 'Keeps setting an invoice line aside, and saying a code is not stock, to owners and the super admin, so a store manager sends it for review instead. A line on a code already marked not stock is still settled by the import.';
 
 -- The PDF button says the sheet was printed. An owner can print but cannot
 -- write the restaurant row, so the stamp goes through here. The restaurant is
@@ -3791,6 +3887,14 @@ begin
         end);
     end if;
 
+    -- Products: what store managers sent for review, for whoever answers
+    -- it. Every restaurant's for the super admin, their own for an owner.
+    if my_role in ('owner', 'super_admin') then
+        out := out || jsonb_build_object('requests', (
+            select count(*) from public.product_requests pr
+             where pr.answer is null and (my_role = 'super_admin' or pr.restaurant_id = restaurant)));
+    end if;
+
     -- A listings page that has not been read for eight days, for the super admin.
     if my_role = 'super_admin' then
         out := out || jsonb_build_object('dead_pages', (
@@ -3838,6 +3942,8 @@ revoke all on function "public"."allergens_changed_at"() from public, anon, auth
 grant execute on function "public"."allergens_changed_at"() to anon, authenticated;
 revoke all on function "public"."brand_choice_guard"() from public, anon, authenticated, service_role;
 grant execute on function "public"."brand_choice_guard"() to service_role;
+revoke all on function public.set_aside_guard() from public, anon, authenticated, service_role;
+grant execute on function public.set_aside_guard() to service_role;
 revoke all on function "public"."price_version"() from public, anon, authenticated, service_role;
 grant execute on function "public"."price_version"() to service_role;
 revoke all on function "public"."answer_time_off"("request_id" "uuid", "answer" "text", "clear_shift_ids" "uuid"[]) from public, anon, authenticated, service_role;
@@ -4039,6 +4145,42 @@ create policy version_allergens_select on public.version_allergens for select to
 create policy version_allergens_write on public.version_allergens to authenticated
     using ((select public.get_my_role()) = any (array['super_admin', 'owner', 'store_manager']))
     with check ((select public.get_my_role()) = any (array['super_admin', 'owner', 'store_manager']));
+
+-- What was sent for review, and who reviews. The brand's settings are the
+-- owners' and the super admin's.
+alter table public.brand_settings enable row level security;
+alter table public.product_requests enable row level security;
+
+create policy brand_settings_select on public.brand_settings for select to authenticated
+    using ((select public.get_my_role()) = any (array['super_admin', 'owner']));
+create policy brand_settings_update on public.brand_settings for update to authenticated
+    using ((select public.get_my_role()) = any (array['super_admin', 'owner']))
+    with check ((select public.get_my_role()) = any (array['super_admin', 'owner']));
+
+-- Read at the restaurant it came from, and by the super admin everywhere.
+-- Sent by a manager or an owner as themselves, waiting. Answered by an owner
+-- there, or the super admin: an owner belongs to one restaurant, and the
+-- answer writes that restaurant's prices and codes.
+create policy product_requests_select on public.product_requests for select to authenticated
+    using (((select public.get_my_role()) = 'super_admin')
+        or (((select public.get_my_role()) = any (array['owner', 'store_manager']))
+            and restaurant_id = (select public.get_my_restaurant_id())));
+create policy product_requests_insert on public.product_requests for insert to authenticated
+    with check (sent_by = (select auth.uid()) and answer is null
+        and (((select public.get_my_role()) = 'super_admin')
+            or (((select public.get_my_role()) = any (array['owner', 'store_manager']))
+                and restaurant_id = (select public.get_my_restaurant_id()))));
+create policy product_requests_answer on public.product_requests for update to authenticated
+    using (((select public.get_my_role()) = 'super_admin')
+        or ((select public.get_my_role()) = 'owner' and restaurant_id = (select public.get_my_restaurant_id())))
+    with check (((select public.get_my_role()) = 'super_admin')
+        or ((select public.get_my_role()) = 'owner' and restaurant_id = (select public.get_my_restaurant_id())));
+-- Only what the policies allow anyway: no inserts or deletes on the settings,
+-- which are one row, and no deletes on requests, which are kept answered.
+revoke all on table public.brand_settings from anon, authenticated, public;
+grant select, update on table public.brand_settings to authenticated;
+revoke all on table public.product_requests from anon, authenticated, public;
+grant select, insert, update on table public.product_requests to authenticated;
 
 
 -- -- The menu ----------------------------------------------------------
@@ -5173,7 +5315,9 @@ CREATE OR REPLACE TRIGGER "product_allergens_updated_at" BEFORE UPDATE ON "publi
 CREATE OR REPLACE TRIGGER "version_allergens_updated_at" BEFORE UPDATE ON "public"."version_allergens" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "product_supplier_prices_version" BEFORE INSERT OR UPDATE OF "product_id", "supplier_id", "supplier_code", "version_id" ON "public"."product_supplier_prices" FOR EACH ROW EXECUTE FUNCTION "public"."price_version"();
 CREATE OR REPLACE TRIGGER "product_versions_brand_choice" BEFORE INSERT OR UPDATE ON "public"."product_versions" FOR EACH ROW EXECUTE FUNCTION "public"."brand_choice_guard"();
-CREATE OR REPLACE TRIGGER "products_brand_choice" BEFORE INSERT OR UPDATE ON "public"."products" FOR EACH ROW EXECUTE FUNCTION "public"."brand_choice_guard"();
+CREATE OR REPLACE TRIGGER "products_brand_choice" BEFORE INSERT OR UPDATE OR DELETE ON "public"."products" FOR EACH ROW EXECUTE FUNCTION "public"."brand_choice_guard"();
+CREATE OR REPLACE TRIGGER "invoice_lines_set_aside" BEFORE INSERT OR UPDATE OF "decision" ON "public"."invoice_lines" FOR EACH ROW EXECUTE FUNCTION "public"."set_aside_guard"();
+CREATE OR REPLACE TRIGGER "supplier_codes_set_aside" BEFORE INSERT OR UPDATE OF "ignored" ON "public"."supplier_codes" FOR EACH ROW EXECUTE FUNCTION "public"."set_aside_guard"();
 CREATE OR REPLACE TRIGGER "suppliers_brand_choice" BEFORE INSERT OR UPDATE ON "public"."suppliers" FOR EACH ROW EXECUTE FUNCTION "public"."brand_choice_guard"();
 CREATE OR REPLACE TRIGGER "sales_platforms_key" BEFORE INSERT OR UPDATE ON "public"."sales_platforms" FOR EACH ROW EXECUTE FUNCTION "public"."sales_platform_key"();
 CREATE OR REPLACE TRIGGER "roster_shifts_updated_at" BEFORE UPDATE ON "public"."roster_shifts" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();

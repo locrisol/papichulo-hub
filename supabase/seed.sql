@@ -138,6 +138,9 @@ cross join (values
 ) as t(key, label, sort_order)
 on conflict (restaurant_id, key) do nothing;
 
+-- The brand's settings are one row, which the app updates and never adds.
+insert into public.brand_settings (id) values (true) on conflict (id) do nothing;
+
 
 -- ── Two things that are not tables, but are rows ─────────────────────────
 
