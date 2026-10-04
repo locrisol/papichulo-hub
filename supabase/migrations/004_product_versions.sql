@@ -100,7 +100,16 @@ comment on column public.product_supplier_prices.version_id is 'Which version th
 create index if not exists idx_product_supplier_prices_version on public.product_supplier_prices (version_id);
 
 -- The versions the prices already describe, one per product, supplier and
--- code, and each price pointed at its own.
+-- code, each price pointed at its own, the recommendations and the
+-- allergens. Only the first time, while there are no versions: run again
+-- later, it would answer versions made since that are meant to be
+-- unanswered, and recommend again what an owner took back.
+do $first$
+begin
+if exists (select 1 from public.product_versions) then
+    return;
+end if;
+
 insert into public.product_versions (product_id, supplier_id, supplier_code)
 select distinct on (p.product_id, p.supplier_id, lower(btrim(coalesce(p.supplier_code, ''))))
        p.product_id, p.supplier_id, nullif(btrim(p.supplier_code), '')
@@ -122,8 +131,7 @@ update public.product_supplier_prices p
 -- which is Point Campus's choice for each product today.
 update public.product_versions v
    set is_recommended = true
- where not v.is_recommended
-   and exists (select 1 from public.product_supplier_prices p where p.version_id = v.id and p.is_preferred)
+ where exists (select 1 from public.product_supplier_prices p where p.version_id = v.id and p.is_preferred)
    and not exists (select 1 from public.product_versions w where w.product_id = v.product_id and w.is_recommended);
 
 -- Each version starts with its product's allergens, so nothing on any sheet
@@ -133,8 +141,8 @@ insert into public.version_allergens (version_id, gluten, crustaceans, eggs, fis
 select v.id, a.gluten, a.crustaceans, a.eggs, a.fish, a.peanuts, a.soybeans, a.milk,
        a.nuts, a.celery, a.mustard, a.sesame, a.sulphites, a.lupin, a.molluscs
   from public.product_versions v
-  join public.product_allergens a on a.product_id = v.product_id
- where not exists (select 1 from public.version_allergens x where x.version_id = v.id);
+  join public.product_allergens a on a.product_id = v.product_id;
+end $first$;
 
 alter table public.product_supplier_prices alter column version_id set not null;
 
@@ -219,6 +227,13 @@ begin
         return new;
     end if;
     if tg_table_name = 'product_versions' then
+        -- A version is one supplier's code for one product. Moved to another
+        -- product its allergens would answer for that one, and the prices
+        -- on it would still say the first. Nothing in the app does it.
+        if tg_op = 'UPDATE' and (new.product_id is distinct from old.product_id
+                                 or new.supplier_id is distinct from old.supplier_id) then
+            raise exception 'A version stays with its product and supplier';
+        end if;
         if (tg_op = 'INSERT' and new.is_recommended)
            or (tg_op = 'UPDATE' and new.is_recommended is distinct from old.is_recommended) then
             raise exception 'Only an owner can choose what the brand recommends';
@@ -339,7 +354,9 @@ create or replace function public.allergens_changed_at() returns timestamp with 
                 l.action <> 'update' or l.changes ? 'version_id'
             when l.action <> 'update' then true
             when l.table_name = 'products' then l.changes ?| array['name', 'is_active', 'is_mix', 'section']
-            when l.table_name = 'product_versions' then l.changes ?| array['is_active', 'product_id']
+            -- Recommended counts: a restaurant that buys none of a product's
+            -- versions has its sheet built from the recommended ones.
+            when l.table_name = 'product_versions' then l.changes ?| array['is_active', 'product_id', 'is_recommended']
             when l.table_name = 'menu_items' then exists (
                 select 1 from jsonb_object_keys(l.changes) k
                  where k <> all (array['selling_price', 'vat_rate', 'notes']))
