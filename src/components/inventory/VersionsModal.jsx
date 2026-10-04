@@ -3,8 +3,10 @@ import { supabase } from '@/lib/supabase'
 import { friendlyError } from '@/lib/errors'
 import { PLACES, versionLabel } from '@/lib/brandVersions'
 import {
-    modalFooter, secondaryButton, labelClass, fieldClass, hintClass, rowButton, badge, chip,
+    modalFooter, secondaryButton, primaryButton, labelClass, fieldClass, hintClass, rowButton, badge, chip,
+    checkbox, checkRow, errorBanner,
 } from '@/lib/controlStyles'
+import AddButton from '@/components/ui/AddButton'
 import Modal from '@/components/ui/Modal'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 
@@ -15,11 +17,17 @@ import ErrorBanner from '@/components/ui/ErrorBanner'
 // versions, or nothing in particular, for cleaning and packaging left free
 // (his answers of 3 and 4 October). Anybody who manages a restaurant says
 // where a version is kept, which is where the stock take lists it.
+//
+// A version starts when a restaurant prices a supplier's code this product has
+// not had, so Add a price is how a store manager adds one. An owner can also
+// add one before any restaurant buys it, to recommend it: the first price
+// typed with its code then joins it (price_version).
 export default function VersionsModal({
-    product, versions, suppliers, boughtHere, canRecommend, onClose, onChanged,
+    product, versions, suppliers, boughtHere, canRecommend, onClose, onChanged, onAddPrice,
 }) {
     const [error, setError] = useState('')
     const [busy, setBusy] = useState('')
+    const [adding, setAdding] = useState(false)
     const mine = (versions || [])
         .filter(v => v.product_id === product.id)
         .sort((a, b) => Number(b.is_recommended) - Number(a.is_recommended)
@@ -72,11 +80,17 @@ export default function VersionsModal({
                     </div>
                 )}
 
-                {mine.length > 0 && (
-                    <p className={hintClass}>
-                        A version is kept in the same place at every restaurant that buys it.
+                <div className="rounded-lg bg-app-bg border border-border p-3 text-sm text-gray-700">
+                    <p>
+                        A version is added when a price is saved with a supplier and code this product has
+                        not had. Each version is kept in the same place at every restaurant that buys it.
                     </p>
-                )}
+                    <div className="flex flex-wrap gap-2 mt-2">
+                        <button type="button" onClick={onAddPrice} className={rowButton('edit')}>
+                            Add a price
+                        </button>
+                    </div>
+                </div>
 
                 {mine.length === 0 && (
                     <p className="text-sm text-muted">
@@ -195,9 +209,114 @@ export default function VersionsModal({
                 </ul>
             </div>
 
+            {canRecommend && (
+                <div className="px-6 pb-4">
+                    {adding ? (
+                        <NewVersion
+                            product={product}
+                            suppliers={suppliers}
+                            onCancel={() => setAdding(false)}
+                            onAdded={async () => { setAdding(false); await onChanged?.() }}
+                        />
+                    ) : (
+                        <AddButton onClick={() => setAdding(true)}>Add a version</AddButton>
+                    )}
+                </div>
+            )}
+
             <div className={modalFooter}>
                 <button type="button" onClick={onClose} className={secondaryButton}>Done</button>
             </div>
         </Modal>
+    )
+}
+
+// A version no restaurant buys yet, for an owner to recommend before it is
+// bought. The code is needed unless the supplier works without codes, the
+// same rule as a price.
+function NewVersion({ product, suppliers, onCancel, onAdded }) {
+    const [supplierId, setSupplierId] = useState('')
+    const [code, setCode] = useState('')
+    const [name, setName] = useState('')
+    const [recommend, setRecommend] = useState(true)
+    const [problem, setProblem] = useState('')
+    const [busy, setBusy] = useState(false)
+    const live = (suppliers || []).filter(s => s.is_active !== false)
+    const supplier = live.find(s => s.id === supplierId)
+
+    async function add() {
+        if (!supplierId) { setProblem('Pick the supplier.'); return }
+        if (!code.trim() && !supplier?.works_without_codes) {
+            setProblem(`${supplier?.name || 'This supplier'} uses codes, so say which one.`)
+            return
+        }
+        setBusy(true)
+        const { error } = await supabase.from('product_versions').insert({
+            product_id: product.id,
+            supplier_id: supplierId,
+            supplier_code: code.trim() || null,
+            name: name.trim() || null,
+            is_recommended: recommend,
+        })
+        setBusy(false)
+        if (error) {
+            setProblem(error.code === '23505'
+                ? 'This product already has a version with that supplier and code.'
+                : friendlyError(error))
+            return
+        }
+        await onAdded()
+    }
+
+    return (
+        <div className="border border-border rounded-lg p-3 space-y-3">
+            {problem && <p className={errorBanner} role="alert">{problem}</p>}
+            <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                    <label className={labelClass} htmlFor="new-version-supplier">Supplier</label>
+                    <select
+                        id="new-version-supplier"
+                        value={supplierId}
+                        onChange={e => { setSupplierId(e.target.value); setProblem('') }}
+                        className={fieldClass}
+                    >
+                        <option value="">Pick one</option>
+                        {live.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                </div>
+                <div>
+                    <label className={labelClass} htmlFor="new-version-code">Supplier code</label>
+                    <input
+                        id="new-version-code"
+                        value={code}
+                        onChange={e => { setCode(e.target.value); setProblem('') }}
+                        className={fieldClass}
+                    />
+                </div>
+            </div>
+            <div>
+                <label className={labelClass} htmlFor="new-version-name">Name</label>
+                <input
+                    id="new-version-name"
+                    value={name}
+                    placeholder={product.name}
+                    onChange={e => setName(e.target.value)}
+                    className={fieldClass}
+                />
+            </div>
+            <label className={checkRow}>
+                <input type="checkbox" checked={recommend} onChange={e => setRecommend(e.target.checked)} className={checkbox} />
+                <span className="text-sm text-gray-900">Recommend it</span>
+            </label>
+            <p className={hintClass}>
+                No restaurant buys it yet. When one prices this supplier and code, the price joins it.
+            </p>
+            <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={onCancel} className={secondaryButton}>Cancel</button>
+                <button type="button" disabled={busy} onClick={add} className={primaryButton('md', 'good')}>
+                    {busy ? 'Adding...' : 'Add the version'}
+                </button>
+            </div>
+        </div>
     )
 }
