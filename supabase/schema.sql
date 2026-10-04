@@ -414,14 +414,22 @@ create table if not exists public.product_versions (
     is_active boolean not null default true,
     created_at timestamp with time zone not null default now(),
     created_by uuid references public.users(id) on delete set null,
+    section text,
+    also_in text[],
     constraint product_versions_code_not_blank check (supplier_code is null or btrim(supplier_code) <> ''),
-    constraint product_versions_name_not_blank check (name is null or btrim(name) <> '')
+    constraint product_versions_name_not_blank check (name is null or btrim(name) <> ''),
+    constraint product_versions_section_known
+        check (section is null or section in ('Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning')),
+    constraint product_versions_also_in_known
+        check (also_in is null or also_in <@ array['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning'])
 );
 
 comment on table public.product_versions is 'One thing that can be bought for a product: a supplier, and the supplier''s code for it. Shared by every restaurant, the way products are; each restaurant''s price for it is a product_supplier_prices row pointing here. Made by the price_version trigger whenever a price names a supplier and code no version has yet, so nothing that writes prices has to know.';
 comment on column public.product_versions.supplier_code is 'The supplier''s code. Empty only for a supplier that works without codes, or for a price typed before codes were asked for, which the Products page marks.';
 comment on column public.product_versions.name is 'What this version is, when the product''s name is not enough: Santa Maria 12" wraps. Empty means the product''s name.';
 comment on column public.product_versions.is_recommended is 'One of the versions the brand recommends for its product. A product can have several (ambient or frozen tortillas both fine). Ignored when the product recommends nothing in particular. Owners and the super admin set it.';
+comment on column public.product_versions.section is 'Where this version is kept. Empty means where the product is kept (products.section). Frozen tortillas and ambient ones are two versions of one product kept in two places.';
+comment on column public.product_versions.also_in is 'The other places this version is also kept. Empty means the product''s own (products.also_in).';
 
 -- One version per supplier and code for a product, ignoring case and spaces;
 -- one with no code per supplier.
@@ -3494,8 +3502,8 @@ begin
             new.version_id := old.version_id;
             return new;
         end if;
-        insert into public.product_versions (product_id, supplier_id, supplier_code, name, created_by)
-        select new.product_id, new.supplier_id, code, v.name, auth.uid()
+        insert into public.product_versions (product_id, supplier_id, supplier_code, name, section, also_in, created_by)
+        select new.product_id, new.supplier_id, code, v.name, v.section, v.also_in, auth.uid()
           from public.product_versions v where v.id = old.version_id
         returning id into found;
         insert into public.version_allergens (version_id, gluten, crustaceans, eggs, fish, peanuts, soybeans, milk,
@@ -5036,6 +5044,25 @@ create or replace view public.public_restaurant_versions as
 
 comment on view public.public_product_versions is 'Each version of each product, for the customer allergen page: which product it is of, whether the brand recommends it and whether it is in use. Not the supplier, the code or the price.';
 comment on view public.public_version_allergens is 'Each version''s allergens, for the customer allergen page.';
+-- What the stock take reads, for everybody who counts: at each restaurant,
+-- where each product it buys is kept, version by version. Nothing about
+-- suppliers, codes or prices. A product with no price at a restaurant has no
+-- row, and is counted where the product says. A version switched off says
+-- nothing about where anything is kept. Their own restaurant only, or
+-- every one for the super admin.
+create or replace view public.restaurant_kept_in as
+ select distinct p.restaurant_id, v.product_id,
+        coalesce(v.section, pr.section::text) as section,
+        coalesce(v.also_in, pr.also_in) as also_in
+   from public.product_supplier_prices p
+   join public.product_versions v on v.id = p.version_id
+   join public.products pr on pr.id = v.product_id
+  where v.is_active
+    and ((select public.get_my_role()) = 'super_admin'
+         or p.restaurant_id = (select public.get_my_restaurant_id()));
+
+comment on view public.restaurant_kept_in is 'Where each product a restaurant buys is kept there, one row for each place its versions say. For the stock take, which staff count, so it carries no supplier, code or price.';
+
 comment on view public.public_restaurant_versions is 'Which versions each restaurant has a price for, which is which versions its allergen sheet is built from. Not the price.';
 
 COMMENT ON VIEW "public"."roster_published" IS 'The week as it went out to staff, at your restaurant: every published shift as it stands, and a shift changed since the week went out as it was then, from published_as. Changing a shift takes it back to a draft so the roster can say so, and without this it vanished from somebody''s week and phone until the week was published again. The note is there only for the person the shift is on and for the managers. Only shifts from nine weeks before today to nine after, by the day as it went out: the weeks My shifts opens and one more. My shifts reads this rather than roster_shifts.';
@@ -5107,6 +5134,7 @@ revoke all on public.public_restaurants          from anon, authenticated, publi
 revoke all on public.public_product_versions     from anon, authenticated, public;
 revoke all on public.public_version_allergens    from anon, authenticated, public;
 revoke all on public.public_restaurant_versions  from anon, authenticated, public;
+revoke all on public.restaurant_kept_in from anon, authenticated, public;
 grant select on public.public_menu_categories      to anon, authenticated;
 grant select on public.public_menu_item_components to anon, authenticated;
 grant select on public.public_menu_items           to anon, authenticated;
@@ -5117,6 +5145,7 @@ grant select on public.public_restaurants          to anon, authenticated;
 grant select on public.public_product_versions     to anon, authenticated;
 grant select on public.public_version_allergens    to anon, authenticated;
 grant select on public.public_restaurant_versions  to anon, authenticated;
+grant select on public.restaurant_kept_in to authenticated;
 
 
 -- ======================================================================

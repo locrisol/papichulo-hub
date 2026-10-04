@@ -554,6 +554,15 @@ maybe('what each role can see and do', () => {
             }
         })
 
+        // The stock take lists a product where the versions bought there are
+        // kept, and staff count it, so they read that view, for their own
+        // restaurant only.
+        it('reads where things are kept at their own restaurant only', async () => {
+            const { data, error } = await employee.from('restaurant_kept_in').select('restaurant_id, product_id, section, also_in')
+            expect(error).toBeNull()
+            expect((data || []).filter(k => k.restaurant_id !== ownRestaurantId)).toEqual([])
+        })
+
         it('cannot send anything for review or read what was sent', async () => {
             expect(await requestRefusal(employee, ownRestaurantId)).toBe(REFUSED_BY_THE_RULES)
             for (const table of ['product_requests', 'brand_settings']) {
@@ -1220,7 +1229,7 @@ maybe('what each role can see and do', () => {
                 'restaurants', 'products', 'menu_items', 'menu_categories',
                 'menu_item_components', 'mix_recipes', 'product_allergens',
                 'product_versions', 'version_allergens', 'product_supplier_prices',
-                'product_requests', 'brand_settings',
+                'product_requests', 'brand_settings', 'restaurant_kept_in',
             ]) {
                 const { count } = await countVisible(anon, table)
                 expect(count, `${table} is still readable by anybody`).toBe(0)
