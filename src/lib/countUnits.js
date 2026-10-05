@@ -1,3 +1,5 @@
+import { fmtQty } from '@/lib/format'
+
 // The order pack formats are listed in.
 //
 // Biggest first, always. A product can be bought in a bag of 0.17 KG and in a
@@ -44,4 +46,21 @@ export function packsToSave(packs, draft, unit) {
     if (!(factor > 0)) return { packs: list, problem: `Enter how many ${unit || 'units'} are in one ${label}, or clear its boxes.` }
     if (list.some(p => p.label === label)) return { packs: list, problem: `There is already a pack called ${label}.` }
     return { packs: [...list, { label, factor }], problem: '' }
+}
+
+// A product's unit as a word in a sentence: "10 kg", "1 litre", "12 units".
+export function unitWords(unit, amount) {
+    const one = Number(amount) === 1
+    if (unit === 'KG') return 'kg'
+    if (unit === 'Litre') return one ? 'litre' : 'litres'
+    return one ? 'unit' : 'units'
+}
+
+// What a pack box on the count is labelled: the pack and what one holds,
+// "Box, 10 kg each". The pack boxes sit in a panel of their own, apart from
+// the loose box, so nobody types kilos into a box meant for boxes (his
+// choice, 5 October 2026).
+export function packLabel(format, unit) {
+    const holds = fmtQty(format?.factor)
+    return `${format?.label || 'Pack'}, ${holds} ${unitWords(unit, format?.factor)} each`
 }

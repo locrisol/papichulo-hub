@@ -10,8 +10,8 @@ import { friendlyError } from '@/lib/errors'
 import { matches } from '@/lib/search'
 import { countName, compareForCount } from '@/lib/products'
 import { countedLine } from '@/lib/countedAt'
-import { orderFormats } from '@/lib/countUnits'
-import { badge, captionClass, card, chip, fieldClass, labelClass, primaryButton, rowButton } from '@/lib/controlStyles'
+import { orderFormats, packLabel, unitWords } from '@/lib/countUnits'
+import { badge, captionClass, card, chip, fieldBase, fieldClass, labelClass, primaryButton, rowButton } from '@/lib/controlStyles'
 import SearchBox from '@/components/ui/SearchBox'
 import { sectionColour, sectionRank } from '@/lib/sections'
 import { breakdownParts, justLoose } from '@/lib/stockTakeSummary'
@@ -955,28 +955,46 @@ export default function StockTakeCountPage() {
                                                         const { total, hasAny } = computeDraft(product)
                                                         return (
                                                             <div className="space-y-2">
-                                                                <div className="flex flex-wrap gap-2">
-                                                                    {config.formats.map(fmt => (
-                                                                        <div key={fmt.id} className="flex-1 min-w-[120px]">
-                                                                            <label htmlFor={`count-pack-${fmt.id}`} className={labelClass}>
-                                                                                {fmt.label} ({fmtQty(fmt.factor)} {product.unit})
-                                                                            </label>
-                                                                            <input
-                                                                                id={`count-pack-${fmt.id}`}
-                                                                                type="text"
-                                                                                inputMode="decimal"
-                                                                                onFocus={e => e.target.select()}
-                                                                                value={draftCounts[fmt.id] || ''}
-                                                                                onChange={e => setDraftCounts(prev => ({ ...prev, [fmt.id]: e.target.value.replace(/[^0-9.]/g, '') }))}
-                                                                                placeholder="0"
-                                                                                className={fieldClass}
-                                                                            />
+                                                                {/* The packs in a panel of their own, the
+                                                                    loose box plain under it, so a box meant
+                                                                    for boxes is never mistaken for kilos
+                                                                    (his choice, 5 October 2026). */}
+                                                                {config.formats.length > 0 && (
+                                                                    <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 pt-2.5 pb-3">
+                                                                        <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-orange-800 mb-2">
+                                                                            <svg className="w-3.5 h-3.5" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M21 8l-9-5-9 5 9 5 9-5zM3 8v8l9 5 9-5V8M12 13v8" />
+                                                                            </svg>
+                                                                            Packs
+                                                                        </p>
+                                                                        <div className="flex flex-wrap gap-2">
+                                                                            {config.formats.map(fmt => (
+                                                                                <div key={fmt.id} className="flex-1 min-w-[120px]">
+                                                                                    <label htmlFor={`count-pack-${fmt.id}`} className={labelClass}>
+                                                                                        {packLabel(fmt, product.unit)}
+                                                                                    </label>
+                                                                                    <input
+                                                                                        id={`count-pack-${fmt.id}`}
+                                                                                        type="text"
+                                                                                        inputMode="decimal"
+                                                                                        onFocus={e => e.target.select()}
+                                                                                        value={draftCounts[fmt.id] || ''}
+                                                                                        onChange={e => setDraftCounts(prev => ({ ...prev, [fmt.id]: e.target.value.replace(/[^0-9.]/g, '') }))}
+                                                                                        placeholder="0"
+                                                                                        className={`${fieldBase} bg-white border-orange-200`}
+                                                                                    />
+                                                                                </div>
+                                                                            ))}
                                                                         </div>
-                                                                    ))}
+                                                                    </div>
+                                                                )}
+                                                                <div className="flex flex-wrap gap-2">
                                                                     {looseAllowed && (
                                                                         <div className="flex-1 min-w-[120px]">
                                                                             <label htmlFor="count-loose" className={labelClass}>
-                                                                                {config.formats.length > 0 ? 'Loose' : 'Quantity'} ({product.unit})
+                                                                                {config.formats.length > 0
+                                                                                    ? `Loose, in ${unitWords(product.unit, 2)}`
+                                                                                    : `Quantity (${product.unit})`}
                                                                             </label>
                                                                             <input
                                                                                 id="count-loose"

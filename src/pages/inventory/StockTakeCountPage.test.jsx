@@ -78,10 +78,11 @@ function open() {
 }
 
 // Open the product, type into one of its boxes and press Add. A box is named
-// by its label, which goes on to say the unit: "Loose (KG)".
+// by its label, which goes on to say the unit: "Loose, in kg", "Case of 12,
+// 12 kg each".
 async function count(clicker, name, box, quantity) {
     await clicker.click(await screen.findByText(name))
-    await clicker.type(screen.getByLabelText(new RegExp(`^${box} `)), quantity)
+    await clicker.type(screen.getByLabelText(new RegExp(`^${box}[ ,]`)), quantity)
     await clicker.click(screen.getByRole('button', { name: 'Add' }))
     await waitFor(() => expect(saved).toHaveLength(1))
     return saved[0]
@@ -102,8 +103,8 @@ describe('a super admin counting one restaurant', () => {
         setUp({ prices: [AT_POINT_CAMPUS, AT_DUN_LAOGHAIRE] })
         const clicker = open()
         await clicker.click(await screen.findByText('Cheddar'))
-        expect(screen.getByLabelText(/^Case of 12 /)).toBeInTheDocument()
-        expect(screen.queryByLabelText(/^Case of 6 /)).not.toBeInTheDocument()
+        expect(screen.getByLabelText(/^Case of 12,/)).toBeInTheDocument()
+        expect(screen.queryByLabelText(/^Case of 6,/)).not.toBeInTheDocument()
     })
 })
 
@@ -263,7 +264,7 @@ describe('a refresh that lands while a line is being saved', () => {
         setUp({ prices: [AT_POINT_CAMPUS], hold: true })
         const clicker = open()
         await clicker.click(await screen.findByText('Cheddar'))
-        await clicker.type(screen.getByLabelText(/^Loose /), '2')
+        await clicker.type(screen.getByLabelText(/^Loose,/), '2')
         await clicker.click(screen.getByRole('button', { name: 'Add' }))
         await waitFor(() => expect(releases).toHaveLength(1))
 
@@ -323,5 +324,29 @@ describe('the bar over the count', () => {
         expect(filter).toHaveAttribute('aria-pressed', 'false')
         await clicker.click(filter)
         expect(screen.getByRole('button', { name: 'Showing uncounted' })).toHaveAttribute('aria-pressed', 'true')
+    })
+})
+
+// His choice of 5 October: the packs in a panel of their own, the loose box
+// plain under it, each pack saying what one holds.
+describe('the boxes to count in', () => {
+    it('puts the packs in a panel of their own, apart from loose', async () => {
+        user = { id: 'u2', role: 'employee', full_name: 'Maria' }
+        setUp({ prices: [AT_POINT_CAMPUS] })
+        const clicker = open()
+        await clicker.click(await screen.findByText('Cheddar'))
+        const pack = screen.getByLabelText('Case of 12, 12 kg each')
+        const panel = screen.getByText('Packs').closest('div')
+        expect(panel).toContainElement(pack)
+        expect(panel).not.toContainElement(screen.getByLabelText('Loose, in kg'))
+    })
+
+    it('keeps one Quantity box for a product with no packs', async () => {
+        user = { id: 'u2', role: 'employee', full_name: 'Maria' }
+        setUp({ prices: [{ ...AT_POINT_CAMPUS, id: 'none' }] })
+        const clicker = open()
+        await clicker.click(await screen.findByText('Cheddar'))
+        expect(screen.getByLabelText('Quantity (KG)')).toBeInTheDocument()
+        expect(screen.queryByText('Packs')).toBeNull()
     })
 })
