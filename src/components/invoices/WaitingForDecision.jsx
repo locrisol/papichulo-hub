@@ -1,8 +1,7 @@
-import { useState, useEffect, useMemo } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useState, useEffect, useMemo, useRef } from 'react'
+import { Link, useLocation } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
-import { useRestaurant } from '@/context/restaurant'
 import { useConfirm } from '@/context/confirm'
 import { fmtMoney } from '@/lib/format'
 import { shortDate, dayLabel, stampDay } from '@/lib/dates'
@@ -13,28 +12,35 @@ import { readReview, rowsFor, reviewWriter } from '@/lib/reviewWrites'
 import { requestFromLine, kindWords } from '@/lib/productRequests'
 import { emailTheReview } from '@/lib/rosterMail'
 import { can, BRAND_CHOICES } from '@/lib/access'
-import {
-    card, cardHeader, secondaryButton, primaryButton, rowButton, badge,
-    hintClass,
-} from '@/lib/controlStyles'
+import { card, cardHeader, rowButton, badge } from '@/lib/controlStyles'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import Notice from '@/components/ui/Notice'
-import PageHeader from '@/components/ui/PageHeader'
-import WarningUntilSeen from '@/components/ui/WarningUntilSeen'
 import MatchLineModal from '@/components/invoices/MatchLineModal'
 import SendForReviewModal from '@/components/inventory/SendForReviewModal'
 import { useRecountBadges } from '@/context/badges'
 
-// What the week's invoices want somebody to decide.
+// What the week's invoices want somebody to decide, at the top of Import
+// invoices.
+//
+// It was a page of its own, Review, until 5 October 2026, when he asked
+// whether it needed to be: the sidebar's count sits on Import invoices, and
+// what it counted was behind a plain button on another page. Uploading the
+// week and deciding what it raised are one job, so they are one page now,
+// this first because it is what the count is for. /invoices/review still
+// opens here.
 //
 // **Nothing changes a cost without him.** An invoice proposes and he accepts,
 // which is the whole reason this screen exists between the import and the
 // prices. The food cost already moved when the document went in, because money
 // spent is money spent. What a portion costs waits here.
 //
-// Four piles, and only one of them takes any thought most weeks. A line the
+// Three piles, and only one of them takes any thought most weeks. A line the
 // same as last week's was settled as it was written, so the two hundred lines a
-// twenty document week carries arrive here as a handful.
+// twenty document week carries arrive here as a handful. **A line that has
+// become the same as last week since** (another line with its code answered,
+// a price typed) is settled the moment this reads it, with nothing to press:
+// it was a fourth pile, Nothing to decide, that only ever held up the count
+// and the report.
 //
 // It is set based on purpose: the same screen over a bigger batch rather than
 // one document at a time, because the question "has anything moved" is about
@@ -61,21 +67,14 @@ const PILE_CARDS = [
         title: 'The price changed',
         under: 'What the supplier charged is already in the week. This is only about what the Hub costs a portion at. Not now leaves the costing as it is, and the weekly report keeps saying so until the two agree.',
     },
-    {
-        key: 'unchanged',
-        title: 'Nothing to decide',
-        under: 'Matched, and the same price as before. Press Clear all to remove them from this list.',
-    },
 ]
 
-export default function InvoiceReviewPage() {
+// `refresh` is the page's, raised after an import, so this reads again.
+export default function WaitingForDecision({ restaurantId, refresh: imported = 0 }) {
     const recountBadges = useRecountBadges()
     const { user } = useAuth()
-    const { activeRestaurant } = useRestaurant()
     const confirm = useConfirm()
     const location = useLocation()
-    const navigate = useNavigate()
-    const restaurantId = activeRestaurant?.id
     // Owners and the super admin keep the brand's list, so only they set a
     // line aside or start a product from one. A store manager says which of
     // our products it is, or sends it for review (his design, 4 October).
@@ -83,10 +82,7 @@ export default function InvoiceReviewPage() {
 
     const [data, setData] = useState(null)
     const [error, setError] = useState('')
-    // Opened by an import, which says what went in, and what has to be put
-    // right. That stays until it is seen: a decision clears only what was said.
-    const [said, setSaid] = useState(() => location.state?.said || '')
-    const [warned, setWarned] = useState(() => location.state?.warned || '')
+    const [said, setSaid] = useState('')
     const [busy, setBusy] = useState('')
     const [matching, setMatching] = useState(null)
     const [sending, setSending] = useState(null)
@@ -95,11 +91,6 @@ export default function InvoiceReviewPage() {
     const [sent, setSent] = useState([])
     // A refresh follows something done here that the sidebar may count.
     useEffect(() => { if (refresh) recountBadges() }, [refresh, recountBadges])
-
-    // Said once. Left in the history, a reload would say it again.
-    useEffect(() => {
-        if (location.state?.said || location.state?.warned) navigate(location.pathname, { replace: true, state: null })
-    }, [location, navigate])
 
     useEffect(() => {
         if (!restaurantId) return
@@ -116,13 +107,37 @@ export default function InvoiceReviewPage() {
 
         load()
         return () => { alive = false }
-    }, [restaurantId, refresh])
+    }, [restaurantId, refresh, imported])
 
     // The same matching the import ran, over the rows as they were stored.
     // See rowsFor.
     const rows = useMemo(() => rowsFor(data), [data])
     const piles = useMemo(() => pilesOf(rows), [rows])
-    const waiting = rows.length
+    const waiting = rows.length - (piles.unchanged?.length || 0)
+
+    // The same as last week by now, so settled with nothing to press, once a
+    // list. A failure says so and is not tried again until the next read.
+    const settled = useRef('')
+    useEffect(() => {
+        const list = piles.unchanged || []
+        if (!data || !list.length) return
+        const key = list.map(r => r.stored.id).join(',')
+        if (settled.current === key) return
+        settled.current = key
+        reviewWriter({ restaurantId, userId: user?.id, data, rows }).clearUnchanged(list).then(failed => {
+            if (failed) setError(`Lines the same as before could not be settled: ${failed}`)
+            else setRefresh(n => n + 1)
+        })
+    }, [piles, data, rows, restaurantId, user])
+
+    // Arriving from a link to it: the sidebar's count, the report, an old
+    // bookmark to Review. Once, when there is something to show.
+    const shown = useRef(false)
+    useEffect(() => {
+        if (shown.current || !data || location.hash !== '#waiting') return
+        shown.current = true
+        document.getElementById('waiting')?.scrollIntoView({ block: 'start' })
+    }, [data, location.hash])
 
     const writer = reviewWriter({ restaurantId, userId: user?.id, data, rows, onSaid: setSaid })
     const { sameCode } = writer
@@ -165,35 +180,21 @@ export default function InvoiceReviewPage() {
         return null
     }
 
-    if (!data) {
-        return <p className="text-sm text-muted">Reading what is waiting...</p>
-    }
+    // Nothing at all on the page while nothing waits: the page is for
+    // importing then. A failed read still says so.
+    if (!data) return error ? <ErrorBanner className="mb-4">{error}</ErrorBanner> : null
+    if (waiting === 0 && sent.length === 0 && !said && !error) return null
 
     return (
-        <>
-            <PageHeader
-                title="Review"
-                subtitle={[
-                    activeRestaurant?.name,
-                    waiting === 0 ? 'nothing waiting' : `${waiting} ${waiting === 1 ? 'line' : 'lines'} waiting`,
-                ].filter(Boolean).join(' · ')}
-            >
-                <Link to="/invoices/import" className={secondaryButton}>Import invoices</Link>
-                <Link to="/invoices" className={secondaryButton}>Invoices</Link>
-            </PageHeader>
-
+        <section id="waiting" className="scroll-mt-24">
             <ErrorBanner className="mb-4">{error}</ErrorBanner>
-            {warned && <WarningUntilSeen className="mb-4" onSeen={() => setWarned('')}>{warned}</WarningUntilSeen>}
             <Notice tone="good" className="mb-4">{said}</Notice>
 
-            {waiting === 0 && (
-                <div className={`${card} p-6 text-center`}>
-                    <p className="text-sm font-semibold text-gray-900">Nothing is waiting.</p>
-                    <p className={hintClass}>
-                        Every line imported so far has been decided, or matched something the Hub
-                        already knew at a price it already had.
-                    </p>
-                </div>
+            {waiting > 0 && (
+                <p className="text-sm text-gray-700 mb-3">
+                    <strong className="font-bold text-gray-900">Waiting for a decision:</strong>{' '}
+                    {waiting} {waiting === 1 ? 'line' : 'lines'}, from every import so far.
+                </p>
             )}
 
             {matching && (
@@ -236,48 +237,25 @@ export default function InvoiceReviewPage() {
                         <div className="p-4">
                             <p className="text-xs text-muted mb-4">{pile.under}</p>
 
-                            {pile.key === 'unchanged' ? (
-                                <>
-                                    <ul className="text-sm text-gray-700 space-y-1 mb-4">
-                                        {piles.unchanged.map(row => (
-                                            <li key={row.stored.id} className="flex justify-between gap-4">
-                                                <span className="truncate">{row.line.description}</span>
-                                                <span className="tabular-nums text-muted whitespace-nowrap">
-                                                    {fmtMoney(row.line.price_per_case)} a case
-                                                </span>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                    <button
-                                        type="button"
-                                        disabled={!!busy}
-                                        onClick={() => run('clear', () => writer.clearUnchanged(piles.unchanged))}
-                                        className={primaryButton('sm', 'good')}
-                                    >
-                                        {busy === 'clear' ? 'Clearing...' : 'Clear all'}
-                                    </button>
-                                </>
-                            ) : (
-                                <div className="space-y-3">
-                                    {piles[pile.key].map(row => (
-                                        <ReviewRow
-                                            key={row.stored.id}
-                                            row={row}
-                                            busy={busy}
-                                            keepsTheList={keepsTheList}
-                                            sameCodeCount={sameCode(row).length}
-                                            onAccept={also => run(`accept-${row.stored.id}`, () => writer.accept(row, also))}
-                                            onReject={() => run(`reject-${row.stored.id}`, () => writer.reject(row))}
-                                            onSameProduct={() => run(`same-${row.stored.id}`, () => writer.sameProduct(row))}
-                                            onBuyBoth={() => run(`both-${row.stored.id}`, () => writer.buyBoth(row))}
-                                            onMatch={() => setMatching(row)}
-                                            onNotStock={() => run(`skip-${row.stored.id}`, () => notStock(row))}
-                                            onLeave={() => run(`leave-${row.stored.id}`, () => writer.leaveOne(row))}
-                                            onSend={() => setSending(row)}
-                                        />
-                                    ))}
-                                </div>
-                            )}
+                            <div className="space-y-3">
+                                {piles[pile.key].map(row => (
+                                    <ReviewRow
+                                        key={row.stored.id}
+                                        row={row}
+                                        busy={busy}
+                                        keepsTheList={keepsTheList}
+                                        sameCodeCount={sameCode(row).length}
+                                        onAccept={also => run(`accept-${row.stored.id}`, () => writer.accept(row, also))}
+                                        onReject={() => run(`reject-${row.stored.id}`, () => writer.reject(row))}
+                                        onSameProduct={() => run(`same-${row.stored.id}`, () => writer.sameProduct(row))}
+                                        onBuyBoth={() => run(`both-${row.stored.id}`, () => writer.buyBoth(row))}
+                                        onMatch={() => setMatching(row)}
+                                        onNotStock={() => run(`skip-${row.stored.id}`, () => notStock(row))}
+                                        onLeave={() => run(`leave-${row.stored.id}`, () => writer.leaveOne(row))}
+                                        onSend={() => setSending(row)}
+                                    />
+                                ))}
+                            </div>
                         </div>
                     </div>
                 )
@@ -313,7 +291,7 @@ export default function InvoiceReviewPage() {
                     </div>
                 </div>
             )}
-        </>
+        </section>
     )
 }
 
@@ -442,7 +420,7 @@ function ReviewRow({
                                 code: line.code,
                                 pricePerCase: line.price_per_case,
                                 unitsPerCase: row.wantedUnits,
-                                back: '/invoices/review',
+                                back: '/invoices/import',
                             })}
                             className={rowButton()}
                         >

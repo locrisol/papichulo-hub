@@ -242,16 +242,16 @@ export default function ReportPage() {
         : []
 
     // Invoice lines from this week or before that nobody has decided on
-    // Review. His answer of 30 September: the report cannot go out while any
+    // Import invoices. His answer of 30 September: the report cannot go out while any
     // are waiting. Only up to its own week, so a delivery on the Monday after
     // does not hold last week's report.
     const [toDecide, setToDecide] = useState(0)
     const reviewHeld = report?.status === 'draft' && toDecide > 0
         ? [{
             text: `${toDecide} invoice ${toDecide === 1 ? 'line' : 'lines'} from this week or earlier `
-                + `${toDecide === 1 ? 'is' : 'are'} still waiting in Review.`,
-            to: '/invoices/review',
-            link: 'Open Review',
+                + `${toDecide === 1 ? 'is' : 'are'} still waiting for a decision.`,
+            to: '/invoices/import#waiting',
+            link: 'Decide them',
         }]
         : []
     const held = [...deliveryHeld, ...reviewHeld]

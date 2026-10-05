@@ -5,11 +5,17 @@ import { todayISO } from '@/lib/dates'
 import { badgesFrom } from '@/lib/badges'
 import { readToDecide } from '@/lib/invoiceReview'
 import { nearbyRows, waiting, PAIRING_COLUMNS } from '@/lib/nearby'
+import { onSaved } from '@/lib/saves'
 
-// How often the counts are asked again while the Hub is in view, and how old a
-// count can be before moving to another page asks again.
+// How often the counts are asked again while the Hub is in view, how old a
+// count can be before moving to another page asks again, and how long after
+// a save it asks, so a page saving several rows at once asks once.
+//
+// A page change asked only after a minute until 5 October 2026: a checklist's
+// dates changed, and its badge stayed until the site was reloaded.
 const EVERY = 5 * 60 * 1000
-const STALE = 60 * 1000
+const STALE = 5 * 1000
+const AFTER_SAVE = 800
 
 // The things found nearby still waiting on a Keep or a Not for us, read and
 // filtered exactly as the Calendar's banner does.
@@ -31,7 +37,8 @@ async function foundNearby(restaurant) {
 // their pages read them, for managers only. Asked at sign in, when the
 // restaurant changes, when the tab comes back into view, every five minutes
 // while it is in view and never while hidden, on moving to another page once
-// the last count is a minute old, and when a page says it has done something
+// the last count is a few seconds old, a moment after anything is saved
+// anywhere (lib/saves), and when a page says it has done something
 // (recount). The old numbers stay up while a recount runs, so nothing flickers
 // to nought, and a failed read keeps them too.
 export function useBadges(user, restaurant, pathname) {
@@ -93,6 +100,16 @@ export function useBadges(user, restaurant, pathname) {
         // Not before the first count, which sign in has already asked for.
         if (counted.current && Date.now() - counted.current > STALE) recount()
     }, [pathname, recount])
+
+    // A moment after anything is saved, by any page.
+    useEffect(() => {
+        let timer = null
+        const stop = onSaved(() => {
+            clearTimeout(timer)
+            timer = setTimeout(recount, AFTER_SAVE)
+        })
+        return () => { stop(); clearTimeout(timer) }
+    }, [recount])
 
     // Back into view straight away, then every five minutes while it stays.
     useEffect(() => {
