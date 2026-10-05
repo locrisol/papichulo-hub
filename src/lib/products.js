@@ -231,7 +231,7 @@ export function prefillFrom(params) {
     }
 }
 
-const BACK_TO = ['/invoices/review']
+const BACK_TO = ['/invoices/import', '/invoices/review']
 
 // Both lists are check constraints in the database, so anything outside them is
 // refused rather than saved as a typo, and a link carrying a stray word must

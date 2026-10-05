@@ -640,7 +640,7 @@ export function reviewEmail({ request, restaurantName, supplierName, senderName,
     const body = `<p style="margin:0;font-size:17px;font-weight:700;">${escapeHtml(what)}</p>
 ${detailRows(rows)}
 ${button(appUrl ? `${appUrl}/catalogue/products` : '', 'Answer it on Products')}
-<p style="margin:14px 0 0;color:${MUTED};font-size:13px;">While it waits, its lines are not asked about on Review and they do not hold the weekly report.</p>`
+<p style="margin:14px 0 0;color:${MUTED};font-size:13px;">While it waits, its lines are not asked about on Import invoices and they do not hold the weekly report.</p>`
 
     const footer = 'You are getting this because you are on Reviewers in the Hub.'
 
@@ -655,7 +655,7 @@ ${button(appUrl ? `${appUrl}/catalogue/products` : '', 'Answer it on Products')}
         price ? `Price: ${price}` : null,
         request.reason ? `Why: "${request.reason}"` : null,
         '',
-        'While it waits, its lines are not asked about on Review and they do not hold the weekly report.',
+        'While it waits, its lines are not asked about on Import invoices and they do not hold the weekly report.',
         appUrl ? `${appUrl}/catalogue/products` : null,
     ].filter(v => v !== null).join('\n')
 

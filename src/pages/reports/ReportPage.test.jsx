@@ -245,7 +245,7 @@ describe('a report published but not sent', () => {
 // His answer of 30 September: the report cannot be sent while anything on
 // Review is not actioned, counting only lines on invoices dated up to the
 // report's week.
-describe('lines still waiting on Review', () => {
+describe('lines still waiting for a decision', () => {
     const fine = { changedAt: { data: null, error: null } }
     const waitingOn = date => ({
         id: `l-${date}`, invoice_id: `i-${date}`, supplier_code: '777001', line_total: 14.5, decision: null,
@@ -258,16 +258,16 @@ describe('lines still waiting on Review', () => {
     it('holds Publish while a line from its week is waiting, and says where to decide it', async () => {
         answer({ ...fine, lines: [waitingOn(addDays(WEEK, 2))] })
         renderReport()
-        expect(await screen.findByText('1 invoice line from this week or earlier is still waiting in Review.'))
+        expect(await screen.findByText('1 invoice line from this week or earlier is still waiting for a decision.'))
             .toBeInTheDocument()
-        expect(screen.getByRole('link', { name: 'Open Review' })).toHaveAttribute('href', '/invoices/review')
+        expect(screen.getByRole('link', { name: 'Decide them' })).toHaveAttribute('href', '/invoices/import#waiting')
         expect(screen.getByRole('button', { name: 'Publish and send' })).toBeDisabled()
     })
 
     it('counts a line from a week before as well', async () => {
         answer({ ...fine, lines: [waitingOn(addDays(WEEK, -40)), waitingOn(addDays(WEEK, 6))] })
         renderReport()
-        expect(await screen.findByText('2 invoice lines from this week or earlier are still waiting in Review.'))
+        expect(await screen.findByText('2 invoice lines from this week or earlier are still waiting for a decision.'))
             .toBeInTheDocument()
     })
 
@@ -275,7 +275,7 @@ describe('lines still waiting on Review', () => {
         answer({ ...fine, lines: [waitingOn(addDays(WEEK, 7))] })
         renderReport()
         expect(await screen.findByRole('button', { name: 'Publish and send' })).toBeEnabled()
-        expect(screen.queryByText(/still waiting in Review/)).toBeNull()
+        expect(screen.queryByText(/still waiting for a decision/)).toBeNull()
     })
 
     it('holds Publish when what is waiting could not be read', async () => {

@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Routes, Route, useLocation } from 'react-router-dom'
+import { Routes, Route } from 'react-router-dom'
 import { renderWithRouter } from '@/test/helpers'
 
 // A week of Sysco documents going in, more than one batch in a visit. The
@@ -157,22 +157,10 @@ vi.mock('@/context/restaurant', () => ({
 
 const { default: InvoiceImportPage } = await import('./InvoiceImportPage')
 
-// Review stands in as a page that says what it was handed.
-function ReviewStandIn() {
-    const { state } = useLocation()
-    return (
-        <>
-            <p>On Review: {state?.said || 'nothing said'}</p>
-            {state?.warned && <p>Warned on Review: {state.warned}</p>}
-        </>
-    )
-}
-
 function renderImport() {
     return renderWithRouter(
         <Routes>
             <Route path="/invoices/import" element={<InvoiceImportPage />} />
-            <Route path="/invoices/review" element={<ReviewStandIn />} />
         </Routes>,
         { route: '/invoices/import' },
     )
@@ -277,21 +265,22 @@ describe('a second batch in the same visit', () => {
     })
 })
 
-// His answers of 30 September: after an import Review shows everything
-// waiting, and if anything is waiting it opens, whether this batch left it or
-// an earlier one did.
+// His answers of 30 September, and of 5 October: what an import raised is
+// decided at the top of this page, from this batch or an earlier one, so it
+// stays on the page and says how many are waiting there.
 describe('after an import', () => {
-    const SAID_ON_REVIEW = 'Below is everything waiting for a decision, from this import and any before it.'
+    const WAITING = 'waiting for a decision, at the top of this page.'
 
-    it('opens Review when the batch left lines to decide', async () => {
+    it('says how many lines the batch left to decide, and shows them', async () => {
         DOCS['a.pdf'] = doc('45000001', '2026-09-28', [BEANS])
         renderImport()
         await choose('a.pdf')
         await importThem()
-        expect(await screen.findByText(`On Review: 1 document imported. ${SAID_ON_REVIEW}`)).toBeInTheDocument()
+        expect(await screen.findByText(`1 document imported. 1 line is ${WAITING}`)).toBeInTheDocument()
+        expect(await screen.findByText('Waiting for a decision:')).toBeInTheDocument()
     })
 
-    it('opens Review when only lines from an earlier import are waiting', async () => {
+    it('counts lines from an earlier import too', async () => {
         tables.invoices.push({
             id: 'old', restaurant_id: 'r1', supplier_id: 's1', invoice_number: '44000001',
             invoice_date: '2026-09-14', document_type: 'invoice', total_amount: 9.2,
@@ -301,25 +290,26 @@ describe('after an import', () => {
         renderImport()
         await choose('a.pdf')
         await importThem()
-        expect(await screen.findByText(`On Review: 1 document imported. ${SAID_ON_REVIEW}`)).toBeInTheDocument()
+        expect(await screen.findByText(`1 document imported. 1 line is ${WAITING}`)).toBeInTheDocument()
     })
 
-    it('stays and says so when nothing is waiting on Review', async () => {
+    it('says so when nothing is waiting', async () => {
         DOCS['a.pdf'] = doc('45000001', '2026-09-28', [RICE])
         renderImport()
         await choose('a.pdf')
         await importThem()
-        expect(await screen.findByText('1 document imported. Nothing is waiting on Review.')).toBeInTheDocument()
+        expect(await screen.findByText('1 document imported. Nothing is waiting for a decision.')).toBeInTheDocument()
     })
 
-    // Leaving would throw away a file that still needs something.
-    it('stays while a file is still on the page, and gives the way to Review', async () => {
+    // A file that still needs something stays on the page beside them.
+    it('keeps a file that still needs something on the page', async () => {
         DOCS['a.pdf'] = doc('45000001', '2026-09-28', [BEANS])
         renderImport()
         await choose('a.pdf', 'junk.pdf')
         await importThem()
-        expect(await screen.findByText(/1 document imported. 1 line is waiting on Review./)).toBeInTheDocument()
-        expect(screen.getByRole('link', { name: 'Open Review' })).toHaveAttribute('href', '/invoices/review')
+        expect(await screen.findByText(`1 document imported. 1 line is ${WAITING}`)).toBeInTheDocument()
+        expect(cardOf('junk.pdf')).toBeInTheDocument()
+        expect(screen.queryByRole('link', { name: 'Open Review' })).toBeNull()
     })
 
     // Pressed with three of twenty read, Review opened and the other
@@ -338,7 +328,7 @@ describe('after an import', () => {
         await waitFor(() => expect(screen.getByRole('button', { name: 'Import' })).toBeEnabled())
     })
 
-    it('opens Review over a document that is already here', async () => {
+    it('says what is waiting over a document that is already here', async () => {
         tables.invoices.push({
             id: 'old', restaurant_id: 'r1', supplier_id: 's1', invoice_number: '44000001',
             invoice_date: '2026-09-14', document_type: 'invoice', total_amount: 14.5,
@@ -349,10 +339,10 @@ describe('after an import', () => {
         await choose('a.pdf', 'old.pdf')
         expect(await within(cardOf('old.pdf')).findByText('Already here')).toBeInTheDocument()
         await importThem()
-        expect(await screen.findByText(`On Review: 1 document imported. ${SAID_ON_REVIEW}`)).toBeInTheDocument()
+        expect(await screen.findByText(`1 document imported. 1 line is ${WAITING}`)).toBeInTheDocument()
     })
 
-    it('opens Review once the last file is filled in', async () => {
+    it('says what is waiting once the last file is filled in', async () => {
         tables.invoices.push({
             id: 'typed', restaurant_id: 'r1', supplier_id: 's1', invoice_number: null,
             invoice_date: '2026-09-28', document_type: 'invoice', total_amount: 9.2,
@@ -362,7 +352,7 @@ describe('after an import', () => {
         await choose('a.pdf')
         await userEvent.click(await screen.findByRole('button', { name: 'Fill that one in' }))
         await userEvent.click(await screen.findByRole('button', { name: 'Fill in invoice' }))
-        expect(await screen.findByText(`On Review: Filled in. ${SAID_ON_REVIEW}`)).toBeInTheDocument()
+        expect(await screen.findByText(`Filled in. 1 line is ${WAITING}`)).toBeInTheDocument()
     })
 })
 
@@ -381,7 +371,7 @@ describe('a note from the door waiting on the invoice imported', () => {
         await choose('a.pdf')
         await importThem()
         expect(await screen.findByText('1 document imported. 1 delivery problem logged at the door is on invoice '
-            + '45000001. Pick the line for it on Delivery problems. Nothing is waiting on Review.')).toBeInTheDocument()
+            + '45000001. Pick the line for it on Delivery problems. Nothing is waiting for a decision.')).toBeInTheDocument()
         expect(writes.filter(w => w.table === 'invoice_line_claims')).toEqual([])
     })
 
@@ -479,8 +469,8 @@ describe('a credit whose docket names a delivery problem on another invoice', ()
         expect(await screen.findByText(/but that problem is on another invoice\./)).toBeInTheDocument()
     })
 
-    // Review clears what was said at its first decision. This has to stay.
-    it('takes the warning to Review apart from what was said', async () => {
+    // What was said goes at the first decision. This has to stay.
+    it('keeps the warning apart from what was said', async () => {
         tables.invoices.push(OLD)
         tables.invoice_line_claims.push({ ...PROBLEM })
         DOCS['c.pdf'] = CREDIT()
@@ -488,8 +478,8 @@ describe('a credit whose docket names a delivery problem on another invoice', ()
         renderImport()
         await choose('a.pdf', 'c.pdf')
         await importThem()
-        expect(await screen.findByText(/^Warned on Review: The credit note C45000009 matches/)).toBeInTheDocument()
-        expect(screen.getByText(/^On Review:/)).not.toHaveTextContent('C45000009')
+        expect(await screen.findByText(/^The credit note C45000009 matches/)).toBeInTheDocument()
+        expect(await screen.findByText(/documents? imported\./)).not.toHaveTextContent('C45000009')
     })
 })
 
@@ -561,7 +551,7 @@ describe('filling in a typed invoice', () => {
         await choose('a.pdf')
         await userEvent.click(await screen.findByRole('button', { name: 'Fill that one in' }))
         await userEvent.click(await screen.findByRole('button', { name: 'Fill in invoice' }))
-        await screen.findByText(/On Review/)
+        await screen.findByText(/waiting for a decision/)
 
         const code = c => tables.supplier_codes.find(r => r.supplier_code === c)
         expect(code('777002')).toMatchObject({ first_seen_on: '2026-09-28', last_seen_on: '2026-09-28', price_id: null })
@@ -584,7 +574,7 @@ describe('filling in a typed invoice', () => {
     it('keeps who typed it in', async () => {
         tables.invoices.push(typed())
         await fillItIn()
-        await screen.findByText(/On Review/)
+        await screen.findByText(/waiting for a decision/)
         expect(tables.invoices[0]).toMatchObject({ invoice_number: '45000001', created_by: 'u-typist' })
     })
 
@@ -598,7 +588,7 @@ describe('filling in a typed invoice', () => {
         expect(await screen.findByRole('alert')).toBeInTheDocument()
 
         await userEvent.click(screen.getByRole('button', { name: 'Fill in invoice' }))
-        await screen.findByText(/On Review/)
+        await screen.findByText(/waiting for a decision/)
         expect(tables.invoice_lines).toHaveLength(2)
     })
 

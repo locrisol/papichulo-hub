@@ -1,8 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
 import { makeQuery, renderWithRouter } from '@/test/helpers'
 
 // Review over lines that were imported some time ago. Invented figures.
@@ -32,9 +31,17 @@ function lines(rows) {
     return q
 }
 let inserted
+let written
 const db = {
     from: vi.fn(table => {
-        if (table === 'invoice_lines') return lines(tables.invoice_lines)
+        if (table === 'invoice_lines') {
+            const q = lines(tables.invoice_lines)
+            q.update = vi.fn(row => {
+                written.push({ table, row })
+                return makeQuery({ data: null, error: null })
+            })
+            return q
+        }
         const q = makeQuery({ data: tables[table] || [], error: null })
         q.insert = vi.fn(row => {
             inserted.push({ table, row })
@@ -54,11 +61,13 @@ vi.mock('@/lib/rosterMail', () => ({ emailTheReview: id => emailTheReview(id) })
 vi.mock('@/context/restaurant', () => ({ useRestaurant: () => ({ activeRestaurant: { id: 'r1', name: 'Point Campus' } }) }))
 vi.mock('@/context/confirm', () => ({ useConfirm: () => vi.fn(() => Promise.resolve(true)) }))
 
-const { default: InvoiceReviewPage } = await import('./InvoiceReviewPage')
+const { default: WaitingForDecision } = await import('./WaitingForDecision')
+const Section = () => <WaitingForDecision restaurantId="r1" />
 
 beforeEach(() => {
     me = { id: 'u1', role: 'store_manager' }
     inserted = []
+    written = []
     emailTheReview.mockClear()
     tables = {
         suppliers: [{ id: 's1', name: 'Sysco Ireland', category: 'food' }],
@@ -76,14 +85,17 @@ describe('how far back it asks', () => {
     // dropped off.
     it('still asks about a line bought months ago', async () => {
         tables.invoice_lines = [line('l1', '777001', 'BASMATI RICE', 14.5)]
-        renderWithRouter(<InvoiceReviewPage />)
+        renderWithRouter(<Section />)
         expect(await screen.findByText('BASMATI RICE')).toBeInTheDocument()
-        expect(screen.getByText('Point Campus · 1 line waiting')).toBeInTheDocument()
+        expect(screen.getByText('Waiting for a decision:').closest('p')).toHaveTextContent('Waiting for a decision: 1 line, from every import so far.')
     })
 
-    it('has no date to look back to', async () => {
-        renderWithRouter(<InvoiceReviewPage />)
-        expect(await screen.findByText('Nothing is waiting.')).toBeInTheDocument()
+    // Nothing at all while nothing waits: the page is for importing then.
+    it('has no date to look back to, and says nothing when nothing waits', async () => {
+        const { container } = renderWithRouter(<Section />)
+        await waitFor(() => expect(db.from).toHaveBeenCalledWith('invoice_lines'))
+        await new Promise(r => setTimeout(r, 50))
+        expect(container).toBeEmptyDOMElement()
         expect(screen.queryByLabelText('Look back to')).toBeNull()
     })
 })
@@ -104,40 +116,38 @@ describe('what it knows about each code', () => {
             products: { id: 'prod-rice', name: 'Basmati Rice', section: 'Dry', unit: 'KG' },
         }]
         tables.invoice_lines = [line('l1', '777001', 'BASMATI RICE', 14.5)]
-        renderWithRouter(<InvoiceReviewPage />)
-        expect(await screen.findByText('Nothing to decide')).toBeInTheDocument()
+        renderWithRouter(<Section />)
+        // The same as before, so it is settled with nothing to press.
+        await waitFor(() => expect(written.some(w => w.row?.decision === 'matched')).toBe(true))
         expect(screen.queryByText('Never bought before')).toBeNull()
     })
 })
 
-describe('opened by an import', () => {
-    it('says what went in', async () => {
+// His question of 5 October: if there is nothing to decide, why is there a
+// pile for it? A line that became the same as before after it was imported
+// is settled the moment it is read, and never shown.
+describe('a line the same as before', () => {
+    const RICE = {
+        id: 'rice', product_id: 'prod-rice', supplier_id: 's1', restaurant_id: 'r1',
+        supplier_code: '777001', price_per_case: 14.5, units_per_case: 5, price_per_unit: 2.9,
+        products: { id: 'prod-rice', name: 'Basmati Rice', section: 'Dry', unit: 'KG' },
+    }
+
+    it('is settled as matched with nothing to press, and not shown', async () => {
+        tables.product_supplier_prices = [RICE]
         tables.invoice_lines = [line('l1', '777001', 'BASMATI RICE', 14.5)]
-        render(
-            <MemoryRouter initialEntries={[{ pathname: '/invoices/review', state: { said: '3 documents imported.' } }]}>
-                <InvoiceReviewPage />
-            </MemoryRouter>,
-        )
-        expect(await screen.findByText('3 documents imported.')).toBeInTheDocument()
+        renderWithRouter(<Section />)
+        await waitFor(() => expect(written.find(w => w.row?.decision === 'matched')).toBeTruthy())
+        expect(screen.queryByText('Nothing to decide')).toBeNull()
+        expect(screen.queryByRole('button', { name: 'Clear all' })).toBeNull()
     })
 
-    // A credit note waiting on a delivery problem put right has the money
-    // wrong until then, and went with the green message at the first tap.
-    it('keeps what has to be put right until it is seen, whatever is decided', async () => {
-        const warned = 'The credit note C45000009 matches a delivery problem by its docket.'
-        tables.invoice_lines = [line('l1', '777001', 'BASMATI RICE', 14.5)]
-        me = { id: 'u2', role: 'owner' }
-        render(
-            <MemoryRouter initialEntries={[{ pathname: '/invoices/review', state: { said: '3 documents imported.', warned } }]}>
-                <InvoiceReviewPage />
-            </MemoryRouter>,
-        )
-        expect(await screen.findByText(warned)).toBeInTheDocument()
-        await userEvent.click((await screen.findAllByRole('button', { name: 'Leave this one' }))[0])
-        await waitFor(() => expect(screen.queryByText('3 documents imported.')).toBeNull())
-        expect(screen.getByText(warned)).toBeInTheDocument()
-        await userEvent.click(screen.getByRole('button', { name: 'Got it' }))
-        expect(screen.queryByText(warned)).toBeNull()
+    it('leaves the lines that do need a decision on show beside it', async () => {
+        tables.product_supplier_prices = [RICE]
+        tables.invoice_lines = [line('l1', '777001', 'BASMATI RICE', 14.5), line('l2', '5019120', 'MISSION CORN TORTILLA', 41.8)]
+        renderWithRouter(<Section />)
+        expect(await screen.findByText('Never bought before')).toBeInTheDocument()
+        expect(screen.getByText('Waiting for a decision:').closest('p')).toHaveTextContent('1 line, from every import so far.')
     })
 })
 
@@ -147,7 +157,7 @@ describe('opened by an import', () => {
 describe('a code nobody has bought before', () => {
     it('gives a store manager two answers', async () => {
         tables.invoice_lines = [line('l1', '5019120', 'MISSION CORN TORTILLA 6" 12X30 EA', 41.8)]
-        renderWithRouter(<InvoiceReviewPage />)
+        renderWithRouter(<Section />)
         expect(await screen.findByRole('button', { name: 'One of our products' })).toBeInTheDocument()
         expect(screen.getByRole('button', { name: 'Send for review' })).toBeInTheDocument()
         expect(screen.queryByRole('button', { name: 'Leave this one' })).toBeNull()
@@ -158,7 +168,7 @@ describe('a code nobody has bought before', () => {
     it('keeps every answer for an owner', async () => {
         me = { id: 'u2', role: 'owner' }
         tables.invoice_lines = [line('l1', '5019120', 'MISSION CORN TORTILLA 6" 12X30 EA', 41.8)]
-        renderWithRouter(<InvoiceReviewPage />)
+        renderWithRouter(<Section />)
         expect(await screen.findByRole('button', { name: 'One of our products' })).toBeInTheDocument()
         expect(screen.getByRole('button', { name: 'Leave this one' })).toBeInTheDocument()
         expect(screen.getByRole('button', { name: 'Not stock' })).toBeInTheDocument()
@@ -168,7 +178,7 @@ describe('a code nobody has bought before', () => {
 
     it('sends it with what the owners need to answer, and tells them', async () => {
         tables.invoice_lines = [line('l1', '5019120', 'MISSION CORN TORTILLA 6" 12X30 EA', 41.8)]
-        renderWithRouter(<InvoiceReviewPage />)
+        renderWithRouter(<Section />)
         await userEvent.click(await screen.findByRole('button', { name: 'Send for review' }))
         const name = screen.getByLabelText('What should it be called?')
         await userEvent.clear(name)
@@ -190,7 +200,7 @@ describe('a code nobody has bought before', () => {
 
     it('asks for a name before sending something new', async () => {
         tables.invoice_lines = [line('l1', '5019120', 'MISSION CORN TORTILLA 6" 12X30 EA', 41.8)]
-        renderWithRouter(<InvoiceReviewPage />)
+        renderWithRouter(<Section />)
         await userEvent.click(await screen.findByRole('button', { name: 'Send for review' }))
         await userEvent.clear(screen.getByLabelText('What should it be called?'))
         await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Send for review' }))
@@ -204,10 +214,10 @@ describe('a code nobody has bought before', () => {
             id: 'q1', kind: 'new', supplier_id: 's1', supplier_code: '5019120',
             description: 'MISSION CORN TORTILLA 6" 12X30 EA', sent_at: '2026-10-02T09:00:00Z',
         }]
-        renderWithRouter(<InvoiceReviewPage />)
+        renderWithRouter(<Section />)
         expect(await screen.findByText('Sent for review')).toBeInTheDocument()
         expect(screen.getByText('Something new, code 5019120, sent Fri 2 Oct')).toBeInTheDocument()
         expect(screen.queryByText('Never bought before')).toBeNull()
-        expect(screen.getByText('Point Campus · nothing waiting')).toBeInTheDocument()
+        expect(screen.queryByText('Waiting for a decision:')).toBeNull()
     })
 })

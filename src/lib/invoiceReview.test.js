@@ -178,6 +178,6 @@ describe('a price typed with a code', () => {
 
     it('says so when it could not, and where to do it instead', async () => {
         tables['supplier_codes:error'] = { message: 'Failed to fetch' }
-        expect(await claimCode(price, 'r1')).toMatch(/^The price was saved, but it could not be matched to code 777002: .* Match the code on Review instead\.$/)
+        expect(await claimCode(price, 'r1')).toMatch(/^The price was saved, but it could not be matched to code 777002: .* Match the code on Import invoices instead\.$/)
     })
 })

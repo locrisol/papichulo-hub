@@ -232,7 +232,7 @@ export function badgesFrom(answer, extras = {}) {
     ].filter(Boolean).join(', '), permits.tone)
     if (a.dead_pages > 0) dot('/settings/restaurant', 'A listings page has not been read for over a week')
     count('/calendar', extras.found || 0, n => `${plural(n, 'listing', 'listings')} found nearby to check`)
-    count('/invoices/import', extras.review || 0, n => `${plural(n, 'invoice line', 'invoice lines')} waiting on Review`)
+    count('/invoices/import', extras.review || 0, n => `${plural(n, 'invoice line', 'invoice lines')} waiting for a decision`)
 
     return out
 }
