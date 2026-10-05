@@ -16,7 +16,6 @@ import {
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import Notice from '@/components/ui/Notice'
 import PageHeader from '@/components/ui/PageHeader'
-import AutoTextarea from '@/components/ui/AutoTextarea'
 import StillMissing from '@/components/invoices/StillMissing'
 
 // What the supplier says it sent us, against what we actually hold.
@@ -172,12 +171,15 @@ export default function SupplierDocumentsPage() {
                             <label className={labelClass} htmlFor="documents-paste">
                                 Select their document table in the browser and paste it here
                             </label>
-                            <AutoTextarea
+                            {/* A fixed height that scrolls, not one that grows: a
+                                supplier's list can be hundreds of rows, and the page
+                                under it disappeared (his ask, 5 October). */}
+                            <textarea
                                 id="documents-paste"
-                                minRows={4}
+                                rows={8}
                                 value={paste}
                                 onChange={e => setPaste(e.target.value)}
-                                className={`${fieldClass} font-mono`}
+                                className={`${fieldClass} font-mono resize-y overflow-y-auto`}
                                 placeholder={'2017891\t45448455\t\t2026-08-23\tInvoice\t€163.03\tView'}
                             />
                             <p className={hintClass}>
@@ -351,7 +353,7 @@ export default function SupplierDocumentsPage() {
 
             {/* Everything ever recorded, not only what is in the box, so the
                 check is here without pasting anything. */}
-            <StillMissing restaurantId={restaurantId} refresh={refresh} />
+            <StillMissing restaurantId={restaurantId} refresh={refresh} showCleared />
         </>
     )
 }
