@@ -49,8 +49,8 @@ describe('ReportCorporateSales', () => {
 
     it("asks for a comment by the account's name", () => {
         draw({ canEdit: true })
-        expect(screen.getByPlaceholderText('Add a comment for Feedr')).toBeTruthy()
-        expect(screen.getByPlaceholderText('Add a comment for Lunch Team')).toBeTruthy()
+        expect(screen.getByRole('textbox', { name: 'Add a comment for Feedr' })).toBeTruthy()
+        expect(screen.getByRole('textbox', { name: 'Add a comment for Lunch Team' })).toBeTruthy()
     })
 
     // The colour its line has on the Corporate sales chart, which hands them

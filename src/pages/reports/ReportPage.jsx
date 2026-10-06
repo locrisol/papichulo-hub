@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase, everyRow } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
@@ -204,7 +204,7 @@ export default function ReportPage() {
             people: figures.paperwork.people,
             food: figures.paperwork.food,
             permits: figures.paperwork.permits,
-            on: String(figures.frozen_at || '').slice(0, 10) || todayISO(),
+            on: figures.paperwork.asOf || String(figures.frozen_at || '').slice(0, 10) || todayISO(),
         }
         : null
 
@@ -681,8 +681,9 @@ export default function ReportPage() {
     async function addComment(sectionId, note) {
         const section = sections.find(s => s.id === sectionId)
         const order = (section?.items.filter(i => i.kind === 'comment').length) || 0
+        // Formatted, as every comment written from now on. See richText.
         return write(() => supabase.from('report_items')
-            .insert({ section_id: sectionId, kind: 'comment', note, sort_order: order }))
+            .insert({ section_id: sectionId, kind: 'comment', note, sort_order: order, meta: { rich: true } }))
     }
 
     async function saveItem(itemId, patch) {
@@ -693,7 +694,12 @@ export default function ReportPage() {
         return write(() => supabase.from('report_items').delete().eq('id', itemId))
     }
 
-    const saveComment = (itemId, note) => saveItem(itemId, { note })
+    // Saved formatted, which a comment from before formatting becomes once it
+    // is edited.
+    const saveComment = (itemId, note) => {
+        const item = sections.flatMap(s => s.items).find(i => i.id === itemId)
+        return saveItem(itemId, { note, meta: { ...(item?.meta || {}), rich: true } })
+    }
 
     // An overhead keeps its carried_from, so the report can always say what it
     // was before somebody opened it. Only the amount moves.
@@ -734,34 +740,40 @@ export default function ReportPage() {
     // week's notes, the way it used to orphan its takings.
     const online = () => sections.find(s => s.key === 'online_sales')
 
-    async function saveRating(platform, value) {
+    // A platform's rating line takes the rating and the "No reviews" and "No
+    // refunds" presses, so the three are written one after another, each
+    // reading the line fresh first. Read from the page, two quick presses
+    // both made the line and the second was refused, or the second wrote over
+    // the first, and the report stayed held.
+    const ratingQueue = useRef(Promise.resolve())
+    function onRatingLine(platform, change) {
         const section = online()
-        if (!section) return
-        const existing = section.items.find(i => i.kind === 'rating' && i.key === platform.id)
-
-        return write(() => existing
-            ? supabase.from('report_items').update({ amount: value }).eq('id', existing.id)
-            : supabase.from('report_items').insert({
-                section_id: section.id, kind: 'rating', key: platform.id,
-                label: platform.name, amount: value, sort_order: platform.sort_order || 0,
-            }))
+        if (!section) return undefined
+        const job = ratingQueue.current.then(async () => {
+            const { data: row, error: e1 } = await supabase.from('report_items')
+                .select('id, meta').eq('section_id', section.id).eq('kind', 'rating').eq('key', platform.id)
+                .maybeSingle()
+            if (e1) return write(() => Promise.resolve({ error: e1 }))
+            const patch = change(row)
+            return write(() => row
+                ? supabase.from('report_items').update(patch).eq('id', row.id)
+                : supabase.from('report_items').insert({
+                    section_id: section.id, kind: 'rating', key: platform.id,
+                    label: platform.name, amount: null, sort_order: platform.sort_order || 0, ...patch,
+                }))
+        })
+        ratingQueue.current = job.catch(() => {})
+        return job
     }
+
+    const saveRating = (platform, value) => onRatingLine(platform, () => ({ amount: value }))
 
     // "No reviews" or "No refunds" for this week, pressed or taken back. Kept
     // on the platform's rating line, which is made for it if there is none
     // yet. See saidNothing.
-    async function saveNothing(platform, which, on) {
-        const section = online()
-        if (!section) return
-        const existing = section.items.find(i => i.kind === 'rating' && i.key === platform.id)
-        const none = { ...(existing?.meta?.none || {}), [which]: on }
-        return write(() => existing
-            ? supabase.from('report_items').update({ meta: { ...(existing.meta || {}), none } }).eq('id', existing.id)
-            : supabase.from('report_items').insert({
-                section_id: section.id, kind: 'rating', key: platform.id,
-                label: platform.name, amount: null, meta: { none }, sort_order: platform.sort_order || 0,
-            }))
-    }
+    const saveNothing = (platform, which, on) => onRatingLine(platform, row => ({
+        meta: { ...(row?.meta || {}), none: { ...(row?.meta?.none || {}), [which]: on } },
+    }))
 
     async function addReview(platform, stars, count) {
         const section = online()
@@ -789,10 +801,10 @@ export default function ReportPage() {
         }
 
         return write(() => existing
-            ? supabase.from('report_items').update({ note }).eq('id', existing.id)
+            ? supabase.from('report_items').update({ note, meta: { ...(existing.meta || {}), rich: true } }).eq('id', existing.id)
             : supabase.from('report_items').insert({
                 section_id: sectionId, kind: 'comment', key: platform.id,
-                label: platform.name, note, sort_order: platform.sort_order || 0,
+                label: platform.name, note, sort_order: platform.sort_order || 0, meta: { rich: true },
             }))
     }
 
@@ -857,6 +869,9 @@ export default function ReportPage() {
             // photos so the page can still show them while they are kept.
             cleaning: liveCleaning.ready ? liveCleaning.data : null,
             paperwork: {
+                // The day here it was checked on, for the sent page. frozen_at
+                // is UTC, a day early for a report sent after midnight.
+                asOf: todayISO(),
                 // How many were checked, so the sent page can say so.
                 people,
                 food,

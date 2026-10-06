@@ -430,6 +430,70 @@ function note(text) {
         line-height:1.55;color:${MUTED};${BREAKS}">${escapeLines(text)}</td></tr>`
 }
 
+// Formatted comments (his, 7 October): bold, three colours and two sizes,
+// stored as a few marks. The same reader as richText.js in the app, which the
+// mail cannot import; a test keeps the two saying the same words. Anything
+// that is not one of the marks is shown as the words it is, never as HTML.
+const RICH_COLOURS = { red: '#B91C1C', green: '#1F7A4C', orange: '#C2410C' }
+const RICH_SIZES = { small: '0.85em', big: '1.25em' }
+const RICH_TOKEN = /<b>|<\/b>|<span data-([cs])="([a-z]+)">|<\/span>|<br>|[^<]+|</g
+const unentity = t => t.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&')
+
+function richTree(stored) {
+    const root = { kids: [] }
+    const stack = [root]
+    const top = () => stack[stack.length - 1]
+    for (const [tok, kind, value] of String(stored || '').matchAll(RICH_TOKEN)) {
+        if (tok === '<b>') {
+            const node = { t: 'b', kids: [] }
+            top().kids.push(node)
+            stack.push(node)
+        } else if (kind && ((kind === 'c' && RICH_COLOURS[value]) || (kind === 's' && RICH_SIZES[value]))) {
+            const node = { t: kind, v: value, kids: [] }
+            top().kids.push(node)
+            stack.push(node)
+        } else if ((tok === '</b>' && top().t === 'b') || (tok === '</span>' && ['c', 's'].includes(top().t))) {
+            stack.pop()
+        } else if (tok === '<br>') {
+            top().kids.push({ t: 'br' })
+        } else {
+            top().kids.push({ t: 'text', v: unentity(tok) })
+        }
+    }
+    return root.kids
+}
+
+export function richHtml(stored) {
+    const walk = nodes => nodes.map(n => {
+        if (n.t === 'text') return escapeHtml(n.v)
+        if (n.t === 'br') return '<br />'
+        if (n.t === 'b') return `<strong>${walk(n.kids)}</strong>`
+        const style = n.t === 'c' ? `color:${RICH_COLOURS[n.v]};` : `font-size:${RICH_SIZES[n.v]};`
+        return `<span style="${style}">${walk(n.kids)}</span>`
+    }).join('')
+    return walk(richTree(stored))
+}
+
+export function richWords(stored) {
+    const walk = nodes => nodes.map(n => (n.t === 'text' ? n.v : n.t === 'br' ? NEW_LINE : walk(n.kids))).join('')
+    return walk(richTree(stored))
+}
+const NEW_LINE = String.fromCharCode(10)
+
+// Whether every platform had to say its refunds before this went out. See
+// FIGURES_VERSION 4 in the app's weeklyReport.
+export const saidRefunds = f => Number(f?.version) >= 4
+
+// The comments on an action, only ever a list of them: what is stored comes
+// from the database and anybody with access could have written something else.
+const commentsOf = action => (Array.isArray(action?.meta?.comments) ? action.meta.comments : [])
+    .filter(c => c && typeof c === 'object')
+
+// What a comment says, as HTML or as words, whether it was written before
+// formatting or after. See meta.rich in richText.js.
+const noteHtml = item => (item?.meta?.rich ? richHtml(item.note) : escapeLines(item?.note || ''))
+const noteWords = item => (item?.meta?.rich ? richWords(item.note) : item?.note || '')
+
 // A comment is a card on the report and a card here, so a section with four of
 // them reads as four remarks rather than one long paragraph.
 function comments(items) {
@@ -438,7 +502,7 @@ function comments(items) {
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
             style="background:${CREAM};border-radius:8px;">
             <tr><td style="padding:11px 13px;font-family:${FONT};font-size:13.5px;
-                line-height:1.55;color:${INK};${BREAKS}">${item.label ? `<strong>${escapeHtml(item.label)}.</strong>&nbsp;` : ''}${escapeLines(item.note || '')}</td></tr>
+                line-height:1.55;color:${INK};${BREAKS}">${item.label ? `<strong>${escapeHtml(item.label)}.</strong>&nbsp;` : ''}${noteHtml(item)}</td></tr>
         </table>
     </td></tr>`).join('')
 }
@@ -477,7 +541,7 @@ const of = (section, kind) =>
 // two apart, here and on the screen.
 const sectionComments = section => of(section, 'comment').filter(i => !i.key)
 const noteFor = (section, platformId) =>
-    of(section, 'comment').find(i => i.key === platformId)?.note || ''
+    of(section, 'comment').find(i => i.key === platformId) || null
 
 function salesAndCosts(section, f, charts) {
     const t = f.targets || {}
@@ -604,7 +668,7 @@ function ratingMove(rating) {
 // of three had no rating at all, and a reader cannot tell "held at 4.8" from
 // "nobody has entered it" by being shown neither. The move is still called out
 // when there is one, because that is the part that is news.
-function platformBlock(section, platform, rated) {
+function platformBlock(section, platform, rated, f) {
     const rows = []
 
     // A corporate account gets none of what follows. Clockmeal has no star
@@ -650,7 +714,9 @@ function platformBlock(section, platform, rated) {
     // Said when there were none, the same as the reviews, rather than the
     // heading left out (his, 7 October): a missing part reads as forgotten.
     const refunds = rated ? of(section, 'refund').filter(r => r.key === platform.id) : []
-    if (rated && refunds.length === 0) rows.push(subHeading('Refunds: none'))
+    // Only on a report from version 4, when the week could not go out without
+    // somebody saying so. Earlier, an empty list may only mean nobody looked.
+    if (rated && refunds.length === 0 && saidRefunds(f)) rows.push(subHeading('Refunds: none'))
     if (refunds.length > 0) {
         rows.push(subHeading('Refunds'))
         for (const refund of refunds) {
@@ -684,7 +750,7 @@ function platformBlock(section, platform, rated) {
             ${rows.length || remark ? `<tr><td style="padding:0 0 4px;">
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
                     style="border-collapse:collapse;">${rows.join('')}</table>
-                ${remark ? `<div style="padding:12px 14px 8px;font-family:${FONT};font-size:13px;line-height:1.55;color:${MUTED};${BREAKS}">${escapeLines(remark)}</div>` : ''}
+                ${remark ? `<div style="padding:12px 14px 8px;font-family:${FONT};font-size:13px;line-height:1.55;color:${MUTED};${BREAKS}">${noteHtml(remark)}</div>` : ''}
             </td></tr>` : ''}
         </table>
     </td></tr>`
@@ -705,7 +771,7 @@ function platformSection(section, f, charts, bucket, chartKey) {
 
     const body = platforms.length === 0
         ? note('No platforms were tracked for this week.')
-        : platforms.map(p => platformBlock(section, p, bucket === 'online_platform')).join('')
+        : platforms.map(p => platformBlock(section, p, bucket === 'online_platform', f)).join('')
 
     // Under the band, the same as sales and costs. A section that opens with
     // the shape of the thing and then breaks it down by platform reads in the
@@ -868,7 +934,10 @@ function supportActions(section, weekStart) {
     const rows = actions.map(action => {
         const weeks = weeksOpen(action.opened_on, weekStart)
         return line({
-            label: escapeHtml(action.label || ''),
+            // Its comments under it, each with its day (his, 7 October).
+            label: escapeHtml(action.label || '')
+                + commentsOf(action).map(c => `<br /><span style="font-size:13px;color:${MUTED};">`
+                    + `${escapeHtml(dayMonth(c.on))}</span>&nbsp; <span style="font-size:13px;">${richHtml(c.text)}</span>`).join(''),
             value: weeks === 0 ? 'new this week' : `open ${weeks} week${weeks === 1 ? '' : 's'}`,
             tone: weeks >= 3 ? AMBER : MUTED,
         })
@@ -1573,13 +1642,13 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
 
                 const refunds = of(section, 'refund').filter(r => r.key === platform.id)
                 if (refunds.length) out.push('    Refunds')
-                else if (online) out.push('    Refunds: none')
+                else if (online && saidRefunds(f)) out.push('    Refunds: none')
                 for (const refund of refunds) {
                     out.push(`      ${negative(refund.amount)} ${refund.note || ''}`
                         + (refund.meta?.claimed ? ' (claimed back)' : ' (not claimed)'))
                 }
 
-                out.push(...typed(noteFor(section, platform.id), '    '))
+                out.push(...typed(noteWords(noteFor(section, platform.id)), '    '))
             }
         } else if (section.key === 'people_ops') {
             for (const [state, title] of [
@@ -1628,11 +1697,12 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
                 const weeks = weeksOpen(action.opened_on, weekStart)
                 out.push(`  ${action.label}`
                     + (weeks === 0 ? ' (new this week)' : ` (open ${weeks} week${weeks === 1 ? '' : 's'})`))
+                for (const c of commentsOf(action)) out.push(...typed(`${dayMonth(c.on)}: ${richWords(c.text)}`, '    '))
             }
         }
 
         for (const comment of sectionComments(section)) {
-            out.push(...typed(`${comment.label ? comment.label + '. ' : ''}${comment.note || ''}`, '  '))
+            out.push(...typed(`${comment.label ? comment.label + '. ' : ''}${noteWords(comment)}`, '  '))
         }
         out.push('')
     }

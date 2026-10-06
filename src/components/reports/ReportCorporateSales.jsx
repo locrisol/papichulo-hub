@@ -1,6 +1,8 @@
 import { fmtMoney, fmtPct } from '@/lib/format'
 import { accountColour } from '@/lib/reportCharts'
-import AutoTextarea from '@/components/ui/AutoTextarea'
+import RichEditor from '@/components/ui/RichEditor'
+import RichText from '@/components/ui/RichText'
+import { richOf, richPlain } from '@/lib/richText'
 import { denseField } from '@/lib/controlStyles'
 
 // Corporate sales.
@@ -80,17 +82,17 @@ export default function ReportCorporateSales({ platforms, taken, notes, canEdit,
                             </div>
 
                             {canEdit ? (
-                                <AutoTextarea
-                                    defaultValue={note?.note || ''}
-                                    onBlur={e => {
-                                        const text = e.target.value.trim()
-                                        if (text !== (note?.note || '')) onSaveNote(p, text)
+                                <RichEditor
+                                    value={richOf(note)}
+                                    onCommit={text => {
+                                        if (text === richOf(note)) return
+                                        onSaveNote(p, richPlain(text).trim() ? text : '')
                                     }}
                                     placeholder={`Add a comment for ${p.name}`}
                                     className={denseField}
                                 />
                             ) : note?.note ? (
-                                <p className="text-sm text-muted">{note.note}</p>
+                                <RichText text={note.note} rich={note.meta?.rich} className="text-sm text-muted" />
                             ) : null}
                         </div>
                     )

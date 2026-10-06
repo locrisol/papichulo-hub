@@ -4,13 +4,14 @@ import {
     escapeHtml, tidy, stars, starColour, costTone, senderFor, heldNotice, WIDTH, SIDE,
     renewalWords, escapeLines, page, headline, overheadsToShow, backByReason,
     deliverable, isJustTheGoodbye, replyToFor, switchedOff, whatToSend, correctionSend,
-    paidWords, againstWords, figureGaps as mailGaps, openActions, platformsIn,
+    paidWords, againstWords, figureGaps as mailGaps, openActions, platformsIn, richHtml, richWords, saidRefunds,
 } from '../../supabase/functions/weekly-report-email/email'
 import { readFileSync } from 'node:fs'
 import { MAIL_WIDTH } from '@/lib/reportChartImage'
 import { changesSince } from '../../supabase/functions/weekly-report-email/changes'
 import { priceWeek, backByReason as webBackByReason } from '@/lib/invoiceReport'
 import { figureGaps } from '@/lib/weeklyReport'
+import { richPlain } from '@/lib/richText'
 import { weekCleaning } from '@/lib/checklists'
 
 const figures = {
@@ -2156,5 +2157,32 @@ describe('corporate accounts in the mail', () => {
         ] }
         expect(platformsIn(f, 'catering').map(p => p.name)).toEqual(['Feedr', 'Lunch Team'])
         expect(platformsIn(f, 'online_platform').map(p => p.name)).toEqual(['Deliveroo', 'Just Eat'])
+    })
+})
+
+// Kept equal: the mail reads the marks with its own copy of the reader.
+describe('formatted comments in the mail', () => {
+    const samples = [
+        'Fan <b>still noisy</b>, <span data-c="red">engineer Thursday</span><br>2 &lt; 3',
+        '<span data-s="big"><b>Big</b></span> and <span data-c="green">green</span>',
+        '<a href="x">link</a> <script>no</script> <span data-c="purple">x</span>',
+        '',
+    ]
+
+    it('says the same words as the app', () => {
+        for (const s of samples) expect(richWords(s)).toBe(richPlain(s))
+    })
+
+    it('draws the marks with the look they stand for and nothing else as HTML', () => {
+        expect(richHtml(samples[0])).toBe('Fan <strong>still noisy</strong>, <span style="color:#B91C1C;">engineer Thursday</span><br />2 &lt; 3')
+        expect(richHtml(samples[2])).not.toMatch(/<a |<script/)
+    })
+})
+
+describe('no refunds in the mail', () => {
+    // Before version 4 the week could go out without anybody looking.
+    it('is said only on a report that had to say it', () => {
+        expect(saidRefunds({ version: 4 })).toBe(true)
+        expect(saidRefunds({ version: 3 })).toBe(false)
     })
 })

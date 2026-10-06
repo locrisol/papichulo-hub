@@ -460,13 +460,15 @@ function together(moves, raw) {
         if (!groups.has(key)) { groups.set(key, []); out.push(key) }
         groups.get(key).push(m)
     }
-    return out.map(m => (typeof m === 'string' ? oneRow(groups.get(m), raw) : m))
+    return out.flatMap(m => (typeof m === 'string' ? oneRow(groups.get(m), raw) : [m]))
 }
 
 function oneRow(moves, raw) {
-    if (moves.length === 1) return moves[0]
-    const [first] = moves
     const parts = moves.map(m => raw.get(m.key))
+    // Counted differently, a kilo against one each, the quantity under the
+    // row could not be said in one unit, so they stay a row each.
+    if (moves.length === 1 || new Set(parts.map(r => r.unit)).size > 1) return moves
+    const [first] = moves
     const effect = round2(moves.reduce((t, m) => t + m.effect, 0))
     const old = parts.reduce((t, r) => t + r.old, 0)
     const moved = parts.flatMap(r => r.moved)
@@ -479,7 +481,7 @@ function oneRow(moves, raw) {
         .filter((p, i, list) => list.findIndex(q => q[0] === p[0] && q[1] === p[1]) === i)
         .sort((a, b) => a[0].localeCompare(b[0]))
     const change = old > 0 ? Math.round((effect / old) * 1000) / 10 : first.change
-    return {
+    return [{
         ...first,
         key: `${first.productId}|${first.group}`,
         code: moves.map(m => m.code).join(', '),
@@ -501,7 +503,7 @@ function oneRow(moves, raw) {
         invoice: earliest.invoice,
         since: moves.map(m => m.since).filter(Boolean).sort()[0] || null,
         series,
-    }
+    }]
 }
 
 // ---------------------------------------------------------------------------

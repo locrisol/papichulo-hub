@@ -153,8 +153,9 @@ describe('a read that fails', () => {
         let letItThrough
         const team = new Promise(resolve => { letItThrough = resolve })
         answer({ ...fine, waiting: { employees: team } })
-        const box = screen.getByPlaceholderText('Add a comment')
-        fireEvent.change(box, { target: { value: 'Two new starters on Monday' } })
+        const box = screen.getByRole('textbox', { name: 'Add a comment' })
+        box.innerHTML = 'Two new starters on Monday'
+        fireEvent.input(box)
         fireEvent.blur(box)
 
         await waitFor(() => expect(db.from.mock.calls.filter(([t]) => t === 'employees')).toHaveLength(2))
@@ -172,8 +173,9 @@ describe('a read that fails', () => {
         expect(publish).toBeEnabled()
 
         answer({ ...fine, failing: ['the report'] })
-        const box = screen.getByPlaceholderText('Add a comment')
-        fireEvent.change(box, { target: { value: 'Two new starters on Monday' } })
+        const box = screen.getByRole('textbox', { name: 'Add a comment' })
+        box.innerHTML = 'Two new starters on Monday'
+        fireEvent.input(box)
         fireEvent.blur(box)
 
         expect(await screen.findByText('Could not read the report')).toBeInTheDocument()
@@ -365,14 +367,16 @@ describe('the save line', () => {
     it('says Not saved once a write fails, rather than the time of the last one', async () => {
         answer({ ...fine, items: makeQuery({ data: null, error: null }) })
         renderReport()
-        const box = await screen.findByPlaceholderText('Add a comment')
-        fireEvent.change(box, { target: { value: 'Two new starters on Monday' } })
+        const box = await screen.findByRole('textbox', { name: 'Add a comment' })
+        box.innerHTML = 'Two new starters on Monday'
+        fireEvent.input(box)
         fireEvent.blur(box)
         expect(await screen.findByText(/^Saved at /)).toBeInTheDocument()
 
         answer({ ...fine, items: makeQuery({ data: null, error: { message: 'No permission' } }) })
-        const again = screen.getByPlaceholderText('Add a comment')
-        fireEvent.change(again, { target: { value: 'One leaving on Friday' } })
+        const again = screen.getByRole('textbox', { name: 'Add a comment' })
+        again.innerHTML = 'One leaving on Friday'
+        fireEvent.input(again)
         fireEvent.blur(again)
 
         expect(await screen.findByText('Not saved')).toBeInTheDocument()

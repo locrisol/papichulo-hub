@@ -505,6 +505,9 @@ export function carriedItems(previousItems = [], weekStart) {
                 kind: 'action', key: item.key, label: item.label,
                 note: item.note, sort_order: item.sort_order,
                 opened_on: item.opened_on || weekStart,
+                // Its comments go with it, every week's, each with its day.
+                ...(Array.isArray(item.meta?.comments) && item.meta.comments.length
+                    ? { meta: { comments: item.meta.comments } } : {}),
             })
         }
     }
@@ -653,7 +656,12 @@ export function publishCheck(sections = [], figures = null, held = []) {
 // printed allergen sheet. Null means it was checked and a new one was not
 // due. It is missing when it could not be checked, and on a report frozen
 // before 3, because nobody asked.
-export const FIGURES_VERSION = 3
+// 4, 7 October 2026: each online platform has its reviews and refunds said,
+// one entered or "none" pressed, before the week can go out, so the mail can
+// say "Refunds: none". Before 4 an empty list may only mean nobody looked.
+// paperwork.asOf and paperwork.people, the day here it was checked and how
+// many were.
+export const FIGURES_VERSION = 4
 
 export function figuresToStore(figures, at = new Date()) {
     return { ...figures, version: FIGURES_VERSION, frozen_at: at.toISOString() }
