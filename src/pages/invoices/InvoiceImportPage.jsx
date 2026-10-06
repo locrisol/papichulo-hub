@@ -543,7 +543,8 @@ export default function InvoiceImportPage() {
         const result = creditSettles({
             credit: { ...doc, id: invoice.id },
             lines: matched.map(row => ({
-                code: row.line.code, value: row.line.value, vat: row.line.vat, deposit: row.line.deposit,
+                code: row.line.code, description: row.line.description, value: row.line.value, vat: row.line.vat,
+                deposit: row.line.deposit,
             })),
             against,
             claims: (open || []).map(c => ({ ...c, code: c.invoice_lines?.supplier_code || null })),
