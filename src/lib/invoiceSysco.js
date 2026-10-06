@@ -309,6 +309,10 @@ const UNIT_WORDS = {
     PC: { unit: 'Units', factor: 1 },
     PCS: { unit: 'Units', factor: 1 },
     PCE: { unit: 'Units', factor: 1 },
+    // Eggs come by the dozen: "1X15 DZ (180 EGGS)" is a hundred and eighty.
+    DZ: { unit: 'Units', factor: 12 },
+    DOZ: { unit: 'Units', factor: 12 },
+    DOZEN: { unit: 'Units', factor: 12 },
 }
 
 // "4X2.5 KG" is four packs of two and a half kilos.

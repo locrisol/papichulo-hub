@@ -1249,7 +1249,9 @@ export function pricesSection(section, f) {
                 + small(r.state === 'cannot'
                     ? (r.why === 'units'
                         ? 'Cannot be compared: the price recipes use and the invoice are not counted the same way.'
-                        : 'Cannot be compared: counted by weight, sold one at a time.')
+                        : r.why === 'pack'
+                            ? 'Cannot be compared: the invoice does not say how many are in a case.'
+                            : 'Cannot be compared: counted by weight, sold one at a time.')
                     : `Recipes ${unitMoney(r.recipe)} ${escapeHtml(r.unit)}, ${paidWords(r)}`),
             value: r.state === 'cannot' ? '' : change(r.gap)
                 + (r.effect ? `<br /><span style="font-size:13px;">${signedMoney(r.effect)}</span>` : ''),
@@ -1318,7 +1320,7 @@ export function backByReason(p) {
         reason,
         rows: (p.back || []).flatMap(b => b.parts
             .filter(part => part.kind === reason.kind)
-            .map(part => ({ what: b.what, number: b.number, date: b.date, money: part.money }))),
+            .map(part => ({ what: part.what || b.what, number: b.number, date: b.date, money: part.money }))),
     }))
 }
 
