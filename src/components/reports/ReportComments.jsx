@@ -1,8 +1,10 @@
 import { useRef, useState } from 'react'
 import { useRemoveCard } from '@/components/reports/useRemoveCard'
 import { removeButton, fieldClass } from '@/lib/controlStyles'
-import AutoTextarea from '@/components/ui/AutoTextarea'
 import AddButton from '@/components/ui/AddButton'
+import RichEditor from '@/components/ui/RichEditor'
+import RichText from '@/components/ui/RichText'
+import { richOf, richPlain } from '@/lib/richText'
 
 // The comments on a section: one card each, one thought each.
 //
@@ -28,18 +30,23 @@ import AddButton from '@/components/ui/AddButton'
 export default function ReportComments({ items, canEdit, onAdd, onSave, onRemove, label = 'Comments' }) {
     const removeCard = useRemoveCard()
     const [adding, setAdding] = useState('')
+    // A new box after each comment is added: the box keeps its own words while
+    // it is being typed in, and pressing Add leaves it being typed in.
+    const [fresh, setFresh] = useState(0)
     const [busy, setBusy] = useState(false)
     const pending = useRef(false)
 
-    async function add() {
-        const text = adding.trim()
-        if (!text || pending.current) return
+    // Comments are formatted (his, 7 October): bold, colour and size, stored
+    // as the few marks in richText and said the same way in the mail.
+    async function add(text = adding) {
+        if (!richPlain(text).trim() || pending.current) return
         pending.current = true
         setBusy(true)
         // Cleared first. The write reloads the page's data and the new card
         // arrives from there, so leaving the text in the box until it returns
         // shows the same comment twice for as long as the round trip takes.
         setAdding('')
+        setFresh(n => n + 1)
         await onAdd(text)
         setBusy(false)
         pending.current = false
@@ -58,25 +65,27 @@ export default function ReportComments({ items, canEdit, onAdd, onSave, onRemove
                         className="flex items-start gap-2 rounded-lg border border-border border-l-[3px] border-l-accent bg-app-bg px-3 py-2"
                     >
                         {canEdit ? (
-                            <AutoTextarea
-                                defaultValue={item.note || ''}
-                                onBlur={e => {
-                                    const text = e.target.value.trim()
-                                    if (text === (item.note || '')) return
-                                    if (!text) return onRemove(item.id)
-                                    onSave(item.id, text)
-                                }}
-                                className="flex-1 bg-transparent text-base pointer-fine:text-sm text-gray-800 focus:outline-none"
-                            />
+                            <div className="flex-1 min-w-0">
+                                <RichEditor
+                                    value={richOf(item)}
+                                    label="Comment"
+                                    onCommit={text => {
+                                        if (text === richOf(item)) return
+                                        if (!richPlain(text).trim()) return onRemove(item.id)
+                                        onSave(item.id, text)
+                                    }}
+                                    className="bg-transparent text-base pointer-fine:text-sm text-gray-800 focus:outline-none"
+                                />
+                            </div>
                         ) : (
-                            <p className="flex-1 text-sm text-gray-800">{item.note}</p>
+                            <RichText text={item.note} rich={item.meta?.rich} className="flex-1 text-sm text-gray-800" />
                         )}
 
                         {canEdit && (
                             <button
                                 onClick={() => removeCard({
                                     what: 'comment',
-                                    holds: item.note,
+                                    holds: item.meta?.rich ? richPlain(item.note) : item.note,
                                     onRemove: () => onRemove(item.id),
                                 })}
                                 aria-label="Remove this comment"
@@ -91,20 +100,21 @@ export default function ReportComments({ items, canEdit, onAdd, onSave, onRemove
 
             {canEdit && (
                 <div className="mt-2">
-                    <AutoTextarea
-                        value={adding}
+                    <RichEditor
+                        key={fresh}
+                        value=""
                         minRows={2}
-                        onChange={e => setAdding(e.target.value)}
-                        onBlur={add}
+                        onChange={setAdding}
+                        onCommit={add}
                         placeholder="Add a comment"
                         className={fieldClass}
                     />
-                    {adding.trim() && (
+                    {richPlain(adding).trim() && (
                         <AddButton
                             className="mt-2 w-full sm:w-auto justify-center"
                             disabled={busy}
                             keepFocus
-                            onClick={add}
+                            onClick={() => add()}
                         >
                             {busy ? 'Adding...' : 'Add comment'}
                         </AddButton>

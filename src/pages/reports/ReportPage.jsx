@@ -681,8 +681,9 @@ export default function ReportPage() {
     async function addComment(sectionId, note) {
         const section = sections.find(s => s.id === sectionId)
         const order = (section?.items.filter(i => i.kind === 'comment').length) || 0
+        // Formatted, as every comment written from now on. See richText.
         return write(() => supabase.from('report_items')
-            .insert({ section_id: sectionId, kind: 'comment', note, sort_order: order }))
+            .insert({ section_id: sectionId, kind: 'comment', note, sort_order: order, meta: { rich: true } }))
     }
 
     async function saveItem(itemId, patch) {
@@ -693,7 +694,12 @@ export default function ReportPage() {
         return write(() => supabase.from('report_items').delete().eq('id', itemId))
     }
 
-    const saveComment = (itemId, note) => saveItem(itemId, { note })
+    // Saved formatted, which a comment from before formatting becomes once it
+    // is edited.
+    const saveComment = (itemId, note) => {
+        const item = sections.flatMap(s => s.items).find(i => i.id === itemId)
+        return saveItem(itemId, { note, meta: { ...(item?.meta || {}), rich: true } })
+    }
 
     // An overhead keeps its carried_from, so the report can always say what it
     // was before somebody opened it. Only the amount moves.
@@ -789,10 +795,10 @@ export default function ReportPage() {
         }
 
         return write(() => existing
-            ? supabase.from('report_items').update({ note }).eq('id', existing.id)
+            ? supabase.from('report_items').update({ note, meta: { ...(existing.meta || {}), rich: true } }).eq('id', existing.id)
             : supabase.from('report_items').insert({
                 section_id: sectionId, kind: 'comment', key: platform.id,
-                label: platform.name, note, sort_order: platform.sort_order || 0,
+                label: platform.name, note, sort_order: platform.sort_order || 0, meta: { rich: true },
             }))
     }
 

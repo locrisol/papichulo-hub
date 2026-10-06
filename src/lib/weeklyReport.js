@@ -505,6 +505,8 @@ export function carriedItems(previousItems = [], weekStart) {
                 kind: 'action', key: item.key, label: item.label,
                 note: item.note, sort_order: item.sort_order,
                 opened_on: item.opened_on || weekStart,
+                // Its comments go with it, every week's, each with its day.
+                ...(item.meta?.comments?.length ? { meta: { comments: item.meta.comments } } : {}),
             })
         }
     }

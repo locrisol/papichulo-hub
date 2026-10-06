@@ -4,6 +4,11 @@ import { useRemoveCard } from '@/components/reports/useRemoveCard'
 import { removeButton, fieldClass } from '@/lib/controlStyles'
 import AutoTextarea from '@/components/ui/AutoTextarea'
 import AddButton from '@/components/ui/AddButton'
+import RichEditor from '@/components/ui/RichEditor'
+import RichText from '@/components/ui/RichText'
+import { richPlain } from '@/lib/richText'
+import { newGroupId } from '@/lib/priceEvents'
+import { shortDate, todayISO } from '@/lib/dates'
 
 // Support and actions needed: the running list.
 //
@@ -30,6 +35,92 @@ function weeksWords(n) {
     if (n === 0) return 'raised this week'
     if (n === 1) return '1 week open'
     return `${n} weeks open`
+}
+
+// Comments on one action (his, 7 October), kept on the action and carried
+// with it, so what was said about the extractor fan in July is still under it
+// in September. Each has the day it was written. This week's can be changed or
+// taken off; an earlier week's went out on that week's report and stays.
+export function ActionComments({ item, weekStart, canEdit, onSave }) {
+    const comments = item.meta?.comments || []
+    const [open, setOpen] = useState(false)
+    const [draft, setDraft] = useState('')
+    const [fresh, setFresh] = useState(0)
+
+    const save = list => onSave(item.id, { meta: { ...(item.meta || {}), comments: list } })
+
+    async function add(text = draft) {
+        if (!richPlain(text).trim()) return
+        setDraft('')
+        setFresh(n => n + 1)
+        setOpen(false)
+        await save([...comments, { id: newGroupId(), on: todayISO(), week: weekStart, text }])
+    }
+
+    return (
+        <div className="pl-9 mt-1.5 space-y-1.5">
+            {comments.map(c => {
+                const mine = canEdit && c.week === weekStart
+                return (
+                    <div key={c.id} className="flex items-start gap-2 border-l-2 border-accent/40 pl-2">
+                        <span className="text-xs text-muted whitespace-nowrap mt-0.5">{shortDate(c.on)}</span>
+                        <div className="flex-1 min-w-0">
+                            {mine ? (
+                                <RichEditor
+                                    value={c.text}
+                                    label="Comment on this action"
+                                    onCommit={text => {
+                                        if (text === c.text) return
+                                        save(richPlain(text).trim()
+                                            ? comments.map(x => (x.id === c.id ? { ...x, text } : x))
+                                            : comments.filter(x => x.id !== c.id))
+                                    }}
+                                    className="bg-transparent text-base pointer-fine:text-sm text-gray-800 focus:outline-none"
+                                />
+                            ) : (
+                                <RichText text={c.text} rich className="text-sm text-gray-800" />
+                            )}
+                        </div>
+                        {mine && (
+                            <button
+                                onClick={() => save(comments.filter(x => x.id !== c.id))}
+                                aria-label="Remove this comment"
+                                className={removeButton}
+                            >
+                                &times;
+                            </button>
+                        )}
+                    </div>
+                )
+            })}
+
+            {canEdit && (open ? (
+                <div>
+                    <RichEditor
+                        key={fresh}
+                        value=""
+                        minRows={1}
+                        placeholder="Add a comment"
+                        label="Add a comment on this action"
+                        onChange={setDraft}
+                        onCommit={text => (richPlain(text).trim() ? add(text) : setOpen(false))}
+                        className={fieldClass}
+                    />
+                    {richPlain(draft).trim() && (
+                        <AddButton className="mt-2" keepFocus onClick={() => add()}>Add comment</AddButton>
+                    )}
+                </div>
+            ) : (
+                <button
+                    type="button"
+                    onClick={() => setOpen(true)}
+                    className="text-xs font-semibold text-muted hover:text-accent-ink"
+                >
+                    + Comment
+                </button>
+            ))}
+        </div>
+    )
 }
 
 export default function ReportActions({ section, weekStart, canEdit, onAdd, onSave, onRemove }) {
@@ -152,6 +243,7 @@ export default function ReportActions({ section, weekStart, canEdit, onAdd, onSa
                         <p className="sm:hidden text-xs text-muted mt-1.5 pl-9">
                             {done ? 'closed this week' : weeksWords(weeksOpen(item, weekStart))}
                         </p>
+                        <ActionComments item={item} weekStart={weekStart} canEdit={canEdit} onSave={onSave} />
                         </div>
                     )
                 })}

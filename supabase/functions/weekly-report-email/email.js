@@ -430,6 +430,61 @@ function note(text) {
         line-height:1.55;color:${MUTED};${BREAKS}">${escapeLines(text)}</td></tr>`
 }
 
+// Formatted comments (his, 7 October): bold, three colours and two sizes,
+// stored as a few marks. The same reader as richText.js in the app, which the
+// mail cannot import; a test keeps the two saying the same words. Anything
+// that is not one of the marks is shown as the words it is, never as HTML.
+const RICH_COLOURS = { red: '#B91C1C', green: '#1F7A4C', orange: '#C2410C' }
+const RICH_SIZES = { small: '0.85em', big: '1.25em' }
+const RICH_TOKEN = /<b>|<\/b>|<span data-([cs])="([a-z]+)">|<\/span>|<br>|[^<]+|</g
+const unentity = t => t.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&')
+
+function richTree(stored) {
+    const root = { kids: [] }
+    const stack = [root]
+    const top = () => stack[stack.length - 1]
+    for (const [tok, kind, value] of String(stored || '').matchAll(RICH_TOKEN)) {
+        if (tok === '<b>') {
+            const node = { t: 'b', kids: [] }
+            top().kids.push(node)
+            stack.push(node)
+        } else if (kind && ((kind === 'c' && RICH_COLOURS[value]) || (kind === 's' && RICH_SIZES[value]))) {
+            const node = { t: kind, v: value, kids: [] }
+            top().kids.push(node)
+            stack.push(node)
+        } else if ((tok === '</b>' && top().t === 'b') || (tok === '</span>' && ['c', 's'].includes(top().t))) {
+            stack.pop()
+        } else if (tok === '<br>') {
+            top().kids.push({ t: 'br' })
+        } else {
+            top().kids.push({ t: 'text', v: unentity(tok) })
+        }
+    }
+    return root.kids
+}
+
+export function richHtml(stored) {
+    const walk = nodes => nodes.map(n => {
+        if (n.t === 'text') return escapeHtml(n.v)
+        if (n.t === 'br') return '<br />'
+        if (n.t === 'b') return `<strong>${walk(n.kids)}</strong>`
+        const style = n.t === 'c' ? `color:${RICH_COLOURS[n.v]};` : `font-size:${RICH_SIZES[n.v]};`
+        return `<span style="${style}">${walk(n.kids)}</span>`
+    }).join('')
+    return walk(richTree(stored))
+}
+
+export function richWords(stored) {
+    const walk = nodes => nodes.map(n => (n.t === 'text' ? n.v : n.t === 'br' ? NEW_LINE : walk(n.kids))).join('')
+    return walk(richTree(stored))
+}
+const NEW_LINE = String.fromCharCode(10)
+
+// What a comment says, as HTML or as words, whether it was written before
+// formatting or after. See meta.rich in richText.js.
+const noteHtml = item => (item?.meta?.rich ? richHtml(item.note) : escapeLines(item?.note || ''))
+const noteWords = item => (item?.meta?.rich ? richWords(item.note) : item?.note || '')
+
 // A comment is a card on the report and a card here, so a section with four of
 // them reads as four remarks rather than one long paragraph.
 function comments(items) {
@@ -438,7 +493,7 @@ function comments(items) {
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
             style="background:${CREAM};border-radius:8px;">
             <tr><td style="padding:11px 13px;font-family:${FONT};font-size:13.5px;
-                line-height:1.55;color:${INK};${BREAKS}">${item.label ? `<strong>${escapeHtml(item.label)}.</strong>&nbsp;` : ''}${escapeLines(item.note || '')}</td></tr>
+                line-height:1.55;color:${INK};${BREAKS}">${item.label ? `<strong>${escapeHtml(item.label)}.</strong>&nbsp;` : ''}${noteHtml(item)}</td></tr>
         </table>
     </td></tr>`).join('')
 }
@@ -477,7 +532,7 @@ const of = (section, kind) =>
 // two apart, here and on the screen.
 const sectionComments = section => of(section, 'comment').filter(i => !i.key)
 const noteFor = (section, platformId) =>
-    of(section, 'comment').find(i => i.key === platformId)?.note || ''
+    of(section, 'comment').find(i => i.key === platformId) || null
 
 function salesAndCosts(section, f, charts) {
     const t = f.targets || {}
@@ -684,7 +739,7 @@ function platformBlock(section, platform, rated) {
             ${rows.length || remark ? `<tr><td style="padding:0 0 4px;">
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
                     style="border-collapse:collapse;">${rows.join('')}</table>
-                ${remark ? `<div style="padding:12px 14px 8px;font-family:${FONT};font-size:13px;line-height:1.55;color:${MUTED};${BREAKS}">${escapeLines(remark)}</div>` : ''}
+                ${remark ? `<div style="padding:12px 14px 8px;font-family:${FONT};font-size:13px;line-height:1.55;color:${MUTED};${BREAKS}">${noteHtml(remark)}</div>` : ''}
             </td></tr>` : ''}
         </table>
     </td></tr>`
@@ -868,7 +923,10 @@ function supportActions(section, weekStart) {
     const rows = actions.map(action => {
         const weeks = weeksOpen(action.opened_on, weekStart)
         return line({
-            label: escapeHtml(action.label || ''),
+            // Its comments under it, each with its day (his, 7 October).
+            label: escapeHtml(action.label || '')
+                + (action.meta?.comments || []).map(c => `<br /><span style="font-size:13px;color:${MUTED};">`
+                    + `${dayMonth(c.on)}</span>&nbsp; <span style="font-size:13px;">${richHtml(c.text)}</span>`).join(''),
             value: weeks === 0 ? 'new this week' : `open ${weeks} week${weeks === 1 ? '' : 's'}`,
             tone: weeks >= 3 ? AMBER : MUTED,
         })
@@ -1579,7 +1637,7 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
                         + (refund.meta?.claimed ? ' (claimed back)' : ' (not claimed)'))
                 }
 
-                out.push(...typed(noteFor(section, platform.id), '    '))
+                out.push(...typed(noteWords(noteFor(section, platform.id)), '    '))
             }
         } else if (section.key === 'people_ops') {
             for (const [state, title] of [
@@ -1628,11 +1686,12 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
                 const weeks = weeksOpen(action.opened_on, weekStart)
                 out.push(`  ${action.label}`
                     + (weeks === 0 ? ' (new this week)' : ` (open ${weeks} week${weeks === 1 ? '' : 's'})`))
+                for (const c of action.meta?.comments || []) out.push(...typed(`${dayMonth(c.on)}: ${richWords(c.text)}`, '    '))
             }
         }
 
         for (const comment of sectionComments(section)) {
-            out.push(...typed(`${comment.label ? comment.label + '. ' : ''}${comment.note || ''}`, '  '))
+            out.push(...typed(`${comment.label ? comment.label + '. ' : ''}${noteWords(comment)}`, '  '))
         }
         out.push('')
     }
