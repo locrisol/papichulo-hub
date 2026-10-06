@@ -1072,7 +1072,9 @@ export function pricesSection(section, f) {
                 // so the total beside it can be checked by multiplying. Absent
                 // on anything frozen before it existed.
                 label: escapeHtml(m.name)
-                    + small(`${escapeHtml(priceOf(m.was, m.per))} to ${escapeHtml(priceOf(m.now, m.per))} ${escapeHtml(m.per)}, `
+                    // Codes bought either way are one row, each code's
+                    // prices in words. See together in invoiceReport.
+                    + small(`${m.prices ? escapeHtml(m.prices) : `${escapeHtml(priceOf(m.was, m.per))} to ${escapeHtml(priceOf(m.now, m.per))} ${escapeHtml(m.per)}`}, `
                         + `${dayMonth(m.on)}${m.invoice ? ` ${escapeHtml(m.invoice)}` : ''}`)
                     + (m.split ? small(escapeHtml(m.split)) : ''),
                 value: `${change(m.change)}<br /><span style="font-size:13px;">${signedMoney(m.effect)}</span>`,
@@ -1204,7 +1206,7 @@ function pricesText(p) {
     }
     if (p.moves.length) {
         out.push('  Same product, new price')
-        out.push(...cappedText(p.moves, shown.moves, m => `    ${m.name}: ${priceOf(m.was, m.per)} to ${priceOf(m.now, m.per)} ${m.per}, ${change(m.change)}, ${signedMoney(m.effect)}`
+        out.push(...cappedText(p.moves, shown.moves, m => `    ${m.name}: ${m.prices || `${priceOf(m.was, m.per)} to ${priceOf(m.now, m.per)} ${m.per}`}, ${change(m.change)}, ${signedMoney(m.effect)}`
             + (m.split ? ` (${m.split})` : '')))
     }
     if (p.switches.length) {

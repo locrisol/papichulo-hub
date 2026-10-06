@@ -496,7 +496,7 @@ function Money({ change, effect, under }) {
     return (
         <div className="sm:text-right flex sm:block items-center gap-3">
             {change != null && <Pill tone={change > 0 ? 'up' : change < 0 ? 'down' : 'grey'}>{pct(change)}</Pill>}
-            <p className="text-sm font-bold tabular-nums text-gray-900 sm:mt-1">{signed(effect)}</p>
+            <p className="text-sm font-bold tabular-nums whitespace-nowrap text-gray-900 sm:mt-1">{signed(effect)}</p>
             {under && <p className="text-xs text-muted">{under}</p>}
         </div>
     )
@@ -522,7 +522,9 @@ function Moves({ moves, doubtful }) {
                     <div className="min-w-0">
                         <Spark series={m.series} down={!m.up} />
                         <p className="text-xs text-muted tabular-nums mt-0.5">
-                            {priceText(m.was, m.per)} to <b className="text-gray-900">{priceText(m.now, m.per)}</b> {m.per}
+                            {m.prices ? m.prices : (
+                                <>{priceText(m.was, m.per)} to <b className="text-gray-900">{priceText(m.now, m.per)}</b> {m.per}</>
+                            )}
                         </p>
                     </div>
                     <Money change={m.change} effect={m.effect} under={m.split} />
@@ -970,37 +972,57 @@ function LedgerGroup({ title, rows }) {
 
 // The price at each delivery, as steps. Grey dots for the ones before, the
 // last one in the colour of which way it went.
+// The price at every delivery over the last eight weeks, in steps, because
+// it held until the next invoice changed it. Before this week in grey, this
+// week in the colour of the move, with the first and last day under it so it
+// says how far back it goes. Each chart is scaled to its own prices, so the
+// size of a step is the words beside it, not its height.
+//
+// A report frozen before the eight weeks has two figures a point and the
+// first one is the delivery before the week.
 function Spark({ series, down }) {
     if (!series?.length) return null
     const w = 200
     const h = 30
     const pad = 4
-    const ys = series.map(p => p[1])
-    const lo = Math.min(...ys)
-    const hi = Math.max(...ys)
-    const x = i => pad + (series.length === 1 ? 0 : (i * (w - pad * 2)) / (series.length - 1))
+    const points = series.map((p, i) => ({ day: p[0], v: p[1], now: p.length > 2 ? p[2] === 1 : i > 0 }))
+    const lo = Math.min(...points.map(p => p.v))
+    const hi = Math.max(...points.map(p => p.v))
+    const x = i => pad + (points.length === 1 ? 0 : (i * (w - pad * 2)) / (points.length - 1))
     const y = v => (hi === lo ? h / 2 : pad + ((hi - v) * (h - pad * 2)) / (hi - lo))
-    const d = series.map((p, i) => (i === 0 ? `M${x(i)},${y(p[1])}` : `H${x(i)} V${y(p[1])}`)).join(' ')
-    const last = series.length - 1
+    const step = (from, to) => points.slice(from, to + 1)
+        .map((p, k) => (k === 0 ? `M${x(from)},${y(p.v)}` : `H${x(from + k)} V${y(p.v)}`)).join(' ')
+    const firstNow = points.findIndex(p => p.now)
+    const before = firstNow === -1 ? points.length - 1 : Math.max(firstNow - 1, 0)
+    const last = points.length - 1
 
     return (
-        <svg
-            viewBox={`0 0 ${w} ${h}`}
-            className={`block w-full max-w-[200px] h-[30px] ${down ? 'text-green-700' : 'text-red-700'}`}
-            role="img"
-            aria-label="The price at each delivery"
-        >
-            <path d={d} fill="none" stroke="currentColor" strokeWidth="2" />
-            {series.map((p, i) => (
-                <circle
-                    key={`${p[0]}-${i}`}
-                    cx={x(i)}
-                    cy={y(p[1])}
-                    r={i === last ? 3.5 : 2}
-                    fill={i === last ? 'currentColor' : '#9CA3AF'}
-                />
-            ))}
-        </svg>
+        <div className="max-w-[200px]">
+            <svg
+                viewBox={`0 0 ${w} ${h}`}
+                className={`block w-full h-[30px] ${down ? 'text-green-700' : 'text-red-700'}`}
+                role="img"
+                aria-label={`The price at each delivery from ${shortDate(points[0].day)} to ${shortDate(points[last].day)}`}
+            >
+                {before > 0 && <path d={step(0, before)} fill="none" stroke="#9CA3AF" strokeWidth="2" />}
+                {firstNow !== -1 && <path d={step(before, last)} fill="none" stroke="currentColor" strokeWidth="2" />}
+                {points.map((p, i) => (
+                    <circle
+                        key={`${p.day}-${i}`}
+                        cx={x(i)}
+                        cy={y(p.v)}
+                        r={i === last ? 3.5 : 2}
+                        fill={p.now ? 'currentColor' : '#9CA3AF'}
+                    />
+                ))}
+            </svg>
+            {points.length > 1 && (
+                <div className="flex justify-between text-[11px] leading-tight text-muted tabular-nums">
+                    <span>{shortDate(points[0].day)}</span>
+                    <span>{shortDate(points[last].day)}</span>
+                </div>
+            )}
+        </div>
     )
 }
 

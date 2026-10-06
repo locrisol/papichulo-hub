@@ -99,6 +99,34 @@ describe('same product, new price', () => {
         expect(move.change).toBe(-26.8)
     })
 
+    // His, 7 October: the chart goes back eight weeks, this week's marked.
+    it('carries every delivery of the last eight weeks for the chart', () => {
+        const old = line({ code: '5017962', product: TOMATOES, date: '2026-07-01', perCase: 12, units: 6, pack: '1X6 KG' })
+        const [move] = priceMoves(deliveriesFrom([old, ...tomatoes]), WEEK)
+        expect(move.series).toEqual([['2026-09-10', 1.9583, 0], ['2026-09-16', 1.9583, 1], ['2026-09-17', 1.4333, 1]])
+    })
+
+    // His, 7 October: Green Peppers said twice, once for each code.
+    it('is one row for codes bought either way, with each code\'s prices in words', () => {
+        const codes = [
+            code({ supplier_code: '483508', alternate_group: 'g' }),
+            code({ supplier_code: '5018758', alternate_group: 'g' }),
+        ]
+        const box = (c, date, perCase) => line({ code: c, product: PEPPERS, date, perCase, units: 5, pack: '1X5 KG' })
+        const all = deliveriesFrom([
+            box('483508', '2026-09-10', 11.52), box('483508', '2026-09-15', 13.35),
+            box('5018758', '2026-09-11', 12.5), box('5018758', '2026-09-16', 14.33),
+        ])
+        const moves = priceMoves(all, { ...WEEK, codes })
+        expect(moves).toHaveLength(1)
+        expect(moves[0]).toMatchObject({
+            name: 'Green Peppers', codes: ['483508', '5018758'], effect: 3.66, up: true,
+            prices: '€11.52 to €13.35 a case on 483508, €12.50 to €14.33 a case on 5018758',
+        })
+        expect(moves[0].change).toBe(15.2)
+        expect(moves[0].series.map(p => p[0])).toEqual(['2026-09-10', '2026-09-11', '2026-09-15', '2026-09-16'])
+    })
+
     it('says what the week paid less, on what came at the new price', () => {
         const [move] = priceMoves(deliveriesFrom(tomatoes), WEEK)
         expect(move.effect).toBe(-18.9)
