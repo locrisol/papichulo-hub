@@ -816,6 +816,58 @@ describe('what somebody has to decide', () => {
     it('is nothing for a quiet week', () => {
         expect(decisionsFrom(null)).toEqual([])
     })
+
+    // Its button would change today's prices, which have moved on already.
+    it('leaves out what today\'s prices have moved past', () => {
+        const since = { per: 1.2939, usual: false }
+        const section = {
+            recipes: [{ state: 'behind', productId: 'a', since }],
+            suggestions: [{ productId: 'c', code: 'X', since }],
+            switches: [{ productId: 'd', code: 'Y', renumbered: true, usualPriceId: 'p', codeRowId: 'k', since }],
+            back: [],
+        }
+        expect(decisionsFrom(section)).toEqual([])
+    })
+})
+
+// His, 5 October: accepting week 39's invoices changed week 38's report.
+describe('a week read as it stood', () => {
+    const WEEK38 = { weekStart: '2026-09-20', weekEnd: '2026-09-26' }
+    const avocado = { id: 'avo', name: 'Avocado', unit: 'Units' }
+    const codes = [code({ id: 'c-avo', supplier_code: '5018435', price_id: 'avo-18' })]
+    const box = date => line({
+        code: '5018435', product: avocado, priceId: 'avo-18', date, perCase: 23.29, units: 18, pack: '1X18 EA',
+    })
+    // Today's: recipes cost it from what was paid.
+    const prices = [price({ id: 'avo-18', product_id: 'avo', supplier_code: '5018435', price_per_case: 23.29, units_per_case: 18, price_per_unit: 1.2939 })]
+    const created = { product_id: 'avo', price_id: 'avo-18', reason: 'created', price_per_unit: 0.9167, at: '2026-08-30T12:00:00+00:00' }
+    const acceptedOn = day => ({
+        product_id: 'avo', price_id: 'avo-18', reason: 'invoice', price_per_unit: 1.2939, previous_per_unit: 0.9167,
+        at: '2026-10-04T12:00:00+00:00', invoice_lines: { invoices: { invoice_date: day } },
+    })
+    const week38 = events => priceWeek({ ...WEEK38, lines: [box('2026-09-22')], prices, codes, events, threshold: 5, today: '2026-10-05' })
+
+    it('is not moved by a decision on the next week\'s invoice', () => {
+        const section = week38([created, acceptedOn('2026-09-29')])
+        expect(section.recipes).toHaveLength(1)
+        expect(section.recipes[0]).toMatchObject({ recipe: 0.9167, paid: 1.2939, state: 'behind' })
+        expect(section.checkedOn).toBe('2026-09-26')
+    })
+
+    // Its button would act on today's price, which has moved on already.
+    it('says what recipes cost now and asks nothing', () => {
+        const section = week38([created, acceptedOn('2026-09-29')])
+        expect(section.recipes[0].since).toEqual({ per: 1.2939, usual: true })
+        expect(decisionsFrom(section)).toEqual([])
+    })
+
+    it('is moved by a late decision on its own invoice', () => {
+        expect(week38([created, acceptedOn('2026-09-22')]).recipes).toEqual([])
+    })
+
+    it('reads today\'s prices without the events', () => {
+        expect(week38(null).recipes).toEqual([])
+    })
 })
 
 describe('the helpers', () => {

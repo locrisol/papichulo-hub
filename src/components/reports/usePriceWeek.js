@@ -34,7 +34,7 @@ export default function usePriceWeek({ restaurantId, weekStart, threshold, enabl
         const from = lookBackFrom(weekStart)
 
         async function load() {
-            const [lines, credits, prices, codes, claims, documents, versions, requests] = await Promise.all([
+            const [lines, credits, prices, codes, claims, documents, versions, requests, events] = await Promise.all([
                 everyRow(() => supabase.from('invoice_lines')
                     .select('id, invoice_id, supplier_code, product_id, price_id, raw_description, pack_size, '
                         + 'units_per_case, price_per_case, unit_price, cases, units, line_no, line_total, decision, '
@@ -85,10 +85,19 @@ export default function usePriceWeek({ restaurantId, weekStart, threshold, enabl
                     .select('id, supplier_id, supplier_code, name, description, sent_at, answer')
                     .eq('restaurant_id', restaurantId)
                     .is('answer', null),
+                // Every change to a price, with the day of the invoice behind
+                // it, so the section reads the prices as they stood at the end
+                // of the week and not today's. See pricesAsAt.
+                everyRow(() => supabase.from('product_price_events')
+                    .select('id, product_id, price_id, at, reason, price_per_unit, previous_per_unit, '
+                        + 'invoice_lines(invoices(invoice_date))')
+                    .eq('restaurant_id', restaurantId)
+                    .order('id')),
             ])
 
             if (!alive) return
-            const failed = [lines, credits, prices, codes, claims, documents, versions, requests].map(r => r.error).find(Boolean)
+            const failed = [lines, credits, prices, codes, claims, documents, versions, requests, events]
+                .map(r => r.error).find(Boolean)
             if (failed) { setError(friendlyError(failed)); return }
 
             // The invoices the credits are against, to tell a whole delivery
@@ -122,6 +131,7 @@ export default function usePriceWeek({ restaurantId, weekStart, threshold, enabl
                 documents: documents.data || [],
                 versions: versions.data || [],
                 requests: requests.data || [],
+                events: events.data || [],
                 threshold: threshold ?? DEFAULT_RECIPE_GAP,
                 today: todayISO(),
             }))
