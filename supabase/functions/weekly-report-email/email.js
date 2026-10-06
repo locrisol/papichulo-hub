@@ -647,7 +647,10 @@ function platformBlock(section, platform, rated) {
         }))
     }
 
+    // Said when there were none, the same as the reviews, rather than the
+    // heading left out (his, 7 October): a missing part reads as forgotten.
     const refunds = rated ? of(section, 'refund').filter(r => r.key === platform.id) : []
+    if (rated && refunds.length === 0) rows.push(subHeading('Refunds: none'))
     if (refunds.length > 0) {
         rows.push(subHeading('Refunds'))
         for (const refund of refunds) {
@@ -1560,7 +1563,9 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
                 }
 
                 const reviews = of(section, 'review').filter(r => r.key === platform.id)
+                const online = bucket === 'online_platform'
                 if (reviews.length) out.push('    Reviews')
+                else if (online) out.push('    Reviews: none')
                 for (const review of reviews) {
                     out.push(`      ${num(review.meta?.stars)} star x ${num(review.meta?.count) || 1}`
                         + (review.note ? `: ${review.note}` : ''))
@@ -1568,6 +1573,7 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
 
                 const refunds = of(section, 'refund').filter(r => r.key === platform.id)
                 if (refunds.length) out.push('    Refunds')
+                else if (online) out.push('    Refunds: none')
                 for (const refund of refunds) {
                     out.push(`      ${negative(refund.amount)} ${refund.note || ''}`
                         + (refund.meta?.claimed ? ' (claimed back)' : ' (not claimed)'))

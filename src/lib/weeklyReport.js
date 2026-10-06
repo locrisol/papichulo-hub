@@ -584,6 +584,33 @@ export function blockers(items = []) {
     return out
 }
 
+// Every online platform says something about its reviews and its refunds
+// before the week goes out (his, 7 October): one entered, or "No reviews" or
+// "No refunds" pressed. An empty list could mean there were none or that
+// nobody looked, and the report cannot tell the two apart.
+//
+// The press is kept on the platform's rating line, in meta.none, because that
+// is the one line each platform has. It is said for this week only: ratings
+// carry and their meta does not. One entered later wins over the press.
+export function saidNothing(rating, which) {
+    return !!rating?.meta?.none?.[which]
+}
+
+export function platformsUnsaid(items = [], platforms = []) {
+    const out = []
+    for (const p of platforms) {
+        const rating = items.find(i => i.kind === 'rating' && i.key === p.id)
+        const has = kind => items.some(i => i.kind === kind && i.key === p.id)
+        const reviews = !has('review') && !saidNothing(rating, 'reviews')
+        const refunds = !has('refund') && !saidNothing(rating, 'refunds')
+        // One line a platform: three platforms made six.
+        if (reviews && refunds) out.push(`${p.name}: add its reviews and refunds, or press No reviews and No refunds.`)
+        else if (reviews) out.push(`${p.name}: add its reviews, or press No reviews.`)
+        else if (refunds) out.push(`${p.name}: add its refunds, or press No refunds.`)
+    }
+    return out
+}
+
 // ---------------------------------------------------------------------------
 // Publishing
 // ---------------------------------------------------------------------------

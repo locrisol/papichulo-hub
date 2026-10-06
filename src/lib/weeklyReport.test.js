@@ -5,6 +5,7 @@ import {
     blockers, ratingMove, publishCheck, figuresToStore, FIGURES_VERSION, isCorrection, mailMissing,
     statementWeek, statementWords, dayWords, platformTaken, deliveryCost, deliveryRows,
     statementSundayIn, deliveryBlockers, platformWeeks,
+    platformsUnsaid, saidNothing,
 } from '@/lib/weeklyReport'
 
 // The till, as it stands. Every row counts toward the day balancing.
@@ -754,5 +755,41 @@ describe('platformWeeks', () => {
     it('leaves out a retired platform that took nothing in any of them', () => {
         const weeks = platformWeeks({ platforms: [ROO, platform('p4', 'Uber', 'online_platform', { is_active: false })], days: DAYS, weeks: WEEKS })
         expect(weeks.get('2026-09-06')).toEqual({ p_p1: 100, onlineTotal: 100, corporateTotal: 0 })
+    })
+})
+
+// His, 7 October: each online platform says something about its reviews and
+// refunds before the week goes out.
+describe('reviews and refunds said for each online platform', () => {
+    const deliveroo = { id: 'p1', name: 'Deliveroo' }
+    const rating = none => ({ kind: 'rating', key: 'p1', amount: 4.6, meta: { none } })
+
+    it('holds the report until each has one or a press', () => {
+        expect(platformsUnsaid([], [deliveroo])).toEqual([
+            'Deliveroo: add its reviews and refunds, or press No reviews and No refunds.',
+        ])
+        expect(platformsUnsaid([rating({ reviews: true })], [deliveroo])).toEqual([
+            'Deliveroo: add its refunds, or press No refunds.',
+        ])
+    })
+
+    it('is satisfied by the presses', () => {
+        expect(platformsUnsaid([rating({ reviews: true, refunds: true })], [deliveroo])).toEqual([])
+    })
+
+    it('is satisfied by one entered, pressed or not', () => {
+        const items = [{ kind: 'review', key: 'p1' }, { kind: 'refund', key: 'p1' }, rating({ reviews: false })]
+        expect(platformsUnsaid(items, [deliveroo])).toEqual([])
+    })
+
+    it('reads a press off the rating line, and nothing off none', () => {
+        expect(saidNothing(rating({ refunds: true }), 'refunds')).toBe(true)
+        expect(saidNothing(null, 'refunds')).toBe(false)
+    })
+
+    // A press is for its week. Ratings carry; their meta does not.
+    it('does not carry into the next week', () => {
+        const [next] = carriedItems([rating({ reviews: true, refunds: true })], '2026-10-04')
+        expect(next.meta).toBeUndefined()
     })
 })
