@@ -59,6 +59,12 @@ function draw(over = {}) {
 }
 
 describe('prices and suppliers on the report', () => {
+    // His, 7 October: the chart says how far back it goes.
+    it('draws each price move with the first and last day under it', () => {
+        draw()
+        expect(screen.getByRole('img', { name: /^The price at each delivery from .+ to .+/ })).toBeInTheDocument()
+    })
+
     // Read as at the end of the week, and today's prices moved on since.
     it('says what recipes cost now and offers nothing to press for it', () => {
         const recipes = section.recipes.map(r => ({ ...r, since: { per: 1.2939, usual: true } }))

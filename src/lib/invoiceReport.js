@@ -346,8 +346,10 @@ export function priceMoves(all, { weekStart, weekEnd, codes = [] }) {
     }
 
     const out = []
+    const raw = new Map()
     for (const [key, week] of byVersion) {
         const family = lineage(key)
+        const group = lineage.groupOf?.(key) || null
         const before = lastOf(all, d => d.at < week[0].at && family.includes(d.key))
         const series = before ? [before, ...week] : week
 
@@ -390,11 +392,20 @@ export function priceMoves(all, { weekStart, weekEnd, codes = [] }) {
             mixed: new Set(moved.map(d => round4(d.perUnit))).size > 1,
         })
 
+        raw.set(key, {
+            moved,
+            byCase,
+            unit: byCase ? 'a case' : unitOf(to),
+            // What the week's deliveries would have cost at the old price,
+            // for the change of codes shown together. See together.
+            old: week.reduce((t, d) => t + (d.perUnit ? d.cost * (from.perUnit / d.perUnit) : 0), 0),
+        })
         out.push({
             // More likely a pack read wrong on one of the two than a real
             // price. Kept, so it can be said and checked, but never added up.
             doubtful: outOfReason(to.perUnit, from.perUnit),
             key,
+            group,
             code: to.code,
             productId: to.productId,
             name: nameOf(to),
@@ -412,11 +423,85 @@ export function priceMoves(all, { weekStart, weekEnd, codes = [] }) {
             on: series[changedAt].date,
             invoice: series[changedAt].number,
             since: before?.date || null,
-            series: series.map(d => [d.date, round4(d.perUnit)]),
+            // Every delivery of it over the last eight weeks, so the chart
+            // shows where the price has been and not only last time and now
+            // (his, 7 October). The third figure is one for this week's.
+            series: historyOf(all, d => family.includes(d.key) || (!!group && lineage.groupOf(d.key) === group),
+                weekStart, weekEnd),
         })
     }
 
-    return out.sort((a, b) => Math.abs(b.effect) - Math.abs(a.effect) || Math.abs(b.change) - Math.abs(a.change))
+    const byChange = (a, b) => Math.abs(b.effect) - Math.abs(a.effect) || Math.abs(b.change) - Math.abs(a.change)
+    return together(out.sort(byChange), raw).sort(byChange)
+}
+
+// How far back the chart on a price move goes.
+export const MOVE_WEEKS = 8
+
+function historyOf(all, mine, weekStart, weekEnd) {
+    const from = addDays(weekEnd, -(MOVE_WEEKS * 7 - 1))
+    return all
+        .filter(d => d.date >= from && d.date <= weekEnd && d.perUnit != null && mine(d))
+        .map(d => [d.date, round4(d.perUnit), d.date >= weekStart ? 1 : 0])
+}
+
+// **Codes bought either way are one product on the report** (his, 7 October).
+// The green peppers come as 483508 or 5018758, both went up that week, and
+// the report said Green Peppers twice. Shown as one: the money added up, the
+// change as what the week paid over what it would have at the old prices, and
+// what each code went from and to said in words, because the two can be priced
+// differently. One that looks like a pack read wrong stays on its own.
+function together(moves, raw) {
+    const out = []
+    const groups = new Map()
+    for (const m of moves) {
+        if (!m.group || m.doubtful) { out.push(m); continue }
+        const key = `${m.productId}|${m.group}`
+        if (!groups.has(key)) { groups.set(key, []); out.push(key) }
+        groups.get(key).push(m)
+    }
+    return out.map(m => (typeof m === 'string' ? oneRow(groups.get(m), raw) : m))
+}
+
+function oneRow(moves, raw) {
+    if (moves.length === 1) return moves[0]
+    const [first] = moves
+    const parts = moves.map(m => raw.get(m.key))
+    const effect = round2(moves.reduce((t, m) => t + m.effect, 0))
+    const old = parts.reduce((t, r) => t + r.old, 0)
+    const moved = parts.flatMap(r => r.moved)
+    const byCase = parts.every(r => r.byCase) && new Set(moves.map(m => m.per)).size === 1
+    const quantity = byCase
+        ? moved.reduce((t, d) => t + d.cases, 0)
+        : moved.reduce((t, d) => t + (d.perUnit ? d.cost / d.perUnit : 0), 0)
+    const earliest = moves.reduce((a, m) => (m.on < a.on ? m : a), first)
+    const series = moves.flatMap(m => m.series)
+        .filter((p, i, list) => list.findIndex(q => q[0] === p[0] && q[1] === p[1]) === i)
+        .sort((a, b) => a[0].localeCompare(b[0]))
+    const change = old > 0 ? Math.round((effect / old) * 1000) / 10 : first.change
+    return {
+        ...first,
+        key: `${first.productId}|${first.group}`,
+        code: moves.map(m => m.code).join(', '),
+        codes: moves.map(m => m.code),
+        pack: new Set(moves.map(m => m.pack)).size === 1 ? first.pack : null,
+        change,
+        up: change > 0,
+        effect,
+        split: eachWords({
+            quantity,
+            each: quantity > 0 ? effect / quantity : null,
+            unit: byCase ? 'a case' : parts[0].unit,
+            mixed: true,
+        }),
+        // Each code's own, in words here because the mail says the same.
+        prices: moves.map(m => `${fmtMoney(m.was)} to ${fmtMoney(m.now)} ${m.per} on ${m.code}`).join(', '),
+        deliveries: moves.reduce((t, m) => t + m.deliveries, 0),
+        on: earliest.on,
+        invoice: earliest.invoice,
+        since: moves.map(m => m.since).filter(Boolean).sort()[0] || null,
+        series,
+    }
 }
 
 // ---------------------------------------------------------------------------
