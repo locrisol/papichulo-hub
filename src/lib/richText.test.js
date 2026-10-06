@@ -23,7 +23,7 @@ describe('formatted comments', () => {
 
     it('shows the marks in the editing box as they will look', () => {
         expect(richEditorHtml('<span data-c="green">ok</span>'))
-            .toBe('<span data-c="green" style="color:#1F7A4C">ok</span>')
+            .toBe('<span style="color:#1F7A4C">ok</span>')
     })
 
     // Each browser writes bold, colour and size its own way.
@@ -45,5 +45,16 @@ describe('formatted comments', () => {
 describe('a space the editing box puts in', () => {
     it('is saved as an ordinary space', () => {
         expect(richFromDom(box('a&nbsp;b'))).toBe('a b')
+    })
+})
+
+// Made green in the box after it was saved red: what shows is what is saved.
+describe('formatting changed after it was saved', () => {
+    it('is read from how it looks, not from what it was', () => {
+        const el = box(richEditorHtml('<span data-c="red">word</span>'))
+        el.querySelector('span').style.color = 'rgb(31, 122, 76)'
+        expect(richFromDom(el)).toBe('<span data-c="green">word</span>')
+        el.querySelector('span').style.color = ''
+        expect(richFromDom(el)).toBe('word')
     })
 })

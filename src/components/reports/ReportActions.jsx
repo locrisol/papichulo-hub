@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { weeksOpen } from '@/lib/weeklyReport'
 import { useRemoveCard } from '@/components/reports/useRemoveCard'
 import { removeButton, fieldClass } from '@/lib/controlStyles'
@@ -42,19 +42,31 @@ function weeksWords(n) {
 // in September. Each has the day it was written. This week's can be changed or
 // taken off; an earlier week's went out on that week's report and stays.
 export function ActionComments({ item, weekStart, canEdit, onSave }) {
-    const comments = item.meta?.comments || []
+    // Only ever a list: what is stored comes from the database.
+    const comments = (Array.isArray(item.meta?.comments) ? item.meta.comments : [])
+        .filter(c => c && typeof c === 'object')
     const [open, setOpen] = useState(false)
     const [draft, setDraft] = useState('')
     const [fresh, setFresh] = useState(0)
 
-    const save = list => onSave(item.id, { meta: { ...(item.meta || {}), comments: list } })
+    // Every change is made to the latest list, not the one on screen. Editing
+    // one and then removing another saved the edit and then a list from
+    // before it, which lost the edit.
+    const latest = useRef(comments)
+    const shown = JSON.stringify(comments)
+    useEffect(() => { latest.current = JSON.parse(shown) }, [shown])
+
+    function save(change) {
+        latest.current = change(latest.current)
+        return onSave(item.id, { meta: { ...(item.meta || {}), comments: latest.current } })
+    }
 
     async function add(text = draft) {
         if (!richPlain(text).trim()) return
         setDraft('')
         setFresh(n => n + 1)
         setOpen(false)
-        await save([...comments, { id: newGroupId(), on: todayISO(), week: weekStart, text }])
+        await save(list => [...list, { id: newGroupId(), on: todayISO(), week: weekStart, text }])
     }
 
     return (
@@ -71,9 +83,9 @@ export function ActionComments({ item, weekStart, canEdit, onSave }) {
                                     label="Comment on this action"
                                     onCommit={text => {
                                         if (text === c.text) return
-                                        save(richPlain(text).trim()
-                                            ? comments.map(x => (x.id === c.id ? { ...x, text } : x))
-                                            : comments.filter(x => x.id !== c.id))
+                                        save(list => (richPlain(text).trim()
+                                            ? list.map(x => (x.id === c.id ? { ...x, text } : x))
+                                            : list.filter(x => x.id !== c.id)))
                                     }}
                                     className="bg-transparent text-base pointer-fine:text-sm text-gray-800 focus:outline-none"
                                 />
@@ -83,7 +95,7 @@ export function ActionComments({ item, weekStart, canEdit, onSave }) {
                         </div>
                         {mine && (
                             <button
-                                onClick={() => save(comments.filter(x => x.id !== c.id))}
+                                onClick={() => save(list => list.filter(x => x.id !== c.id))}
                                 aria-label="Remove this comment"
                                 className={removeButton}
                             >

@@ -4,7 +4,7 @@ import {
     escapeHtml, tidy, stars, starColour, costTone, senderFor, heldNotice, WIDTH, SIDE,
     renewalWords, escapeLines, page, headline, overheadsToShow, backByReason,
     deliverable, isJustTheGoodbye, replyToFor, switchedOff, whatToSend, correctionSend,
-    paidWords, againstWords, figureGaps as mailGaps, openActions, platformsIn, richHtml, richWords,
+    paidWords, againstWords, figureGaps as mailGaps, openActions, platformsIn, richHtml, richWords, saidRefunds,
 } from '../../supabase/functions/weekly-report-email/email'
 import { readFileSync } from 'node:fs'
 import { MAIL_WIDTH } from '@/lib/reportChartImage'
@@ -2176,5 +2176,13 @@ describe('formatted comments in the mail', () => {
     it('draws the marks with the look they stand for and nothing else as HTML', () => {
         expect(richHtml(samples[0])).toBe('Fan <strong>still noisy</strong>, <span style="color:#B91C1C;">engineer Thursday</span><br />2 &lt; 3')
         expect(richHtml(samples[2])).not.toMatch(/<a |<script/)
+    })
+})
+
+describe('no refunds in the mail', () => {
+    // Before version 4 the week could go out without anybody looking.
+    it('is said only on a report that had to say it', () => {
+        expect(saidRefunds({ version: 4 })).toBe(true)
+        expect(saidRefunds({ version: 3 })).toBe(false)
     })
 })

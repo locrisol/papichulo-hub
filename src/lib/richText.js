@@ -73,6 +73,10 @@ export function richPlain(stored) {
 
 // For the editing box: the stored marks with the look they stand for, so the
 // box shows bold and colour as they will be.
+//
+// The look only, never the data-c or data-s the stored text carries. The
+// browser's own buttons change the look and know nothing about those, so a red
+// word made green kept saying red and was saved red again.
 export function richEditorHtml(stored) {
     const walk = nodes => nodes.map(n => {
         if (n.t === 'text') return encode(n.v)
@@ -80,7 +84,7 @@ export function richEditorHtml(stored) {
         const inner = walk(n.kids)
         if (n.t === 'b') return `<b>${inner}</b>`
         const style = n.t === 'c' ? `color:${COLOURS[n.v]}` : `font-size:${SIZES[n.v]}`
-        return `<span data-${n.t}="${n.v}" style="${style}">${inner}</span>`
+        return `<span style="${style}">${inner}</span>`
     }).join('')
     return walk(parseRich(stored))
 }

@@ -37,3 +37,25 @@ describe('comments on an action', () => {
         expect(next.meta.comments).toEqual([earlier])
     })
 })
+
+// The edit saved on leaving the box, then the remove pressed straight after.
+describe('two changes to the comments one after the other', () => {
+    it('keeps both', () => {
+        const onSave = vi.fn()
+        const a = { id: 'a', on: '2026-10-05', week: WEEK, text: 'one' }
+        const b = { id: 'b', on: '2026-10-05', week: WEEK, text: 'two' }
+        render(<ActionComments item={action([a, b])} weekStart={WEEK} canEdit onSave={onSave} />)
+        const [first] = screen.getAllByRole('textbox', { name: 'Comment on this action' })
+        first.innerHTML = 'one, edited'
+        fireEvent.input(first)
+        fireEvent.blur(first)
+        fireEvent.click(screen.getAllByRole('button', { name: 'Remove this comment' })[1])
+        const last = onSave.mock.calls[onSave.mock.calls.length - 1][1].meta.comments
+        expect(last).toEqual([{ ...a, text: 'one, edited' }])
+    })
+
+    it('ignores comments stored as something other than a list', () => {
+        render(<ActionComments item={{ id: 'x', meta: { comments: 'oops' } }} weekStart={WEEK} canEdit onSave={vi.fn()} />)
+        expect(screen.getByRole('button', { name: '+ Comment' })).toBeInTheDocument()
+    })
+})

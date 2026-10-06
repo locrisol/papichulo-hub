@@ -480,6 +480,15 @@ export function richWords(stored) {
 }
 const NEW_LINE = String.fromCharCode(10)
 
+// Whether every platform had to say its refunds before this went out. See
+// FIGURES_VERSION 4 in the app's weeklyReport.
+export const saidRefunds = f => Number(f?.version) >= 4
+
+// The comments on an action, only ever a list of them: what is stored comes
+// from the database and anybody with access could have written something else.
+const commentsOf = action => (Array.isArray(action?.meta?.comments) ? action.meta.comments : [])
+    .filter(c => c && typeof c === 'object')
+
 // What a comment says, as HTML or as words, whether it was written before
 // formatting or after. See meta.rich in richText.js.
 const noteHtml = item => (item?.meta?.rich ? richHtml(item.note) : escapeLines(item?.note || ''))
@@ -659,7 +668,7 @@ function ratingMove(rating) {
 // of three had no rating at all, and a reader cannot tell "held at 4.8" from
 // "nobody has entered it" by being shown neither. The move is still called out
 // when there is one, because that is the part that is news.
-function platformBlock(section, platform, rated) {
+function platformBlock(section, platform, rated, f) {
     const rows = []
 
     // A corporate account gets none of what follows. Clockmeal has no star
@@ -705,7 +714,9 @@ function platformBlock(section, platform, rated) {
     // Said when there were none, the same as the reviews, rather than the
     // heading left out (his, 7 October): a missing part reads as forgotten.
     const refunds = rated ? of(section, 'refund').filter(r => r.key === platform.id) : []
-    if (rated && refunds.length === 0) rows.push(subHeading('Refunds: none'))
+    // Only on a report from version 4, when the week could not go out without
+    // somebody saying so. Earlier, an empty list may only mean nobody looked.
+    if (rated && refunds.length === 0 && saidRefunds(f)) rows.push(subHeading('Refunds: none'))
     if (refunds.length > 0) {
         rows.push(subHeading('Refunds'))
         for (const refund of refunds) {
@@ -760,7 +771,7 @@ function platformSection(section, f, charts, bucket, chartKey) {
 
     const body = platforms.length === 0
         ? note('No platforms were tracked for this week.')
-        : platforms.map(p => platformBlock(section, p, bucket === 'online_platform')).join('')
+        : platforms.map(p => platformBlock(section, p, bucket === 'online_platform', f)).join('')
 
     // Under the band, the same as sales and costs. A section that opens with
     // the shape of the thing and then breaks it down by platform reads in the
@@ -925,8 +936,8 @@ function supportActions(section, weekStart) {
         return line({
             // Its comments under it, each with its day (his, 7 October).
             label: escapeHtml(action.label || '')
-                + (action.meta?.comments || []).map(c => `<br /><span style="font-size:13px;color:${MUTED};">`
-                    + `${dayMonth(c.on)}</span>&nbsp; <span style="font-size:13px;">${richHtml(c.text)}</span>`).join(''),
+                + commentsOf(action).map(c => `<br /><span style="font-size:13px;color:${MUTED};">`
+                    + `${escapeHtml(dayMonth(c.on))}</span>&nbsp; <span style="font-size:13px;">${richHtml(c.text)}</span>`).join(''),
             value: weeks === 0 ? 'new this week' : `open ${weeks} week${weeks === 1 ? '' : 's'}`,
             tone: weeks >= 3 ? AMBER : MUTED,
         })
@@ -1631,7 +1642,7 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
 
                 const refunds = of(section, 'refund').filter(r => r.key === platform.id)
                 if (refunds.length) out.push('    Refunds')
-                else if (online) out.push('    Refunds: none')
+                else if (online && saidRefunds(f)) out.push('    Refunds: none')
                 for (const refund of refunds) {
                     out.push(`      ${negative(refund.amount)} ${refund.note || ''}`
                         + (refund.meta?.claimed ? ' (claimed back)' : ' (not claimed)'))
@@ -1686,7 +1697,7 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
                 const weeks = weeksOpen(action.opened_on, weekStart)
                 out.push(`  ${action.label}`
                     + (weeks === 0 ? ' (new this week)' : ` (open ${weeks} week${weeks === 1 ? '' : 's'})`))
-                for (const c of action.meta?.comments || []) out.push(...typed(`${dayMonth(c.on)}: ${richWords(c.text)}`, '    '))
+                for (const c of commentsOf(action)) out.push(...typed(`${dayMonth(c.on)}: ${richWords(c.text)}`, '    '))
             }
         }
 
