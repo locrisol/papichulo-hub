@@ -70,16 +70,16 @@ describe('the price section for a week still being written', () => {
         }]
         tables.product_supplier_prices = [{
             id: 'avo-18', restaurant_id: 'r1', product_id: 'avo', supplier_id: 's1', supplier_code: 'A18',
-            price_per_case: 23.29, units_per_case: 18, price_per_unit: 1.2939, is_preferred: true,
+            price_per_case: 19.8, units_per_case: 18, price_per_unit: 1.1, is_preferred: true,
         }]
         tables.product_price_events = [
             { id: 'e1', restaurant_id: 'r1', product_id: 'avo', price_id: 'avo-18', reason: 'created', price_per_unit: 0.9167, at: '2026-08-30T12:00:00+00:00' },
             {
-                id: 'e2', restaurant_id: 'r1', product_id: 'avo', price_id: 'avo-18', reason: 'invoice', price_per_unit: 1.2939,
+                id: 'e2', restaurant_id: 'r1', product_id: 'avo', price_id: 'avo-18', reason: 'invoice', price_per_unit: 1.1,
                 previous_per_unit: 0.9167, at: '2026-09-27T12:00:00+00:00', invoice_lines: { invoices: { invoice_date: '2026-09-22' } },
             },
         ]
         render(<Recipes />)
-        expect(await screen.findByText('Avocado at 0.9167, 1.2939 now')).toBeInTheDocument()
+        expect(await screen.findByText('Avocado at 0.9167, 1.1 now')).toBeInTheDocument()
     })
 })

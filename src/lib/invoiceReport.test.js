@@ -838,17 +838,19 @@ describe('a week read as it stood', () => {
     const box = date => line({
         code: '5018435', product: avocado, priceId: 'avo-18', date, perCase: 23.29, units: 18, pack: '1X18 EA',
     })
-    // Today's: recipes cost it from what was paid.
-    const prices = [price({ id: 'avo-18', product_id: 'avo', supplier_code: '5018435', price_per_case: 23.29, units_per_case: 18, price_per_unit: 1.2939 })]
+    // Today's: recipes cost it at `per`, after a decision on 4 October.
+    const today = per => [price({ id: 'avo-18', product_id: 'avo', supplier_code: '5018435', price_per_case: per * 18, units_per_case: 18, price_per_unit: per })]
     const created = { product_id: 'avo', price_id: 'avo-18', reason: 'created', price_per_unit: 0.9167, at: '2026-08-30T12:00:00+00:00' }
-    const acceptedOn = day => ({
-        product_id: 'avo', price_id: 'avo-18', reason: 'invoice', price_per_unit: 1.2939, previous_per_unit: 0.9167,
+    const acceptedOn = (day, per = 1.2939) => ({
+        product_id: 'avo', price_id: 'avo-18', reason: 'invoice', price_per_unit: per, previous_per_unit: 0.9167,
         at: '2026-10-04T12:00:00+00:00', invoice_lines: { invoices: { invoice_date: day } },
     })
-    const week38 = events => priceWeek({ ...WEEK38, lines: [box('2026-09-22')], prices, codes, events, threshold: 5, today: '2026-10-05' })
+    const week38 = (events, per = 1.2939) => priceWeek({
+        ...WEEK38, lines: [box('2026-09-22')], prices: today(per), codes, events, threshold: 5, today: '2026-10-05',
+    })
 
     it('is not moved by a decision on the next week\'s invoice', () => {
-        const section = week38([created, acceptedOn('2026-09-29')])
+        const section = week38([created, acceptedOn('2026-09-29', 1.1)], 1.1)
         expect(section.recipes).toHaveLength(1)
         expect(section.recipes[0]).toMatchObject({ recipe: 0.9167, paid: 1.2939, state: 'behind' })
         expect(section.checkedOn).toBe('2026-09-26')
@@ -856,9 +858,16 @@ describe('a week read as it stood', () => {
 
     // Its button would act on today's price, which has moved on already.
     it('says what recipes cost now and asks nothing', () => {
-        const section = week38([created, acceptedOn('2026-09-29')])
-        expect(section.recipes[0].since).toEqual({ per: 1.2939, usual: true })
+        const section = week38([created, acceptedOn('2026-09-29', 1.1)], 1.1)
+        expect(section.recipes[0].since).toEqual({ per: 1.1, usual: true })
         expect(decisionsFrom(section)).toEqual([])
+    })
+
+    // His, 7 October: fixed already is not news.
+    it('says nothing once recipes cost what the week paid', () => {
+        const section = week38([created, acceptedOn('2026-09-29')])
+        expect(section.recipes).toEqual([])
+        expect(section.totals.recipes).toBe(0)
     })
 
     it('is moved by a late decision on its own invoice', () => {
