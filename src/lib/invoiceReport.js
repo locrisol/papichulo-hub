@@ -37,6 +37,7 @@
 
 import { num, fmtMoney, fmtQty, namesList, round2, round4 } from '@/lib/format'
 import { renumberPlan } from '@/lib/priceEvents'
+import { pricesAsAt } from '@/lib/pricesAsAt'
 import { addDays, dayMonth, stampDay } from '@/lib/dates'
 import { samePrice, sameWords, SAME_WORDS, byPieceWeight } from '@/lib/invoiceImport'
 import { readPackSize, mend } from '@/lib/invoiceSysco'
@@ -952,19 +953,25 @@ export function notChecked(read) {
     }))
 }
 
+// **Read against the prices as they stood at the end of the week**, when
+// `events` are given, so deciding next week's invoices cannot change what this
+// week says (his, 5 October). `prices` are today's: the buttons on the
+// decisions change today's prices, so a decision that today's prices have
+// already moved past says so instead of offering one. See withSince.
 export function priceWeek({
     weekStart, weekEnd, lines = [], credits = [], invoices = [], prices = [], codes = [], claims = [],
-    documents = [], versions = [], requests = [], threshold = DEFAULT_RECIPE_GAP, today = null,
+    documents = [], versions = [], requests = [], events = null, threshold = DEFAULT_RECIPE_GAP, today = null,
 }) {
     const all = deliveriesFrom(lines, credits)
-    const scope = { weekStart, weekEnd, prices, codes, threshold }
+    const then = events ? pricesAsAt(prices, events, weekEnd) : prices
+    const scope = { weekStart, weekEnd, prices: then, codes, threshold }
 
     const everyMove = priceMoves(all, scope)
     const moves = everyMove.filter(m => !m.doubtful)
     const doubtful = everyMove.filter(m => m.doubtful)
-    const switches = switchesIn(all, scope)
-    const recipes = recipeGaps(all, scope)
-    const suggestions = usualSuggestions(all, scope)
+    const switches = withSince(switchesIn(all, scope), 'switch', prices, codes)
+    const recipes = withSince(recipeGaps(all, scope), 'recipe', prices, codes)
+    const suggestions = withSince(usualSuggestions(all, scope), 'usual', prices, codes)
     const back = cameBack(credits, claims, { weekStart, weekEnd, invoices })
     const owed = stillOwed(claims)
     // `invoices` also carries the documents this week's claims were put
@@ -972,14 +979,15 @@ export function priceWeek({
     const earlier = fromEarlierWeeks(claims, invoices, weekStart)
     const fresh = newCodes(all, scope)
     const read = readFrom(documents)
-    const brand = notAsRecommended(all, { weekStart, weekEnd, prices, versions, requests })
+    const brand = notAsRecommended(all, { weekStart, weekEnd, prices: then, versions, requests })
     const waiting = waitingOnReview(all, requests, { weekStart, weekEnd })
     const unchecked = notChecked(read)
 
     const section = {
         weekStart,
         weekEnd,
-        checkedOn: today,
+        // As at the end of the week, once it is over.
+        checkedOn: events && today && today > weekEnd ? weekEnd : today,
         threshold: num(threshold),
         readFrom: read,
         notRecommended: brand,
@@ -1016,6 +1024,44 @@ export function priceWeek({
     return { ...section, words: priceWords(section) }
 }
 
+// What recipes cost a product from today, per unit.
+function costsNow(productId, prices, codes) {
+    const usual = usualFor(productId, prices, codes)
+    if (!usual) return null
+    const units = num(usual.row.units_per_case)
+    const per = usual.row.price_per_unit != null
+        ? num(usual.row.price_per_unit)
+        : (units > 0 ? num(usual.row.price_per_case) / units : null)
+    return { id: usual.row.id, per: per == null ? null : round4(per) }
+}
+
+// Whether a decision still means what it says, against today's prices.
+//
+// The section is read as at the end of its week and the buttons change today's
+// prices. Costing week 38's recipes from what week 38 paid, after week 39 moved
+// them on, would pull them back, so a decision today's prices have moved past
+// carries `since`, what recipes cost it at now and whether the one bought is
+// the usual one now, and is not asked about. A switch whose usual one has
+// changed since the same, or joining codes would join it to the old one.
+function withSince(items, kind, prices, codes) {
+    return items.map(item => {
+        const now = costsNow(item.productId, prices, codes)
+        const moved = kind === 'recipe'
+            ? !now || now.id !== item.priceId || now.per !== item.recipe
+            : kind === 'switch'
+                ? !now || now.id !== item.usualPriceId
+                : !now || now.id !== item.fromPriceId || per4Of(prices, item.fromPriceId) !== item.recipe
+                    || per4Of(prices, item.priceId) !== item.rowPer
+        const usual = !!now && now.id === (kind === 'switch' ? item.ownPriceId : item.priceId)
+        return moved ? { ...item, since: { per: now?.per ?? null, usual } } : item
+    })
+}
+
+const per4Of = (prices, id) => {
+    const row = (prices || []).find(p => p.id === id)
+    return row?.price_per_unit == null ? null : round4(row.price_per_unit)
+}
+
 // What came back, by reason, biggest first. One bar on the page and one list
 // in the mail.
 export function reasonsOf(back) {
@@ -1048,16 +1094,20 @@ export function backByReason(reasons, back) {
 // Recipes that are off, a version bought three times in a row, and a credit
 // with nobody saying why. Nothing in it has to be answered this week: leave it
 // and it is on next week's report too.
+//
+// Not one today's prices have moved past (`since`): there is nothing left to
+// decide about it from this week, and its button would pull today's back.
 export function decisionsFrom(section) {
     if (!section) return []
+    const suggestions = (section.suggestions || []).filter(s => !s.since)
     return [
-        ...(section.recipes || []).filter(r => r.state !== 'cannot').map(r => ({ kind: 'recipe', ...r })),
-        ...(section.suggestions || []).map(s => ({ kind: 'usual', ...s })),
+        ...(section.recipes || []).filter(r => r.state !== 'cannot' && !r.since).map(r => ({ kind: 'recipe', ...r })),
+        ...suggestions.map(s => ({ kind: 'usual', ...s })),
         // A switch that reads like the usual one under a new number, and that
         // is not already being asked about as three in a row.
         ...(section.switches || [])
-            .filter(s => s.renumbered && renumberPlan(s)
-                && !(section.suggestions || []).some(g => g.productId === s.productId && g.code === s.code))
+            .filter(s => s.renumbered && !s.since && renumberPlan(s)
+                && !suggestions.some(g => g.productId === s.productId && g.code === s.code))
             .map(s => ({ kind: 'renumbered', ...s })),
         ...(section.back || []).filter(b => b.unexplained > 0).map(b => ({ kind: 'reason', ...b })),
     ]

@@ -562,7 +562,12 @@ function Switches({ switches, canDecide, busy, onBuyBoth }) {
                         {/* Any row here can be the same thing bought either
                             way, not only the ones whose words match: the
                             tortillas come in two brands depending on stock. */}
-                        {canDecide && alternatePlan(s, 'new') && (
+                        {s.since && (
+                            <p className="text-xs text-muted">
+                                {s.since.usual ? 'It is the usual one now.' : 'The usual one has changed since this week.'}
+                            </p>
+                        )}
+                        {canDecide && !s.since && alternatePlan(s, 'new') && (
                             <button
                                 type="button"
                                 disabled={!!busy}
@@ -608,6 +613,13 @@ function Recipes({ recipes, checkedOn, threshold }) {
                                 ? `Average of the last ${r.averaged.deliveries} deliveries, since ${shortDate(r.averaged.since)}`
                                 : `Last paid on ${shortDate(r.paidOn)}${r.invoice ? `, ${r.invoice}` : ''}${r.code ? `, code ${r.code}` : ''}`}
                         </p>
+                        {r.since && (
+                            <p className="text-xs text-muted">
+                                {r.since.per == null
+                                    ? 'Changed since this week.'
+                                    : `Since this week, recipes cost it at ${fmtMoney(r.since.per)} ${r.unit}.`}
+                            </p>
+                        )}
                     </div>
                     {r.state === 'cannot' ? (
                         <p className="text-xs text-muted">{WHY[r.why] || WHY.weight}</p>

@@ -59,6 +59,17 @@ function draw(over = {}) {
 }
 
 describe('prices and suppliers on the report', () => {
+    // Read as at the end of the week, and today's prices moved on since.
+    it('says what recipes cost now and offers nothing to press for it', () => {
+        const recipes = section.recipes.map(r => ({ ...r, since: { per: 1.2939, usual: true } }))
+        const switches = section.switches.map(s => ({ ...s, since: { per: 0.3303, usual: true } }))
+        draw({ section: { ...section, recipes, switches } })
+        expect(screen.getByText('Since this week, recipes cost it at €1.29 each.')).toBeInTheDocument()
+        expect(screen.getByText('It is the usual one now.')).toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: /Cost from/ })).not.toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: /usually buy both/ })).not.toBeInTheDocument()
+    })
+
     it('opens with the four figures', () => {
         draw()
         expect(screen.getAllByText('Same product, new price').length).toBeGreaterThan(0)
