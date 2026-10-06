@@ -107,7 +107,8 @@ function AllergenSheet({ due }) {
 
 // `paperwork` is paperworkFor's: the people checked, and both kinds summed up.
 // `allergenSheet` is reprintDue's answer, null while the sheet is not due.
-export default function ReportPaperwork({ paperwork, weekStart, asOf, allergenSheet = null }) {
+// `sent` is the day a sent report was checked on, null while it is a draft.
+export default function ReportPaperwork({ paperwork, weekStart, asOf, allergenSheet = null, sent = null }) {
     if (paperwork.people === 0) {
         return (
             <div className="space-y-2">
@@ -132,7 +133,8 @@ export default function ReportPaperwork({ paperwork, weekStart, asOf, allergenSh
             </div>
 
             <p className="text-xs text-muted mt-2">
-                {paperwork.people} on the team in the week of {shortDate(weekStart)}, checked as of today,
+                {paperwork.people != null ? `${paperwork.people} on` : 'Everybody on'} the team in the week of {shortDate(weekStart)},
+                {' '}{sent ? `checked on ${shortDate(sent)}, when the report was sent` : 'checked as of today'},
                 leaving out anybody who has left since. Anything that expires within {WARN_DAYS} days counts as
                 expiring soon, and anybody with no permit to expire counts as in date.
             </p>
