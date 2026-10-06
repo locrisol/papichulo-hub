@@ -970,7 +970,10 @@ export function priceWeek({
     const moves = everyMove.filter(m => !m.doubtful)
     const doubtful = everyMove.filter(m => m.doubtful)
     const switches = withSince(switchesIn(all, scope), 'switch', prices, codes)
+    // One fixed since, so recipes cost now what the week paid, is not said
+    // at all (his, 7 October): only a costing still out of line is news.
     const recipes = withSince(recipeGaps(all, scope), 'recipe', prices, codes)
+        .filter(r => !fixedSince(r, threshold))
     const suggestions = withSince(usualSuggestions(all, scope), 'usual', prices, codes)
     const back = cameBack(credits, claims, { weekStart, weekEnd, invoices })
     const owed = stillOwed(claims)
@@ -1055,6 +1058,12 @@ function withSince(items, kind, prices, codes) {
         const usual = !!now && now.id === (kind === 'switch' ? item.ownPriceId : item.priceId)
         return moved ? { ...item, since: { per: now?.per ?? null, usual } } : item
     })
+}
+
+// Whether recipes cost now what the week paid, near enough.
+function fixedSince(item, threshold) {
+    if (!item.since || item.since.per == null || item.state === 'cannot') return false
+    return Math.abs(pctOf(item.paid, item.since.per)) <= num(threshold)
 }
 
 const per4Of = (prices, id) => {
