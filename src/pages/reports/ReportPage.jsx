@@ -24,7 +24,7 @@ import { paperworkFor } from '@/lib/reportPeople'
 import { reprintDue } from '@/lib/allergenSheet'
 import { weeksBack, byWeek } from '@/lib/reportChart'
 import { FOOD, PACKAGING } from '@/lib/invoiceCategories'
-import { chartSpecs, deliveryRates } from '@/lib/reportCharts'
+import { chartSpecs, deliveryRates, accountColour } from '@/lib/reportCharts'
 import { brandFor } from '@/lib/platformBrand'
 import { uploadCharts, sendReport, sendWords } from '@/lib/reportMail'
 import ReportComments from '@/components/reports/ReportComments'
@@ -196,6 +196,17 @@ export default function ReportPage() {
         enabled: report?.status === 'draft',
     })
 
+    // The paperwork a sent report went out with, checked on the day it was
+    // frozen. Read live, a permit renewed since made September say "in date".
+    const sentPaperwork = report?.status === 'published' && figures?.paperwork?.food?.expiring
+        ? {
+            people: figures.paperwork.people,
+            food: figures.paperwork.food,
+            permits: figures.paperwork.permits,
+            on: String(figures.frozen_at || '').slice(0, 10) || todayISO(),
+        }
+        : null
+
     // Up here rather than beside the charts, because publishing needs them to
     // draw the pictures and publishing is defined before the page is.
     const onlinePlatforms = platforms.filter(p => p.bucket === 'online_platform')
@@ -359,7 +370,13 @@ export default function ReportPage() {
             // days, the same as the week grid shows. Retiring one mid week
             // must not take what it took out of that week's report.
             const allPlatforms = keyedPlatforms(plats.data)
-            const shownPlatforms = platformsToShow(allPlatforms, (days2.data || []).map(d => d.platform_sales))
+            // A sent report shows the platforms it was sent with, and what each
+            // took then, the same as its mail. Read live, a Saturday corrected
+            // after it went out changed the page and not the mail.
+            const sentWith = head.status === 'published' ? head.figures?.platforms : null
+            const shownPlatforms = sentWith
+                ? allPlatforms.filter(p => sentWith.some(f => f.id === p.id))
+                : platformsToShow(allPlatforms, (days2.data || []).map(d => d.platform_sales))
             setPlatforms(shownPlatforms)
             setAround(days2.data || [])
 
@@ -451,7 +468,11 @@ export default function ReportPage() {
             // Left unanswered when the date would not come back, rather than
             // null, which is what a sheet that is not due gets. A reminder
             // worked out from half of what it needs would be a guess.
-            setAllergenSheet(changedRes.error || !activeRestaurant ? undefined : reprintDue({
+            // A sent report says what it was sent with, the same as the rest
+            // of its paperwork.
+            const sentPaper = head.status === 'published' ? head.figures?.paperwork : null
+            if (sentPaper) setAllergenSheet(sentPaper.allergenSheet)
+            else setAllergenSheet(changedRes.error || !activeRestaurant ? undefined : reprintDue({
                 printedAt: activeRestaurant.allergen_sheet_printed_at,
                 everyMonths: activeRestaurant.allergen_sheet_every_months,
                 changedAt: changedRes.data,
@@ -460,7 +481,9 @@ export default function ReportPage() {
             // Our week only. The days read above run a day past it.
             const totals = {}
             for (const p of shownPlatforms) {
-                totals[p.id] = platformTaken(days2.data, p.key, weekStart, end)
+                totals[p.id] = sentWith
+                    ? num(sentWith.find(f => f.id === p.id)?.taken)
+                    : platformTaken(days2.data, p.key, weekStart, end)
             }
             setTaken(totals)
 
@@ -609,7 +632,10 @@ export default function ReportPage() {
                 .eq('restaurant_id', head.restaurant_id)
             if (targetError) return stop(targetError)
 
-            setTargets({
+            // A sent report was judged against the targets frozen into it.
+            // Worked out again, a default changed since repainted it.
+            if (head.status === 'published' && head.figures?.targets) setTargets(head.figures.targets)
+            else setTargets({
                 food: resolveTarget(overrides || [], 'food', weekStart, num(activeRestaurant?.food_cost_target)),
                 labour: resolveTarget(overrides || [], 'labour', weekStart, num(activeRestaurant?.labour_cost_target)),
                 packaging: resolveTarget(overrides || [], 'packaging', weekStart, num(activeRestaurant?.packaging_cost_target)),
@@ -762,7 +788,7 @@ export default function ReportPage() {
     // change what a report sent in September said. So they are frozen here
     // beside the figures, and the mail reads the frozen copy.
     function frozenFigures() {
-        const { food, permits } = paperworkFor(employees, report.week_start, todayISO())
+        const { people, food, permits } = paperworkFor(employees, report.week_start, todayISO())
 
         return figuresToStore({
             ...figures,
@@ -784,8 +810,12 @@ export default function ReportPage() {
                 // what is inside a function's own folder gets deployed with
                 // it, so the alternative was writing the brand colours down a
                 // second time where nobody would think to change them.
-                mark: brandFor(p.name).mark,
-                colour: brandFor(p.name).ink,
+                //
+                // A corporate account is in the colour the page and its chart
+                // give it. It has no brand, so brandFor gave Feedr and the rest
+                // the same grey in the mail.
+                mark: p.bucket === 'catering' ? accountColour(corporatePlatforms, p.id) : brandFor(p.name).mark,
+                colour: p.bucket === 'catering' ? accountColour(corporatePlatforms, p.id) : brandFor(p.name).ink,
             })),
 
             // The targets this week was judged against, frozen with everything
@@ -805,6 +835,8 @@ export default function ReportPage() {
             // photos so the page can still show them while they are kept.
             cleaning: liveCleaning.ready ? liveCleaning.data : null,
             paperwork: {
+                // How many were checked, so the sent page can say so.
+                people,
                 food,
                 // Frozen with whether a renewal had been applied for, because
                 // that is the difference between somebody who cannot legally be
@@ -1508,9 +1540,10 @@ export default function ReportPage() {
                                     )}
                                     {section.key === 'people_ops' && (
                                         <ReportPaperwork
-                                            paperwork={paperworkFor(employees, week, todayISO())}
+                                            paperwork={sentPaperwork || paperworkFor(employees, week, todayISO())}
                                             weekStart={week}
-                                            asOf={todayISO()}
+                                            asOf={sentPaperwork ? sentPaperwork.on : todayISO()}
+                                            sent={sentPaperwork ? sentPaperwork.on : null}
                                             allergenSheet={allergenSheet}
                                         />
                                     )}

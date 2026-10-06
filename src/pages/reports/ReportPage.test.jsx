@@ -13,6 +13,8 @@ import { addDays, todayISO, weekStartOf } from '@/lib/dates'
 // manager adding one back would then have saved a list of one over the whole
 // stored list.
 
+// A sent report's paperwork, the shape paperworkSummary freezes.
+const SUMMED = { ok: 0, fine: 0, total: 0, expired: [], missing: [], expiring: [] }
 const WEEK = addDays(weekStartOf(todayISO()), -7)
 
 const HEAD = {
@@ -194,7 +196,7 @@ describe('a read that fails', () => {
 describe('a report published but not sent', () => {
     const notSent = {
         ...HEAD, status: 'published', send_count: 1, sent_to: null, published_at: `${WEEK}T09:00:00Z`,
-        figures: { net: 1000, gross: 1100, version: 3, paperwork: { food: [], permits: [] } },
+        figures: { net: 1000, gross: 1100, version: 3, paperwork: { food: SUMMED, permits: SUMMED } },
     }
 
     it('sends it as it was frozen, and writes nothing to the report', async () => {
