@@ -4,11 +4,13 @@ import {
     escapeHtml, tidy, stars, starColour, costTone, senderFor, heldNotice, WIDTH, SIDE,
     renewalWords, escapeLines, page, headline, overheadsToShow, backByReason,
     deliverable, isJustTheGoodbye, replyToFor, switchedOff, whatToSend, correctionSend,
+    paidWords, againstWords, figureGaps as mailGaps, openActions, platformsIn,
 } from '../../supabase/functions/weekly-report-email/email'
 import { readFileSync } from 'node:fs'
 import { MAIL_WIDTH } from '@/lib/reportChartImage'
 import { changesSince } from '../../supabase/functions/weekly-report-email/changes'
 import { priceWeek, backByReason as webBackByReason } from '@/lib/invoiceReport'
+import { figureGaps } from '@/lib/weeklyReport'
 import { weekCleaning } from '@/lib/checklists'
 
 const figures = {
@@ -2105,5 +2107,54 @@ describe('what came back, by reason', () => {
         expect(mail.html).toContain('<strong>€97.42</strong>')
         expect(mail.text).toContain('    Ordered by mistake: €97.42')
         expect(mail.text).toContain('      Limes, Coriander: €37.42')
+    })
+})
+
+// What the comparison of the page against the mail found, 7 October.
+describe('the mail says what the page says', () => {
+    it('gives an averaged price as an average, not as paid on the last day', () => {
+        expect(paidWords({ paid: 2.524, paidOn: '2026-09-30', averaged: { deliveries: 3, since: '2026-09-15' } }))
+            .toBe('paid €2.52 on average over the last 3 deliveries')
+        expect(paidWords({ paid: 3.008, paidOn: '2026-09-30' })).toBe('paid €3.01 on 30 Sept')
+    })
+
+    it('says a version bought instead is set against recipes when it is', () => {
+        expect(againstWords({ usualFrom: 'recipes' })).toBe('in recipes')
+        expect(againstWords({ usualFrom: 'delivery' })).toBe('usually')
+    })
+})
+
+// Kept equal: the mail cannot import the app.
+describe('figures that are not finished', () => {
+    it('are said in the mail in the same words as on the page', () => {
+        for (const f of [
+            { tradingDays: 7, labourDays: 0, foodEntries: 0, packagingEntries: 0 },
+            { tradingDays: 7, labourDays: 4, foodEntries: 3, packagingEntries: 1 },
+            { tradingDays: 7, labourDays: 7, foodEntries: 3, packagingEntries: 1 },
+        ]) expect(mailGaps(f)).toEqual(figureGaps(f))
+    })
+})
+
+describe('the actions in the mail', () => {
+    it('are longest open first, like the page, and leave out what was ticked', () => {
+        const section = { items: [
+            { kind: 'action', label: 'New', opened_on: '2026-09-27', sort_order: 1 },
+            { kind: 'action', label: 'Old', opened_on: '2026-08-09', sort_order: 2 },
+            { kind: 'action', label: 'Done', opened_on: '2026-08-02', done_on: '2026-09-29', sort_order: 3 },
+        ] }
+        expect(openActions(section, '2026-09-27').map(a => a.label)).toEqual(['Old', 'New'])
+    })
+})
+
+describe('corporate accounts in the mail', () => {
+    it('are biggest first, like the page; online platforms keep their order', () => {
+        const f = { platforms: [
+            { name: 'Lunch Team', bucket: 'catering', taken: 300 },
+            { name: 'Feedr', bucket: 'catering', taken: 900 },
+            { name: 'Deliveroo', bucket: 'online_platform', taken: 100 },
+            { name: 'Just Eat', bucket: 'online_platform', taken: 500 },
+        ] }
+        expect(platformsIn(f, 'catering').map(p => p.name)).toEqual(['Feedr', 'Lunch Team'])
+        expect(platformsIn(f, 'online_platform').map(p => p.name)).toEqual(['Deliveroo', 'Just Eat'])
     })
 })

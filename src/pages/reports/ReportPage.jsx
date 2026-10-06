@@ -24,7 +24,7 @@ import { paperworkFor } from '@/lib/reportPeople'
 import { reprintDue } from '@/lib/allergenSheet'
 import { weeksBack, byWeek } from '@/lib/reportChart'
 import { FOOD, PACKAGING } from '@/lib/invoiceCategories'
-import { chartSpecs, deliveryRates } from '@/lib/reportCharts'
+import { chartSpecs, deliveryRates, accountColour } from '@/lib/reportCharts'
 import { brandFor } from '@/lib/platformBrand'
 import { uploadCharts, sendReport, sendWords } from '@/lib/reportMail'
 import ReportComments from '@/components/reports/ReportComments'
@@ -784,8 +784,12 @@ export default function ReportPage() {
                 // what is inside a function's own folder gets deployed with
                 // it, so the alternative was writing the brand colours down a
                 // second time where nobody would think to change them.
-                mark: brandFor(p.name).mark,
-                colour: brandFor(p.name).ink,
+                //
+                // A corporate account is in the colour the page and its chart
+                // give it. It has no brand, so brandFor gave Feedr and the rest
+                // the same grey in the mail.
+                mark: p.bucket === 'catering' ? accountColour(corporatePlatforms, p.id) : brandFor(p.name).mark,
+                colour: p.bucket === 'catering' ? accountColour(corporatePlatforms, p.id) : brandFor(p.name).ink,
             })),
 
             // The targets this week was judged against, frozen with everything

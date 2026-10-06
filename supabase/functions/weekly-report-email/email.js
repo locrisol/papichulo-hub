@@ -396,6 +396,35 @@ function figures(rows) {
         cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">${rows.join('')}</table></td></tr>`
 }
 
+// Why the figures may be wrong, the same sentences as figureGaps in the app's
+// weeklyReport, kept equal by a test. A report can go out without hours or
+// invoices entered, and the page says so; the mail said nothing, so a week
+// with no labour went out with earnings far higher than they were.
+export function figureGaps(f) {
+    const out = []
+    const days = f?.tradingDays
+    if (f?.labourDays === 0) {
+        out.push('No hours have been entered for this week, so labour is counted as zero '
+            + 'and net earnings are far higher than they really are.')
+    } else if (days > 0 && f?.labourDays < days) {
+        out.push(`Hours are entered for ${f.labourDays} of the ${days} days traded, `
+            + 'so labour is lower than it really was.')
+    }
+    if (f?.foodEntries === 0) out.push('No food invoices are dated in this week.')
+    if (f?.packagingEntries === 0) out.push('No packaging or cleaning invoices are dated in this week.')
+    return out
+}
+
+function gapsBox(gaps) {
+    if (!gaps.length) return ''
+    return `<tr><td style="padding:12px ${SIDE}px 0;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+            style="border:1px solid ${AMBER};border-radius:6px;"><tr><td style="padding:10px 12px;font-family:${FONT};
+            font-size:13px;line-height:1.55;color:${AMBER};${BREAKS}">
+            <b>These figures are not finished</b><br />${gaps.map(escapeHtml).join('<br />')}
+        </td></tr></table></td></tr>`
+}
+
 function note(text) {
     return `<tr><td style="padding:10px ${SIDE}px 0;font-family:${FONT};font-size:13px;
         line-height:1.55;color:${MUTED};${BREAKS}">${escapeLines(text)}</td></tr>`
@@ -529,6 +558,7 @@ function profitAndLoss(section, f, charts) {
             share: pct(f.earningsPct),
             tone: num(f.earnings) < 0 ? RED : GREEN,
         })
+        + gapsBox(figureGaps(f))
         + note('Net earnings is net sales minus food, labour, packaging and cleaning, fixed '
             + 'overheads and third party delivery costs.')
         + chart(charts.earnings, 'Net earnings, week by week.')
@@ -597,7 +627,7 @@ function platformBlock(section, platform, rated) {
             ? '<span style="color:' + MUTED + ';">not recorded</span>'
             : `${num(rating.amount).toFixed(1)}&nbsp;out&nbsp;of&nbsp;5`
                 + (moved
-                    ? `<br /><span style="color:${up ? GREEN : AMBER};${change}">(${up ? 'up' : 'down'} from ${num(rating.carried_from).toFixed(1)})</span>`
+                    ? `<br /><span style="color:${up ? GREEN : RED};${change}">(${up ? 'up' : 'down'} from ${num(rating.carried_from).toFixed(1)})</span>`
                     : (rating.carried_from != null
                         ? `<br /><span style="color:${MUTED};${change}">(no change)</span>`
                         : '')),
@@ -657,8 +687,18 @@ function platformBlock(section, platform, rated) {
     </td></tr>`
 }
 
+// Corporate accounts biggest first, the order the page shows them in: on that
+// section the size is the story. Online platforms keep the order they were set
+// up in, on both.
+export function platformsIn(f, bucket) {
+    const platforms = (f?.platforms || []).filter(p => p.bucket === bucket)
+    return bucket === 'catering'
+        ? platforms.map((p, i) => ({ p, i })).sort((a, b) => num(b.p.taken) - num(a.p.taken) || a.i - b.i).map(x => x.p)
+        : platforms
+}
+
 function platformSection(section, f, charts, bucket, chartKey) {
-    const platforms = (f.platforms || []).filter(p => p.bucket === bucket)
+    const platforms = platformsIn(f, bucket)
 
     const body = platforms.length === 0
         ? note('No platforms were tracked for this week.')
@@ -806,8 +846,18 @@ function weeksOpen(openedOn, weekStart) {
     return Math.max(0, Math.round((to - from) / (7 * 86400000)))
 }
 
+// Still open, longest open first, the order the page lists them in: the one
+// waiting since July is the one worth reading, and the order they were typed in
+// buried it at the bottom.
+export function openActions(section, weekStart) {
+    return of(section, 'action').filter(a => !a.done_on)
+        .map((a, i) => ({ a, i, weeks: weeksOpen(a.opened_on, weekStart) }))
+        .sort((x, y) => y.weeks - x.weeks || x.i - y.i)
+        .map(x => x.a)
+}
+
 function supportActions(section, weekStart) {
-    const actions = of(section, 'action').filter(a => !a.done_on)
+    const actions = openActions(section, weekStart)
     if (actions.length === 0) {
         return heading(section.title, section.number) + note('Nothing outstanding.')
     }
@@ -909,6 +959,23 @@ export function change(n) {
 // and on a report the extra two only made them harder to read.
 const unitMoney = money
 const priceOf = value => money(value)
+
+// What was paid, the way the page says it. For codes bought either way it is
+// an average over the last few deliveries, and the day of the last one is not
+// a day anything was paid that much.
+export function paidWords(r) {
+    if (r.averaged) {
+        return `paid ${unitMoney(r.paid)} on average over the last ${r.averaged.deliveries} deliveries`
+    }
+    return `paid ${unitMoney(r.paid)} on ${dayMonth(r.paidOn)}`
+}
+
+// What a version bought instead is set against: the usual one's last delivery,
+// or what recipes cost it at when the usual one has never come on an invoice.
+// The page labels the second bar "recipes".
+export function againstWords(x) {
+    return x.usualFrom === 'recipes' ? 'in recipes' : 'usually'
+}
 
 // A day and a month, for a row that already says which week it is in.
 export function dayMonth(iso) {
@@ -1097,7 +1164,7 @@ export function pricesSection(section, f) {
                 + small(`${escapeHtml(x.bought)}, ${dayMonth(x.on)}. `
                     + (x.cannot
                         ? 'Cannot be compared.'
-                        : `${unitMoney(x.per)} ${escapeHtml(x.unit)} against ${unitMoney(x.usualPer)} usually`)),
+                        : `${unitMoney(x.per)} ${escapeHtml(x.unit)} against ${unitMoney(x.usualPer)} ${againstWords(x)}`)),
             value: x.cannot ? '' : `${change(x.change)}<br /><span style="font-size:13px;">${signedMoney(x.effect)}</span>`,
             tone: x.cannot ? MUTED : toneFor(x.change),
         })),
@@ -1111,7 +1178,7 @@ export function pricesSection(section, f) {
                     ? (r.why === 'units'
                         ? 'Cannot be compared: the price recipes use and the invoice are not counted the same way.'
                         : 'Cannot be compared: counted by weight, sold one at a time.')
-                    : `Recipes ${unitMoney(r.recipe)} ${escapeHtml(r.unit)}, paid ${unitMoney(r.paid)} on ${dayMonth(r.paidOn)}`),
+                    : `Recipes ${unitMoney(r.recipe)} ${escapeHtml(r.unit)}, ${paidWords(r)}`),
             value: r.state === 'cannot' ? '' : change(r.gap)
                 + (r.effect ? `<br /><span style="font-size:13px;">${signedMoney(r.effect)}</span>` : ''),
             tone: r.state === 'cannot' ? MUTED : AMBER,
@@ -1218,7 +1285,7 @@ function pricesText(p) {
         out.push('  Recipes not costing what we pay')
         out.push(...cappedText(p.recipes, shown.recipes, r => `    ${r.name}: ` + (r.state === 'cannot'
             ? 'cannot be compared'
-            : `recipes ${unitMoney(r.recipe)}, paid ${unitMoney(r.paid)} ${r.unit}, ${change(r.gap)}`)))
+            : `recipes ${unitMoney(r.recipe)} ${r.unit}, ${paidWords(r)}, ${change(r.gap)}`)))
     }
     if (p.back.length) {
         out.push(`  Came back: ${money(t.back)}`)
@@ -1471,11 +1538,13 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
                     + (d.rate != null ? ` of ${money(d.taken)} online sales` : ''))
             }
             out.push(share('Net earnings', f.earnings, f.earningsPct))
+            const gaps = figureGaps(f)
+            if (gaps.length) out.push('These figures are not finished:', ...gaps.map(g => `  ${g}`))
         } else if (section.key === 'prices_suppliers') {
             out.push(...pricesText(f.prices))
         } else if (section.key === 'online_sales' || section.key === 'corporate_sales') {
             const bucket = section.key === 'online_sales' ? 'online_platform' : 'catering'
-            for (const platform of (f.platforms || []).filter(p => p.bucket === bucket)) {
+            for (const platform of platformsIn(f, bucket)) {
                 out.push(share(platform.name, platform.taken, null))
 
                 // A corporate account has no rating, the same as in the HTML.
@@ -1547,7 +1616,7 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
             }
             if (c?.busiest) out.push(`  ${c.busiest}`)
         } else if (section.key === 'support_actions') {
-            const open = of(section, 'action').filter(a => !a.done_on)
+            const open = openActions(section, weekStart)
             if (open.length === 0) out.push('  Nothing outstanding.')
             for (const action of open) {
                 const weeks = weeksOpen(action.opened_on, weekStart)
