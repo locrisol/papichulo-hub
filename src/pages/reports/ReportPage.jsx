@@ -18,6 +18,7 @@ import {
     reportFigures, sectionKey, publishCheck, figuresToStore, platformShare,
     deliveryRows, deliveryBlockers, deliveryCost, platformTaken, statementWeek, statementWords, platformWeeks,
     isCorrection, mailMissing,
+    platformsUnsaid,
 } from '@/lib/weeklyReport'
 import { keyedPlatforms, platformsToShow } from '@/lib/salesTenders'
 import { paperworkFor } from '@/lib/reportPeople'
@@ -265,7 +266,12 @@ export default function ReportPage() {
             link: 'Decide them',
         }]
         : []
-    const held = [...deliveryHeld, ...reviewHeld]
+    // Each online platform has a review or "No reviews", and a refund or "No
+    // refunds", before the week goes out. See platformsUnsaid.
+    const unsaid = report?.status === 'draft' && sections.some(s => s.key === 'online_sales')
+        ? platformsUnsaid(sections.find(s => s.key === 'online_sales')?.items || [], onlinePlatforms)
+        : []
+    const held = [...deliveryHeld, ...reviewHeld, ...unsaid]
     const specs = chartSpecs({ onlinePlatforms, corporatePlatforms, deliveryTarget: targets.delivery })
 
     // How the last send went, so somebody who presses publish is told whether
@@ -738,6 +744,22 @@ export default function ReportPage() {
             : supabase.from('report_items').insert({
                 section_id: section.id, kind: 'rating', key: platform.id,
                 label: platform.name, amount: value, sort_order: platform.sort_order || 0,
+            }))
+    }
+
+    // "No reviews" or "No refunds" for this week, pressed or taken back. Kept
+    // on the platform's rating line, which is made for it if there is none
+    // yet. See saidNothing.
+    async function saveNothing(platform, which, on) {
+        const section = online()
+        if (!section) return
+        const existing = section.items.find(i => i.kind === 'rating' && i.key === platform.id)
+        const none = { ...(existing?.meta?.none || {}), [which]: on }
+        return write(() => existing
+            ? supabase.from('report_items').update({ meta: { ...(existing.meta || {}), none } }).eq('id', existing.id)
+            : supabase.from('report_items').insert({
+                section_id: section.id, kind: 'rating', key: platform.id,
+                label: platform.name, amount: null, meta: { none }, sort_order: platform.sort_order || 0,
             }))
     }
 
@@ -1588,6 +1610,7 @@ export default function ReportPage() {
                                             canEdit={canEdit}
                                             handlers={{
                                                 onSaveRating: saveRating,
+                                                onSaveNothing: saveNothing,
                                                 onAddReview: addReview,
                                                 onAddRefund: addRefund,
                                                 onSaveItem: saveItem,

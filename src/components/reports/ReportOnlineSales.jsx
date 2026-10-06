@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { fmtMoney } from '@/lib/format'
 import { numberField } from '@/lib/numberInput'
 import { brandFor } from '@/lib/platformBrand'
-import { ratingMove, reviewNeedsNote } from '@/lib/weeklyReport'
+import { ratingMove, reviewNeedsNote, saidNothing } from '@/lib/weeklyReport'
 import { useRemoveCard } from '@/components/reports/useRemoveCard'
 import { removeButton, denseField } from '@/lib/controlStyles'
 import AutoTextarea from '@/components/ui/AutoTextarea'
@@ -196,6 +196,35 @@ function ClaimedToggle({ item, canEdit, onSave }) {
     )
 }
 
+// "No reviews" or "No refunds" this week. The report cannot go out until each
+// online platform has one entered or this pressed, because an empty list could
+// be a quiet week or nobody having looked. Shown only while there are none;
+// one entered says it instead. The same look as Claimed, the other switch on
+// these cards.
+function NothingSwitch({ said, label, canEdit, onToggle }) {
+    if (!canEdit) return <p className="text-sm text-muted">None this week.</p>
+    return (
+        <div className="flex flex-wrap items-center gap-2">
+            <button
+                type="button"
+                role="switch"
+                aria-checked={said}
+                onClick={onToggle}
+                className={`inline-flex items-center gap-1.5 min-h-[2.25rem] px-2.5 rounded-lg
+                    text-xs font-semibold whitespace-nowrap border transition-colors
+                    focus:outline-none focus:ring-2 focus:ring-accent ${
+                    said
+                        ? 'border-green-700 bg-green-50 text-green-700'
+                        : 'border-gray-300 bg-white text-muted hover:border-gray-400'}`}
+            >
+                <span aria-hidden="true">{said ? '✓' : '○'}</span>
+                {label}
+            </button>
+            {!said && <span className="text-xs text-accent-ink">Add one, or press this before sending.</span>}
+        </div>
+    )
+}
+
 function RatingLine({ platform, item, canEdit, onSave }) {
     const [draft, setDraft] = useState(item?.amount == null ? '' : String(item.amount))
     const move = ratingMove(item)
@@ -241,7 +270,7 @@ function RatingLine({ platform, item, canEdit, onSave }) {
 
 function PlatformBlock({
     platform, taken, rating, reviews, refunds, canEdit,
-    onSaveRating, onAddReview, onAddRefund, onSaveItem, onRemoveItem,
+    onSaveRating, onSaveNothing, onAddReview, onAddRefund, onSaveItem, onRemoveItem,
 }) {
     const brand = brandFor(platform.name)
     const removeCard = useRemoveCard()
@@ -322,7 +351,12 @@ function PlatformBlock({
                 })}
 
                 {reviews.length === 0 && (
-                    <p className="text-sm text-muted">None this week.</p>
+                    <NothingSwitch
+                        said={saidNothing(rating, 'reviews')}
+                        label="No reviews this week"
+                        canEdit={canEdit}
+                        onToggle={() => onSaveNothing(platform, 'reviews', !saidNothing(rating, 'reviews'))}
+                    />
                 )}
             </div>
 
@@ -392,7 +426,14 @@ function PlatformBlock({
                     />
                 ))}
 
-                {refunds.length === 0 && <p className="text-sm text-muted">None this week.</p>}
+                {refunds.length === 0 && (
+                    <NothingSwitch
+                        said={saidNothing(rating, 'refunds')}
+                        label="No refunds this week"
+                        canEdit={canEdit}
+                        onToggle={() => onSaveNothing(platform, 'refunds', !saidNothing(rating, 'refunds'))}
+                    />
+                )}
             </div>
 
             {canEdit && (
