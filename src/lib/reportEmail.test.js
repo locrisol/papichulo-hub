@@ -246,9 +246,11 @@ describe('reportEmail', () => {
         expect(out.text).toContain('€4.95 Missing chips, week of 23 Aug (refused)')
     })
 
-    it('says how long an action has been open', () => {
-        expect(mail.html).toContain('open 3 weeks')
-        expect(mail.html).toContain('new this week')
+    it('says how long an action has been open, as a pill under it', () => {
+        expect(mail.html).toContain('Open 3 weeks</span>')
+        expect(mail.html).toContain('Raised this week</span>')
+        expect(mail.html.indexOf('Fryer thermostat')).toBeLessThan(mail.html.indexOf('Open 3 weeks'))
+        expect(mail.text).toContain('  New menu boards (raised this week)')
     })
 
     it('leaves out an action that was ticked off', () => {
