@@ -538,13 +538,43 @@ export function chip(isOn) {
 export const segmentTrack =
     'grid grid-flow-col auto-cols-fr w-full sm:w-auto sm:inline-flex bg-gray-100 rounded-lg p-1 gap-1'
 
+// The same track for four choices, which in one row on a phone left about
+// sixty pixels each and ran "Paid back" into "Refused". Two by two below sm,
+// one row from sm.
+export const segmentTrackFour =
+    'grid grid-cols-2 w-full sm:w-auto sm:inline-flex bg-gray-100 rounded-lg p-1 gap-1'
+
 // keepCase is for a label that is already written the way it should read,
 // like a name or "1 month", where capitalize would make "1 Month". The labels
 // that come straight from a value, like "day" and "week", still want it.
-export function segmentButton(isOn, keepCase = false) {
+//
+// tone is for a choice whose answer means something good or bad, like a
+// refund claim paid back or refused: the chosen one takes that colour rather
+// than plain white, so the answer reads at a glance. One set of classes or the
+// other, never both, since two text colours on one button are settled by
+// stylesheet order.
+const SEGMENT_ON = {
+    plain: 'bg-white text-gray-900 shadow-sm',
+    good: 'bg-green-50 text-green-800 shadow-sm ring-1 ring-green-600',
+    wait: 'bg-amber-50 text-amber-800 shadow-sm ring-1 ring-amber-500',
+    bad: 'bg-red-50 text-red-700 shadow-sm ring-1 ring-red-600',
+}
+
+export function segmentButton(isOn, keepCase = false, tone = 'plain') {
     return 'px-2 sm:px-4 py-1.5 text-xs font-semibold rounded-md transition-colors text-center whitespace-nowrap '
         + (keepCase ? '' : 'capitalize ')
-        + (isOn ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900')
+        + (isOn ? SEGMENT_ON[tone] || SEGMENT_ON.plain : 'text-gray-600 hover:text-gray-900')
+}
+
+// The same colours as a pill that says an answer rather than asks for one,
+// for somebody reading a report they cannot change.
+export function toneBadge(tone = 'plain') {
+    return `${badge} border ` + ({
+        plain: 'bg-white text-gray-700 border-gray-300',
+        good: 'bg-green-50 text-green-800 border-green-600',
+        wait: 'bg-amber-50 text-amber-800 border-amber-500',
+        bad: 'bg-red-50 text-red-700 border-red-600',
+    }[tone] || '')
 }
 
 // The small × that takes a line away.

@@ -1629,12 +1629,12 @@ CREATE TABLE IF NOT EXISTS "public"."report_items" (
     "opened_on" "date",
     "done_on" "date",
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    CONSTRAINT "report_items_kind_check" CHECK (("kind" = ANY (ARRAY['comment'::"text", 'overhead'::"text", 'delivery'::"text", 'refund'::"text", 'review'::"text", 'rating'::"text", 'action'::"text"])))
+    CONSTRAINT "report_items_kind_check" CHECK (("kind" = ANY (ARRAY['comment'::"text", 'overhead'::"text", 'delivery'::"text", 'refund'::"text", 'review'::"text", 'rating'::"text", 'action'::"text", 'refund_claim'::"text"])))
 );
 
 COMMENT ON TABLE "public"."report_items" IS 'Every line inside a report section. One table on purpose: an overhead, a refund, a review, a comment and an action are the same shape, and a table each would mean a migration every time the report grows.';
 COMMENT ON COLUMN "public"."report_items"."carried_from" IS 'What an overhead line was set to last week. Equal to amount means untouched; different means somebody opened it and changed it, and the report says so.';
-COMMENT ON COLUMN "public"."report_items"."kind" IS 'overhead is a fixed cost line. delivery is what one platform charged this week. refund and review are one each, never a total, because a total cannot say what it was about. rating is the platform''s overall score, which carries from last week and is only mentioned when it moves. action is a support item that stays until it is ticked off. comment is a note against the section.';
+COMMENT ON COLUMN "public"."report_items"."kind" IS 'overhead is a fixed cost line. delivery is what one platform charged this week. refund and review are one each, never a total, because a total cannot say what it was about. rating is the platform''s overall score, which carries from last week and is only mentioned when it moves. action is a support item that stays until it is ticked off. refund_claim is a refund claimed in an earlier week and not yet answered, which carries until it is paid back or refused. comment is a note against the section.';
 COMMENT ON COLUMN "public"."report_items"."opened_on" IS 'The Sunday of the week an action first appeared. Everything else about how long it has been open is worked out from this.';
 ALTER TABLE ONLY "public"."report_items"
     ADD CONSTRAINT "report_items_pkey" PRIMARY KEY ("id");

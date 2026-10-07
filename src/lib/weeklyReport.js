@@ -6,7 +6,7 @@
 import { weekDates, weekStartOf, todayISO, addDays, dayMonth, WEEKDAY_NAMES } from '@/lib/dates'
 import { tendersToShow, tenderVariance, platformsToShow, num } from '@/lib/salesTenders'
 import { byWeek } from '@/lib/reportChart'
-import { round2 } from '@/lib/format'
+import { round2, fmtMoney } from '@/lib/format'
 import { spendOn, FOOD, PACKAGING } from '@/lib/invoiceCategories'
 
 // The sections every report starts with, in the order they are read.
@@ -482,11 +482,15 @@ export function deliveryBlockers({ weekStart, today = todayISO(), rows = [], day
 // ticked off, with the week they first appeared, which is the whole point of
 // them: a thing nobody did stays visible instead of quietly dropping out.
 //
-// Refunds, reviews and comments do not carry. They belong to their week.
-export function carriedItems(previousItems = [], weekStart) {
+// Refunds, reviews and comments do not carry. They belong to their week. A
+// refund claimed and not yet answered does, as a claim of its own: see
+// claimState.
+export function carriedItems(previousItems = [], weekStart, previousWeekStart = addDays(weekStart, -7)) {
     const out = []
 
     for (const item of previousItems) {
+        const claim = carriedClaim(item, previousWeekStart)
+        if (claim) out.push(claim)
         if (item.kind === 'overhead') {
             out.push({
                 kind: 'overhead', key: item.key, label: item.label,
@@ -513,6 +517,71 @@ export function carriedItems(previousItems = [], weekStart) {
     }
 
     return out
+}
+
+// ---------------------------------------------------------------------------
+// Refund claims
+// ---------------------------------------------------------------------------
+
+// What happened to the money on a refund, his of 7 October.
+//
+// Claiming a refund back from a platform is asking, not getting: the answer
+// comes later by email, or as an adjustment on a statement. So a refund is
+// one of four: not claimed, claimed and waiting, paid back, or refused. The
+// answer can already be in by the time the report is written, so all four
+// are offered on the week's own refund.
+//
+// One still waiting carries to the next week as a refund_claim, and that has
+// to be answered before the week can go out: paid back, refused, or still
+// waiting, which carries it again. It stays on every report until it is
+// paid back or refused.
+//
+// Before this a refund was claimed or not, in meta.claimed, and claimed is
+// read as waiting: nobody had said what came of it.
+export const CLAIM_STATES = ['none', 'waiting', 'back', 'refused']
+export const CLAIM_ANSWERS = ['waiting', 'back', 'refused']
+
+export function claimState(item) {
+    const said = item?.meta?.claim
+    if (CLAIM_STATES.includes(said)) return said
+    return item?.meta?.claimed ? 'waiting' : 'none'
+}
+
+// The meta to save for a new state, without the old claimed flag, so the two
+// can never disagree.
+export function withClaim(meta, state) {
+    const rest = { ...(meta || {}) }
+    delete rest.claimed
+    return { ...rest, claim: state }
+}
+
+// A carried claim's answer for this week, or null while nobody has given one.
+export function claimAnswer(item) {
+    const said = item?.meta?.answer
+    return CLAIM_ANSWERS.includes(said) ? said : null
+}
+
+// What carries from last week's refund or claim: one still waiting, with the
+// week it was first claimed in. The answer is for that week only, so it starts
+// empty and somebody says it again.
+function carriedClaim(item, previousWeekStart) {
+    const waiting = (item.kind === 'refund' && claimState(item) === 'waiting')
+        || (item.kind === 'refund_claim' && claimAnswer(item) !== 'back' && claimAnswer(item) !== 'refused')
+    if (!waiting) return null
+    return {
+        kind: 'refund_claim', key: item.key, label: item.label,
+        amount: Math.abs(num(item.amount)), note: item.note,
+        opened_on: item.opened_on || previousWeekStart,
+        sort_order: item.sort_order,
+    }
+}
+
+// Every carried claim answered before the week goes out (his, 7 October).
+export function claimsUnanswered(items = []) {
+    return items
+        .filter(i => i.kind === 'refund_claim' && !claimAnswer(i))
+        .map(i => `The ${fmtMoney(Math.abs(num(i.amount)))} claim on ${i.label} from the week of `
+            + `${dayMonth(i.opened_on)} needs an answer: paid back, refused or still waiting.`)
 }
 
 // Is this line open to be typed into, rather than locked?
@@ -583,6 +652,8 @@ export function blockers(items = []) {
     for (const item of refunds) {
         out.push(`The refund on ${item.label} needs a note saying what it was about.`)
     }
+
+    out.push(...claimsUnanswered(items))
 
     return out
 }

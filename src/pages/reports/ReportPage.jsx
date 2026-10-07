@@ -1622,6 +1622,7 @@ export default function ReportPage() {
                                             section={section}
                                             platforms={onlinePlatforms}
                                             taken={taken}
+                                            weekStart={report.week_start}
                                             canEdit={canEdit}
                                             handlers={{
                                                 onSaveRating: saveRating,

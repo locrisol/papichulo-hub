@@ -215,9 +215,35 @@ describe('reportEmail', () => {
         expect(mail.html).toContain('&times;&nbsp;1')
     })
 
-    it('writes a refund as a negative, with whether it was claimed', () => {
+    // Claimed before the four states, so read as waiting: nobody said what
+    // came of it.
+    it('writes a refund as a negative, with what came of the claim', () => {
         expect(mail.html).toContain('−€12.50')
-        expect(mail.html).toContain('Claimed back')
+        expect(mail.html).toContain('Claimed, waiting')
+        expect(mail.html).not.toContain('Claimed back')
+        expect(mail.text).toContain('Missing drink (claimed, waiting)')
+    })
+
+    // His of 7 October: a claim from an earlier week stays on the report
+    // until it is answered, with this week's answer.
+    it('lists claims from earlier weeks under their platform, with the answer given this week', () => {
+        const withClaims = sections.map(s => (s.key === 'online_sales'
+            ? {
+                ...s,
+                items: [
+                    ...s.items,
+                    { kind: 'refund_claim', key: 'p1', label: 'Deliveroo', amount: 22.4, note: 'Arrived cold', opened_on: '2026-08-16', meta: { answer: 'back' } },
+                    { kind: 'refund_claim', key: 'p1', label: 'Deliveroo', amount: 4.95, note: 'Missing chips', opened_on: '2026-08-23', meta: { answer: 'refused' } },
+                ],
+            }
+            : s))
+        const out = reportEmail({ ...base, sections: withClaims })
+        expect(out.html).toContain('Claims from earlier weeks')
+        expect(out.html).toContain('Claimed in the week of 16 Aug')
+        expect(out.html).toContain('+€22.40')
+        expect(out.html).toContain('Paid back')
+        expect(out.html).toContain('Refused')
+        expect(out.text).toContain('€4.95 Missing chips, week of 23 Aug (refused)')
     })
 
     it('says how long an action has been open', () => {
@@ -1411,7 +1437,7 @@ describe('prices and suppliers', () => {
     })
 
     it('lists each price that moved with what it was worth', () => {
-        expect(mail.html).toContain('€11.75 to €8.60 a case')
+        expect(mail.html).toContain('€11.75 &rarr; <strong style="color:#1F7A4C;">€8.60</strong> a case')
         expect(mail.html).toContain('-26.8%')
     })
 
@@ -1573,10 +1599,16 @@ describe('delivery costed from the Monday to Sunday statement', () => {
         expect(mail.html).not.toContain('€775.76')
     })
 
-    // His of 4 October, in place of the sentence on why the weeks differ.
-    it('says which days it was calculated over, and no more', () => {
-        expect(mail.html).toContain('Calculated Monday 31 August to Sunday 6 September.')
-        expect(mail.html).not.toContain('The platforms bill Monday to Sunday')
+    // His of 4 October, in place of the sentence on why the weeks differ, and
+    // of 7 October: inside the delivery box, so it is not read as covering
+    // the overheads too.
+    it('says which days it was calculated over, inside the delivery line', () => {
+        const days = 'Statements Mon 31 Aug to Sun 6 Sept'
+        expect(mail.html).toContain(days)
+        expect(mail.html.indexOf(days)).toBeGreaterThan(mail.html.indexOf('Third party delivery costs'))
+        expect(mail.html.indexOf(days)).toBeLessThan(mail.html.indexOf('Net earnings is net sales minus'))
+        expect(mail.html).not.toContain('Calculated ')
+        expect(mail.text).toContain(days)
     })
 
     it('puts the same figure in the plain text', () => {
@@ -1586,7 +1618,7 @@ describe('delivery costed from the Monday to Sunday statement', () => {
     it('says nothing about a statement on a report frozen before them', () => {
         const old = reportEmail(base)
         expect(old.html).toContain('€1,180.00')
-        expect(old.html).not.toContain('Calculated ')
+        expect(old.html).not.toContain('Statements ')
     })
 })
 
