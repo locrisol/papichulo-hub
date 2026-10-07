@@ -1312,4 +1312,10 @@ describe('a version the brand recommends', () => {
     it('one the brand does not recommend still is', () => {
         expect(switchesIn(all, { ...WEEK, prices, codes, versions: versions(false) })).toHaveLength(1)
     })
+
+    // His, 8 October: a product the brand leaves free has no version to stray from.
+    it('nor is any version of a product set to any version', () => {
+        const free = all.map(d => ({ ...d, product: { ...d.product, recommends: 'any' } }))
+        expect(switchesIn(free, { ...WEEK, prices, codes, versions: versions(false) })).toEqual([])
+    })
 })
