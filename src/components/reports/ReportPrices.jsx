@@ -298,11 +298,14 @@ function Decision({ item, busy, onCostFrom, onMakeUsual, onRenumber, onGiveReaso
 // The four figures
 // ---------------------------------------------------------------------------
 
+// The figure never wraps: a line may break after a minus sign, and on a phone
+// "-€106.82" came out as the minus over the money. One step smaller below sm,
+// where a tile is half a phone wide, so even "-€1,106.82" fits on its line.
 function Tile({ tone, label, value, sub }) {
     return (
         <div className={`rounded-lg border px-3 py-2.5 ${TILE[tone] || TILE.quiet}`}>
             <p className="text-xs font-bold text-muted uppercase tracking-wider">{label}</p>
-            <p className="font-serif text-2xl font-bold text-gray-900 tabular-nums mt-1 leading-tight">{value}</p>
+            <p className="font-serif text-xl sm:text-2xl font-bold text-gray-900 tabular-nums mt-1 leading-tight whitespace-nowrap">{value}</p>
             <p className="text-xs text-muted mt-1">{sub}</p>
         </div>
     )
