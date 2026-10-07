@@ -42,6 +42,7 @@ const priceText = value => fmtMoney(value)
 const toneOf = n => (n > 0.004 ? 'up' : n < -0.004 ? 'down' : 'quiet')
 
 const WHY = {
+    pack: 'The invoice does not say how many are in a case, so there is no price for one.',
     weight: 'Recipes count it by weight and it is sold one at a time, so nothing on the invoice says what one weighs.',
     units: 'The price the Hub has and the invoice are not counted the same way. Check the price on the product.',
 }
@@ -469,9 +470,13 @@ function Card({ title, sub, empty, children, count }) {
     )
 }
 
+// Each row lays out its own columns, so none of them may size itself to its
+// words: an auto last column was as wide as the longest line under the money,
+// and Green Peppers' chart sat to the left of every other one. A share each,
+// and the words wrap.
 function Row({ children }) {
     return (
-        <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1.5fr)_minmax(0,1.4fr)_auto] gap-2 sm:gap-4 items-center px-3 py-2.5 border-b border-border last:border-b-0">
+        <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1.5fr)_minmax(0,1.4fr)_minmax(0,1fr)] gap-2 sm:gap-4 items-center px-3 py-2.5 border-b border-border last:border-b-0">
             {children}
         </div>
     )

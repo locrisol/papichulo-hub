@@ -3,7 +3,7 @@ import {
     deliveriesFrom, priceMoves, switchesIn, usualSuggestions, recipeGaps, cameBack, stillOwed,
     newCodes, priceWeek, priceWords, decisionsFrom, reasonsOf, lineageOf, nameOf, unitWord,
     cannotCompare, usualFor, looksRenumbered, claimKey, claimActions, claimLabel, lookBackFrom,
-    outOfReason, eachWords, readFrom, notAsRecommended, waitingOnReview, notChecked,
+    outOfReason, eachWords, readFrom, notAsRecommended, waitingOnReview, notChecked, backByReason, whyNot,
 } from '@/lib/invoiceReport'
 
 // The first real fortnight, cut down to what each rule needs. Sysco is s1.
@@ -629,11 +629,32 @@ describe('came back, and why', () => {
 
     it('says so when nothing was logged, and counts the money as waiting for a reason', () => {
         const [row] = cameBack([credit()], [], { ...WEEK, invoices })
-        expect(row.parts).toEqual([{ kind: 'other', label: 'No reason logged', colour: '#9CA3AF', money: 120.5 }])
+        expect(row.parts).toEqual([{ kind: 'other', label: 'No reason logged', colour: '#9CA3AF', money: 120.5, what: 'Red Onions 1x10 Kg' }])
         expect(row.unexplained).toBe(120.5)
     })
 
     // Sysco never delivered them and credited all three.
+    // His, 7 October: "Paprika, Chorizo" under short and under wrong item.
+    it('names under each reason only the lines it was for', () => {
+        const two = credit({
+            credit_of_invoice_id: null, total_amount: -37.04,
+            invoice_lines: [
+                { raw_description: 'SYSCO CLASSIC PAPRIKA PEPPER 1X480 GM', line_total: -16.05, products: null },
+                { raw_description: 'CHORIZO CUBES 1X500 GM', line_total: -20.99, products: null },
+            ],
+        })
+        const claims = [
+            { id: 'k1', credit_invoice_id: 'c1', kind: 'short', what: '1 Unit of Chorizo delivered instead of 1 case.', credited_amount: 20.99, status: 'settled' },
+            { id: 'k2', credit_invoice_id: 'c1', kind: 'wrong_item', what: 'Delivered red chili powder', credited_amount: 16.05, status: 'settled' },
+        ]
+        const [row] = cameBack([two], claims, WEEK)
+        expect(row.parts.map(p => [p.kind, p.what])).toEqual([
+            ['short', 'Chorizo Cubes 1x500 Gm'], ['wrong_item', 'Sysco Classic Paprika Pepper 1x480 Gm'],
+        ])
+        const rows = backByReason(reasonsOf([row]), [row]).flatMap(r => r.rows.map(x => x.what))
+        expect(rows).toEqual(['Chorizo Cubes 1x500 Gm', 'Sysco Classic Paprika Pepper 1x480 Gm'])
+    })
+
     it('says a whole delivery came back', () => {
         const [row] = cameBack([credit()], [], { ...WEEK, invoices })
         expect(row.whole).toBe(true)
@@ -654,8 +675,8 @@ describe('came back, and why', () => {
         ]
         const [row] = cameBack([credit({ credit_of_invoice_id: null })], claims, WEEK)
         expect(row.parts).toEqual([
-            { kind: 'damaged', label: 'Damaged', colour: '#F97316', money: 35.84 },
-            { kind: 'other', label: 'No reason logged', colour: '#9CA3AF', money: 84.66 },
+            { kind: 'damaged', label: 'Damaged', colour: '#F97316', money: 35.84, what: 'Red Onions 1x10 Kg' },
+            { kind: 'other', label: 'No reason logged', colour: '#9CA3AF', money: 84.66, what: null },
         ])
         expect(row.logged).toBe(true)
         expect(row.what).toBe('Red Onions 1x10 Kg')
@@ -1251,5 +1272,21 @@ describe('not checked', () => {
             { name: 'Local', money: 48, why: 'works without codes' },
         ])
         expect(read.readWords).toBe('Read from: Sysco Ireland (1 invoice).')
+    })
+})
+
+// His, 7 October: Eggs, counted one at a time, were said to be weighed.
+describe('a price that cannot be compared', () => {
+    const EGGS = { id: 'egg', name: 'Eggs', unit: 'Units' }
+
+    it('reads a line stored without its units again from its pack', () => {
+        const [d] = deliveriesFrom([line({ code: '5015724', product: EGGS, date: '2026-09-29', perCase: 41.12, units: null, pack: '1X15 DZ' })])
+        expect(d.perUnit).toBeCloseTo(0.2284, 4)
+    })
+
+    it('says the invoice did not say how many, not that it is weighed', () => {
+        expect(whyNot({ perUnit: null }, true)).toBe('pack')
+        expect(whyNot({ perUnit: 1 }, true)).toBe('weight')
+        expect(whyNot({ perUnit: 1 }, false)).toBe('units')
     })
 })

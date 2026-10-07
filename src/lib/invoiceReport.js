@@ -39,7 +39,7 @@ import { num, fmtMoney, fmtQty, namesList, round2, round4 } from '@/lib/format'
 import { renumberPlan } from '@/lib/priceEvents'
 import { pricesAsAt } from '@/lib/pricesAsAt'
 import { addDays, dayMonth, stampDay } from '@/lib/dates'
-import { samePrice, sameWords, SAME_WORDS, byPieceWeight } from '@/lib/invoiceImport'
+import { samePrice, sameWords, similarWords, SAME_WORDS, byPieceWeight } from '@/lib/invoiceImport'
 import { readPackSize, mend } from '@/lib/invoiceSysco'
 import {
     claimBalance, claimIsOpen, claimKind, CLAIM_KINDS, NOT_LOGGED, voidedBy, sentBack, fromEarlierWeeks,
@@ -111,8 +111,13 @@ function delivery(l) {
     // In the product's own unit through what one piece weighs, where the
     // product says: ten cabbages at about a kilo are ten kilos, whatever the
     // line was stored as before anybody said.
-    const weighed = byPieceWeight(readPackSize(l.pack_size), l.products)
-    const units = weighed ?? (l.units_per_case == null ? null : num(l.units_per_case))
+    const pack = readPackSize(l.pack_size)
+    const weighed = byPieceWeight(pack, l.products)
+    // A line stored without its units, because the reader did not know the
+    // pack then, is read again now, when the pack is in the product's own
+    // unit: the eggs of 29 September, "1X15 DZ", before it knew a dozen.
+    const read = pack?.unit && pack.unit === l.products?.unit && pack.total > 0 ? pack.total : null
+    const units = weighed ?? (l.units_per_case == null ? read : num(l.units_per_case))
     const perCase = num(l.price_per_case)
     const perUnit = units > 0
         ? perCase / units
@@ -226,6 +231,15 @@ export function notFood(product) {
 // White Cabbage is the one on the first fortnight.
 //
 // Unless the product says what one weighs, which is the whole point of saying.
+// Why a price could not be compared, for the words beside it. "weight" was
+// said for every one with no price per unit, and Eggs, counted one at a time
+// in recipes, were said to be weighed: the invoice had not said how many were
+// in the case.
+export function whyNot(d, weight) {
+    if (d?.perUnit == null) return 'pack'
+    return weight ? 'weight' : 'units'
+}
+
 export function cannotCompare(d, product = d?.product) {
     if (d?.perUnit == null) return true
     if (num(product?.piece_weight) > 0) return false
@@ -562,7 +576,7 @@ export function switchesIn(all, { weekStart, weekEnd, prices = [], codes = [] })
             usualGroup: usual.group,
             renumbered: looksRenumbered(last, usual),
             newer: isNewer(list[0], usual, all, lineage, codes),
-            why: cannot ? (weight ? 'weight' : 'units') : null,
+            why: cannot ? whyNot(last, weight) : null,
             usualPriceId: usual.row.id,
             usualCodeRowId: usual.codeRowId,
             bought: nameOf({ description: last.description }),
@@ -731,7 +745,7 @@ export function recipeGaps(all, { weekStart, weekEnd, prices = [], codes = [], t
         }
 
         if (cannotCompare(last) || outOfReason(averaged ?? last.perUnit, recipe)) {
-            const why = cannotCompare(last) ? 'weight' : 'units'
+            const why = whyNot(last, cannotCompare(last))
             if (thisWeek.length) out.push({ ...base, state: 'cannot', why, gap: null, effect: 0 })
             continue
         }
@@ -793,10 +807,11 @@ export function cameBack(credits, claims, { weekStart, weekEnd, invoices = [] })
                 explained = round2(explained + got)
             }
             const rest = round2(money - explained)
+            const restKind = credit.credit_reason || NOT_LOGGED.value
             if (rest > 0.004) {
-                const kind = credit.credit_reason || NOT_LOGGED.value
-                parts.set(kind, round2(num(parts.get(kind)) + rest))
+                parts.set(restKind, round2(num(parts.get(restKind)) + rest))
             }
+            const linesOf = linesByReason(credit.invoice_lines || [], logged, rest > 0.004 ? restKind : null)
 
             const against = byId.get(credit.credit_of_invoice_id) || null
             const whole = !!against && !!voidedBy(against, [credit])
@@ -819,6 +834,9 @@ export function cameBack(credits, claims, { weekStart, weekEnd, invoices = [] })
                 money,
                 parts: [...parts.entries()].map(([kind, amount]) => ({
                     kind, label: claimKind(kind).label, colour: claimKind(kind).colour, money: amount,
+                    // Only the lines this reason was for, so a credit with two
+                    // reasons does not say "Paprika, Chorizo" under both.
+                    what: linesOf.get(kind) ? listNames(linesOf.get(kind)) : null,
                 })),
                 logged: logged.length > 0,
                 // Money on it nobody has said anything about yet.
@@ -826,6 +844,53 @@ export function cameBack(credits, claims, { weekStart, weekEnd, invoices = [] })
                 given: credit.credit_reason || null,
             }
         })
+}
+
+// Which of a credit note's lines each reason was for (his, 7 October: the
+// paprika and chorizo credit said "Paprika, Chorizo" under short and under
+// wrong item). The same order the credit was shared out in when it was
+// imported: a line whose words match a note from the door, then a line whose
+// money is what a note got, then one each to a note with none yet. What is
+// left is the part nobody logged. Nothing when a line cannot be placed, and
+// the row says the whole credit as before.
+export function linesByReason(lines, claims, restKind) {
+    const named = lines.map(l => ({
+        name: nameOf({ product: l.products, description: l.raw_description }),
+        words: l.raw_description || '',
+        money: round2(Math.abs(num(l.line_total))),
+    }))
+    const owner = new Map()
+    const has = c => [...owner.values()].includes(c)
+    named.forEach((l, i) => {
+        const best = claims
+            .map(c => ({ c, score: similarWords(c.what, l.words) }))
+            .filter(x => x.score > 0)
+            .sort((a, b) => b.score - a.score)[0]
+        if (best) owner.set(i, best.c)
+    })
+    named.forEach((l, i) => {
+        if (owner.has(i)) return
+        const same = claims.find(c => !has(c) && Math.abs(num(c.credited_amount) - l.money) < 0.05)
+        if (same) owner.set(i, same)
+    })
+    named.forEach((l, i) => {
+        if (owner.has(i)) return
+        const free = claims.find(c => !has(c))
+        if (free) owner.set(i, free)
+        else if (restKind) owner.set(i, { kind: restKind })
+    })
+    const out = new Map()
+    named.forEach((l, i) => {
+        const kind = owner.get(i)?.kind
+        if (!kind) return
+        if (!out.has(kind)) out.set(kind, [])
+        out.get(kind).push(l.name)
+    })
+    return out
+}
+
+function listNames(names) {
+    return names.slice(0, 3).join(', ') + (names.length > 3 ? ` and ${names.length - 3} more` : '')
 }
 
 // What is still owed, oldest first. Every open claim, not only this week's:
@@ -1181,7 +1246,7 @@ export function backByReason(reasons, back) {
         reason,
         rows: (back || []).flatMap(b => b.parts
             .filter(part => part.kind === reason.kind)
-            .map(part => ({ ...b, money: part.money, whole: b.money }))),
+            .map(part => ({ ...b, what: part.what || b.what, money: part.money, whole: b.money }))),
     }))
 }
 
