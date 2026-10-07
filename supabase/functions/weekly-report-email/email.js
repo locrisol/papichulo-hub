@@ -199,6 +199,18 @@ export function overheadsToShow(items) {
     }
 }
 
+// The days the platform statements covered, short enough for the line under
+// the delivery figure: "Statements Mon 28 Sept to Sun 4 Oct". Nothing on a
+// report frozen before statements were kept.
+export function statementDays(f) {
+    const s = f?.statement
+    if (!s?.from || !s?.to) return ''
+    const day = iso => new Date(String(iso).slice(0, 10) + 'T00:00:00Z')
+        .toLocaleDateString('en-IE', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })
+        .replace(',', '')
+    return `Statements ${day(s.from)} to ${day(s.to)}`
+}
+
 // Third party delivery as one figure: what the platforms cost, as a share of
 // what the online platforms took this week.
 export function deliverySummary(f) {
@@ -599,11 +611,16 @@ function profitAndLoss(section, f, charts) {
     // One line for the platforms, his of 4 October: what they cost against
     // what the online platforms took. The platform by platform figures are on
     // the report in the Hub, and the chart under this says which one moved.
+    // The statement days go inside the delivery box, under the online sales
+    // (his, 7 October). As a note under both boxes they read as if they
+    // covered the overheads too.
     const d = deliverySummary(f)
+    const days = statementDays(f)
     const deliveryRow = delivery.length > 0
         ? figures([line({
             label: 'Third party delivery costs'
-                + (d.rate != null ? small(`of ${money(d.taken)} online sales`) : ''),
+                + (d.rate != null ? small(`of ${money(d.taken)} online sales`) : '')
+                + (days ? small(escapeHtml(days)) : ''),
             value: d.rate != null ? withShare(d.total, d.rate, costTone(d.rate, t.delivery)) : money(d.total),
             total: true,
         })])
@@ -612,7 +629,6 @@ function profitAndLoss(section, f, charts) {
     return heading(section.title, section.number)
         + (rows.length ? figures(rows) : '')
         + deliveryRow
-        + (delivery.length > 0 && f.statement?.words ? note(`Calculated ${escapeHtml(f.statement.words)}.`) : '')
         + chart(charts.delivery,
             t.delivery ? `What each platform kept of its sales. The dashed line is the ${t.delivery}% target.` : '',
             'What each platform kept of its sales, week by week.')
@@ -1059,6 +1075,19 @@ export function dayMonth(iso) {
 
 const small = text => `<br /><span style="color:${MUTED};font-size:13px;">${text}</span>`
 
+// Facts about one row, each on its own line with a small label to its left.
+// The label cannot wrap and is a single short word, so it never holds the
+// mail wider than a phone; the fact beside it wraps. Empty entries are left
+// out. Font, colour and wrapping come from the row's own cell: forty of these
+// in a heavy week pushed the mail past the size Gmail is safe at.
+function facts(pairs) {
+    return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:4px;">`
+        + pairs.filter(Boolean).map(([label, value]) => `<tr>`
+            + `<td valign="top" style="padding:1px 12px 1px 0;font-size:12px;color:${MUTED};white-space:nowrap;">${label}</td>`
+            + `<td valign="top" style="padding:1px 0;font-size:13px;">${value}</td></tr>`).join('')
+        + `</table>`
+}
+
 // One kind of thing, as a card: a header with what it came to, then a row each.
 // Built the way the paperwork cards are, and for the same reason: loose rows
 // under a section band read as one long list.
@@ -1207,15 +1236,23 @@ export function pricesSection(section, f) {
         [
             ...cappedRows(p.moves, shown.moves, m => line({
                 inset: 14,
-                // The split on a line of its own, "6 cases, €3.15 less each",
-                // so the total beside it can be checked by multiplying. Absent
-                // on anything frozen before it existed.
-                label: escapeHtml(m.name)
-                    // Codes bought either way are one row, each code's
-                    // prices in words. See together in invoiceReport.
-                    + small(`${m.prices ? escapeHtml(m.prices) : `${escapeHtml(priceOf(m.was, m.per))} to ${escapeHtml(priceOf(m.now, m.per))} ${escapeHtml(m.per)}`}, `
-                        + `${dayMonth(m.on)}${m.invoice ? ` ${escapeHtml(m.invoice)}` : ''}`)
-                    + (m.split ? small(escapeHtml(m.split)) : ''),
+                // One fact to a line, each with its label (his, 7 October):
+                // price, date and invoice number ran together in one grey
+                // sentence. The split, "6 cases, €3.15 less each", is there so
+                // the total beside it can be checked by multiplying; absent on
+                // anything frozen before it existed.
+                label: `<strong>${escapeHtml(m.name)}</strong>` + facts([
+                    // Codes bought either way are one row, each code's prices
+                    // in words. See together in invoiceReport.
+                    ['Price', m.prices
+                        ? escapeHtml(m.prices)
+                        : `${escapeHtml(priceOf(m.was, m.per))} &rarr; <strong style="color:${m.up ? RED : GREEN};">`
+                            + `${escapeHtml(priceOf(m.now, m.per))}</strong> ${escapeHtml(m.per)}`],
+                    m.split ? ['Bought', escapeHtml(m.split)] : null,
+                    m.invoice
+                        ? ['Invoice', `${escapeHtml(m.invoice)}, ${dayMonth(m.on)}`]
+                        : ['Delivered', dayMonth(m.on)],
+                ]),
                 value: `${change(m.change)}<br /><span style="font-size:13px;">${signedMoney(m.effect)}</span>`,
                 tone: m.up ? RED : GREEN,
             })),
@@ -1610,6 +1647,7 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
                 const d = deliverySummary(f)
                 out.push(share('Third party delivery costs', d.total, d.rate)
                     + (d.rate != null ? ` of ${money(d.taken)} online sales` : ''))
+                if (statementDays(f)) out.push(`    ${statementDays(f)}`)
             }
             out.push(share('Net earnings', f.earnings, f.earningsPct))
             const gaps = figureGaps(f)

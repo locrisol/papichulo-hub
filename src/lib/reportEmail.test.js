@@ -1411,7 +1411,7 @@ describe('prices and suppliers', () => {
     })
 
     it('lists each price that moved with what it was worth', () => {
-        expect(mail.html).toContain('€11.75 to €8.60 a case')
+        expect(mail.html).toContain('€11.75 &rarr; <strong style="color:#1F7A4C;">€8.60</strong> a case')
         expect(mail.html).toContain('-26.8%')
     })
 
@@ -1573,10 +1573,16 @@ describe('delivery costed from the Monday to Sunday statement', () => {
         expect(mail.html).not.toContain('€775.76')
     })
 
-    // His of 4 October, in place of the sentence on why the weeks differ.
-    it('says which days it was calculated over, and no more', () => {
-        expect(mail.html).toContain('Calculated Monday 31 August to Sunday 6 September.')
-        expect(mail.html).not.toContain('The platforms bill Monday to Sunday')
+    // His of 4 October, in place of the sentence on why the weeks differ, and
+    // of 7 October: inside the delivery box, so it is not read as covering
+    // the overheads too.
+    it('says which days it was calculated over, inside the delivery line', () => {
+        const days = 'Statements Mon 31 Aug to Sun 6 Sept'
+        expect(mail.html).toContain(days)
+        expect(mail.html.indexOf(days)).toBeGreaterThan(mail.html.indexOf('Third party delivery costs'))
+        expect(mail.html.indexOf(days)).toBeLessThan(mail.html.indexOf('Net earnings is net sales minus'))
+        expect(mail.html).not.toContain('Calculated ')
+        expect(mail.text).toContain(days)
     })
 
     it('puts the same figure in the plain text', () => {
@@ -1586,7 +1592,7 @@ describe('delivery costed from the Monday to Sunday statement', () => {
     it('says nothing about a statement on a report frozen before them', () => {
         const old = reportEmail(base)
         expect(old.html).toContain('€1,180.00')
-        expect(old.html).not.toContain('Calculated ')
+        expect(old.html).not.toContain('Statements ')
     })
 })
 
