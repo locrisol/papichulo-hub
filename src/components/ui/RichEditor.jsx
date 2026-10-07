@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { COLOURS, richEditorHtml, richFromDom, richPlain } from '@/lib/richText'
 
 // A comment box that shows bold, colour and size as they are typed (his, 7
@@ -42,7 +42,11 @@ export default function RichEditor({ value = '', onCommit, onChange, placeholder
 
     // Written in from outside only while nobody is typing in it: a reload of
     // the page's data must not move the cursor or undo a half typed word.
-    useEffect(() => {
+    //
+    // Before the box can be typed in, not after it is painted: written after,
+    // on a busy machine it landed on top of the first words typed and wiped
+    // them, which is what failed the checks on development after PR 293.
+    useLayoutEffect(() => {
         const el = ref.current
         if (!el || document.activeElement === el || shown.current === value) return
         el.innerHTML = richEditorHtml(value)
