@@ -1290,3 +1290,26 @@ describe('a price that cannot be compared', () => {
         expect(whyNot({ perUnit: 1 }, false)).toBe('units')
     })
 })
+
+// His, 7 October: Eggs and Sides Box, two versions the brand recommends both of.
+describe('a version the brand recommends', () => {
+    const EGGS = { id: 'egg', name: 'Eggs', unit: 'Units' }
+    const prices = [
+        price({ id: 'typed', product_id: 'egg', supplier_code: 'EG219', price_per_case: 7.12, units_per_case: 30, price_per_unit: 0.2373, version_id: 'v1' }),
+        price({ id: 'sysco', product_id: 'egg', supplier_code: '5015724', price_per_case: 41.12, units_per_case: 180, price_per_unit: 0.2284, is_preferred: false, version_id: 'v2' }),
+    ]
+    const codes = [code({ supplier_code: '5015724', price_id: 'sysco' })]
+    const all = deliveriesFrom([line({ code: '5015724', product: EGGS, priceId: 'sysco', date: '2026-09-15', perCase: 41.12, units: 180, pack: '1X15 DZ', description: 'BALLYGARVEY EGGS' })])
+    const versions = recommended => [
+        { id: 'v1', product_id: 'egg', is_recommended: true, is_active: true },
+        { id: 'v2', product_id: 'egg', is_recommended: recommended, is_active: true },
+    ]
+
+    it('is not bought as something else', () => {
+        expect(switchesIn(all, { ...WEEK, prices, codes, versions: versions(true) })).toEqual([])
+    })
+
+    it('one the brand does not recommend still is', () => {
+        expect(switchesIn(all, { ...WEEK, prices, codes, versions: versions(false) })).toHaveLength(1)
+    })
+})

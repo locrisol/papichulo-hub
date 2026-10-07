@@ -530,9 +530,19 @@ function oneRow(moves, raw) {
 // recipes cost it at when the usual one has never come on an invoice. Never a
 // price rise: the plain wraps costing more than the Santa Maria tortillas is a
 // different thing being dearer, not the tortillas going up.
-export function switchesIn(all, { weekStart, weekEnd, prices = [], codes = [] }) {
+//
+// **Not a version the brand recommends** (his, 7 October): the eggs and the
+// sides boxes come as two versions the brand recommends both of, and buying
+// either is what the brand asked for. Unless it reads as the usual one under
+// a new number, which is the one place that is asked.
+export function switchesIn(all, { weekStart, weekEnd, prices = [], codes = [], versions = [] }) {
     const lineage = lineageOf(codes)
     const groups = new Map()
+    const priceById = new Map((prices || []).map(p => [p.id, p]))
+    const recommended = d => {
+        const version = (versions || []).find(v => v.id === priceById.get(d.priceId)?.version_id)
+        return !!version?.is_recommended && version.is_active !== false
+    }
 
     for (const d of all) {
         if (d.date < weekStart || d.date > weekEnd || !d.productId) continue
@@ -546,6 +556,7 @@ export function switchesIn(all, { weekStart, weekEnd, prices = [], codes = [] })
     const out = []
     for (const { usual, list } of groups.values()) {
         const last = list[list.length - 1]
+        if (recommended(last) && !looksRenumbered(last, usual)) continue
         const usualLast = lastOf(all, d => d.at < last.at && d.productId === last.productId && isUsual(d, usual, lineage))
         const usualPer = usualLast?.perUnit ?? (usual.row.price_per_unit == null ? null : num(usual.row.price_per_unit))
         const weight = cannotCompare(last)
@@ -1121,7 +1132,7 @@ export function priceWeek({
     const everyMove = priceMoves(all, scope)
     const moves = everyMove.filter(m => !m.doubtful)
     const doubtful = everyMove.filter(m => m.doubtful)
-    const switches = withSince(switchesIn(all, scope), 'switch', prices, codes)
+    const switches = withSince(switchesIn(all, { ...scope, versions }), 'switch', prices, codes)
     // One fixed since, so recipes cost now what the week paid, is not said
     // at all (his, 7 October): only a costing still out of line is news.
     const recipes = withSince(recipeGaps(all, scope), 'recipe', prices, codes)
