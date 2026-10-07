@@ -38,7 +38,9 @@ const BORDER = '#E8E3DB'
 // already cream. Two the same colour read as one block.
 const BAND = '#EDE7DC'
 
-const FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
+// No spaces after the commas: this is written into nearly two hundred cells,
+// and a heavy week sits close to the size Gmail cuts a mail off at.
+const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif"
 
 // How wide the mail is allowed to get, and it is a maximum rather than a size.
 //
@@ -366,8 +368,10 @@ function subHeading(title) {
 // would hold the whole table wider than a phone.
 const BREAKS = 'word-break:break-word;overflow-wrap:anywhere;'
 
+// The weight is only written when bold: normal is what a cell is anyway, and
+// saying so twice on every row came to 2KB of a heavy week.
 function line({ label, value, tone, colour, indent, strong, total, inset = 0 }) {
-    const weight = strong || total ? 700 : 400
+    const weight = strong || total ? 'font-weight:700;' : ''
     const size = total ? 15 : 14
     const ground = total ? `background:${CREAM};` : ''
     const rule = total
@@ -377,10 +381,10 @@ function line({ label, value, tone, colour, indent, strong, total, inset = 0 }) 
 
     return `<tr>
         <td width="100%" style="padding:${pad} 0 ${pad} ${inset + (indent ? 14 : (total ? 10 : 0))}px;${rule}${ground}
-            font-family:${FONT};font-size:${size}px;line-height:1.45;font-weight:${weight};
+            font-family:${FONT};font-size:${size}px;line-height:1.45;${weight}
             color:${colour || INK};${BREAKS}">${label}</td>
         <td width="1%" align="right" style="padding:${pad} ${inset + (total ? 10 : 0)}px ${pad} 14px;${rule}${ground}
-            font-family:${FONT};font-size:${size}px;line-height:1.45;font-weight:${weight};
+            font-family:${FONT};font-size:${size}px;line-height:1.45;${weight}
             color:${tone || INK};white-space:nowrap;">${value || ''}</td>
     </tr>`
 }
@@ -645,6 +649,37 @@ function profitAndLoss(section, f, charts) {
         + comments(sectionComments(section))
 }
 
+// What came of a refund claim: the same reading as claimState and claimAnswer
+// in the app's weeklyReport.js, which this function cannot import. Before 7
+// October a refund was only claimed or not, and claimed is read as waiting.
+export function claimState(item) {
+    const said = item?.meta?.claim
+    if (['none', 'waiting', 'back', 'refused'].includes(said)) return said
+    return item?.meta?.claimed ? 'waiting' : 'none'
+}
+
+export function claimAnswer(item) {
+    const said = item?.meta?.answer
+    return ['waiting', 'back', 'refused'].includes(said) ? said : null
+}
+
+// Each state as a coloured pill, the same colours as on the page, so claimed
+// and paid back are told apart without reading the words.
+const CLAIM_TAG = {
+    none: { text: 'Not claimed', colour: MUTED, ground: '#FFFFFF' },
+    waiting: { text: 'Claimed, waiting', colour: AMBER, ground: '#FEF6E7' },
+    back: { text: '&#10003;&nbsp;Paid back', colour: GREEN, ground: '#EEF6F1' },
+    refused: { text: 'Refused', colour: RED, ground: '#FDEDED' },
+}
+const CLAIM_WORDS = { none: 'not claimed', waiting: 'claimed, waiting', back: 'paid back', refused: 'refused' }
+
+// A pill on a line of its own under a row's words. Its text is short and
+// cannot wrap, well inside the width a phone gives the mail.
+function tagLine(tag) {
+    return `<br /><span style="padding:1px 7px;border-radius:9px;border:1px solid ${tag.colour};`
+        + `background:${tag.ground};color:${tag.colour};font-size:12px;font-weight:700;white-space:nowrap">${tag.text}</span>`
+}
+
 // A review coloured by what it says.
 //
 // Four and five are the ones worth being pleased about, three is the one worth
@@ -737,12 +772,26 @@ function platformBlock(section, platform, rated, f) {
         rows.push(subHeading('Refunds'))
         for (const refund of refunds) {
             rows.push(line({ inset: 14,
-                label: escapeHtml(refund.note || 'Refund')
-                    + `<br /><span style="color:${MUTED};">`
-                    + (refund.meta?.claimed ? 'Claimed back' : 'Not claimed')
-                    + '</span>',
+                label: escapeHtml(refund.note || 'Refund') + tagLine(CLAIM_TAG[claimState(refund)]),
                 value: negative(refund.amount),
                 tone: RED,
+            }))
+        }
+    }
+
+    // Claims from earlier weeks, each with what came of it this week. Paid
+    // back is money in, so it reads as a plus.
+    const claims = rated ? of(section, 'refund_claim').filter(c => c.key === platform.id) : []
+    if (claims.length > 0) {
+        rows.push(subHeading('Claims from earlier weeks'))
+        for (const claim of claims) {
+            const answer = claimAnswer(claim)
+            rows.push(line({ inset: 14,
+                label: escapeHtml(claim.note || 'Refund')
+                    + small(`Claimed in the week of ${escapeHtml(dayMonth(claim.opened_on))}`)
+                    + tagLine(CLAIM_TAG[answer || 'waiting']),
+                value: answer === 'back' ? `+${money(Math.abs(num(claim.amount)))}` : money(Math.abs(num(claim.amount))),
+                tone: answer === 'back' ? GREEN : MUTED,
             }))
         }
     }
@@ -1075,17 +1124,20 @@ export function dayMonth(iso) {
 
 const small = text => `<br /><span style="color:${MUTED};font-size:13px;">${text}</span>`
 
-// Facts about one row, each on its own line with a small label to its left.
-// The label cannot wrap and is a single short word, so it never holds the
-// mail wider than a phone; the fact beside it wraps. Empty entries are left
-// out. Font, colour and wrapping come from the row's own cell: forty of these
-// in a heavy week pushed the mail past the size Gmail is safe at.
+// Facts about one row, each on its own line with a small label to its left,
+// the labels one width so the facts line up. A label is one short word, so it
+// never holds the mail wider than a phone; a long fact wraps under it. Empty
+// entries are left out.
+//
+// Lines rather than a table, and font and wrapping from the row's own cell:
+// a table each came to 5KB in a heavy week and took the mail past the size
+// Gmail cuts off at.
 function facts(pairs) {
-    return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:4px;">`
-        + pairs.filter(Boolean).map(([label, value]) => `<tr>`
-            + `<td valign="top" style="padding:1px 12px 1px 0;font-size:12px;color:${MUTED};white-space:nowrap;">${label}</td>`
-            + `<td valign="top" style="padding:1px 0;font-size:13px;">${value}</td></tr>`).join('')
-        + `</table>`
+    return `<div style="margin-top:3px;font-size:13px;">`
+        + pairs.filter(Boolean).map(([label, value]) =>
+            `<span style="display:inline-block;width:62px;font-size:12px;color:${MUTED};">${label}</span>${value}`)
+            .join('<br />')
+        + '</div>'
 }
 
 // One kind of thing, as a card: a header with what it came to, then a row each.
@@ -1684,8 +1736,15 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
                 if (refunds.length) out.push('    Refunds')
                 else if (online && saidRefunds(f)) out.push('    Refunds: none')
                 for (const refund of refunds) {
-                    out.push(`      ${negative(refund.amount)} ${refund.note || ''}`
-                        + (refund.meta?.claimed ? ' (claimed back)' : ' (not claimed)'))
+                    out.push(`      ${negative(refund.amount)} ${refund.note || ''} (${CLAIM_WORDS[claimState(refund)]})`)
+                }
+
+                const claims = online ? of(section, 'refund_claim').filter(c => c.key === platform.id) : []
+                if (claims.length) out.push('    Claims from earlier weeks')
+                for (const claim of claims) {
+                    const answer = claimAnswer(claim) || 'waiting'
+                    out.push(`      ${money(Math.abs(num(claim.amount)))} ${claim.note || ''}, `
+                        + `week of ${dayMonth(claim.opened_on)} (${CLAIM_WORDS[answer]})`)
                 }
 
                 out.push(...typed(noteWords(noteFor(section, platform.id)), '    '))

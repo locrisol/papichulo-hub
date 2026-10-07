@@ -642,7 +642,7 @@ function openingItems(sections, previous, weekStart) {
     for (const before of previous.sections) {
         const now = byKey.get(before.key)
         if (!now) continue
-        for (const item of carriedItems(before.report_items || [], weekStart)) {
+        for (const item of carriedItems(before.report_items || [], weekStart, previous.week_start)) {
             out.push({ ...item, section_id: now.id })
         }
     }

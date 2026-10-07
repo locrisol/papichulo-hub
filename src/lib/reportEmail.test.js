@@ -215,9 +215,35 @@ describe('reportEmail', () => {
         expect(mail.html).toContain('&times;&nbsp;1')
     })
 
-    it('writes a refund as a negative, with whether it was claimed', () => {
+    // Claimed before the four states, so read as waiting: nobody said what
+    // came of it.
+    it('writes a refund as a negative, with what came of the claim', () => {
         expect(mail.html).toContain('−€12.50')
-        expect(mail.html).toContain('Claimed back')
+        expect(mail.html).toContain('Claimed, waiting')
+        expect(mail.html).not.toContain('Claimed back')
+        expect(mail.text).toContain('Missing drink (claimed, waiting)')
+    })
+
+    // His of 7 October: a claim from an earlier week stays on the report
+    // until it is answered, with this week's answer.
+    it('lists claims from earlier weeks under their platform, with the answer given this week', () => {
+        const withClaims = sections.map(s => (s.key === 'online_sales'
+            ? {
+                ...s,
+                items: [
+                    ...s.items,
+                    { kind: 'refund_claim', key: 'p1', label: 'Deliveroo', amount: 22.4, note: 'Arrived cold', opened_on: '2026-08-16', meta: { answer: 'back' } },
+                    { kind: 'refund_claim', key: 'p1', label: 'Deliveroo', amount: 4.95, note: 'Missing chips', opened_on: '2026-08-23', meta: { answer: 'refused' } },
+                ],
+            }
+            : s))
+        const out = reportEmail({ ...base, sections: withClaims })
+        expect(out.html).toContain('Claims from earlier weeks')
+        expect(out.html).toContain('Claimed in the week of 16 Aug')
+        expect(out.html).toContain('+€22.40')
+        expect(out.html).toContain('Paid back')
+        expect(out.html).toContain('Refused')
+        expect(out.text).toContain('€4.95 Missing chips, week of 23 Aug (refused)')
     })
 
     it('says how long an action has been open', () => {

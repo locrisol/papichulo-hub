@@ -5,7 +5,7 @@ import {
     blockers, ratingMove, publishCheck, figuresToStore, FIGURES_VERSION, isCorrection, mailMissing,
     statementWeek, statementWords, dayWords, platformTaken, deliveryCost, deliveryRows,
     statementSundayIn, deliveryBlockers, platformWeeks,
-    platformsUnsaid, saidNothing,
+    platformsUnsaid, saidNothing, claimState, claimAnswer, withClaim, claimsUnanswered,
 } from '@/lib/weeklyReport'
 
 // The till, as it stands. Every row counts toward the day balancing.
@@ -791,5 +791,69 @@ describe('reviews and refunds said for each online platform', () => {
     it('does not carry into the next week', () => {
         const [next] = carriedItems([rating({ reviews: true, refunds: true })], '2026-10-04')
         expect(next.meta).toBeUndefined()
+    })
+})
+
+// His of 7 October: a claim is asking, not getting. A refund still waiting
+// carries as a claim of its own until it is paid back or refused, and the
+// week cannot go out until each carried claim is answered.
+describe('refund claims', () => {
+    const refund = (meta, extra = {}) => ({ kind: 'refund', key: 'p1', label: 'Deliveroo', amount: 59.52, note: 'Never collected', meta, ...extra })
+    const claim = (answer, extra = {}) => ({
+        kind: 'refund_claim', key: 'p1', label: 'Deliveroo', amount: 59.52, note: 'Never collected',
+        opened_on: '2026-09-27', meta: answer ? { answer } : {}, ...extra,
+    })
+
+    it('reads a refund from before as claimed and waiting, or not claimed', () => {
+        expect(claimState(refund({ claimed: true }))).toBe('waiting')
+        expect(claimState(refund({}))).toBe('none')
+        expect(claimState(refund(null))).toBe('none')
+        expect(claimState(refund({ claim: 'back', claimed: true }))).toBe('back')
+    })
+
+    it('drops the old flag when a state is saved, so the two cannot disagree', () => {
+        expect(withClaim({ claimed: true, x: 1 }, 'refused')).toEqual({ x: 1, claim: 'refused' })
+    })
+
+    it('carries a refund still waiting as a claim, from the week it was in', () => {
+        const out = carriedItems([refund({ claim: 'waiting' })], '2026-10-04', '2026-09-27')
+        expect(out).toEqual([expect.objectContaining({
+            kind: 'refund_claim', key: 'p1', amount: 59.52, note: 'Never collected', opened_on: '2026-09-27',
+        })])
+        expect(claimAnswer(out[0])).toBeNull()
+    })
+
+    it('carries one claimed before the four states as waiting', () => {
+        expect(carriedItems([refund({ claimed: true })], '2026-10-04', '2026-09-27')).toHaveLength(1)
+    })
+
+    it('leaves behind a refund not claimed, paid back or refused in its own week', () => {
+        const out = carriedItems([refund({}), refund({ claim: 'back' }), refund({ claim: 'refused' })], '2026-10-04')
+        expect(out.filter(i => i.kind === 'refund_claim')).toEqual([])
+    })
+
+    it('carries a claim still waiting again, keeping its first week and asking again', () => {
+        const [next] = carriedItems([claim('waiting')], '2026-10-11', '2026-10-04')
+        expect(next.opened_on).toBe('2026-09-27')
+        expect(claimAnswer(next)).toBeNull()
+    })
+
+    it('stops carrying a claim once it is paid back or refused', () => {
+        expect(carriedItems([claim('back'), claim('refused')], '2026-10-11')).toEqual([])
+    })
+
+    it('holds the week until every carried claim has an answer', () => {
+        expect(claimsUnanswered([claim(null)])).toEqual([
+            'The €59.52 claim on Deliveroo from the week of 27 September needs an answer: paid back, refused or still waiting.',
+        ])
+        expect(claimsUnanswered([claim('waiting'), claim('back'), claim('refused')])).toEqual([])
+        expect(blockers([claim(null)])).toHaveLength(1)
+    })
+
+    it('does not count a carried claim as this week having refunds', () => {
+        const deliveroo = { id: 'p1', name: 'Deliveroo' }
+        const rating = { kind: 'rating', key: 'p1', meta: { none: { reviews: true } } }
+        expect(platformsUnsaid([rating, claim('waiting')], [deliveroo]))
+            .toEqual(['Deliveroo: add its refunds, or press No refunds.'])
     })
 })
