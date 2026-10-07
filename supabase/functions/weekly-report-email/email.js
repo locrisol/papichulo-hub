@@ -1124,6 +1124,19 @@ export function dayMonth(iso) {
 
 const small = text => `<br /><span style="color:${MUTED};font-size:13px;">${text}</span>`
 
+// A row whose figures sit beside its name, with its facts underneath across
+// the whole width (his, 7 October). With the figures in a column of their own
+// down the side, the facts had what was left of a phone and every price broke
+// onto a second line.
+function headedRow({ name, facts: body, value, tone }) {
+    return `<tr><td colspan="2" style="padding:9px 14px;border-bottom:1px solid ${BORDER};font-family:${FONT};`
+        + `font-size:14px;line-height:1.45;color:${INK};${BREAKS}">`
+        + `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>`
+        + `<td width="100%" valign="top" style="font-weight:700;">${name}</td>`
+        + `<td width="1%" align="right" valign="top" style="padding-left:12px;color:${tone};white-space:nowrap;">${value}</td>`
+        + `</tr></table>${body}</td></tr>`
+}
+
 // Facts about one row, each on its own line with a small label to its left,
 // the labels one width so the facts line up. A label is one short word, so it
 // never holds the mail wider than a phone; a long fact wraps under it. Empty
@@ -1286,14 +1299,14 @@ export function pricesSection(section, f) {
     // all said again what the cards say, and stay on the report in the Hub.
     const moves = priceCard('Same product, new price', p.moves.length ? signedMoney(t.moves) : '', toneFor(t.moves),
         [
-            ...cappedRows(p.moves, shown.moves, m => line({
-                inset: 14,
+            ...cappedRows(p.moves, shown.moves, m => headedRow({
                 // One fact to a line, each with its label (his, 7 October):
                 // price, date and invoice number ran together in one grey
                 // sentence. The split, "6 cases, €3.15 less each", is there so
                 // the total beside it can be checked by multiplying; absent on
                 // anything frozen before it existed.
-                label: `<strong>${escapeHtml(m.name)}</strong>` + facts([
+                name: escapeHtml(m.name),
+                facts: facts([
                     // Codes bought either way are one row, each code's prices
                     // in words. See together in invoiceReport.
                     ['Price', m.prices
