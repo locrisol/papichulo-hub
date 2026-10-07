@@ -990,22 +990,34 @@ export function openActions(section, weekStart) {
         .map(x => x.a)
 }
 
+const actionAge = weeks => (weeks === 0 ? 'Raised this week' : `Open ${weeks} week${weeks === 1 ? '' : 's'}`)
+
 function supportActions(section, weekStart) {
     const actions = openActions(section, weekStart)
     if (actions.length === 0) {
         return heading(section.title, section.number) + note('Nothing outstanding.')
     }
 
+    // Each action across the whole width, as a list with a dot, and how long
+    // it has been open as a pill under it (his, 7 October). With the age in a
+    // column down the right the actions had half a phone and wrapped four
+    // lines deep. Amber from three weeks, the point it is worth chasing.
     const rows = actions.map(action => {
         const weeks = weeksOpen(action.opened_on, weekStart)
-        return line({
+        const tone = weeks >= 3 ? AMBER : MUTED
+        // The dot hangs in the margin, so a long action wraps under its own
+        // words rather than under the dot. One cell, not a table for the dot:
+        // ten of those took a heavy week past the size Gmail cuts off at.
+        return `<tr><td colspan="2" style="padding:10px 0 10px 18px;text-indent:-18px;border-bottom:1px solid ${BORDER};`
+            + `font-family:${FONT};font-size:14px;line-height:1.65;color:${INK};${BREAKS}">`
+            + `<span style="display:inline-block;width:18px;text-indent:0;color:${GREEN};font-weight:700;">&bull;</span>`
+            + escapeHtml(action.label || '')
+            + `<br /><span style="padding:1px 7px;border-radius:9px;border:1px solid ${tone};background:${weeks >= 3 ? '#FEF6E7' : '#FFFFFF'};`
+            + `color:${tone};font-size:12px;font-weight:700;white-space:nowrap">${actionAge(weeks)}</span>`
             // Its comments under it, each with its day (his, 7 October).
-            label: escapeHtml(action.label || '')
-                + commentsOf(action).map(c => `<br /><span style="font-size:13px;color:${MUTED};">`
-                    + `${escapeHtml(dayMonth(c.on))}</span>&nbsp; <span style="font-size:13px;">${richHtml(c.text)}</span>`).join(''),
-            value: weeks === 0 ? 'new this week' : `open ${weeks} week${weeks === 1 ? '' : 's'}`,
-            tone: weeks >= 3 ? AMBER : MUTED,
-        })
+            + commentsOf(action).map(c => `<div style="margin-top:4px;text-indent:0;font-size:13px;"><span style="color:${MUTED};">`
+                + `${escapeHtml(dayMonth(c.on))}</span>&nbsp; ${richHtml(c.text)}</div>`).join('')
+            + `</td></tr>`
     })
 
     return heading(section.title, section.number) + figures(rows) + comments(sectionComments(section))
@@ -1808,7 +1820,7 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
             for (const action of open) {
                 const weeks = weeksOpen(action.opened_on, weekStart)
                 out.push(`  ${action.label}`
-                    + (weeks === 0 ? ' (new this week)' : ` (open ${weeks} week${weeks === 1 ? '' : 's'})`))
+                    + ` (${actionAge(weeks).toLowerCase()})`)
                 for (const c of commentsOf(action)) out.push(...typed(`${dayMonth(c.on)}: ${richWords(c.text)}`, '    '))
             }
         }

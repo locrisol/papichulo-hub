@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { weeksOpen } from '@/lib/weeklyReport'
 import { useRemoveCard } from '@/components/reports/useRemoveCard'
-import { removeButton, fieldClass } from '@/lib/controlStyles'
+import { removeButton, fieldClass, denseField } from '@/lib/controlStyles'
 import AutoTextarea from '@/components/ui/AutoTextarea'
 import AddButton from '@/components/ui/AddButton'
 import RichEditor from '@/components/ui/RichEditor'
@@ -137,6 +137,9 @@ export function ActionComments({ item, weekStart, canEdit, onSave }) {
 
 export default function ReportActions({ section, weekStart, canEdit, onAdd, onSave, onRemove }) {
     const removeCard = useRemoveCard()
+    // The one being changed, opened by its Edit or by pressing its words.
+    const [editingId, setEditingId] = useState(null)
+    const cancelled = useRef(false)
     const [adding, setAdding] = useState('')
     const [busy, setBusy] = useState(false)
     const pending = useRef(false)
@@ -213,18 +216,37 @@ export default function ReportActions({ section, weekStart, canEdit, onAdd, onSa
                             </button>
 
                             <div className="flex-1 min-w-0">
-                                {canEdit && !done ? (
+                                {canEdit && !done && editingId === item.id ? (
                                     <AutoTextarea
                                         defaultValue={item.label || ''}
+                                        autoFocus
+                                        aria-label="What needs doing"
+                                        onKeyDown={e => {
+                                            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.currentTarget.blur() }
+                                            if (e.key === 'Escape') { cancelled.current = true; e.currentTarget.blur() }
+                                        }}
                                         onBlur={e => {
+                                            setEditingId(null)
+                                            if (cancelled.current) { cancelled.current = false; return }
                                             const text = e.target.value.trim()
                                             if (!text) return onRemove(item.id)
                                             if (text !== item.label) onSave(item.id, { label: text })
                                         }}
-                                        className="w-full bg-transparent text-base pointer-fine:text-sm text-gray-800 focus:outline-none"
+                                        className={denseField}
                                     />
+                                ) : canEdit && !done ? (
+                                    // The words open it too. It was always a box,
+                                    // but one with no edge, and pressing it did
+                                    // nothing anybody could see (his, 7 October).
+                                    <button
+                                        type="button"
+                                        onClick={() => setEditingId(item.id)}
+                                        className="w-full text-left text-sm text-gray-800 whitespace-pre-line break-words hover:text-accent-ink"
+                                    >
+                                        {item.label}
+                                    </button>
                                 ) : (
-                                    <p className={`text-sm ${done ? 'text-muted line-through' : 'text-gray-800'}`}>
+                                    <p className={`text-sm whitespace-pre-line break-words ${done ? 'text-muted line-through' : 'text-gray-800'}`}>
                                         {item.label}
                                     </p>
                                 )}
@@ -233,6 +255,21 @@ export default function ReportActions({ section, weekStart, canEdit, onAdd, onSa
                             <span className="hidden sm:block flex-shrink-0 text-xs text-muted whitespace-nowrap mt-0.5">
                                 {done ? 'closed this week' : weeksWords(weeksOpen(item, weekStart))}
                             </span>
+
+                            {canEdit && !done && editingId !== item.id && (
+                                <button
+                                    type="button"
+                                    onClick={() => setEditingId(item.id)}
+                                    aria-label={`Edit: ${item.label}`}
+                                    className="flex-shrink-0 min-h-[2.25rem] inline-flex items-center gap-1 text-xs font-semibold text-muted hover:text-accent-ink transition-colors"
+                                >
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-3.5 h-3.5" aria-hidden="true">
+                                        <path d="M4 20h4l10-10-4-4L4 16v4z" />
+                                        <path d="M13.5 6.5l4 4" />
+                                    </svg>
+                                    Edit
+                                </button>
+                            )}
 
                             {canEdit && (
                                 <button

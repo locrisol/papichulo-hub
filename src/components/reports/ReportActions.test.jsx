@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { ActionComments } from './ReportActions'
+
+vi.mock('@/components/reports/useRemoveCard', () => ({ useRemoveCard: () => vi.fn() }))
+import ReportActions, { ActionComments } from './ReportActions'
 import { carriedItems } from '@/lib/weeklyReport'
 
 // His, 7 October: comments on each action, carried with it.
@@ -57,5 +59,39 @@ describe('two changes to the comments one after the other', () => {
     it('ignores comments stored as something other than a list', () => {
         render(<ActionComments item={{ id: 'x', meta: { comments: 'oops' } }} weekStart={WEEK} canEdit onSave={vi.fn()} />)
         expect(screen.getByRole('button', { name: '+ Comment' })).toBeInTheDocument()
+    })
+})
+
+// His, 7 October: the words looked fixed, so nobody knew they could be changed.
+describe('changing what an action says', () => {
+    const section = { items: [{ id: 'a1', kind: 'action', label: 'Find coloured bowls', opened_on: '2026-09-27' }] }
+    const draw = (props = {}) => {
+        const handlers = { onAdd: vi.fn(), onSave: vi.fn(), onRemove: vi.fn() }
+        render(<ReportActions section={section} weekStart={WEEK} canEdit {...handlers} {...props} />)
+        return handlers
+    }
+
+    it('opens from its Edit button and saves on Enter', () => {
+        const { onSave } = draw()
+        fireEvent.click(screen.getByRole('button', { name: 'Edit: Find coloured bowls' }))
+        const box = screen.getByRole('textbox', { name: 'What needs doing' })
+        fireEvent.change(box, { target: { value: 'Find coloured bowls, blue' } })
+        fireEvent.keyDown(box, { key: 'Enter' })
+        expect(onSave).toHaveBeenCalledWith('a1', { label: 'Find coloured bowls, blue' })
+    })
+
+    it('opens from its words, and Escape leaves it as it was', () => {
+        const { onSave } = draw()
+        fireEvent.click(screen.getByRole('button', { name: 'Find coloured bowls' }))
+        const box = screen.getByRole('textbox', { name: 'What needs doing' })
+        fireEvent.change(box, { target: { value: 'something else' } })
+        fireEvent.keyDown(box, { key: 'Escape' })
+        expect(onSave).not.toHaveBeenCalled()
+        expect(screen.getByRole('button', { name: 'Find coloured bowls' })).toBeInTheDocument()
+    })
+
+    it('offers nothing to change on a report that cannot be changed', () => {
+        draw({ canEdit: false })
+        expect(screen.queryByRole('button', { name: /^Edit/ })).not.toBeInTheDocument()
     })
 })
