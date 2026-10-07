@@ -95,3 +95,17 @@ describe('changing what an action says', () => {
         expect(screen.queryByRole('button', { name: /^Edit/ })).not.toBeInTheDocument()
     })
 })
+
+// His, 8 October: done this week on top.
+describe('the order of the actions', () => {
+    it('puts the ones done this week first', () => {
+        const section = { items: [
+            { id: 'a1', kind: 'action', label: 'Find coloured bowls', opened_on: '2026-09-06' },
+            { id: 'a2', kind: 'action', label: 'Bag stamper', opened_on: '2026-09-13', done_on: WEEK },
+        ] }
+        render(<ReportActions section={section} weekStart={WEEK} canEdit={false} onAdd={vi.fn()} onSave={vi.fn()} onRemove={vi.fn()} />)
+        const words = screen.getAllByText(/^(Find coloured bowls|Bag stamper)$/).map(el => el.textContent)
+        expect(words).toEqual(['Bag stamper', 'Find coloured bowls'])
+        expect(screen.getAllByText('done this week').length).toBeGreaterThan(0)
+    })
+})

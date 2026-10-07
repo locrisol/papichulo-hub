@@ -990,11 +990,19 @@ export function openActions(section, weekStart) {
         .map(x => x.a)
 }
 
+// Ticked off this week, in the order they were listed, shown first (his, 8
+// October, option B). A ticked action is only on the report of the week it
+// was ticked, so every one here was done this week.
+export function doneActions(section) {
+    return of(section, 'action').filter(a => a.done_on)
+}
+
 const actionAge = weeks => (weeks === 0 ? 'Raised this week' : `Open ${weeks} week${weeks === 1 ? '' : 's'}`)
 
 function supportActions(section, weekStart) {
     const actions = openActions(section, weekStart)
-    if (actions.length === 0) {
+    const done = doneActions(section)
+    if (actions.length === 0 && done.length === 0) {
         return heading(section.title, section.number) + note('Nothing outstanding.')
     }
 
@@ -1002,18 +1010,22 @@ function supportActions(section, weekStart) {
     // it has been open as a pill under it (his, 7 October). With the age in a
     // column down the right the actions had half a phone and wrapped four
     // lines deep. Amber from three weeks, the point it is worth chasing.
-    const rows = actions.map(action => {
+    const rows = [...done, ...actions].map(action => {
+        const finished = !!action.done_on
         const weeks = weeksOpen(action.opened_on, weekStart)
-        const tone = weeks >= 3 ? AMBER : MUTED
+        const tone = finished ? GREEN : weeks >= 3 ? AMBER : MUTED
+        const fill = finished ? '#EEF7F1' : weeks >= 3 ? '#FEF6E7' : '#FFFFFF'
         // The dot hangs in the margin, so a long action wraps under its own
         // words rather than under the dot. One cell, not a table for the dot:
         // ten of those took a heavy week past the size Gmail cuts off at.
         return `<tr><td colspan="2" style="padding:10px 0 10px 18px;text-indent:-18px;border-bottom:1px solid ${BORDER};`
             + `font-family:${FONT};font-size:14px;line-height:1.65;color:${INK};${BREAKS}">`
-            + `<span style="display:inline-block;width:18px;text-indent:0;color:${GREEN};font-weight:700;">&bull;</span>`
-            + escapeHtml(action.label || '')
-            + `<br /><span style="padding:1px 7px;border-radius:9px;border:1px solid ${tone};background:${weeks >= 3 ? '#FEF6E7' : '#FFFFFF'};`
-            + `color:${tone};font-size:12px;font-weight:700;white-space:nowrap">${actionAge(weeks)}</span>`
+            + `<span style="display:inline-block;width:18px;text-indent:0;color:${GREEN};font-weight:700;">${finished ? '&#10003;' : '&bull;'}</span>`
+            + (finished
+                ? `<span style="color:${MUTED};text-decoration:line-through;">${escapeHtml(action.label || '')}</span>`
+                : escapeHtml(action.label || ''))
+            + `<br /><span style="padding:1px 7px;border-radius:9px;border:1px solid ${tone};background:${fill};`
+            + `color:${tone};font-size:12px;font-weight:700;white-space:nowrap">${finished ? 'Done this week' : actionAge(weeks)}</span>`
             // Its comments under it, each with its day (his, 7 October).
             + commentsOf(action).map(c => `<div style="margin-top:4px;text-indent:0;font-size:13px;"><span style="color:${MUTED};">`
                 + `${escapeHtml(dayMonth(c.on))}</span>&nbsp; ${richHtml(c.text)}</div>`).join('')
@@ -1816,7 +1828,12 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
             if (c?.busiest) out.push(`  ${c.busiest}`)
         } else if (section.key === 'support_actions') {
             const open = openActions(section, weekStart)
-            if (open.length === 0) out.push('  Nothing outstanding.')
+            const done = doneActions(section)
+            if (open.length === 0 && done.length === 0) out.push('  Nothing outstanding.')
+            for (const action of done) {
+                out.push(`  Done: ${action.label} (done this week)`)
+                for (const c of commentsOf(action)) out.push(...typed(`${dayMonth(c.on)}: ${richWords(c.text)}`, '    '))
+            }
             for (const action of open) {
                 const weeks = weeksOpen(action.opened_on, weekStart)
                 out.push(`  ${action.label}`

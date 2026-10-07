@@ -4,7 +4,7 @@ import {
     escapeHtml, tidy, stars, starColour, costTone, senderFor, heldNotice, WIDTH, SIDE,
     renewalWords, escapeLines, page, headline, overheadsToShow, backByReason,
     deliverable, isJustTheGoodbye, replyToFor, switchedOff, whatToSend, correctionSend,
-    paidWords, againstWords, figureGaps as mailGaps, openActions, platformsIn, richHtml, richWords, saidRefunds,
+    paidWords, againstWords, figureGaps as mailGaps, openActions, doneActions, platformsIn, richHtml, richWords, saidRefunds,
 } from '../../supabase/functions/weekly-report-email/email'
 import { readFileSync } from 'node:fs'
 import { MAIL_WIDTH } from '@/lib/reportChartImage'
@@ -253,8 +253,12 @@ describe('reportEmail', () => {
         expect(mail.text).toContain('  New menu boards (raised this week)')
     })
 
-    it('leaves out an action that was ticked off', () => {
-        expect(mail.html).not.toContain('Done thing')
+    // It used to be left out. His, 8 October: what was done this week is in
+    // the mail, first, ticked and marked done.
+    it('puts an action ticked off this week first, marked done', () => {
+        expect(mail.html).toContain('Done thing')
+        expect(mail.html).toContain('Done this week')
+        expect(mail.text).toContain('Done: Done thing (done this week)')
     })
 
     it('names the people whose paperwork needs doing', () => {
@@ -2218,5 +2222,18 @@ describe('no refunds in the mail', () => {
     it('is said only on a report that had to say it', () => {
         expect(saidRefunds({ version: 4 })).toBe(true)
         expect(saidRefunds({ version: 3 })).toBe(false)
+    })
+})
+
+// His, 8 October, option B: what was ticked this week is in the mail, on top.
+describe('actions done this week in the mail', () => {
+    const section = { title: 'Support / actions needed', items: [
+        { kind: 'action', label: 'Find coloured bowls', opened_on: '2026-09-06' },
+        { kind: 'action', label: 'Bag stamper', opened_on: '2026-09-13', done_on: '2026-10-04' },
+    ] }
+
+    it('are listed, apart from the open ones', () => {
+        expect(doneActions(section).map(a => a.label)).toEqual(['Bag stamper'])
+        expect(openActions(section, '2026-10-04').map(a => a.label)).toEqual(['Find coloured bowls'])
     })
 })
