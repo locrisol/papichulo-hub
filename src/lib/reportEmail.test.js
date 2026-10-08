@@ -1842,7 +1842,7 @@ describe('the page the mail sits in', () => {
 
     it('still lets a held mail put its band first in the body', () => {
         const held = heldNotice(mail, ['ana@p.ie'])
-        expect(held.html).toMatch(/<body style="margin:0;padding:0;background:#F7F5F0;"><table[^>]*background:#7C2D12;/)
+        expect(held.html).toMatch(/<body style="[^"]*"><table[^>]*background:#7C2D12;/)
     })
 })
 

@@ -40,6 +40,10 @@ const BAND = '#EDE7DC'
 
 // No spaces after the commas: this is written into nearly two hundred cells,
 // and a heavy week sits close to the size Gmail cuts a mail off at.
+// Set once, on the body and the frame round the report, and read from there
+// by every cell (his, 8 October). It was on every cell, 165 times in a heavy
+// week, about 14,000 characters, a fifth of the mail. Classic Outlook, which
+// does not pass a font into a table, has its own rule in the head (see page).
 const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif"
 
 // How wide the mail is allowed to get, and it is a maximum rather than a size.
@@ -280,7 +284,7 @@ export function weekWords(weekStart) {
 function band(colour, background, edge, title, body) {
     return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
         style="margin:0 0 20px;border-radius:10px;background:${background};border:1px solid ${edge};">
-        <tr><td style="padding:14px 16px;font-family:${FONT};">
+        <tr><td style="padding:14px 16px;">
             <div style="font-size:15px;font-weight:700;color:${colour};">${title}</div>
             ${body ? `<div style="margin-top:6px;font-size:13px;line-height:1.5;color:${colour};">${body}</div>` : ''}
         </td></tr>
@@ -312,10 +316,10 @@ function band(colour, background, edge, title, body) {
 function heading(title, number) {
     return `<tr><td style="padding:36px 0 14px;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-            <tr><td style="background:${DARK};padding:14px ${SIDE}px;font-family:${FONT};">
+            <tr><td style="background:${DARK};padding:14px ${SIDE}px;">
                 <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
-                    ${number ? `<td width="26" align="center" style="background:#42544B;border-radius:6px;font-family:${FONT};font-size:12px;font-weight:700;color:#ffffff;padding:4px 0;">${number}</td>` : ''}
-                    <td style="${number ? `padding-left:12px;` : ''}font-family:${FONT};font-size:16px;font-weight:700;color:#ffffff;letter-spacing:.02em;">${escapeHtml(title)}</td>
+                    ${number ? `<td width="26" align="center" style="background:#42544B;border-radius:6px;font-size:12px;font-weight:700;color:#ffffff;padding:4px 0;">${number}</td>` : ''}
+                    <td style="${number ? `padding-left:12px;` : ''}font-size:16px;font-weight:700;color:#ffffff;letter-spacing:.02em;">${escapeHtml(title)}</td>
                 </tr></table>
             </td></tr>
         </table>
@@ -334,7 +338,7 @@ function heading(title, number) {
 // padding and this one does not.
 function subHeading(title) {
     return `<tr><td colspan="2" style="background:${BAND};border-bottom:1px solid ${BORDER};
-        padding:9px 14px;font-family:${FONT};font-size:11.5px;font-weight:700;letter-spacing:.1em;
+        padding:9px 14px;font-size:11.5px;font-weight:700;letter-spacing:.1em;
         text-transform:uppercase;color:${DARK};">${escapeHtml(title)}</td></tr>`
 }
 
@@ -381,10 +385,10 @@ function line({ label, value, tone, colour, indent, strong, total, inset = 0 }) 
 
     return `<tr>
         <td width="100%" style="padding:${pad} 0 ${pad} ${inset + (indent ? 14 : (total ? 10 : 0))}px;${rule}${ground}
-            font-family:${FONT};font-size:${size}px;line-height:1.45;${weight}
+            font-size:${size}px;line-height:1.45;${weight}
             color:${colour || INK};${BREAKS}">${label}</td>
         <td width="1%" align="right" style="padding:${pad} ${inset + (total ? 10 : 0)}px ${pad} 14px;${rule}${ground}
-            font-family:${FONT};font-size:${size}px;line-height:1.45;${weight}
+            font-size:${size}px;line-height:1.45;${weight}
             color:${tone || INK};white-space:nowrap;">${value || ''}</td>
     </tr>`
 }
@@ -398,7 +402,7 @@ function bigFigure({ label, value, share, tone }) {
     return `<tr><td style="padding:18px ${SIDE}px 0;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
             style="background:${CREAM};border:2px solid ${tone};border-radius:12px;">
-            <tr><td style="padding:16px 18px;font-family:${FONT};">
+            <tr><td style="padding:16px 18px;">
                 <div style="font-size:12px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:${MUTED};">${escapeHtml(label)}</div>
                 <div style="margin-top:6px;font-size:30px;line-height:1.1;font-weight:700;color:${tone};">${value}</div>
                 ${share ? `<div style="margin-top:4px;font-size:15px;font-weight:700;color:${MUTED};">${share} of net sales</div>` : ''}
@@ -435,14 +439,14 @@ function gapsBox(gaps) {
     if (!gaps.length) return ''
     return `<tr><td style="padding:12px ${SIDE}px 0;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-            style="border:1px solid ${AMBER};border-radius:6px;"><tr><td style="padding:10px 12px;font-family:${FONT};
+            style="border:1px solid ${AMBER};border-radius:6px;"><tr><td style="padding:10px 12px;
             font-size:13px;line-height:1.55;color:${AMBER};${BREAKS}">
             <b>These figures are not finished</b><br />${gaps.map(escapeHtml).join('<br />')}
         </td></tr></table></td></tr>`
 }
 
 function note(text) {
-    return `<tr><td style="padding:10px ${SIDE}px 0;font-family:${FONT};font-size:13px;
+    return `<tr><td style="padding:10px ${SIDE}px 0;font-size:13px;
         line-height:1.55;color:${MUTED};${BREAKS}">${escapeLines(text)}</td></tr>`
 }
 
@@ -517,7 +521,7 @@ function comments(items) {
     return items.map(item => `<tr><td style="padding:8px ${SIDE}px 0;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
             style="background:${CREAM};border-radius:8px;">
-            <tr><td style="padding:11px 13px;font-family:${FONT};font-size:13.5px;
+            <tr><td style="padding:11px 13px;font-size:13.5px;
                 line-height:1.55;color:${INK};${BREAKS}">${item.label ? `<strong>${escapeHtml(item.label)}.</strong>&nbsp;` : ''}${noteHtml(item)}</td></tr>
         </table>
     </td></tr>`).join('')
@@ -540,7 +544,7 @@ function chart(url, caption, alt = caption) {
                     style="display:block;width:100%;max-width:${WIDTH}px;height:auto;border:0;" />
             </td></tr>
         </table>
-        ${caption ? `<div style="margin-top:7px;padding:0 ${SIDE}px;font-family:${FONT};font-size:12px;color:${MUTED};">${escapeHtml(caption)}</div>` : ''}
+        ${caption ? `<div style="margin-top:7px;padding:0 ${SIDE}px;font-size:12px;color:${MUTED};">${escapeHtml(caption)}</div>` : ''}
     </td></tr>`
 }
 
@@ -805,9 +809,9 @@ function platformBlock(section, platform, rated, f) {
             <tr><td style="background:${CREAM};padding:12px 14px;">
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                     <tr>
-                        <td width="100%" style="font-family:${FONT};font-size:17px;font-weight:700;
+                        <td width="100%" style="font-size:17px;font-weight:700;
                             color:${platform.colour || INK};">${escapeHtml(platform.name)}</td>
-                        <td width="1%" align="right" style="padding-left:12px;font-family:${FONT};font-size:17px;
+                        <td width="1%" align="right" style="padding-left:12px;font-size:17px;
                             font-weight:700;color:${INK};white-space:nowrap;">${money(platform.taken)}</td>
                     </tr>
                 </table>
@@ -815,7 +819,7 @@ function platformBlock(section, platform, rated, f) {
             ${rows.length || remark ? `<tr><td style="padding:0 0 4px;">
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
                     style="border-collapse:collapse;">${rows.join('')}</table>
-                ${remark ? `<div style="padding:12px 14px 8px;font-family:${FONT};font-size:13px;line-height:1.55;color:${MUTED};${BREAKS}">${noteHtml(remark)}</div>` : ''}
+                ${remark ? `<div style="padding:12px 14px 8px;font-size:13px;line-height:1.55;color:${MUTED};${BREAKS}">${noteHtml(remark)}</div>` : ''}
             </td></tr>` : ''}
         </table>
     </td></tr>`
@@ -908,8 +912,8 @@ function paperwork(state, title) {
                 + (withDate && p.on ? `&nbsp;(${fmtDate(p.on)})` : '')
                 + renewalWords(p))
             .join('<br />')
-        groups.push(`<div style="margin-top:12px;font-family:${FONT};font-size:13px;color:${MUTED};">${label}</div>`
-            + `<div style="margin-top:4px;font-family:${FONT};font-size:14px;line-height:1.7;color:${INK};">${names}</div>`)
+        groups.push(`<div style="margin-top:12px;font-size:13px;color:${MUTED};">${label}</div>`
+            + `<div style="margin-top:4px;font-size:14px;line-height:1.7;color:${INK};">${names}</div>`)
     }
 
     group('Expired:', state.expired, true)
@@ -922,8 +926,8 @@ function paperwork(state, title) {
             <tr><td style="background:${CREAM};padding:12px 14px;">
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                     <tr>
-                        <td width="100%" style="font-family:${FONT};font-size:16px;font-weight:700;color:${INK};">${escapeHtml(title)}</td>
-                        <td width="1%" align="right" style="padding-left:12px;font-family:${FONT};font-size:15px;
+                        <td width="100%" style="font-size:16px;font-weight:700;color:${INK};">${escapeHtml(title)}</td>
+                        <td width="1%" align="right" style="padding-left:12px;font-size:15px;
                             font-weight:700;color:${tone};white-space:nowrap;">${state.fine} of ${state.total} in date</td>
                     </tr>
                 </table>
@@ -950,13 +954,13 @@ function allergenSheet(due) {
             <tr><td style="background:${CREAM};padding:12px 14px;">
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                     <tr>
-                        <td width="100%" style="font-family:${FONT};font-size:16px;font-weight:700;color:${INK};">Allergen sheet</td>
-                        <td width="1%" align="right" style="padding-left:12px;font-family:${FONT};font-size:15px;
+                        <td width="100%" style="font-size:16px;font-weight:700;color:${INK};">Allergen sheet</td>
+                        <td width="1%" align="right" style="padding-left:12px;font-size:15px;
                             font-weight:700;color:${AMBER};white-space:nowrap;">Print a new one</td>
                     </tr>
                 </table>
             </td></tr>
-            <tr><td style="padding:12px 14px 14px;font-family:${FONT};font-size:14px;line-height:1.55;color:${INK};">${escapeHtml(due.words)}</td></tr>
+            <tr><td style="padding:12px 14px 14px;font-size:14px;line-height:1.55;color:${INK};">${escapeHtml(due.words)}</td></tr>
         </table>
     </td></tr>`
 }
@@ -1019,7 +1023,7 @@ function supportActions(section, weekStart) {
         // words rather than under the dot. One cell, not a table for the dot:
         // ten of those took a heavy week past the size Gmail cuts off at.
         return `<tr><td colspan="2" style="padding:10px 0 10px 18px;text-indent:-18px;border-bottom:1px solid ${BORDER};`
-            + `font-family:${FONT};font-size:14px;line-height:1.65;color:${INK};${BREAKS}">`
+            + `font-size:14px;line-height:1.65;color:${INK};${BREAKS}">`
             + `<span style="display:inline-block;width:18px;text-indent:0;color:${GREEN};font-weight:700;">${finished ? '&#10003;' : '&bull;'}</span>`
             + (finished
                 ? `<span style="color:${MUTED};text-decoration:line-through;">${escapeHtml(action.label || '')}</span>`
@@ -1055,7 +1059,7 @@ function cleaningCard(list) {
     const tone = warn ? RED : list.lines.every(l => l.state === 'done') ? GREEN : AMBER
     const lines = list.lines.map(line => {
         const colour = line.warn ? RED : line.state === 'done' ? GREEN : INK
-        let out = `<div style="margin-top:8px;font-family:${FONT};font-size:14px;line-height:1.55;color:${colour};${line.warn ? 'font-weight:700;' : ''}">${escapeHtml(line.words)}</div>`
+        let out = `<div style="margin-top:8px;font-size:14px;line-height:1.55;color:${colour};${line.warn ? 'font-weight:700;' : ''}">${escapeHtml(line.words)}</div>`
         if (line.warn && line.left?.length) {
             // Missed two rounds running is the thing worth a manager's eye,
             // so it is said in red.
@@ -1063,20 +1067,20 @@ function cleaningCard(list) {
                 .map(t => '&bull;&nbsp;' + escapeHtml(t.label) + `<span style="color:${MUTED};">, ${escapeHtml(t.lastDoneWords)}</span>`
                     + (t.again ? `<span style="color:${RED};font-weight:700;">, not done the time before either</span>` : ''))
             if (line.left.length > LEFT_IN_MAIL) shown.push(`<span style="color:${MUTED};">and ${line.left.length - LEFT_IN_MAIL} more, on the Hub</span>`)
-            out += `<div style="margin-top:4px;font-family:${FONT};font-size:14px;line-height:1.7;color:${INK};">${shown.join('<br />')}</div>`
+            out += `<div style="margin-top:4px;font-size:14px;line-height:1.7;color:${INK};">${shown.join('<br />')}</div>`
         }
         return out
     }).join('')
     const photos = list.photos?.length
-        ? `<div style="margin-top:10px;font-family:${FONT};font-size:13px;color:${MUTED};">${list.photos.length === 1 ? '1 photo' : `${list.photos.length} photos`} taken this week, on the Hub.</div>`
+        ? `<div style="margin-top:10px;font-size:13px;color:${MUTED};">${list.photos.length === 1 ? '1 photo' : `${list.photos.length} photos`} taken this week, on the Hub.</div>`
         : ''
 
     return `<tr><td style="padding:14px ${SIDE}px 0;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
             style="border:1px solid ${BORDER};border-left:5px solid ${tone};border-radius:10px;">
             <tr><td style="background:${CREAM};padding:12px 14px;">
-                <div style="font-family:${FONT};font-size:16px;font-weight:700;color:${INK};">${escapeHtml(list.name)}</div>
-                <div style="margin-top:2px;font-family:${FONT};font-size:12.5px;color:${MUTED};">${escapeHtml(list.repeats)}</div>
+                <div style="font-size:16px;font-weight:700;color:${INK};">${escapeHtml(list.name)}</div>
+                <div style="margin-top:2px;font-size:12.5px;color:${MUTED};">${escapeHtml(list.repeats)}</div>
             </td></tr>
             <tr><td style="padding:2px 14px 14px;">${lines}${photos}</td></tr>
         </table>
@@ -1156,7 +1160,7 @@ const small = text => `<br /><span style="color:${MUTED};font-size:13px;">${text
 // down the side, the facts had what was left of a phone and every price broke
 // onto a second line.
 function headedRow({ name, facts: body, value, tone }) {
-    return `<tr><td colspan="2" style="padding:9px 14px;border-bottom:1px solid ${BORDER};font-family:${FONT};`
+    return `<tr><td colspan="2" style="padding:9px 14px;border-bottom:1px solid ${BORDER};`
         + `font-size:14px;line-height:1.45;color:${INK};${BREAKS}">`
         + `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>`
         + `<td width="100%" valign="top" style="font-weight:700;">${name}</td>`
@@ -1190,8 +1194,8 @@ function priceCard(title, figure, tone, rows, empty) {
             <tr><td style="background:${CREAM};padding:12px 14px;">
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                     <tr>
-                        <td width="100%" style="font-family:${FONT};font-size:16px;font-weight:700;color:${INK};">${escapeHtml(title)}</td>
-                        <td width="1%" align="right" style="padding-left:12px;font-family:${FONT};font-size:15px;
+                        <td width="100%" style="font-size:16px;font-weight:700;color:${INK};">${escapeHtml(title)}</td>
+                        <td width="1%" align="right" style="padding-left:12px;font-size:15px;
                             font-weight:700;color:${tone};white-space:nowrap;">${figure}</td>
                     </tr>
                 </table>
@@ -1200,7 +1204,7 @@ function priceCard(title, figure, tone, rows, empty) {
                 ${rows.length
                     ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
                         style="border-collapse:collapse;">${rows.join('')}</table>`
-                    : `<div style="padding:12px 14px;font-family:${FONT};font-size:13px;line-height:1.55;color:${MUTED};">${escapeHtml(empty)}</div>`}
+                    : `<div style="padding:12px 14px;font-size:13px;line-height:1.55;color:${MUTED};">${escapeHtml(empty)}</div>`}
             </td></tr>
         </table>
     </td></tr>`
@@ -1228,8 +1232,8 @@ function pricesInMail(p) {
 function cappedRows(all, shown, toRow) {
     const rows = shown.map(toRow)
     if (all.length > shown.length) {
-        rows.push(`<tr><td colspan="2" style="padding:9px 14px;border-bottom:1px solid ${BORDER};font-family:${FONT};font-size:13px;">`
-            + `<span style="color:${MUTED};font-family:${FONT};">and ${all.length - shown.length} more, on the Hub</span></td></tr>`)
+        rows.push(`<tr><td colspan="2" style="padding:9px 14px;border-bottom:1px solid ${BORDER};font-size:13px;">`
+            + `<span style="color:${MUTED};">and ${all.length - shown.length} more, on the Hub</span></td></tr>`)
     }
     return rows
 }
@@ -1257,7 +1261,7 @@ const cases = (n, loose = 0) => [
 
 function brandBox(label, name, per, unit, colour, ground, more = 0) {
     return `<td width="50%" valign="top" style="padding:10px 12px;background:${ground};border:1px solid ${BORDER};
-        border-radius:8px;font-family:${FONT};${BREAKS}">
+        border-radius:8px;${BREAKS}">
         <div style="font-size:11px;letter-spacing:0.6px;font-weight:700;color:${colour};">${escapeHtml(label).toUpperCase()}</div>
         <div style="font-size:14px;line-height:1.4;color:${INK};margin-top:2px;">${escapeHtml(name)}</div>
         <div style="font-size:14px;font-weight:700;color:${INK};margin-top:2px;">${per != null
@@ -1269,8 +1273,8 @@ function brandBox(label, name, per, unit, colour, ground, more = 0) {
 
 function brandRows(rows) {
     return rows.map(r => `<tr><td colspan="2" style="padding:12px 14px;border-bottom:1px solid ${BORDER};">
-        <div style="font-family:${FONT};font-size:15px;font-weight:700;color:${INK};${BREAKS}">${escapeHtml(r.name)}</div>
-        <div style="font-family:${FONT};font-size:13px;color:${MUTED};margin:2px 0 8px;">${escapeHtml([cases(r.cases), money(r.money)].filter(Boolean).join(', '))}</div>
+        <div style="font-size:15px;font-weight:700;color:${INK};${BREAKS}">${escapeHtml(r.name)}</div>
+        <div style="font-size:13px;color:${MUTED};margin:2px 0 8px;">${escapeHtml([cases(r.cases), money(r.money)].filter(Boolean).join(', '))}</div>
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;border-spacing:0;">
             <tr>
                 ${brandBox('Bought', r.bought.name, r.bought.per, r.unit, AMBER, '#FEF6E7')}
@@ -1547,8 +1551,13 @@ export function page(inner, { subject = '', preheader = '' } = {}) {
         + `<meta name="format-detection" content="telephone=no,date=no,address=no,email=no" />`
         + `<meta name="color-scheme" content="light dark" />`
         + `<meta name="supported-color-schemes" content="light dark" />`
-        + `<title>${escapeHtml(subject)}</title></head>`
-        + `<body style="margin:0;padding:0;background:${CREAM};">`
+        + `<title>${escapeHtml(subject)}</title>`
+        // Classic Outlook on Windows draws with Word, which does not pass a
+        // font down into a table, so it is told once here. Every other mail
+        // app reads the font off the frame round the report. See FONT.
+        + `<!--[if mso]><style>body,table,td,div,p,span,a{font-family:'Segoe UI',Arial,sans-serif !important;}</style><![endif]-->`
+        + `</head>`
+        + `<body style="margin:0;padding:0;background:${CREAM};font-family:${FONT};">`
         + (preheader
             ? `<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">${escapeHtml(preheader)}${PREVIEW_FILLER}</div>`
             : '')
@@ -1627,23 +1636,23 @@ export function reportEmail({
         ? `<table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
             <tr><td align="center" bgcolor="${BLUE}" style="background:${BLUE};border-radius:10px;">
                 <a href="${escapeHtml(reportLink(appUrl, report))}" style="display:inline-block;padding:16px 32px;
-                    font-family:${FONT};font-size:16px;font-weight:700;color:#ffffff;
+                    font-size:16px;font-weight:700;color:#ffffff;
                     text-decoration:none;">Open this report in the Hub</a>
             </td></tr>
         </table>
-        <div style="margin-top:12px;font-family:${FONT};font-size:13px;line-height:1.55;color:${MUTED};text-align:center;">
+        <div style="margin-top:12px;font-size:13px;line-height:1.55;color:${MUTED};text-align:center;">
             Easier to read there. You can put this week beside any other one, follow a figure back to
             the invoices or the hours behind it, and see every report that has gone out.
         </div>`
         : ''
 
     const html = tidy(page(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-    style="background:${CREAM};padding:0;">
-<tr><td align="center">
+    style="background:${CREAM};padding:0;font-family:${FONT};">
+<tr><td align="center" style="font-family:${FONT};">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-    style="width:100%;max-width:${WIDTH}px;background:#ffffff;overflow:hidden;">
+    style="width:100%;max-width:${WIDTH}px;background:#ffffff;overflow:hidden;font-family:${FONT};">
 
-    <tr><td style="background:${DARK};padding:22px ${SIDE}px;font-family:${FONT};color:#ffffff;">
+    <tr><td style="background:${DARK};padding:22px ${SIDE}px;color:#ffffff;">
         <div style="font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:#A9C0B2;">Weekly summary report</div>
         <div style="margin-top:5px;font-size:22px;font-weight:700;color:#ffffff;">${escapeHtml(place)}</div>
         <div style="margin-top:4px;font-size:14px;color:#D1D5D3;">Week ${weekNumber(weekStart)}&nbsp;&middot;&nbsp;${weekWords(weekStart)}</div>
@@ -1656,7 +1665,7 @@ export function reportEmail({
     </td></tr>
 
     <tr><td style="background:${CREAM};border-top:1px solid ${BORDER};padding:18px ${SIDE}px;
-        font-family:${FONT};font-size:12px;line-height:1.6;color:${MUTED};">${publisher
+        font-size:12px;line-height:1.6;color:${MUTED};">${publisher
             ? `Written up by ${escapeHtml(publisher)}. Replies come straight back to them.` : ''}</td></tr>
 
 </table>
