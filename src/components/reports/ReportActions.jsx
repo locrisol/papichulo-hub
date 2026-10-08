@@ -74,9 +74,11 @@ export function ActionComments({ item, weekStart, canEdit, onSave }) {
             {comments.map(c => {
                 const mine = canEdit && c.week === weekStart
                 return (
-                    <div key={c.id} className="flex items-start gap-2 border-l-2 border-accent/40 pl-2">
-                        <span className="text-xs text-muted whitespace-nowrap mt-0.5">{shortDate(c.on)}</span>
+                    // The same as the mail: a thin line down the left, the
+                    // day small above its words (his, 8 October, style 1).
+                    <div key={c.id} className="flex items-start gap-2 border-l-[3px] border-[#D9CFC0] pl-2.5 py-0.5">
                         <div className="flex-1 min-w-0">
+                            <span className="block text-[11px] font-bold uppercase tracking-wide text-muted">{shortDate(c.on)}</span>
                             {mine ? (
                                 <RichEditor
                                     value={c.text}
@@ -148,8 +150,10 @@ export default function ReportActions({ section, weekStart, canEdit, onAdd, onSa
     // Longest open first. The one that has been waiting since July is the one
     // worth reading, and it is the one an ordinary list would bury at the top
     // where nobody scrolls to.
+    // Done this week on top (his, 8 October): what got done is the first thing
+    // worth reading, and it is only on this week's report.
     const ordered = actions.slice().sort((a, b) => {
-        if (!!a.done_on !== !!b.done_on) return a.done_on ? 1 : -1
+        if (!!a.done_on !== !!b.done_on) return a.done_on ? -1 : 1
         return weeksOpen(b, weekStart) - weeksOpen(a, weekStart)
     })
 
@@ -253,7 +257,7 @@ export default function ReportActions({ section, weekStart, canEdit, onAdd, onSa
                             </div>
 
                             <span className="hidden sm:block flex-shrink-0 text-xs text-muted whitespace-nowrap mt-0.5">
-                                {done ? 'closed this week' : weeksWords(weeksOpen(item, weekStart))}
+                                {done ? 'done this week' : weeksWords(weeksOpen(item, weekStart))}
                             </span>
 
                             {canEdit && !done && editingId !== item.id && (
@@ -290,7 +294,7 @@ export default function ReportActions({ section, weekStart, canEdit, onAdd, onSa
                         {/* Lined up under the text rather than under the tick,
                             so it reads as belonging to the item. */}
                         <p className="sm:hidden text-xs text-muted mt-1.5 pl-9">
-                            {done ? 'closed this week' : weeksWords(weeksOpen(item, weekStart))}
+                            {done ? 'done this week' : weeksWords(weeksOpen(item, weekStart))}
                         </p>
                         <ActionComments item={item} weekStart={weekStart} canEdit={canEdit} onSave={onSave} />
                         </div>

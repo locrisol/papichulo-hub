@@ -9,10 +9,15 @@
 // real report it came to about four a send: €165.00 arriving as €16500,
 // line-height:1.45 as 145, delivery.png as deliverypng.
 //
-// Base64 has no full stop in it at all, so a part sent as base64 cannot lose
-// one, and denomailer writes a part it is handed as it is. It also ends the =20
-// that email.js works round, since there is no quoted printable left to get it
-// wrong.
+// So the parts were sent as base64, which has no full stop in it at all. That
+// cost a third on top of every mail, and the report came within 2% of the size
+// Gmail cuts off at (his, 8 October). They go as quoted printable again now,
+// written here rather than by denomailer, which writes a part it is handed as
+// it is: every line is kept under 77 characters, a full stop that would start
+// a line is written as =2E so no server can take it off, and a space or tab
+// that would end a line is written as =20 or =09 so none can trim it. About a
+// fifth smaller than base64 for the report, and read by every mail app there
+// is: it is the same standard (RFC 2045) base64 comes from.
 //
 // The same file sits in both functions' folders, because a function only
 // deploys its own folder. src/lib/mailMime.test.js fails if the two differ.
@@ -40,6 +45,39 @@ export function base64Lines(text) {
     return (flat.match(/.{1,76}/g) || []).join('\r\n')
 }
 
+// Text as quoted printable (RFC 2045, 6.7), in lines of at most 76.
+//
+// = and anything that is not printable ASCII as =XX of its UTF-8 bytes. A line
+// that runs long breaks with a soft = at the end. Never a full stop first on a
+// line, and never a space or tab last, for the reasons above.
+const HEX = b => '=' + b.toString(16).toUpperCase().padStart(2, '0')
+
+export function quotedPrintable(text) {
+    const out = []
+    for (const raw of String(text ?? '').split(LF)) {
+        const hard = raw.endsWith(CR) ? raw.slice(0, -1) : raw
+        const bytes = new TextEncoder().encode(hard)
+        let line = ''
+        for (let i = 0; i < bytes.length; i++) {
+            const b = bytes[i]
+            const last = i === bytes.length - 1
+            const plain = (b >= 33 && b <= 126 && b !== 61) || ((b === 32 || b === 9) && !last)
+            let piece = plain ? String.fromCharCode(b) : HEX(b)
+            if (line.length + piece.length > 75) {
+                out.push(line + '=')
+                line = ''
+            }
+            if (line === '' && piece === '.') piece = '=2E'
+            line += piece
+        }
+        out.push(line)
+    }
+    return out.join(CR + LF)
+}
+
+const CR = String.fromCharCode(13)
+const LF = String.fromCharCode(10)
+
 // The plain text and the HTML, ready for denomailer's mimeContent.
 //
 // Plain text first and HTML last, because a mail app shows the last of the
@@ -49,14 +87,14 @@ export function mimeParts({ text, html }) {
     if (text) {
         parts.push({
             mimeType: 'text/plain; charset="utf-8"',
-            transferEncoding: 'base64',
-            content: base64Lines(text),
+            transferEncoding: 'quoted-printable',
+            content: quotedPrintable(text),
         })
     }
     parts.push({
         mimeType: 'text/html; charset="utf-8"',
-        transferEncoding: 'base64',
-        content: base64Lines(html),
+        transferEncoding: 'quoted-printable',
+        content: quotedPrintable(html),
     })
     return parts
 }
