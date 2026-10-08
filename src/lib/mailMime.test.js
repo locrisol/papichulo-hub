@@ -12,8 +12,16 @@ import { priceWeek } from '@/lib/invoiceReport'
 
 const FOLDERS = ['weekly-report-email', 'roster-email']
 
-const decoded = part => new TextDecoder().decode(
-    Uint8Array.from(atob(part.content.replace(/\r\n/g, '')), c => c.charCodeAt(0)))
+// Quoted printable back to the text: soft breaks joined, =XX back to its
+// byte, and the mail's line ends back to the text's own.
+const decoded = part => {
+    const joined = part.content.replace(/=\r\n/g, '')
+    const bytes = []
+    for (let i = 0; i < joined.length; i++) {
+        if (joined[i] === '=') { bytes.push(parseInt(joined.slice(i + 1, i + 3), 16)); i += 2 } else bytes.push(joined.charCodeAt(i))
+    }
+    return new TextDecoder().decode(Uint8Array.from(bytes)).replace(/\r\n/g, '\n')
+}
 
 // Full stops everywhere a report has them: money, shares, line heights, the
 // chart pictures and the link back to the Hub.
@@ -70,13 +78,21 @@ describe.each([
         expect(decoded(mimeParts(ask)[0])).toContain('María')
     })
 
-    it('are base64, plain text first and the HTML last', () => {
+    it('are quoted printable, plain text first and the HTML last', () => {
         const parts = mimeParts(ask)
         expect(parts.map(p => p.mimeType)).toEqual([
             'text/plain; charset="utf-8"',
             'text/html; charset="utf-8"',
         ])
-        expect(parts.map(p => p.transferEncoding)).toEqual(['base64', 'base64'])
+        expect(parts.map(p => p.transferEncoding)).toEqual(['quoted-printable', 'quoted-printable'])
+    })
+
+    // A server may trim a space at the end of a line, which would join two
+    // words in the plain copy. So none ends with one: it is written as =20.
+    it('never end a line with a space or a tab', () => {
+        const [text] = mimeParts({ text: 'Rent \nInsurance\t\nend', html: '<p>Hi</p>' })
+        expect(text.content.split('\r\n').some(l => / $|\t$/.test(l))).toBe(false)
+        expect(decoded(text)).toBe('Rent \nInsurance\t\nend')
     })
 
     it('leave the plain text out when there is none', () => {
@@ -155,6 +171,10 @@ describe('a heavy week', () => {
                     // Added on 4 October when the shorter mail took the week
                     // under the mark: the same weight as before, in reviews.
                     ...rows('review', i => ({ key: 'p1', meta: { stars: 1, count: 1 }, note: `A second review about the wait, number ${i}` })),
+                    // And on 8 October, when the font set once took a fifth
+                    // off every row.
+                    ...rows('review', i => ({ key: 'p2', meta: { stars: 2, count: 1 }, note: `A third review about the portion size, number ${i}` })),
+                    ...rows('refund', i => ({ key: 'p2', note: `Wrong order delivered ${i}`, meta: { claimed: true } })),
                 ],
             },
             { key: 'people_ops', title: 'People and operations', sort_order: 4, items: [] },
