@@ -74,9 +74,11 @@ export function ActionComments({ item, weekStart, canEdit, onSave }) {
             {comments.map(c => {
                 const mine = canEdit && c.week === weekStart
                 return (
-                    <div key={c.id} className="flex items-start gap-2 border-l-2 border-accent/40 pl-2">
-                        <span className="text-xs text-muted whitespace-nowrap mt-0.5">{shortDate(c.on)}</span>
+                    // The same as the mail: a thin line down the left, the
+                    // day small above its words (his, 8 October, style 1).
+                    <div key={c.id} className="flex items-start gap-2 border-l-[3px] border-[#D9CFC0] pl-2.5 py-0.5">
                         <div className="flex-1 min-w-0">
+                            <span className="block text-[11px] font-bold uppercase tracking-wide text-muted">{shortDate(c.on)}</span>
                             {mine ? (
                                 <RichEditor
                                     value={c.text}

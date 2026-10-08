@@ -1027,8 +1027,11 @@ function supportActions(section, weekStart) {
             + `<br /><span style="padding:1px 7px;border-radius:9px;border:1px solid ${tone};background:${fill};`
             + `color:${tone};font-size:12px;font-weight:700;white-space:nowrap">${finished ? 'Done this week' : actionAge(weeks)}</span>`
             // Its comments under it, each with its day (his, 7 October).
-            + commentsOf(action).map(c => `<div style="margin-top:4px;text-indent:0;font-size:13px;"><span style="color:${MUTED};">`
-                + `${escapeHtml(dayMonth(c.on))}</span>&nbsp; ${richHtml(c.text)}</div>`).join('')
+            // A thin line down the left of each, the day small above its
+            // words (his, 8 October, style 1).
+            + commentsOf(action).map(c => `<div style="margin-top:6px;text-indent:0;padding:2px 0 2px 10px;border-left:3px solid #D9CFC0;font-size:13px;line-height:1.5;">`
+                + `<span style="display:block;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:${MUTED};">`
+                + `${escapeHtml(dayMonth(c.on))}</span>${richHtml(c.text)}</div>`).join('')
             + `</td></tr>`
     })
 
