@@ -1,6 +1,6 @@
 import { sheetLayout, shareName, wrapLines, AWAY } from '@/lib/rosterShare'
 import { kindColours } from '@/lib/diary'
-import { loadJsPdf, rgb, useHubFont } from '@/lib/pdfPage'
+import { loadJsPdf, rgb, embedHubFont } from '@/lib/pdfPage'
 
 // The week as a PDF, for printing and putting on the wall.
 //
@@ -48,7 +48,7 @@ export async function weekPdf(table, restaurantName, weekStart, { save = true, f
     const pageWidth = pdf.internal.pageSize.getWidth()
     // DM Sans, the same as the picture, or Helvetica if it could not be had.
     // Every width below is measured in whichever it is.
-    const FONT = await useHubFont(pdf, fetchFile)
+    const FONT = await embedHubFont(pdf, fetchFile)
 
     // Measured before the sheet is sized, because a day with two acts on it
     // makes that row taller and everything below it moves down.

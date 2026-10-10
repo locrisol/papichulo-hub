@@ -71,7 +71,7 @@ function loadHubFontFiles(fetchFile) {
 
 // Puts DM Sans in this PDF and says which family to draw with: DM Sans, or
 // Helvetica when the files could not be fetched.
-export async function useHubFont(pdf, fetchFile = (...args) => fetch(...args)) {
+export async function embedHubFont(pdf, fetchFile = (...args) => fetch(...args)) {
     try {
         const files = await loadHubFontFiles(fetchFile)
         for (const [style, file] of Object.entries(HUB_FONT_FILES)) {
