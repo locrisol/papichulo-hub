@@ -215,9 +215,16 @@ export default function ChecklistRoundPage() {
     const waiting = Object.keys(pending).filter(k => allIds.has(k) && !byTask.has(k))
     const done = all.filter(t => byTask.has(t.id)).length
     const outcome = roundOutcome(round)
-    // Left undone last time and not ticked yet this time: High priority.
-    const priority = leftLastTime(tree, before.round, before.ticks)
-    const urgent = open ? all.filter(t => priority.has(t.id) && !byTask.has(t.id)) : []
+    // High priority until it is ticked: left undone last time, or marked on
+    // the list as always High priority (his, 11 October).
+    const lastTime = leftLastTime(tree, before.round, before.ticks)
+    // Marked on an element with sub elements, every sub element under it is.
+    const marked = new Set(tasks.filter(t => t.high_priority).map(t => t.id))
+    const isMarked = t => marked.has(t.id) || Boolean(t.parent_id && marked.has(t.parent_id))
+    const isUrgent = t => (lastTime.has(t.id) || isMarked(t)) && !byTask.has(t.id)
+    const urgent = open ? all.filter(isUrgent) : []
+    const fromLastTime = urgent.filter(t => lastTime.has(t.id)).length
+    const bothKinds = fromLastTime > 0 && fromLastTime < urgent.length
     const where = placeOf(tree)
     const shown = tree.filter(c => c.elements.length).map(c => c.category.id)
     const allOpen = shown.length > 0 && shown.every(c => openCats.has(c))
@@ -427,8 +434,12 @@ export default function ChecklistRoundPage() {
                                 <span className={`${badge} bg-red-700 text-white`}>{urgent.length}</span>
                             </div>
                             <p className="text-sm text-red-900 mt-1">
-                                {urgent.length === 1 ? 'This was' : 'These were'} not done last time, so do {urgent.length === 1 ? 'it' : 'them'} first.
-                                {before.round?.ended_by_name && ` ${before.round.ended_by_name} ended that round on ${doneDayLong(before.round.ended_at)}.`}
+                                {bothKinds
+                                    ? 'Do these first.'
+                                    : fromLastTime
+                                        ? `${urgent.length === 1 ? 'This was' : 'These were'} not done last time, so do ${urgent.length === 1 ? 'it' : 'them'} first.`
+                                        : `${urgent.length === 1 ? 'This is' : 'These are'} always high priority on this list, so do ${urgent.length === 1 ? 'it' : 'them'} first.`}
+                                {fromLastTime > 0 && before.round?.ended_by_name && ` ${before.round.ended_by_name} ended the last round on ${doneDayLong(before.round.ended_at)}.`}
                             </p>
                             <ul className="mt-2 space-y-1.5">
                                 {urgent.map(t => (
@@ -436,7 +447,11 @@ export default function ChecklistRoundPage() {
                                         <button type="button" onClick={() => jumpTo(t.id)} className="text-left text-sm font-semibold text-red-900 underline underline-offset-2 decoration-red-300 hover:decoration-red-700">
                                             {where.get(t.id)?.label}
                                         </button>
-                                        <span className="block text-xs text-red-800">{where.get(t.id)?.category}</span>
+                                        <span className="block text-xs text-red-800">
+                                            {where.get(t.id)?.category}
+                                            {/* Only said when both kinds are in the box. */}
+                                            {bothKinds && (lastTime.has(t.id) ? ' · Not done last time' : ' · Always high priority')}
+                                        </span>
                                     </li>
                                 ))}
                             </ul>
@@ -494,7 +509,7 @@ export default function ChecklistRoundPage() {
                                                 open, restaurantId: round.restaurant_id, roundId: round.id,
                                                 onToggle: () => toggle(t), onAddPhoto: path => addPhoto(t, path),
                                                 onRemovePhoto: path => removePhoto(t, path), onError: setError,
-                                                urgent: open && priority.has(t.id) && !byTask.has(t.id),
+                                                urgent: open && isUrgent(t),
                                             })
                                             if (!subs.length) return <TickRow {...rowProps(task)} />
                                             const subDone = subs.filter(s => byTask.has(s.id)).length
@@ -503,7 +518,12 @@ export default function ChecklistRoundPage() {
                                                 <div key={task.id} id={`group-${task.id}`} data-place className={complete ? 'bg-green-50/60' : ''}>
                                                     <div className="px-4 pt-3 pb-1">
                                                         <div className="flex items-start justify-between gap-3">
-                                                            <p className="font-semibold text-gray-900">{task.name}</p>
+                                                            <p className="font-semibold text-gray-900">
+                                                                {open && marked.has(task.id) && !complete && (
+                                                                    <span className={`${badge} bg-red-700 text-white mb-1 block w-fit`}>High priority</span>
+                                                                )}
+                                                                {task.name}
+                                                            </p>
                                                             <span className={`text-xs font-semibold flex-shrink-0 ${complete ? 'text-green-800' : 'text-muted'}`}>
                                                                 {complete ? 'Done' : `${subDone} of ${subs.length}`}
                                                             </span>

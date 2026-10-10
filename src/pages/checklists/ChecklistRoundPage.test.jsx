@@ -31,7 +31,7 @@ const EARLIER = {
 const EARLIER_TICKS = [{ round_id: 'r0', task_id: 't2' }]
 
 let db
-function setUp({ round = ROUND, saved = SAVED, upsertResult, earlier = null, categories = CATEGORIES, tasks = TASKS } = {}) {
+function setUp({ round = ROUND, saved = SAVED, upsertResult, earlier = null, earlierTicks = EARLIER_TICKS, categories = CATEGORIES, tasks = TASKS } = {}) {
     const upsert = makeQuery(upsertResult || { data: [{ task_id: 't3' }], error: null })
     db = mockSupabase({
         checklists: { data: LIST, error: null },
@@ -51,7 +51,7 @@ function setUp({ round = ROUND, saved = SAVED, upsertResult, earlier = null, cat
         let roundId
         const read = makeQuery()
         read.eq = vi.fn((column, value) => { if (column === 'round_id') roundId = value; return read })
-        read.then = (resolve, reject) => Promise.resolve({ data: roundId === 'r0' ? EARLIER_TICKS : [...saved], error: null }).then(resolve, reject)
+        read.then = (resolve, reject) => Promise.resolve({ data: roundId === 'r0' ? earlierTicks : [...saved], error: null }).then(resolve, reject)
         read.upsert = vi.fn(() => upsert)
         return read
     })
@@ -330,7 +330,7 @@ describe('what was left last time', () => {
         open()
         const box = await screen.findByRole('note')
         expect(within(box).getByText('High priority')).toBeInTheDocument()
-        expect(within(box).getByText(/These were not done last time, so do them first. Ciara ended that round on Friday/)).toBeInTheDocument()
+        expect(within(box).getByText(/These were not done last time, so do them first. Ciara ended the last round on Friday/)).toBeInTheDocument()
         expect(within(box).queryByText(/saying/)).toBeNull()
         expect(within(box).getByRole('button', { name: 'Small toaster area: Clean toaster sides' })).toBeInTheDocument()
         expect(within(box).getByRole('button', { name: 'Mop the floor' })).toBeInTheDocument()
@@ -353,5 +353,44 @@ describe('what was left last time', () => {
         await screen.findByText('Kitchen')
         expect(screen.queryByRole('note')).toBeNull()
         expect(screen.queryByText('High priority')).toBeNull()
+    })
+})
+
+// His, 11 October: a couple of things marked on the list as always High
+// priority, red on every round until ticked. Marked on an element with sub
+// elements, every sub element under it is.
+describe('always high priority', () => {
+    const marking = (...ids) => TASKS.map(t => (ids.includes(t.id) ? { ...t, high_priority: true } : t))
+
+    it('puts a marked task in red at the top until it is ticked', async () => {
+        setUp({ tasks: marking('t4') })
+        open()
+        const box = await screen.findByRole('note')
+        expect(within(box).getByText('This is always high priority on this list, so do it first.')).toBeInTheDocument()
+        expect(within(box).getByRole('button', { name: 'Mop the floor' })).toBeInTheDocument()
+        const row = screen.getByLabelText('Mop the floor').closest('[id^="row-"]')
+        expect(row.className).toMatch(/bg-red-50/)
+        expect(within(row).getByText('High priority')).toBeInTheDocument()
+    })
+
+    it('makes every sub element red when the element is marked, until each is ticked', async () => {
+        setUp({ tasks: marking('t1') })
+        open()
+        const box = await screen.findByRole('note')
+        // Clean under the toaster is already ticked, so only the sides are left.
+        expect(within(box).getByRole('button', { name: 'Small toaster area: Clean toaster sides' })).toBeInTheDocument()
+        expect(within(box).queryByRole('button', { name: /Clean under the toaster/ })).toBeNull()
+        expect(screen.getByLabelText('Clean toaster sides').closest('[id^="row-"]').className).toMatch(/bg-red-50/)
+        expect(screen.getByLabelText('Clean under the toaster').closest('[id^="row-"]').className).not.toMatch(/bg-red-50/)
+        expect(within(screen.getByText('Small toaster area').closest('[id^="group-"]')).getAllByText('High priority')).not.toHaveLength(0)
+    })
+
+    it('says which is which when some were left last time and some are marked', async () => {
+        setUp({ tasks: marking('t4'), earlier: EARLIER, earlierTicks: [{ round_id: 'r0', task_id: 't2' }, { round_id: 'r0', task_id: 't4' }] })
+        open()
+        const box = await screen.findByRole('note')
+        expect(within(box).getByText(/^Do these first. Ciara ended the last round on/)).toBeInTheDocument()
+        expect(within(box).getByText('Kitchen · Not done last time')).toBeInTheDocument()
+        expect(within(box).getByText('Kitchen · Always high priority')).toBeInTheDocument()
     })
 })
