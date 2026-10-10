@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
@@ -20,6 +20,7 @@ import GuidePicture from '@/components/checklists/GuidePicture'
 import PhotoButton from '@/components/checklists/PhotoButton'
 import PhotoStrip from '@/components/checklists/PhotoStrip'
 import { signer } from '@/components/checklists/signPhotos'
+import useKeepPlace from '@/components/checklists/useKeepPlace'
 
 // Working through one round of a list, on the phone.
 //
@@ -71,8 +72,27 @@ export default function ChecklistRoundPage() {
     const [error, setError] = useState('')
     const [notice, setNotice] = useState('')
     const [before, setBefore] = useState({ round: null, ticks: [] })
+    // The categories open on this tab. All closed to start with (his, 11
+    // October), and kept for the tab so a reload opens the same ones.
+    const openKey = `checklist-open-${id}`
+    const [openCats, setOpenCats] = useState(() => readOpen(openKey))
+    const listRef = useRef(null)
+    const keepAt = useKeepPlace(listRef, `checklist-place-${id}`, !loading && Boolean(round))
 
     const draftKey = `checklist-draft-${id}`
+
+    // A saved note says so for a few seconds and goes. It sits by the Submit
+    // button, since the page no longer moves to show what is at the top.
+    useEffect(() => {
+        if (!notice) return
+        const timer = setTimeout(() => setNotice(''), 6000)
+        return () => clearTimeout(timer)
+    }, [notice])
+
+    function showOpen(next) {
+        setOpenCats(next)
+        writeStored('session', openKey, JSON.stringify([...next]))
+    }
 
     const load = useCallback(async () => {
         setError('')
@@ -199,6 +219,23 @@ export default function ChecklistRoundPage() {
     const priority = leftLastTime(tree, before.round, before.ticks)
     const urgent = open ? all.filter(t => priority.has(t.id) && !byTask.has(t.id)) : []
     const where = placeOf(tree)
+    const shown = tree.filter(c => c.elements.length).map(c => c.category.id)
+    const allOpen = shown.length > 0 && shown.every(c => openCats.has(c))
+    const urgentIn = new Map()
+    for (const t of urgent) urgentIn.set(t.category_id, (urgentIn.get(t.category_id) || 0) + 1)
+
+    // One category, opened or closed from its own heading. The heading stays
+    // under the finger; the others are left as they are.
+    function toggleCategory(categoryId, heading) {
+        const next = new Set(openCats)
+        if (next.has(categoryId)) next.delete(categoryId)
+        else next.add(categoryId)
+        keepAt(heading, () => showOpen(next))
+    }
+
+    function toggleAll(button) {
+        keepAt(button, () => showOpen(allOpen ? new Set() : new Set(shown)))
+    }
 
     function toggle(task) {
         if (!open || byTask.has(task.id)) return
@@ -284,8 +321,16 @@ export default function ChecklistRoundPage() {
         recountBadges()
     }
 
+    // Opens the category it is in first, since they start closed. Straight
+    // there rather than gliding, so a tick arriving on the way does not stop
+    // it half way.
     function jumpTo(taskId) {
-        document.getElementById(`row-${taskId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        const categoryId = all.find(t => t.id === taskId)?.category_id
+        const next = new Set(openCats)
+        if (categoryId) next.add(categoryId)
+        keepAt(null, () => showOpen(next), () => {
+            document.getElementById(`row-${taskId}`)?.scrollIntoView?.({ block: 'center' })
+        })
     }
 
     async function deleteRound() {
@@ -318,7 +363,11 @@ export default function ChecklistRoundPage() {
         // scroller's padding, so the list showed through above the bar and
         // slid out under it. On a phone it is an ordinary tall page and the
         // bars stick to the top and bottom of the screen.
-        <div className="-mx-4 md:-mx-7 -my-4 md:-my-7 flex flex-col md:h-[calc(100vh-4rem)]">
+        //
+        // The browser's own scroll anchoring is off here (overflow-anchor),
+        // because useKeepPlace does that job on every browser and the two
+        // together moved the page twice.
+        <div className="-mx-4 md:-mx-7 -my-4 md:-my-7 flex flex-col md:h-[calc(100vh-4rem)] [overflow-anchor:none]">
             <CountingBar
                 backTo="/checklists"
                 backLabel="Back to checklists"
@@ -340,10 +389,29 @@ export default function ChecklistRoundPage() {
             {/* No padding on top of the scroller itself, for the same reason:
                 the category headings stick to its top edge. */}
             <div className="flex-1 md:overflow-y-auto px-4 md:px-7 pb-32 md:pb-8">
-                <div className="max-w-3xl pt-4">
-                    <p className="text-sm text-muted">
-                        Started {doneDayLong(round.started_at)}{round.started_by_name && ` by ${round.started_by_name}`}.
-                    </p>
+                <div ref={listRef} className="max-w-3xl pt-4">
+                    <div className="flex items-start justify-between gap-3">
+                        <p className="text-sm text-muted">
+                            Started {doneDayLong(round.started_at)}{round.started_by_name && ` by ${round.started_by_name}`}.
+                        </p>
+                        {shown.length > 0 && (
+                            <button
+                                type="button"
+                                onClick={e => toggleAll(e.currentTarget)}
+                                aria-expanded={allOpen}
+                                className={`${rowButton('plain')} flex-shrink-0 inline-flex items-center gap-1.5`}
+                            >
+                                {/* Both words in the same place and only one
+                                    showing, so the button is the width of the
+                                    longer one whichever it says. */}
+                                <span className="grid">
+                                    <span className={`col-start-1 row-start-1 ${allOpen ? 'invisible' : ''}`}>Expand all</span>
+                                    <span className={`col-start-1 row-start-1 ${allOpen ? '' : 'invisible'}`}>Collapse all</span>
+                                </span>
+                                <Chevron open={allOpen} />
+                            </button>
+                        )}
+                    </div>
                     {!open && (
                         <Notice tone={outcome === 'finished' ? 'good' : 'warn'} className="mt-3">
                             {outcome === 'finished'
@@ -380,9 +448,6 @@ export default function ChecklistRoundPage() {
                         </p>
                     )}
 
-                    <ErrorBanner className="mt-3">{error}</ErrorBanner>
-                    <Notice tone="good" className="mt-3">{notice}</Notice>
-
                     {all.length === 0 && (
                         <p className="text-sm text-muted mt-6">There is nothing on this list yet.</p>
                     )}
@@ -391,47 +456,69 @@ export default function ChecklistRoundPage() {
                         if (!elements.length) return null
                         const leaves = elements.flatMap(e => (e.subs.length ? e.subs : [e.task]))
                         const catDone = leaves.filter(t => byTask.has(t.id)).length
+                        const isOpen = openCats.has(category.id)
+                        const urgentHere = urgentIn.get(category.id) || 0
                         return (
-                            <section key={category.id} className="pt-5">
+                            <section key={category.id} id={`cat-${category.id}`} data-place className={isOpen ? 'pt-5' : 'pt-3'}>
                                 {/* Under the counting bar on a phone: the back
                                     button's 44px, its padding and the progress
-                                    strip. */}
-                                <div className="sticky top-[4.5rem] md:top-0 z-10 bg-sidebar rounded-lg px-3 py-2.5 mb-2 flex items-center justify-between shadow-md">
-                                    <h2 className="font-serif text-base font-bold text-white">{category.name}</h2>
-                                    <span className={`${badge} bg-white/20 text-white`}>{catDone}/{leaves.length}</span>
-                                </div>
-                                <div className={`${card} overflow-hidden divide-y divide-border`}>
-                                    {elements.map(element => {
-                                        const { task, subs } = element
-                                        const rowProps = t => ({
-                                            key: t.id, task: t, tick: byTask.get(t.id), draft: pending[t.id], lastDone: lastDone.get(t.id),
-                                            open, restaurantId: round.restaurant_id, roundId: round.id,
-                                            onToggle: () => toggle(t), onAddPhoto: path => addPhoto(t, path),
-                                            onRemovePhoto: path => removePhoto(t, path), onError: setError,
-                                        urgent: open && priority.has(t.id) && !byTask.has(t.id),
-                                        })
-                                        if (!subs.length) return <TickRow {...rowProps(task)} />
-                                        const subDone = subs.filter(s => byTask.has(s.id)).length
-                                        const complete = elementDone(element, new Set(byTask.keys()))
-                                        return (
-                                            <div key={task.id} className={complete ? 'bg-green-50/60' : ''}>
-                                                <div className="px-4 pt-3 pb-1">
-                                                    <div className="flex items-start justify-between gap-3">
-                                                        <p className="font-semibold text-gray-900">{task.name}</p>
-                                                        <span className={`text-xs font-semibold flex-shrink-0 ${complete ? 'text-green-800' : 'text-muted'}`}>
-                                                            {complete ? 'Done' : `${subDone} of ${subs.length}`}
-                                                        </span>
+                                    strip. The whole bar opens and closes it. */}
+                                <h2 className="sticky top-[4.5rem] md:top-0 z-10 mb-2 rounded-lg bg-sidebar shadow-md">
+                                    <button
+                                        type="button"
+                                        onClick={e => toggleCategory(category.id, e.currentTarget.parentElement)}
+                                        aria-expanded={isOpen}
+                                        className="w-full min-h-[44px] px-3 py-2.5 flex items-center justify-between gap-3 text-left rounded-lg
+                                            focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                                    >
+                                        <span className="flex items-center gap-2 min-w-0 text-white">
+                                            <Chevron open={isOpen} />
+                                            <span className="font-serif text-base font-bold break-words">{category.name}</span>
+                                        </span>
+                                        <span className="flex items-center gap-1.5 flex-shrink-0">
+                                            {/* A closed category still says it holds
+                                                something to do first. */}
+                                            {urgentHere > 0 && (
+                                                <span className={`${badge} bg-red-700 text-white`}>{urgentHere} high priority</span>
+                                            )}
+                                            <span className={`${badge} bg-white/20 text-white`}>{catDone}/{leaves.length}</span>
+                                        </span>
+                                    </button>
+                                </h2>
+                                {isOpen && (
+                                    <div className={`${card} overflow-hidden divide-y divide-border`}>
+                                        {elements.map(element => {
+                                            const { task, subs } = element
+                                            const rowProps = t => ({
+                                                key: t.id, task: t, tick: byTask.get(t.id), draft: pending[t.id], lastDone: lastDone.get(t.id),
+                                                open, restaurantId: round.restaurant_id, roundId: round.id,
+                                                onToggle: () => toggle(t), onAddPhoto: path => addPhoto(t, path),
+                                                onRemovePhoto: path => removePhoto(t, path), onError: setError,
+                                                urgent: open && priority.has(t.id) && !byTask.has(t.id),
+                                            })
+                                            if (!subs.length) return <TickRow {...rowProps(task)} />
+                                            const subDone = subs.filter(s => byTask.has(s.id)).length
+                                            const complete = elementDone(element, new Set(byTask.keys()))
+                                            return (
+                                                <div key={task.id} id={`group-${task.id}`} data-place className={complete ? 'bg-green-50/60' : ''}>
+                                                    <div className="px-4 pt-3 pb-1">
+                                                        <div className="flex items-start justify-between gap-3">
+                                                            <p className="font-semibold text-gray-900">{task.name}</p>
+                                                            <span className={`text-xs font-semibold flex-shrink-0 ${complete ? 'text-green-800' : 'text-muted'}`}>
+                                                                {complete ? 'Done' : `${subDone} of ${subs.length}`}
+                                                            </span>
+                                                        </div>
+                                                        {task.how_to && <p className="text-sm text-gray-600 mt-0.5 whitespace-pre-line">{task.how_to}</p>}
+                                                        {task.guide_photos?.length > 0 && <GuidePicture paths={task.guide_photos} name={task.name} />}
                                                     </div>
-                                                    {task.how_to && <p className="text-sm text-gray-600 mt-0.5 whitespace-pre-line">{task.how_to}</p>}
-                                                    {task.guide_photos?.length > 0 && <GuidePicture paths={task.guide_photos} name={task.name} />}
+                                                    <div className="pl-4 divide-y divide-border">
+                                                        {subs.map(s => <TickRow {...rowProps(s)} />)}
+                                                    </div>
                                                 </div>
-                                                <div className="pl-4 divide-y divide-border">
-                                                    {subs.map(s => <TickRow {...rowProps(s)} />)}
-                                                </div>
-                                            </div>
-                                        )
-                                    })}
-                                </div>
+                                            )
+                                        })}
+                                    </div>
+                                )}
                             </section>
                         )
                     })}
@@ -451,19 +538,41 @@ export default function ChecklistRoundPage() {
                 </div>
             </div>
 
-            {open && waiting.length > 0 && (
+            {/* What was saved, or what went wrong, shows here by the Submit
+                button rather than at the top: the page holds its place now, so
+                anything at the top would be out of sight. */}
+            {((open && waiting.length > 0) || notice || error) && (
                 <div className="flex-shrink-0 sticky bottom-0 md:static z-20 bg-white border-t border-border shadow-[0_-4px_12px_rgba(0,0,0,0.08)] px-4 md:px-7 py-3">
-                    <div className="max-w-3xl flex items-center gap-3">
-                        <p className="text-sm text-gray-700 flex-1 min-w-0">
-                            {waiting.length === 1 ? '1 tick' : `${waiting.length} ticks`} not saved yet.
-                        </p>
-                        <button type="button" onClick={submit} disabled={busy} className={primaryButton('lg')}>
-                            {busy ? 'Saving...' : 'Submit'}
-                        </button>
+                    <div className="max-w-3xl">
+                        <ErrorBanner>{error}</ErrorBanner>
+                        {!error && <Notice tone="good">{notice}</Notice>}
+                        {open && waiting.length > 0 && (
+                            <div className={`flex items-center gap-3 ${error || notice ? 'mt-3' : ''}`}>
+                                <p className="text-sm text-gray-700 flex-1 min-w-0">
+                                    {waiting.length === 1 ? '1 tick' : `${waiting.length} ticks`} not saved yet.
+                                </p>
+                                <button type="button" onClick={submit} disabled={busy} className={primaryButton('lg')}>
+                                    {busy ? 'Saving...' : 'Submit'}
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
         </div>
+    )
+}
+
+// The arrow on a heading or button that opens and closes: down when closed,
+// up when open, the same as a dialog's sections (ModalSectionBar).
+function Chevron({ open }) {
+    return (
+        <svg
+            className={`w-4 h-4 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-hidden="true"
+        >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
     )
 }
 
@@ -477,6 +586,7 @@ function TickRow({ task, tick, draft, lastDone, open, urgent, restaurantId, roun
     return (
         <div
             id={`row-${task.id}`}
+            data-place
             className={`flex items-start gap-3 px-4 py-3 min-h-[56px] scroll-mt-32 ${tick ? 'bg-green-50' : urgent ? 'bg-red-50 shadow-[inset_4px_0_0_#b91c1c]' : draft ? 'bg-accent-light/50' : ''}`}
         >
             {/* A submitted tick is a solid green mark rather than a box. A
@@ -535,6 +645,17 @@ function TickRow({ task, tick, draft, lastDone, open, urgent, restaurantId, roun
             </div>
         </div>
     )
+}
+
+// The categories open on this tab, if it kept any.
+function readOpen(key) {
+    try {
+        const kept = JSON.parse(readStored('session', key) || '[]')
+        return new Set(Array.isArray(kept) ? kept : [])
+    } catch {
+        // Not a list. Everything starts closed.
+        return new Set()
+    }
 }
 
 // Ticks this phone has not submitted yet, if it kept any.
