@@ -51,7 +51,7 @@ function setUp({ round = ROUND, saved = SAVED, upsertResult, earlier = null } = 
         let roundId
         const read = makeQuery()
         read.eq = vi.fn((column, value) => { if (column === 'round_id') roundId = value; return read })
-        read.then = (resolve, reject) => Promise.resolve({ data: roundId === 'r0' ? EARLIER_TICKS : saved, error: null }).then(resolve, reject)
+        read.then = (resolve, reject) => Promise.resolve({ data: roundId === 'r0' ? EARLIER_TICKS : [...saved], error: null }).then(resolve, reject)
         read.upsert = vi.fn(() => upsert)
         return read
     })
@@ -178,6 +178,34 @@ describe('ticking and submitting', () => {
         } finally {
             refuse.mockRestore()
         }
+    })
+})
+
+// Seven people on one list: each phone learns what the others submitted
+// without anybody pressing anything.
+describe('several people on one list', () => {
+    const CIARA = { id: 'k2', round_id: 'r1', task_id: 't3', done_by_name: 'Ciara', done_at: '2026-09-22T09:40:00+00:00', photos: [] }
+
+    it('shows what somebody else submitted when the phone comes back to the page', async () => {
+        const saved = [...SAVED]
+        setUp({ saved })
+        open()
+        expect(await screen.findByText('1 of 3 done')).toBeInTheDocument()
+        saved.push(CIARA)
+        window.dispatchEvent(new Event('focus'))
+        expect(await screen.findByText(/Done by Ciara/)).toBeInTheDocument()
+        expect(screen.getByText('2 of 3 done')).toBeInTheDocument()
+    })
+
+    it('turns a tick to theirs the moment it is ticked, if they already did it', async () => {
+        const saved = [...SAVED]
+        setUp({ saved })
+        const user = open()
+        const box = await screen.findByLabelText('Clean toaster sides')
+        saved.push(CIARA)
+        await user.click(box)
+        expect(await screen.findByText(/Done by Ciara/)).toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: 'Submit' })).toBeNull()
     })
 })
 
