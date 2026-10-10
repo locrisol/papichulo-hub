@@ -21,6 +21,13 @@ const YELLOW = [253, 230, 138]
 // time is the one thing here that nothing else says twice. An outline is a
 // shape rather than a colour, so it survives the trip.
 const YELLOW_EDGE = [180, 140, 20]
+// How tall the yellow box round a time is at the usual lettering, and the gap
+// kept between two shifts on one day.
+const MARK_H = 10.2
+const STACK_GAP = 1
+// The least a day's breaks half keeps when two shifts borrow from it: room for
+// its one line of small print.
+const BREAK_FLOOR = 8
 
 // Three weights, because a printed week is read by its lines before it is read
 // by its words. The eye follows a column down and a person across, and it can
@@ -181,9 +188,13 @@ export async function weekPdf(table, restaurantName, weekStart, { save = true } 
     // A shift with its opening or closing time picked out in yellow, the way
     // the spreadsheet does. Three pieces rather than one string, because only
     // one of them is marked and it has to be measured to know how wide.
-    const marked = (shift, centreX, yy) => {
+    //
+    // `size` is the lettering's, 8 unless a day has two shifts that would not
+    // otherwise fit (see below). The box round a time grows and shrinks with it.
+    const marked = (shift, centreX, yy, size = 8) => {
+        const k = size / 8
         pdf.setFont('helvetica', 'bold')
-        pdf.setFontSize(8)
+        pdf.setFontSize(size)
         const parts = [
             { text: shift.start, mark: shift.opens },
             { text: ' - ', mark: false },
@@ -193,7 +204,7 @@ export async function weekPdf(table, restaurantName, weekStart, { save = true } 
         // over the top. A shift can be marked at both ends, so if the box were
         // simply painted wider than the number it sits on, the one round the
         // start and the one round the finish would meet in the middle.
-        const MARK_PAD = 2.4
+        const MARK_PAD = 2.4 * k
         const widths = parts.map(p => pdf.getTextWidth(p.text))
         const advances = parts.map((p, i) => widths[i] + (p.mark ? MARK_PAD * 2 : 0))
         const total = advances.reduce((a, b) => a + b, 0)
@@ -205,9 +216,9 @@ export async function weekPdf(table, restaurantName, weekStart, { save = true } 
                 pdf.setDrawColor(...YELLOW_EDGE)
                 pdf.setLineWidth(0.4)
                 // Rounded, the same as the mark on screen.
-                pdf.roundedRect(x, yy - 6.9, advances[i], 10.2, 1.5, 1.5, 'FD')
+                pdf.roundedRect(x, yy - 6.9 * k, advances[i], MARK_H * k, 1.5, 1.5, 'FD')
             }
-            at(p.text, x + (p.mark ? MARK_PAD : 0), yy, { size: 8, style: 'bold' })
+            at(p.text, x + (p.mark ? MARK_PAD : 0), yy, { size, style: 'bold' })
             x += advances[i]
         })
     }
@@ -429,16 +440,34 @@ export async function weekPdf(table, restaurantName, weekStart, { save = true } 
             })
         }
 
+        // Where each day's times end and its breaks begin. The middle of the
+        // row, unless the day has two shifts (see below).
+        const splits = []
+
         person.days.forEach((day, i) => {
             const x = l.columnX(i) + l.dayCol / 2
+
+            // The lettering and its yellow box do not shrink with the squeeze,
+            // only the space between them did: on a full week two shifts were
+            // seven points apart in boxes ten points tall, and drawn on top of
+            // each other (his, 10 October). So a day with two takes what it
+            // needs from the breaks half, which only ever holds one short line,
+            // and the step between them is never less than a box. Only if that
+            // is still not enough do its times come down in size.
+            const stack = day.shifts.length
+            const needed = stack * MARK_H + (stack - 1) * STACK_GAP + 2
+            const spare = Math.max(0, h(l.breakH) - BREAK_FLOOR)
+            const borrow = stack > 1 ? Math.min(spare, Math.max(0, needed - h(l.shiftH))) : 0
+            const split = h(l.shiftH) + borrow
+            splits[i] = split
 
             // The two halves of a row each hold their own things in the
             // middle of themselves: the times in the top half, the breaks in
             // the bottom. The breaks used to sit just under the line dividing
             // them instead, hard against it, which left the row bottom heavy
             // with a gap under the breaks and none above them.
-            const timesMiddle = y + h(l.shiftH) / 2 + 3
-            const breaksMiddle = y + h(l.shiftH) + h(l.breakH) / 2 + 2
+            const timesMiddle = y + split / 2 + 3
+            const breaksMiddle = y + split + (rowH - split) / 2 + 2
 
             // Same as the picture: filled, one word, and no reason on it.
             //
@@ -465,9 +494,11 @@ export async function weekPdf(table, restaurantName, weekStart, { save = true } 
             // Somebody on twice in a day has two of each, so the pair is
             // centred as a block rather than the first one being centred and
             // the second hanging off the bottom of it.
-            const stack = day.shifts.length
+            const room = split - 2
+            const size = stack > 1 ? Math.min(8, (room - (stack - 1) * STACK_GAP) / (stack * MARK_H / 8)) : 8
+            const step = (MARK_H * size) / 8 + STACK_GAP
             day.shifts.forEach((s, n) => {
-                marked(s, x, timesMiddle - ((stack - 1) * h(11)) / 2 + n * h(11))
+                marked(s, x, timesMiddle - ((stack - 1) * step) / 2 + n * step, size)
             })
             const breakStack = day.breaks.length
             day.breaks.forEach((words, n) => {
@@ -489,8 +520,8 @@ export async function weekPdf(table, restaurantName, weekStart, { save = true } 
         person.days.forEach((day, i) => {
             if (day.away) return
             pdf.line(
-                l.columnX(i), top + h(l.shiftH),
-                l.columnX(i) + l.dayCol, top + h(l.shiftH),
+                l.columnX(i), top + splits[i],
+                l.columnX(i) + l.dayCol, top + splits[i],
             )
         })
 
