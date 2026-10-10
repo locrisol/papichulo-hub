@@ -402,7 +402,7 @@ ALTER TABLE ONLY "public"."product_allergens"
     ADD CONSTRAINT "product_allergens_product_id_key" UNIQUE ("product_id");
 
 -- Versions of a product: what can be bought for it, from which supplier and
--- under which code, each with its own allergens. See migration 004 and
+-- under which code, each with its own allergens (added 4 October 2026). See
 -- lib/allergensAt for how a restaurant's sheet is built from them.
 create table if not exists public.product_versions (
     id uuid default gen_random_uuid() not null primary key,
