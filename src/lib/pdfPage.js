@@ -29,6 +29,61 @@ export function loadJsPdf() {
     return jsPdfModule
 }
 
+// The Hub's own font, DM Sans, carried inside a PDF so it looks like the screen
+// and the picture of the roster rather than like Helvetica (his, 10 October).
+//
+// A PDF can only use a handful of fonts without carrying them, and DM Sans is
+// not one, so the two files ride along: about 150KB more on a PDF that uses
+// them. Fetched from /fonts the first time somebody asks for such a PDF, and
+// kept, the same as jsPDF above. Static files rather than the variable font
+// the screen loads, because jsPDF draws a variable one at its default weight.
+// SIL Open Font License, which is beside them in public/fonts.
+//
+// If they cannot be had the PDF is still made, in Helvetica: a sheet in the
+// wrong font is better than no sheet on a phone that lost its signal.
+export const HUB_FONT = 'DMSans'
+const HUB_FONT_FILES = { normal: 'DMSans-Regular.ttf', bold: 'DMSans-Bold.ttf' }
+let hubFontFiles = null
+
+function base64Of(buffer) {
+    const bytes = new Uint8Array(buffer)
+    let binary = ''
+    for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192))
+    return btoa(binary)
+}
+
+function loadHubFontFiles(fetchFile) {
+    if (!hubFontFiles) {
+        const base = import.meta.env?.BASE_URL || '/'
+        hubFontFiles = Promise.all(Object.entries(HUB_FONT_FILES).map(async ([style, file]) => {
+            const res = await fetchFile(`${base}fonts/${file}`)
+            if (!res.ok) throw new Error(`${file}: ${res.status}`)
+            return [style, base64Of(await res.arrayBuffer())]
+        }))
+            .then(Object.fromEntries)
+            .catch(err => {
+                hubFontFiles = null
+                throw err
+            })
+    }
+    return hubFontFiles
+}
+
+// Puts DM Sans in this PDF and says which family to draw with: DM Sans, or
+// Helvetica when the files could not be fetched.
+export async function embedHubFont(pdf, fetchFile = (...args) => fetch(...args)) {
+    try {
+        const files = await loadHubFontFiles(fetchFile)
+        for (const [style, file] of Object.entries(HUB_FONT_FILES)) {
+            pdf.addFileToVFS(file, files[style])
+            pdf.addFont(file, HUB_FONT, style)
+        }
+        return HUB_FONT
+    } catch {
+        return 'helvetica'
+    }
+}
+
 // The logo, in millimetres. The file is 400 by 249.
 export const LOGO_WIDTH = 26
 export const LOGO_HEIGHT = (LOGO_WIDTH * 249) / 400
