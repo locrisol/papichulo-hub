@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { weekPdf } from '@/lib/rosterPdf'
 import { weekTable } from '@/lib/rosterShare'
 
@@ -81,5 +81,32 @@ describe('building the PDF', () => {
             dates: DATES, employees: [], shifts: [], openingHours: {}, today: DATES[0],
         })
         await expect(weekPdf(bare, 'Point Campus', DATES[0], { save: false })).resolves.toBeTruthy()
+    })
+})
+
+// His, 10 October: the PDF in DM Sans, the same as the picture.
+describe('the font', () => {
+    it('is DM Sans when the files can be had', async () => {
+        const { readFileSync } = await import('node:fs')
+        const fetchFile = async url => ({
+            ok: true,
+            arrayBuffer: async () => {
+                const b = readFileSync(`public${url}`)
+                return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength)
+            },
+        })
+        const doc = await weekPdf(full, 'Point Campus', DATES[0], { save: false, fetchFile })
+        expect(Object.keys(doc.getFontList())).toContain('DMSans')
+        expect(doc.output()).toContain('/FontFile2')
+    })
+
+    // A sheet in the wrong font is better than no sheet on a phone with no signal.
+    // A fresh copy, since the files fetched above are kept once they arrive.
+    it('falls back to Helvetica and still makes the PDF when they cannot', async () => {
+        vi.resetModules()
+        const { weekPdf: fresh } = await import('@/lib/rosterPdf')
+        const fetchFile = async () => ({ ok: false, status: 404 })
+        const doc = await fresh(full, 'Point Campus', DATES[0], { save: false, fetchFile })
+        expect(doc.output()).not.toContain('/FontFile2')
     })
 })

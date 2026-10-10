@@ -1,6 +1,6 @@
 import { sheetLayout, shareName, wrapLines, AWAY } from '@/lib/rosterShare'
 import { kindColours } from '@/lib/diary'
-import { loadJsPdf, rgb } from '@/lib/pdfPage'
+import { loadJsPdf, rgb, useHubFont } from '@/lib/pdfPage'
 
 // The week as a PDF, for printing and putting on the wall.
 //
@@ -43,13 +43,16 @@ const RULE_SOFT = { rgb: [225, 220, 212], width: 0.4 }
 // save is an option only so a test can build a page without putting a file on
 // somebody's disk. It defaults to saving, because that is what every caller in
 // the app wants and a flag nobody passes should do the obvious thing.
-export async function weekPdf(table, restaurantName, weekStart, { save = true } = {}) {
+export async function weekPdf(table, restaurantName, weekStart, { save = true, fetchFile } = {}) {
     const pdf = new (await loadJsPdf())({ unit: 'pt', format: 'a4', orientation: 'landscape' })
     const pageWidth = pdf.internal.pageSize.getWidth()
+    // DM Sans, the same as the picture, or Helvetica if it could not be had.
+    // Every width below is measured in whichever it is.
+    const FONT = await useHubFont(pdf, fetchFile)
 
     // Measured before the sheet is sized, because a day with two acts on it
     // makes that row taller and everything below it moves down.
-    pdf.setFont('helvetica', 'normal')
+    pdf.setFont(FONT, 'normal')
     pdf.setFontSize(7)
     // What the three fixed columns actually need, measured rather than guessed.
     //
@@ -59,7 +62,7 @@ export async function weekPdf(table, restaurantName, weekStart, { save = true } 
     // the way it always was.
     const widest = (items, size, style) => {
         pdf.setFontSize(size)
-        pdf.setFont('helvetica', style)
+        pdf.setFont(FONT, style)
         return Math.max(0, ...items.filter(Boolean).map(t => pdf.getTextWidth(String(t))))
     }
 
@@ -87,7 +90,7 @@ export async function weekPdf(table, restaurantName, weekStart, { save = true } 
     // wraps by asking how wide its own text is, so leaving it there quietly
     // measured every card in a heavier face than it is drawn in and broke the
     // lines earlier than they needed to break.
-    pdf.setFont('helvetica', 'normal')
+    pdf.setFont(FONT, 'normal')
     pdf.setFontSize(7)
 
     const probe = sheetLayout(table, { width: pageWidth, pad: 24, ...cols })
@@ -139,7 +142,7 @@ export async function weekPdf(table, restaurantName, weekStart, { save = true } 
     // columns it runs across rather than one of them. Without this the words
     // ran out of the bar and across the days beside it.
     pdf.setFontSize(7)
-    pdf.setFont('helvetica', 'bold')
+    pdf.setFont(FONT, 'bold')
     const bandWords = (table.bands || []).map(band => [
         band.runsIn ? '‹' : '', band.label, band.runsOn ? '›' : '',
     ].filter(Boolean).join(' '))
@@ -175,7 +178,7 @@ export async function weekPdf(table, restaurantName, weekStart, { save = true } 
         pdf.rect(x, yy, w, hh, 'F')
     }
     const at = (value, x, yy, { align = 'left', size = 9, style = 'normal', rgb: colour = [17, 24, 39], max = null } = {}) => {
-        pdf.setFont('helvetica', style)
+        pdf.setFont(FONT, style)
         pdf.setFontSize(size)
         pdf.setTextColor(...colour)
         let out = String(value ?? '')
@@ -193,7 +196,7 @@ export async function weekPdf(table, restaurantName, weekStart, { save = true } 
     // otherwise fit (see below). The box round a time grows and shrinks with it.
     const marked = (shift, centreX, yy, size = 8) => {
         const k = size / 8
-        pdf.setFont('helvetica', 'bold')
+        pdf.setFont(FONT, 'bold')
         pdf.setFontSize(size)
         const parts = [
             { text: shift.start, mark: shift.opens },
@@ -334,9 +337,9 @@ export async function weekPdf(table, restaurantName, weekStart, { save = true } 
                 used += line.length + 1
 
                 pdf.setFontSize(7)
-                pdf.setFont('helvetica', 'bold')
+                pdf.setFont(FONT, 'bold')
                 const headW = head ? pdf.getTextWidth(head) : 0
-                pdf.setFont('helvetica', 'normal')
+                pdf.setFont(FONT, 'normal')
                 const restW = rest ? pdf.getTextWidth(rest) : 0
 
                 const startX = centre - (headW + restW) / 2
