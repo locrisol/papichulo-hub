@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { isWrite, saved } from '@/lib/saves'
 
 // One client for the whole app. Everything that talks to the database imports
 // this, so the session is shared and there is only one place to configure.
@@ -24,8 +25,14 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 //
 // Every figure in here can change between one look and the next, so there is
 // nothing a cache could save that is worth the risk of showing a stale one.
-export function freshFetch(input, init = {}) {
-    return fetch(input, { ...init, cache: 'no-store' })
+//
+// And every write that went through says so, for the sidebar's badges. See
+// lib/saves.
+export async function freshFetch(input, init = {}) {
+    const response = await fetch(input, { ...init, cache: 'no-store' })
+    const url = typeof input === 'string' ? input : input?.url
+    if (response?.ok && isWrite(url, init.method || input?.method)) saved()
+    return response
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {

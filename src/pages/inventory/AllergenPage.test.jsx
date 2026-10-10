@@ -13,11 +13,14 @@ import { onAllergensChanged } from '@/lib/allergensChanged'
 
 let db
 vi.mock('@/lib/supabase', () => ({ supabase: new Proxy({}, { get: (_, k) => db[k] }) }))
+// One restaurant object for the whole test, the way the real context keeps one.
+const RESTAURANT = { id: 'r1', name: 'Point Campus' }
+vi.mock('@/context/restaurant', () => ({ useRestaurant: () => ({ activeRestaurant: RESTAURANT }) }))
 
 const { default: AllergenPage } = await import('./AllergenPage')
 
-function show(product, rows, recipeLines = []) {
-    const tables = { products: [product], product_allergens: rows, mix_recipes: recipeLines }
+function show(product, rows, recipeLines = [], more = {}) {
+    const tables = { products: [product], product_allergens: rows, mix_recipes: recipeLines, ...more }
     db = { from: vi.fn(table => tableOf(tables[table] || [])) }
     return renderWithRouter(
         <Routes><Route path="/catalogue/products/:id/allergens" element={<AllergenPage />} /></Routes>,
@@ -103,5 +106,59 @@ describe('saving', () => {
         } finally {
             stop()
         }
+    })
+})
+
+// Since 4 October a bought product has versions, each with its own answers,
+// because two makes of the same thing can differ. Flour Tortilla, bought two
+// ways at Point Campus.
+describe('a product with versions', () => {
+    const TORTILLA = { id: 'tortilla', name: 'Flour Tortilla (Burritos)', section: 'Dry', unit: 'Units' }
+    const versions = [
+        { id: 'v1', product_id: 'tortilla', supplier_code: '497870', name: 'Santa Maria wrap 12"', is_recommended: true, is_active: true, suppliers: { name: 'Sysco Ireland' } },
+        { id: 'v2', product_id: 'tortilla', supplier_code: '5013972', name: 'Plain wraps 12"', is_recommended: false, is_active: true, suppliers: { name: 'Sysco Ireland' } },
+    ]
+    const answered = { version_id: 'v1', ...emptyAllergens(), gluten: 'contains', updated_at: '2026-09-01T10:00:00Z' }
+    const showTortilla = () => show(TORTILLA, [], [], {
+        product_versions: versions,
+        version_allergens: [answered],
+        public_restaurant_versions: [{ restaurant_id: 'r1', version_id: 'v1' }, { restaurant_id: 'r1', version_id: 'v2' }],
+    })
+
+    it('lists each version with where it comes from, and which one has no answer', async () => {
+        showTortilla()
+        expect(await screen.findByText('Santa Maria wrap 12"')).toBeInTheDocument()
+        expect(screen.getByText('Sysco Ireland, code 5013972')).toBeInTheDocument()
+        expect(screen.getAllByText('Bought at Point Campus')).toHaveLength(2)
+        expect(screen.getByText('Recommended')).toBeInTheDocument()
+        expect(screen.getByText('Not answered')).toBeInTheDocument()
+    })
+
+    it('says what a version with no answer means for the sheet, and can start from another', async () => {
+        const me = userEvent.setup()
+        showTortilla()
+        await me.click(await screen.findByRole('button', { name: /Plain wraps 12"/ }))
+        expect(screen.getByText(/Nothing has been saved for this version yet/)).toBeInTheDocument()
+        await me.click(screen.getByRole('button', { name: 'Santa Maria wrap 12"' }))
+        expect(screen.getByRole('button', { name: 'Save this version' })).toBeInTheDocument()
+    })
+
+    it('saves the answers on the version picked, not on the product', async () => {
+        const me = userEvent.setup()
+        showTortilla()
+        await me.click(await screen.findByRole('button', { name: /Plain wraps 12"/ }))
+        const answer = db.from.getMockImplementation()
+        let saved = null
+        db.from.mockImplementation(table => {
+            const q = answer(table)
+            if (table === 'version_allergens') {
+                q.upsert = vi.fn(row => { saved = row; return makeQuery({ data: null, error: null }) })
+            }
+            return q
+        })
+        await me.click(screen.getByRole('button', { name: 'Save this version' }))
+        await waitFor(() => expect(saved).not.toBeNull())
+        expect(saved.version_id).toBe('v2')
+        expect(db.from).not.toHaveBeenCalledWith('product_allergens', expect.anything())
     })
 })

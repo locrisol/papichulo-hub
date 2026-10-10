@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { weeksToPublish, rosterWaiting, reportsOwed, badgesFrom, menuDotFrom } from '@/lib/badges'
+import {
+    weeksToPublish, rosterWaiting, reportsOwed, badgesFrom, menuDotFrom,
+    freedUncovered, salesWaiting, timesheetWaiting, checklistsDue, permitsWaiting,
+} from '@/lib/badges'
 
 // Weeks run Sunday to Saturday. 4 October 2026 is a Sunday.
 const WED = '2026-10-07'
@@ -117,6 +120,14 @@ describe('the badges', () => {
         expect(badges['/inventory/public-allergens']).toEqual({ dot: true, tone: 'urgent', words: 'A new allergen sheet needs printing' })
     })
 
+    // His design of 4 October: whoever answers what store managers sent for
+    // review sees how many are waiting, on Products.
+    it('counts what was sent for review on Products', () => {
+        expect(badgesFrom({ ...manager, role: 'owner', requests: 2 })['/catalogue/products'])
+            .toEqual({ count: 2, tone: 'waiting', words: '2 things sent for review' })
+        expect(badgesFrom({ ...manager, role: 'owner', requests: 0 })['/catalogue/products']).toBeUndefined()
+    })
+
     it('marks it amber when it has simply never been printed', () => {
         expect(badgesFrom({ ...manager, sheet: { ...manager.sheet, printed_at: null } })['/inventory/public-allergens'].tone).toBe('waiting')
     })
@@ -145,5 +156,163 @@ describe('the dot on a phone', () => {
         expect(menuDotFrom({})).toBeNull()
         expect(menuDotFrom({ a: { tone: 'waiting' } })).toEqual({ tone: 'waiting' })
         expect(menuDotFrom({ a: { tone: 'waiting' }, b: { tone: 'urgent' } })).toEqual({ tone: 'urgent' })
+    })
+})
+
+describe('hours freed by time off', () => {
+    const gap = (date, starts_at = '09:00:00', ends_at = '17:00:00') => ({ date, starts_at, ends_at })
+    const freed = [{ id: 'a1', employee_id: 'e1', status: 'approved', cleared_shifts: [gap('2026-10-09'), gap('2026-10-05')] }]
+
+    it('counts a freed shift still to come that nobody is on over', () => {
+        expect(freedUncovered(freed, [], WED)).toBe(1)
+    })
+
+    // Any overlap on the day is cover (isCovered), the roster's own rule.
+    it('is cleared by anybody rostered over those hours', () => {
+        const cover = [{ employee_id: 'e2', shift_date: '2026-10-09', starts_at: '12:00:00', ends_at: '20:00:00' }]
+        expect(freedUncovered(freed, cover, WED)).toBe(0)
+    })
+
+    it('adds to what waits on the roster for a store manager', () => {
+        const base = { role: 'store_manager', me: 'me', swaps: 1, absences: [], has_store_manager: true, shifts: [], today: WED }
+        expect(rosterWaiting({ ...base, freed })).toBe(2)
+        expect(rosterWaiting({ ...base, role: 'owner', me: 'o1', freed })).toBe(0)
+    })
+})
+
+describe('last week on Weekly sales', () => {
+    it('is waiting while a day has nothing saved, where the Hub keeps the sales', () => {
+        expect(salesWaiting({ keeps_sales: true, sales_missing: 2 })).toBe(true)
+        expect(salesWaiting({ keeps_sales: true, sales_missing: 0 })).toBe(false)
+    })
+
+    // A restaurant with nothing saved in the ten weeks before is not reminded.
+    it('says nothing where the sales are not kept here', () => {
+        expect(salesWaiting({ keeps_sales: false, sales_missing: 7 })).toBe(false)
+    })
+})
+
+describe('the Timesheet', () => {
+    const week = {
+        week_start: '2026-09-27', imported: false,
+        people: [{ id: 'e1' }], shifts: [{ employee_id: 'e1', shift_date: '2026-09-29' }], entries: [], absences: [],
+    }
+
+    it('is waiting while a rostered shift has nothing said about it', () => {
+        expect(timesheetWaiting({ today: WED, timesheet: week })).toBe('week')
+    })
+
+    // The till's file answers it (dayCell), and so does time off.
+    it('is answered by the file being read in, or by time off', () => {
+        expect(timesheetWaiting({ today: WED, timesheet: { ...week, imported: true } })).toBeNull()
+        const away = [{ employee_id: 'e1', kind: 'sick', starts_on: '2026-09-29', ends_on: '2026-09-29', status: 'approved' }]
+        expect(timesheetWaiting({ today: WED, timesheet: { ...week, absences: away } })).toBeNull()
+    })
+
+    it('still asks about a clock in with no clock out on an imported week', () => {
+        const open = [{ id: 't1', employee_id: 'e1', work_date: '2026-09-29', starts_at: '09:00:00', ends_at: null, kind: 'worked', source: 'import' }]
+        expect(timesheetWaiting({ today: WED, timesheet: { ...week, imported: true, entries: open } })).toBe('week')
+    })
+
+    // Fortnights from 13 September: 13 to 26 September is the last one over on
+    // 7 October. Both of its weeks have to have gone.
+    it('is waiting while the last finished pay period is not all sent', () => {
+        const pay = { start: '2026-09-13', ever_filed: true, filed: ['2026-09-13'] }
+        expect(timesheetWaiting({ today: WED, pay })).toBe('period')
+        expect(timesheetWaiting({ today: WED, pay: { ...pay, filed: ['2026-09-13', '2026-09-20'] } })).toBeNull()
+    })
+
+    // A test send never files a week, so a restaurant that has never really
+    // sent one is not using them.
+    it('says nothing about pay periods where none has ever been sent', () => {
+        expect(timesheetWaiting({ today: WED, pay: { start: '2026-09-13', ever_filed: false, filed: [] } })).toBeNull()
+    })
+})
+
+describe('checklists running out of time', () => {
+    const weekly = { id: 'w', repeats: 'weeks', every_weeks: 1, starts_on: '2026-09-06', finish_by: null, ended_at: null }
+    const monthly = { id: 'm', repeats: 'monthly', every_weeks: null, starts_on: '2026-09-06', finish_by: null, ended_at: null }
+    const once = { id: 'o', repeats: 'once', every_weeks: null, starts_on: '2026-10-01', finish_by: '2026-10-08', ended_at: null }
+
+    it('counts a weekly list in the last two days of its week', () => {
+        expect(checklistsDue([weekly], WED).count).toBe(0)
+        expect(checklistsDue([weekly], '2026-10-09').count).toBe(1)
+        expect(checklistsDue([weekly], '2026-10-10').count).toBe(1)
+    })
+
+    it('counts a monthly list in its last seven days', () => {
+        expect(checklistsDue([monthly], '2026-10-24').count).toBe(0)
+        expect(checklistsDue([monthly], '2026-10-25').count).toBe(1)
+    })
+
+    // A round ended early clears it too, as it does on the card.
+    it('is cleared by a round ended in the same stretch', () => {
+        expect(checklistsDue([{ ...weekly, ended_at: '2026-10-05T10:00:00' }], '2026-10-09').count).toBe(0)
+        expect(checklistsDue([{ ...weekly, ended_at: '2026-10-01T10:00:00' }], '2026-10-09').count).toBe(1)
+    })
+
+    it('counts a list done once from the day before its date, red once past it', () => {
+        expect(checklistsDue([once], '2026-10-06')).toEqual({ count: 0, tone: 'waiting' })
+        expect(checklistsDue([once], WED)).toEqual({ count: 1, tone: 'waiting' })
+        expect(checklistsDue([once], '2026-10-09')).toEqual({ count: 1, tone: 'urgent' })
+        expect(checklistsDue([{ ...once, ended_at: '2026-10-02T10:00:00' }], '2026-10-09').count).toBe(0)
+        expect(checklistsDue([{ ...once, finish_by: null }], '2026-10-09').count).toBe(0)
+    })
+})
+
+describe('permission to work on Team', () => {
+    // This week and next end on 17 October.
+    const soon = { id: 'e1', work_permission_expires: '2026-10-15', permission_renewal_applied: null }
+    const gone = { id: 'e2', work_permission_expires: '2026-10-01', permission_renewal_applied: null }
+
+    it('counts somebody rostered whose permission runs out by the end of next week', () => {
+        expect(permitsWaiting([soon], null, WED)).toEqual({ count: 1, tone: 'waiting' })
+        expect(permitsWaiting([{ ...soon, permission_renewal_applied: '2026-09-01' }], null, WED).count).toBe(0)
+    })
+
+    it('is red for somebody rostered with permission already run out', () => {
+        expect(permitsWaiting([gone, soon], null, WED)).toEqual({ count: 2, tone: 'urgent' })
+    })
+
+    // The roster's own rule (graceFor): applied for in time covers them for
+    // the restaurant's grace, applied for after it ran out covers nothing.
+    it('leaves out a renewal applied for in time, under the restaurant rule', () => {
+        const inTime = { ...gone, permission_renewal_applied: '2026-09-20' }
+        expect(permitsWaiting([inTime], null, WED).count).toBe(0)
+        expect(permitsWaiting([inTime], { permissionGrace: { on: false } }, WED)).toEqual({ count: 1, tone: 'urgent' })
+        expect(permitsWaiting([{ ...gone, permission_renewal_applied: '2026-10-03' }], null, WED).tone).toBe('urgent')
+    })
+})
+
+describe('the five badges on the sidebar', () => {
+    const once = { id: 'o', repeats: 'once', every_weeks: null, starts_on: '2026-10-01', finish_by: '2026-10-05', ended_at: null }
+
+    it('gives somebody on the staff the checklists too', () => {
+        expect(badgesFrom({ asks: 0, today: WED, checklists: [once] })).toEqual({
+            '/checklists': { count: 1, tone: 'urgent', words: '1 checklist running out of time' },
+        })
+    })
+
+    const manager = {
+        role: 'store_manager', me: null, today: WED, swaps: 0, absences: [], shifts: [], reports: [],
+        empty_dishes: 0, stock_open: 0, claims_late: 0, unlinked: 0,
+    }
+
+    it('puts a dot on Weekly sales and the Timesheet', () => {
+        const badges = badgesFrom({
+            ...manager, keeps_sales: true, sales_missing: 1,
+            pay: { start: '2026-09-13', ever_filed: true, filed: [] },
+        })
+        expect(badges['/sales/weekly']).toEqual({ dot: true, tone: 'waiting', words: 'Last week has a day with no sales saved' })
+        expect(badges['/costs/timesheet']).toEqual({ dot: true, tone: 'waiting', words: 'The last pay period has not been sent' })
+    })
+
+    it('counts permission to work and unlinked logins together on Team', () => {
+        const permits = [{ id: 'e2', work_permission_expires: '2026-10-01', permission_renewal_applied: null }]
+        const badges = badgesFrom({ ...manager, unlinked: 1, permits })
+        expect(badges['/team']).toEqual({
+            count: 2, tone: 'urgent',
+            words: '1 person rostered with permission to work run out or running out, 1 account not linked to anybody on the team',
+        })
     })
 })

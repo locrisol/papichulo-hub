@@ -3,7 +3,7 @@ import {
     deliveriesFrom, priceMoves, switchesIn, usualSuggestions, recipeGaps, cameBack, stillOwed,
     newCodes, priceWeek, priceWords, decisionsFrom, reasonsOf, lineageOf, nameOf, unitWord,
     cannotCompare, usualFor, looksRenumbered, claimKey, claimActions, claimLabel, lookBackFrom,
-    outOfReason, eachWords, readFrom,
+    outOfReason, eachWords, readFrom, notAsRecommended, waitingOnReview, notChecked, backByReason, whyNot,
 } from '@/lib/invoiceReport'
 
 // The first real fortnight, cut down to what each rule needs. Sysco is s1.
@@ -97,6 +97,34 @@ describe('same product, new price', () => {
             name: 'Tomatoes', per: 'a case', was: 11.75, now: 8.6, up: false, on: '2026-09-17', invoice: '45638940',
         })
         expect(move.change).toBe(-26.8)
+    })
+
+    // His, 7 October: the chart goes back eight weeks, this week's marked.
+    it('carries every delivery of the last eight weeks for the chart', () => {
+        const old = line({ code: '5017962', product: TOMATOES, date: '2026-07-01', perCase: 12, units: 6, pack: '1X6 KG' })
+        const [move] = priceMoves(deliveriesFrom([old, ...tomatoes]), WEEK)
+        expect(move.series).toEqual([['2026-09-10', 1.9583, 0], ['2026-09-16', 1.9583, 1], ['2026-09-17', 1.4333, 1]])
+    })
+
+    // His, 7 October: Green Peppers said twice, once for each code.
+    it('is one row for codes bought either way, with each code\'s prices in words', () => {
+        const codes = [
+            code({ supplier_code: '483508', alternate_group: 'g' }),
+            code({ supplier_code: '5018758', alternate_group: 'g' }),
+        ]
+        const box = (c, date, perCase) => line({ code: c, product: PEPPERS, date, perCase, units: 5, pack: '1X5 KG' })
+        const all = deliveriesFrom([
+            box('483508', '2026-09-10', 11.52), box('483508', '2026-09-15', 13.35),
+            box('5018758', '2026-09-11', 12.5), box('5018758', '2026-09-16', 14.33),
+        ])
+        const moves = priceMoves(all, { ...WEEK, codes })
+        expect(moves).toHaveLength(1)
+        expect(moves[0]).toMatchObject({
+            name: 'Green Peppers', codes: ['483508', '5018758'], effect: 3.66, up: true,
+            prices: '€11.52 to €13.35 a case on 483508, €12.50 to €14.33 a case on 5018758',
+        })
+        expect(moves[0].change).toBe(15.2)
+        expect(moves[0].series.map(p => p[0])).toEqual(['2026-09-10', '2026-09-11', '2026-09-15', '2026-09-16'])
     })
 
     it('says what the week paid less, on what came at the new price', () => {
@@ -601,11 +629,32 @@ describe('came back, and why', () => {
 
     it('says so when nothing was logged, and counts the money as waiting for a reason', () => {
         const [row] = cameBack([credit()], [], { ...WEEK, invoices })
-        expect(row.parts).toEqual([{ kind: 'other', label: 'No reason logged', colour: '#9CA3AF', money: 120.5 }])
+        expect(row.parts).toEqual([{ kind: 'other', label: 'No reason logged', colour: '#9CA3AF', money: 120.5, what: 'Red Onions 1x10 Kg' }])
         expect(row.unexplained).toBe(120.5)
     })
 
     // Sysco never delivered them and credited all three.
+    // His, 7 October: "Paprika, Chorizo" under short and under wrong item.
+    it('names under each reason only the lines it was for', () => {
+        const two = credit({
+            credit_of_invoice_id: null, total_amount: -37.04,
+            invoice_lines: [
+                { raw_description: 'SYSCO CLASSIC PAPRIKA PEPPER 1X480 GM', line_total: -16.05, products: null },
+                { raw_description: 'CHORIZO CUBES 1X500 GM', line_total: -20.99, products: null },
+            ],
+        })
+        const claims = [
+            { id: 'k1', credit_invoice_id: 'c1', kind: 'short', what: '1 Unit of Chorizo delivered instead of 1 case.', credited_amount: 20.99, status: 'settled' },
+            { id: 'k2', credit_invoice_id: 'c1', kind: 'wrong_item', what: 'Delivered red chili powder', credited_amount: 16.05, status: 'settled' },
+        ]
+        const [row] = cameBack([two], claims, WEEK)
+        expect(row.parts.map(p => [p.kind, p.what])).toEqual([
+            ['short', 'Chorizo Cubes 1x500 Gm'], ['wrong_item', 'Sysco Classic Paprika Pepper 1x480 Gm'],
+        ])
+        const rows = backByReason(reasonsOf([row]), [row]).flatMap(r => r.rows.map(x => x.what))
+        expect(rows).toEqual(['Chorizo Cubes 1x500 Gm', 'Sysco Classic Paprika Pepper 1x480 Gm'])
+    })
+
     it('says a whole delivery came back', () => {
         const [row] = cameBack([credit()], [], { ...WEEK, invoices })
         expect(row.whole).toBe(true)
@@ -626,8 +675,8 @@ describe('came back, and why', () => {
         ]
         const [row] = cameBack([credit({ credit_of_invoice_id: null })], claims, WEEK)
         expect(row.parts).toEqual([
-            { kind: 'damaged', label: 'Damaged', colour: '#F97316', money: 35.84 },
-            { kind: 'other', label: 'No reason logged', colour: '#9CA3AF', money: 84.66 },
+            { kind: 'damaged', label: 'Damaged', colour: '#F97316', money: 35.84, what: 'Red Onions 1x10 Kg' },
+            { kind: 'other', label: 'No reason logged', colour: '#9CA3AF', money: 84.66, what: null },
         ])
         expect(row.logged).toBe(true)
         expect(row.what).toBe('Red Onions 1x10 Kg')
@@ -815,6 +864,67 @@ describe('what somebody has to decide', () => {
 
     it('is nothing for a quiet week', () => {
         expect(decisionsFrom(null)).toEqual([])
+    })
+
+    // Its button would change today's prices, which have moved on already.
+    it('leaves out what today\'s prices have moved past', () => {
+        const since = { per: 1.2939, usual: false }
+        const section = {
+            recipes: [{ state: 'behind', productId: 'a', since }],
+            suggestions: [{ productId: 'c', code: 'X', since }],
+            switches: [{ productId: 'd', code: 'Y', renumbered: true, usualPriceId: 'p', codeRowId: 'k', since }],
+            back: [],
+        }
+        expect(decisionsFrom(section)).toEqual([])
+    })
+})
+
+// His, 5 October: accepting week 39's invoices changed week 38's report.
+describe('a week read as it stood', () => {
+    const WEEK38 = { weekStart: '2026-09-20', weekEnd: '2026-09-26' }
+    const avocado = { id: 'avo', name: 'Avocado', unit: 'Units' }
+    const codes = [code({ id: 'c-avo', supplier_code: '5018435', price_id: 'avo-18' })]
+    const box = date => line({
+        code: '5018435', product: avocado, priceId: 'avo-18', date, perCase: 23.29, units: 18, pack: '1X18 EA',
+    })
+    // Today's: recipes cost it at `per`, after a decision on 4 October.
+    const today = per => [price({ id: 'avo-18', product_id: 'avo', supplier_code: '5018435', price_per_case: per * 18, units_per_case: 18, price_per_unit: per })]
+    const created = { product_id: 'avo', price_id: 'avo-18', reason: 'created', price_per_unit: 0.9167, at: '2026-08-30T12:00:00+00:00' }
+    const acceptedOn = (day, per = 1.2939) => ({
+        product_id: 'avo', price_id: 'avo-18', reason: 'invoice', price_per_unit: per, previous_per_unit: 0.9167,
+        at: '2026-10-04T12:00:00+00:00', invoice_lines: { invoices: { invoice_date: day } },
+    })
+    const week38 = (events, per = 1.2939) => priceWeek({
+        ...WEEK38, lines: [box('2026-09-22')], prices: today(per), codes, events, threshold: 5, today: '2026-10-05',
+    })
+
+    it('is not moved by a decision on the next week\'s invoice', () => {
+        const section = week38([created, acceptedOn('2026-09-29', 1.1)], 1.1)
+        expect(section.recipes).toHaveLength(1)
+        expect(section.recipes[0]).toMatchObject({ recipe: 0.9167, paid: 1.2939, state: 'behind' })
+        expect(section.checkedOn).toBe('2026-09-26')
+    })
+
+    // Its button would act on today's price, which has moved on already.
+    it('says what recipes cost now and asks nothing', () => {
+        const section = week38([created, acceptedOn('2026-09-29', 1.1)], 1.1)
+        expect(section.recipes[0].since).toEqual({ per: 1.1, usual: true })
+        expect(decisionsFrom(section)).toEqual([])
+    })
+
+    // His, 7 October: fixed already is not news.
+    it('says nothing once recipes cost what the week paid', () => {
+        const section = week38([created, acceptedOn('2026-09-29')])
+        expect(section.recipes).toEqual([])
+        expect(section.totals.recipes).toBe(0)
+    })
+
+    it('is moved by a late decision on its own invoice', () => {
+        expect(week38([created, acceptedOn('2026-09-22')]).recipes).toEqual([])
+    })
+
+    it('reads today\'s prices without the events', () => {
+        expect(week38(null).recipes).toEqual([])
     })
 })
 
@@ -1076,5 +1186,136 @@ describe('readFrom', () => {
     it('says so when nothing was read', () => {
         expect(readFrom([doc('BWG Foodservice', 0, 98.5)]).words).toMatch(/^Read from: none of this week's invoices\. BWG/)
         expect(readFrom([]).words).toBe('Read from: no invoices this week.')
+    })
+})
+
+// His design of 4 October, layout D: what was bought beside what the brand
+// recommends, each product once, each at its price per unit here.
+describe('not as the brand recommends', () => {
+    const SANTA = { id: 'v-santa', product_id: 'tor', name: 'Santa Maria wrap 12"', is_recommended: true, is_active: true }
+    const PLAIN = { id: 'v-plain', product_id: 'tor', name: 'Plain wraps 12"', is_recommended: false, is_active: true }
+    const prices = [
+        price({ id: 'p-santa', product_id: 'tor', version_id: 'v-santa', price_per_unit: 0.303 }),
+        price({ id: 'p-plain', product_id: 'tor', version_id: 'v-plain', price_per_unit: 0.3303, is_preferred: false }),
+    ]
+    const wraps = (date, cases = 1) => line({ code: '5013972', product: TORTILLA, priceId: 'p-plain', date, perCase: 33.03, units: 100, cases })
+
+    it('sets what was bought beside what the brand recommends, once a product', () => {
+        const all = deliveriesFrom([wraps('2026-09-14'), wraps('2026-09-17', 2)])
+        expect(notAsRecommended(all, { ...WEEK, prices, versions: [SANTA, PLAIN] })).toEqual([{
+            name: 'Flour Tortilla (Burritos)',
+            unit: 'each',
+            bought: { name: 'Plain wraps 12"', per: expect.closeTo(0.3303, 4) },
+            recommended: { name: 'Santa Maria wrap 12"', per: 0.303 },
+            others: 0,
+            cases: 3,
+            money: 99.09,
+        }])
+    })
+
+    it('says nothing of a recommended version, a product left free, or one with nothing recommended', () => {
+        const all = deliveriesFrom([wraps('2026-09-14')])
+        expect(notAsRecommended(all, { ...WEEK, prices, versions: [SANTA, { ...PLAIN, is_recommended: true }] })).toEqual([])
+        const free = deliveriesFrom([{ ...wraps('2026-09-14'), products: { ...TORTILLA, recommends: 'any' } }])
+        expect(notAsRecommended(free, { ...WEEK, prices, versions: [SANTA, PLAIN] })).toEqual([])
+        expect(notAsRecommended(all, { ...WEEK, prices, versions: [{ ...SANTA, is_recommended: false }, PLAIN] })).toEqual([])
+    })
+
+    it('leaves a line waiting on a review to that card', () => {
+        const all = deliveriesFrom([wraps('2026-09-14')])
+        const requests = [{ supplier_id: 's1', supplier_code: '5013972', answer: null }]
+        expect(notAsRecommended(all, { ...WEEK, prices, versions: [SANTA, PLAIN], requests })).toEqual([])
+    })
+
+    it('only looks at the week', () => {
+        const all = deliveriesFrom([wraps('2026-09-07')])
+        expect(notAsRecommended(all, { ...WEEK, prices, versions: [SANTA, PLAIN] })).toEqual([])
+    })
+
+    it('has no price for the recommended one when this restaurant does not buy it', () => {
+        const all = deliveriesFrom([wraps('2026-09-14')])
+        const [row] = notAsRecommended(all, { ...WEEK, prices: [prices[1]], versions: [SANTA, PLAIN] })
+        expect(row.recommended).toEqual({ name: 'Santa Maria wrap 12"', per: null })
+    })
+})
+
+describe('waiting on a review', () => {
+    const corn = line({ code: '5019120', date: '2026-09-17', perCase: 41.8, units: null, description: 'MISSION CORN TORTILLA 6" 12X30 EA', decision: null })
+
+    it('lists what was bought this week under a code sent for review', () => {
+        const all = deliveriesFrom([corn])
+        const requests = [{ supplier_id: 's1', supplier_code: '5019120', name: 'Corn Tortilla 6 inch', sent_at: '2026-09-18T10:00:00Z', answer: null }]
+        expect(waitingOnReview(all, requests, WEEK)).toEqual([
+            { name: 'Corn Tortilla 6 inch', cases: 1, loose: 0, money: 41.8, sent: '2026-09-18' },
+        ])
+    })
+
+    it('leaves out one answered, one with no lines this week, and one asked for from Products', () => {
+        const all = deliveriesFrom([corn])
+        expect(waitingOnReview(all, [
+            { supplier_id: 's1', supplier_code: '5019120', name: 'Corn', sent_at: '2026-09-18T10:00:00Z', answer: 'version' },
+            { supplier_id: 's1', supplier_code: '999', name: 'Other', sent_at: '2026-09-18T10:00:00Z', answer: null },
+            { supplier_id: 's1', supplier_code: null, name: 'Oat milk', sent_at: '2026-09-18T10:00:00Z', answer: null },
+        ], WEEK)).toEqual([])
+    })
+})
+
+describe('not checked', () => {
+    it('is every supplier typed in as a total, saying why', () => {
+        const read = readFrom([
+            { document_type: 'invoice', total_amount: 312.4, suppliers: { name: 'Henderson Foodservice' }, invoice_lines: [{ count: 0 }] },
+            { document_type: 'invoice', total_amount: 48, suppliers: { name: 'Local', works_without_codes: true }, invoice_lines: [{ count: 0 }] },
+            { document_type: 'invoice', total_amount: 900, suppliers: { name: 'Sysco Ireland' }, invoice_lines: [{ count: 20 }] },
+        ])
+        expect(notChecked(read)).toEqual([
+            { name: 'Henderson Foodservice', money: 312.4, why: 'not read line by line yet' },
+            { name: 'Local', money: 48, why: 'works without codes' },
+        ])
+        expect(read.readWords).toBe('Read from: Sysco Ireland (1 invoice).')
+    })
+})
+
+// His, 7 October: Eggs, counted one at a time, were said to be weighed.
+describe('a price that cannot be compared', () => {
+    const EGGS = { id: 'egg', name: 'Eggs', unit: 'Units' }
+
+    it('reads a line stored without its units again from its pack', () => {
+        const [d] = deliveriesFrom([line({ code: '5015724', product: EGGS, date: '2026-09-29', perCase: 41.12, units: null, pack: '1X15 DZ' })])
+        expect(d.perUnit).toBeCloseTo(0.2284, 4)
+    })
+
+    it('says the invoice did not say how many, not that it is weighed', () => {
+        expect(whyNot({ perUnit: null }, true)).toBe('pack')
+        expect(whyNot({ perUnit: 1 }, true)).toBe('weight')
+        expect(whyNot({ perUnit: 1 }, false)).toBe('units')
+    })
+})
+
+// His, 7 October: Eggs and Sides Box, two versions the brand recommends both of.
+describe('a version the brand recommends', () => {
+    const EGGS = { id: 'egg', name: 'Eggs', unit: 'Units' }
+    const prices = [
+        price({ id: 'typed', product_id: 'egg', supplier_code: 'EG219', price_per_case: 7.12, units_per_case: 30, price_per_unit: 0.2373, version_id: 'v1' }),
+        price({ id: 'sysco', product_id: 'egg', supplier_code: '5015724', price_per_case: 41.12, units_per_case: 180, price_per_unit: 0.2284, is_preferred: false, version_id: 'v2' }),
+    ]
+    const codes = [code({ supplier_code: '5015724', price_id: 'sysco' })]
+    const all = deliveriesFrom([line({ code: '5015724', product: EGGS, priceId: 'sysco', date: '2026-09-15', perCase: 41.12, units: 180, pack: '1X15 DZ', description: 'BALLYGARVEY EGGS' })])
+    const versions = recommended => [
+        { id: 'v1', product_id: 'egg', is_recommended: true, is_active: true },
+        { id: 'v2', product_id: 'egg', is_recommended: recommended, is_active: true },
+    ]
+
+    it('is not bought as something else', () => {
+        expect(switchesIn(all, { ...WEEK, prices, codes, versions: versions(true) })).toEqual([])
+    })
+
+    it('one the brand does not recommend still is', () => {
+        expect(switchesIn(all, { ...WEEK, prices, codes, versions: versions(false) })).toHaveLength(1)
+    })
+
+    // His, 8 October: a product the brand leaves free has no version to stray from.
+    it('nor is any version of a product set to any version', () => {
+        const free = all.map(d => ({ ...d, product: { ...d.product, recommends: 'any' } }))
+        expect(switchesIn(free, { ...WEEK, prices, codes, versions: versions(false) })).toEqual([])
     })
 })

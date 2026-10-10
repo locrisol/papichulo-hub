@@ -2,9 +2,15 @@ import { useState } from 'react'
 import { fmtMoney } from '@/lib/format'
 import { numberField } from '@/lib/numberInput'
 import { brandFor } from '@/lib/platformBrand'
-import { ratingMove, reviewNeedsNote } from '@/lib/weeklyReport'
+import {
+    ratingMove, reviewNeedsNote, saidNothing, claimState, claimAnswer, withClaim, weeksOpen,
+    CLAIM_STATES, CLAIM_ANSWERS,
+} from '@/lib/weeklyReport'
+import { dayMonth } from '@/lib/dates'
 import { useRemoveCard } from '@/components/reports/useRemoveCard'
-import { removeButton, denseField } from '@/lib/controlStyles'
+import {
+    removeButton, denseField, segmentTrack, segmentTrackFour, segmentButton, toneBadge,
+} from '@/lib/controlStyles'
 import AutoTextarea from '@/components/ui/AutoTextarea'
 import AddButton from '@/components/ui/AddButton'
 
@@ -75,7 +81,7 @@ function SubLabel({ children, hint }) {
 // They were one wrapping row, and on a phone the note box came out about eight
 // characters wide, sharing a line with five stars, a count and a remove button.
 // A comment nobody can read back while typing it is a comment nobody writes.
-function LineCard({ head, note, warn, onRemove }) {
+function LineCard({ head, note, foot, warn, onRemove }) {
     return (
         <div className={`rounded-lg border bg-white px-3 py-2 ${
             warn ? 'border-accent/50' : 'border-border'}`}>
@@ -97,6 +103,7 @@ function LineCard({ head, note, warn, onRemove }) {
                 )}
             </div>
             {note && <div className="mt-2">{note}</div>}
+            {foot && <div className="mt-2">{foot}</div>}
         </div>
     )
 }
@@ -155,44 +162,115 @@ function RefundAmount({ item, canEdit, onSave }) {
     )
 }
 
-// Whether the money came back off the platform.
+// What came of a refund claim. See claimState in weeklyReport.
 //
-// A refund and a refund you claimed back are two different amounts of money
-// lost, and the report was treating them as one. Not claimed is the default
-// because that is what a refund is until somebody does something about it, and
-// a default of claimed would quietly flatter the week.
+// A refund and a refund paid back are two different amounts of money lost,
+// and claimed is only asking. Not claimed is the default because that is what
+// a refund is until somebody does something about it, and a default of
+// claimed would quietly flatter the week.
 //
-// A button rather than a tick box: it is a real target on a phone, it says
-// which state it is in rather than making somebody read a mark, and it is the
-// one control on the card that is not typing.
-function ClaimedToggle({ item, canEdit, onSave }) {
-    const claimed = !!item.meta?.claimed
+// One row of choices, coloured by what the answer means, so a refused claim
+// reads red without anybody reading the word.
+const CLAIM = {
+    none: { label: 'None', said: 'Not claimed', tone: 'plain' },
+    waiting: { label: 'Waiting', said: 'Claimed, waiting', tone: 'wait' },
+    back: { label: 'Paid back', said: 'Paid back', tone: 'good' },
+    refused: { label: 'Refused', said: 'Refused', tone: 'bad' },
+}
 
+function ClaimChoice({ value, choices, canEdit, onPick, label }) {
     if (!canEdit) {
-        return (
-            <span className={`text-xs font-semibold whitespace-nowrap ${
-                claimed ? 'text-green-700' : 'text-muted'}`}>
-                {claimed ? 'Claimed' : 'Not claimed'}
-            </span>
-        )
+        return value
+            ? <span className={toneBadge(CLAIM[value].tone)}>{CLAIM[value].said}</span>
+            : <span className={toneBadge()}>Not answered yet</span>
     }
-
     return (
-        <button
-            type="button"
-            role="switch"
-            aria-checked={claimed}
-            onClick={() => onSave(item.id, { meta: { ...(item.meta || {}), claimed: !claimed } })}
-            className={`flex-shrink-0 inline-flex items-center gap-1.5 min-h-[2.25rem] px-2.5 rounded-lg
-                text-xs font-semibold whitespace-nowrap border transition-colors
-                focus:outline-none focus:ring-2 focus:ring-accent ${
-                claimed
-                    ? 'border-green-700 bg-green-50 text-green-700'
-                    : 'border-gray-300 bg-white text-muted hover:border-gray-400'}`}
-        >
-            <span aria-hidden="true">{claimed ? '✓' : '○'}</span>
-            {claimed ? 'Claimed' : 'Not claimed'}
-        </button>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="text-xs text-muted">{label}</span>
+            <div className={choices.length > 3 ? segmentTrackFour : segmentTrack} role="radiogroup" aria-label={label}>
+                {choices.map(c => (
+                    <button
+                        key={c}
+                        type="button"
+                        role="radio"
+                        aria-checked={value === c}
+                        onClick={() => { if (value !== c) onPick(c) }}
+                        className={segmentButton(value === c, true, CLAIM[c].tone)}
+                    >
+                        {CLAIM[c].label}
+                    </button>
+                ))}
+            </div>
+        </div>
+    )
+}
+
+// A claim from an earlier week still waiting on the platform. It needs an
+// answer before this week can go out, and Waiting carries it again.
+function CarriedClaim({ item, weekStart, canEdit, onSave }) {
+    const answer = claimAnswer(item)
+    const weeks = weeksOpen(item, weekStart)
+    return (
+        <LineCard
+            warn={!answer}
+            head={
+                <>
+                    <span className="text-sm font-semibold tabular-nums text-red-700 whitespace-nowrap">
+                        {fmtMoney(-Math.abs(Number(item.amount) || 0))}
+                    </span>
+                    <span className="text-xs text-muted">
+                        Claimed in the week of {dayMonth(item.opened_on)}
+                        {weeks > 1 ? `, ${weeks} weeks ago` : ''}
+                    </span>
+                </>
+            }
+            note={item.note ? <span className="text-sm text-gray-700">{item.note}</span> : null}
+            foot={
+                <>
+                    <ClaimChoice
+                        value={answer}
+                        choices={CLAIM_ANSWERS}
+                        canEdit={canEdit}
+                        label="Answer"
+                        onPick={c => onSave(item.id, { meta: { ...(item.meta || {}), answer: c } })}
+                    />
+                    {canEdit && !answer && (
+                        <p className="text-xs text-accent-ink mt-1">
+                            Say what came of it before sending. Waiting keeps it on next week&apos;s report.
+                        </p>
+                    )}
+                </>
+            }
+        />
+    )
+}
+
+// "No reviews" or "No refunds" this week. The report cannot go out until each
+// online platform has one entered or this pressed, because an empty list could
+// be a quiet week or nobody having looked. Shown only while there are none;
+// one entered says it instead. The same look as Claimed, the other switch on
+// these cards.
+function NothingSwitch({ said, label, canEdit, onToggle }) {
+    if (!canEdit) return <p className="text-sm text-muted">None this week.</p>
+    return (
+        <div className="flex flex-wrap items-center gap-2">
+            <button
+                type="button"
+                role="switch"
+                aria-checked={said}
+                onClick={onToggle}
+                className={`inline-flex items-center gap-1.5 min-h-[2.25rem] px-2.5 rounded-lg
+                    text-xs font-semibold whitespace-nowrap border transition-colors
+                    focus:outline-none focus:ring-2 focus:ring-accent ${
+                    said
+                        ? 'border-green-700 bg-green-50 text-green-700'
+                        : 'border-gray-300 bg-white text-muted hover:border-gray-400'}`}
+            >
+                <span aria-hidden="true">{said ? '✓' : '○'}</span>
+                {label}
+            </button>
+            {!said && <span className="text-xs text-accent-ink">Add one, or press this before sending.</span>}
+        </div>
     )
 }
 
@@ -240,17 +318,17 @@ function RatingLine({ platform, item, canEdit, onSave }) {
 }
 
 function PlatformBlock({
-    platform, taken, rating, reviews, refunds, canEdit,
-    onSaveRating, onAddReview, onAddRefund, onSaveItem, onRemoveItem,
+    platform, taken, rating, reviews, refunds, claims, weekStart, canEdit,
+    onSaveRating, onSaveNothing, onAddReview, onAddRefund, onSaveItem, onRemoveItem,
 }) {
     const brand = brandFor(platform.name)
     const removeCard = useRemoveCard()
     // Shown beside the heading, not typed anywhere. The cards are still the
     // record of what each one was for.
     const refundTotal = refunds.reduce((t, r) => t + Math.abs(Number(r.amount) || 0), 0)
-    const claimedBack = refunds
-        .filter(r => r.meta?.claimed)
-        .reduce((t, r) => t + Math.abs(Number(r.amount) || 0), 0)
+    const sumOf = list => list.reduce((t, r) => t + Math.abs(Number(r.amount) || 0), 0)
+    const claimed = sumOf(refunds.filter(r => claimState(r) !== 'none'))
+    const paidBack = sumOf(refunds.filter(r => claimState(r) === 'back'))
     const [stars, setStars] = useState(5)
     const [count, setCount] = useState('1')
 
@@ -322,7 +400,12 @@ function PlatformBlock({
                 })}
 
                 {reviews.length === 0 && (
-                    <p className="text-sm text-muted">None this week.</p>
+                    <NothingSwitch
+                        said={saidNothing(rating, 'reviews')}
+                        label="No reviews this week"
+                        canEdit={canEdit}
+                        onToggle={() => onSaveNothing(platform, 'reviews', !saidNothing(rating, 'reviews'))}
+                    />
                 )}
             </div>
 
@@ -356,9 +439,11 @@ function PlatformBlock({
                 Reviews of three stars or less need a comment before the report can be sent.
             </p>
 
+            {/* Claimed, not claimed back: a claim is asking (his, 7 October). */}
             <SubLabel hint={refundTotal > 0
                 ? `${fmtMoney(-refundTotal)} this week`
-                    + (claimedBack > 0 ? `, ${fmtMoney(claimedBack)} claimed back` : ', none claimed back')
+                    + (claimed > 0 ? `, ${fmtMoney(claimed)} claimed` : ', none claimed')
+                    + (paidBack > 0 ? `, ${fmtMoney(paidBack)} paid back` : '')
                 : 'add each refund separately'}>Refunds</SubLabel>
             <div className="space-y-2">
                 {refunds.map(item => (
@@ -370,11 +455,15 @@ function PlatformBlock({
                             holds: item.note,
                             onRemove: () => onRemoveItem(item.id),
                         }) : null}
-                        head={
-                            <>
-                                <RefundAmount item={item} canEdit={canEdit} onSave={onSaveItem} />
-                                <ClaimedToggle item={item} canEdit={canEdit} onSave={onSaveItem} />
-                            </>
+                        head={<RefundAmount item={item} canEdit={canEdit} onSave={onSaveItem} />}
+                        foot={
+                            <ClaimChoice
+                                value={claimState(item)}
+                                choices={CLAIM_STATES}
+                                canEdit={canEdit}
+                                label="Claim"
+                                onPick={c => onSaveItem(item.id, { meta: withClaim(item.meta, c) })}
+                            />
                         }
                         note={canEdit ? (
                             <AutoTextarea
@@ -392,7 +481,14 @@ function PlatformBlock({
                     />
                 ))}
 
-                {refunds.length === 0 && <p className="text-sm text-muted">None this week.</p>}
+                {refunds.length === 0 && (
+                    <NothingSwitch
+                        said={saidNothing(rating, 'refunds')}
+                        label="No refunds this week"
+                        canEdit={canEdit}
+                        onToggle={() => onSaveNothing(platform, 'refunds', !saidNothing(rating, 'refunds'))}
+                    />
+                )}
             </div>
 
             {canEdit && (
@@ -400,15 +496,39 @@ function PlatformBlock({
                     Add a refund
                 </AddButton>
             )}
+
+            <Claims claims={claims} weekStart={weekStart} canEdit={canEdit} onSaveItem={onSaveItem} />
         </div>
     )
 }
 
-export default function ReportOnlineSales({ section, platforms, taken, canEdit, handlers }) {
+// Claims from earlier weeks, under the platform they were claimed from.
+function Claims({ claims, weekStart, canEdit, onSaveItem }) {
+    if (!claims.length) return null
+    return (
+        <>
+            <SubLabel hint={`${claims.length} ${claims.length === 1 ? 'claim' : 'claims'}, `
+                + fmtMoney(claims.reduce((t, c) => t + Math.abs(Number(c.amount) || 0), 0))}>
+                Claims from earlier weeks
+            </SubLabel>
+            <div className="space-y-2">
+                {claims.map(c => (
+                    <CarriedClaim key={c.id} item={c} weekStart={weekStart} canEdit={canEdit} onSave={onSaveItem} />
+                ))}
+            </div>
+        </>
+    )
+}
+
+export default function ReportOnlineSales({ section, platforms, taken, weekStart, canEdit, handlers }) {
     const total = platforms.reduce((t, p) => t + (taken[p.id] || 0), 0)
 
     const byKind = kind => section.items.filter(i => i.kind === kind)
     const forPlatform = (items, p) => items.filter(i => i.key === p.id)
+    // A claim on a platform no longer set up still has to be answered, so it
+    // is shown on its own rather than lost with the platform.
+    const known = new Set(platforms.map(p => p.id))
+    const strays = byKind('refund_claim').filter(c => !known.has(c.key))
 
     return (
         <div>
@@ -431,11 +551,22 @@ export default function ReportOnlineSales({ section, platforms, taken, canEdit, 
                         rating={byKind('rating').find(i => i.key === p.id)}
                         reviews={forPlatform(byKind('review'), p)}
                         refunds={forPlatform(byKind('refund'), p)}
+                        claims={forPlatform(byKind('refund_claim'), p)}
+                        weekStart={weekStart}
                         canEdit={canEdit}
                         {...handlers}
                     />
                 ))}
             </div>
+
+            {strays.length > 0 && (
+                <div className="rounded-xl border border-border bg-app-bg p-4 mt-3">
+                    <p className="text-sm text-muted">
+                        From {[...new Set(strays.map(c => c.label))].join(', ')}, no longer set up here.
+                    </p>
+                    <Claims claims={strays} weekStart={weekStart} canEdit={canEdit} onSaveItem={handlers.onSaveItem} />
+                </div>
+            )}
 
             {platforms.length === 0 && (
                 <p className="text-sm text-muted">No online platforms are set up for this restaurant yet.</p>

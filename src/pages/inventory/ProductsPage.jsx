@@ -2,6 +2,7 @@ import { fmtUnitCost } from '@/lib/format'
 import { useState, useEffect, useRef, Fragment, useCallback } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase, everyRow } from '@/lib/supabase'
+import { readAllergensAt } from '@/lib/allergensAt'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
 import { useConfirm } from '@/context/confirm'
@@ -25,7 +26,7 @@ import Modal from '@/components/ui/Modal'
 import { friendlyError } from '@/lib/errors'
 import { claimCode } from '@/lib/invoiceReview'
 import { matches } from '@/lib/search'
-import { orderFormats } from '@/lib/countUnits'
+import { orderFormats, packsToSave } from '@/lib/countUnits'
 import {
   tableHeadRow, tableHeadCell, badge, mixBadge, inactiveBadge, card, cardEdge, cardHeader, rowButton, chip,
   primaryButton, secondaryButton, urgentNote,
@@ -36,6 +37,14 @@ import Notice from '@/components/ui/Notice'
 import PageHeader from '@/components/ui/PageHeader'
 import ShowInactiveButton from '@/components/ui/ShowInactiveButton'
 import useShowInactive from '@/components/ui/useShowInactive'
+import SentForReview from '@/components/inventory/SentForReview'
+import ReviewersModal from '@/components/inventory/ReviewersModal'
+import SendForReviewModal from '@/components/inventory/SendForReviewModal'
+import VersionsModal from '@/components/inventory/VersionsModal'
+import { placesFor, recommendationAt, versionLabel } from '@/lib/brandVersions'
+import { can, BRAND_CHOICES } from '@/lib/access'
+import { requestForProduct } from '@/lib/productRequests'
+import { emailTheReview } from '@/lib/rosterMail'
 
 // Every column in the table, in the order it appears.
 //
@@ -150,6 +159,20 @@ export default function ProductsPage() {
   const { user } = useAuth()
   const { activeRestaurant } = useRestaurant()
   const navigate = useNavigate()
+  // The brand's list is the owners' and the super admin's: they add, rename
+  // and switch off products, and answer what was sent for review. A store
+  // manager asks for a product instead (his design, 4 October), and the
+  // database holds the same line (brand_choice_guard).
+  const keepsTheList = can(user, BRAND_CHOICES)
+  const [showReviewers, setShowReviewers] = useState(false)
+  const [requesting, setRequesting] = useState(false)
+  const [requestSaid, setRequestSaid] = useState('')
+  // The brand's versions of every product, where each product is kept at this
+  // restaurant, and which versions it buys (lib/brandVersions).
+  const [versions, setVersions] = useState([])
+  const [kept, setKept] = useState([])
+  const [boughtHere, setBoughtHere] = useState(() => new Set())
+  const [versionsOf, setVersionsOf] = useState(null)
   const [products, setProducts] = useState([])
   const [prices, setPrices] = useState([])
   const [recipeLines, setRecipeLines] = useState([])
@@ -180,7 +203,7 @@ export default function ProductsPage() {
   // screen is built and never again, so typing over it cannot be undone by a
   // render, and the same snapshot decides that the form should be open at all.
   const [params] = useSearchParams()
-  const [fromLink] = useState(() => prefillFrom(params))
+  const [fromLink] = useState(() => (keepsTheList ? prefillFrom(params) : null))
   // Where saving the product the link asked for goes back to. Only that one:
   // the form closed, the next product added is an ordinary one.
   const backTo = useRef(fromLink?.back || null)
@@ -200,6 +223,19 @@ export default function ProductsPage() {
   // that declares it has none, and saving wrote that over the real answer.
   // So the form offers nothing for them and the save leaves them alone.
   const [allergensUnread, setAllergensUnread] = useState(false)
+  // A product with versions and no price here for the form to follow: its
+  // allergens are set version by version on the Allergens page, and the form
+  // neither shows nor writes any. Written from here they would land on a
+  // version nobody read them from.
+  const [allergensElsewhere, setAllergensElsewhere] = useState(false)
+  // Where the answers in the form were read from: { version } or { product }.
+  // They are only ever written back there, or onto a version this very save
+  // started for a product that had none. The review of 4 October: a form
+  // opened at the other restaurant, or with its supplier changed, wrote old
+  // answers over a version another restaurant had since corrected.
+  const allergenFrom = useRef(null)
+  // Which read of the answers is the latest: they depend on the restaurant open.
+  const answering = useRef(0)
   // Which product the form is for, so a read for one opened earlier that
   // lands late does not fill in the one open now.
   const editingId = useRef(null)
@@ -328,8 +364,8 @@ export default function ProductsPage() {
   useEffect(() => {
     fetchProducts()
     fetchSuppliers()
-    fetchAnswers()
   }, [])
+
 
   // Whether each product has an allergen row, and what is in each dish on
   // sale. Only the columns the rule reads: what the allergens actually are is
@@ -338,18 +374,33 @@ export default function ProductsPage() {
   // Every row, a page at a time, each in an order that cannot tie. Read
   // short, every answered product past the first thousand rows would be
   // marked as not set.
-  async function fetchAnswers() {
+  //
+  // What is answered depends on what the restaurant open buys, so it is read
+  // again when that changes.
+  const fetchAnswers = useCallback(async () => {
+    const ticket = ++answering.current
     const reads = await Promise.all([
-      everyRow(() => supabase.from('product_allergens').select('product_id').order('product_id')),
+      // At the restaurant open, from the versions it buys (lib/allergensAt).
+      readAllergensAt(activeRestaurant?.id),
       everyRow(() => supabase.from('menu_items').select('id, is_active').order('id')),
       everyRow(() => supabase.from('menu_item_components')
         .select('id, menu_item_id, product_id').order('id')),
     ])
+    // A read for the restaurant open before, answering late, is dropped.
+    if (ticket !== answering.current) return
     if (!everyReadArrived(reads)) { setAnswers(null); setAnswersFailed(true); return }
     const [allergens, menuItems, components] = reads.map(r => r.data)
     setAnswersFailed(false)
     setAnswers({ allergens, menuItems, components })
-  }
+  }, [activeRestaurant])
+
+  useEffect(() => {
+    // The fetch sets state when it answers, which this rule would rather
+    // avoid. The alternative is a mark from the last restaurant staying on
+    // the list under the new one's name until something else reads again.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchAnswers()
+  }, [fetchAnswers])
 
   
 
@@ -393,6 +444,22 @@ export default function ProductsPage() {
     if (!data) return
     setPrices(data)
 
+    // What the row says about the brand's recommendations and where it is
+    // kept here. A failed read leaves what was there: the row then says
+    // less, rather than something wrong.
+    const [versionsRead, keptRead] = await Promise.all([
+      everyRow(() => supabase.from('product_versions')
+        .select('id, product_id, supplier_id, supplier_code, name, is_recommended, is_active, section, also_in')
+        .order('id')),
+      everyRow(() => supabase.from('restaurant_kept_in')
+        .select('*')
+        .eq('restaurant_id', activeRestaurant.id)
+        .order('product_id')
+        .order('section')),
+    ])
+    if (!versionsRead.error) setVersions(versionsRead.data || [])
+    if (!keptRead.error) setKept(keptRead.data || [])
+
     // The packs hanging off those prices. Fetched here rather than in its own
     // effect because it is meaningless without them: a pack belongs to a price
     // and there is nothing to look up until we know which prices are preferred.
@@ -412,7 +479,7 @@ export default function ProductsPage() {
     // carrying more than one row per product.
     const { data: everyPrice } = await supabase
       .from('product_supplier_prices')
-      .select('product_id')
+      .select('product_id, version_id')
       .eq('restaurant_id', activeRestaurant.id)
 
     const counts = {}
@@ -420,6 +487,7 @@ export default function ProductsPage() {
       counts[row.product_id] = (counts[row.product_id] || 0) + 1
     }
     setPriceCounts(counts)
+    if (everyPrice) setBoughtHere(new Set(everyPrice.map(row => row.version_id)))
     }, [activeRestaurant])
 
   useEffect(() => {
@@ -560,14 +628,14 @@ export default function ProductsPage() {
   // out, and the old ones go by their own ids. It used to delete first and
   // check nothing, so a put in that failed lost every pack and the dialog
   // closed as if it had saved. Hands back the error, or nothing.
-  async function replacePacks(priceId) {
+  async function replacePacks(priceId, packs) {
     const { data: old, error: readErr } = await supabase
       .from('price_count_units').select('id').eq('price_id', priceId)
     if (readErr) return readErr
 
-    if (formats.packs.length > 0) {
+    if (packs.length > 0) {
       const { error: insertErr } = await supabase.from('price_count_units').insert(
-        formats.packs.map((pack, order) => ({
+        packs.map((pack, order) => ({
           price_id: priceId,
           label: pack.label,
           factor: pack.factor,
@@ -608,7 +676,9 @@ export default function ProductsPage() {
     // The price block is only checked if somebody started filling it in. Left
     // alone it is not an error, it is the normal case.
     const wantsPrice = !formData.is_mix && hasPrice(priceForm)
-    const newPriceErrors = wantsPrice ? priceProblem(priceForm) : {}
+    const newPriceErrors = wantsPrice ? priceProblem(priceForm, suppliers) : {}
+    // A pack left in the boxes without Add pack goes in with the rest.
+    const { packs, problem: packProblem } = packsToSave(formats.packs, formats.draft, formData.unit)
 
     // The same code from the same supplier, against what this screen already
     // holds. Only that supplier: two of them using one code for two different
@@ -623,11 +693,12 @@ export default function ProductsPage() {
       }
     }
 
-    if (Object.keys(newErrors).length > 0 || Object.keys(newPriceErrors).length > 0) {
+    if (Object.keys(newErrors).length > 0 || Object.keys(newPriceErrors).length > 0 || (wantsPrice && packProblem)) {
       setErrors(newErrors)
       setPriceErrors(newPriceErrors)
       // A message inside a section that is shut is a message nobody reads.
-      if (Object.keys(newPriceErrors).length > 0) setOpenExtra('supplier')
+      if (Object.keys(newPriceErrors).length > 0 || (wantsPrice && packProblem)) setOpenExtra('supplier')
+      if (wantsPrice && packProblem) setFormProblem(packProblem)
       return
     }
     setErrors({})
@@ -664,7 +735,7 @@ export default function ProductsPage() {
       const missing = []
       if (!wantsPrice) missing.push('a supplier price')
       // Nothing to ask about a bottle of bleach or a paper container.
-      if (!allergensTouched && declaresAllergens(formData)) missing.push('allergens')
+      if (!allergensTouched && !allergensElsewhere && declaresAllergens(formData)) missing.push('allergens')
 
       // Allergens nobody entered are not none. Until they are set, the
       // allergen sheet asks customers about any dish the product goes into
@@ -743,6 +814,10 @@ export default function ProductsPage() {
       // a product asks for. Written here so changing any of them is done where
       // you are rather than on two other screens.
       const existing = getPreferredPrice(editingProduct.id)
+      // The version the form's price is on, whose allergens the form edits.
+      // The price's own after saving, since a new code can move it to a new
+      // version (see price_version in schema.sql).
+      let versionId = existing?.version_id || null
 
       if (wantsPrice) {
         const row = {
@@ -776,9 +851,10 @@ export default function ProductsPage() {
 
         const notes = await afterPrice(editingProduct.id, saved, existing || null)
         if (notes.length) setError(notes.join(' '))
+        if (saved?.version_id) versionId = saved.version_id
 
         if (saved) {
-          const packsErr = await replacePacks(saved.id)
+          const packsErr = await replacePacks(saved.id, packs)
           if (packsErr) {
             setFormProblem(savedButNot(formData.name,
               [{ what: 'packs', plural: true, error: packsErr, next: 'Press Save changes to try again.' }]))
@@ -795,11 +871,26 @@ export default function ProductsPage() {
       // off a product is what the Prices screen is for, and doing it silently
       // because somebody cleared a field would be a poor way to lose a cost.
 
-      if (allergensTouched && !allergensUnread && declaresAllergens(formData)) {
-        const { error: allergenErr } = await supabase
-          .from('product_allergens')
-          .upsert({ product_id: editingProduct.id, ...allergens, updated_at: new Date().toISOString() },
-            { onConflict: 'product_id' })
+      // Back to the version they were read from. Read from the product's own
+      // row, which only a product with no versions has, they go onto the
+      // version this save started, or stay on the product. A price moved to
+      // another version by this save leaves them alone: that version has its
+      // own answers, or none, which the sheet says to ask staff about.
+      const from = allergenFrom.current
+      const target = from?.version ? (versionId === from.version ? versionId : undefined) : versionId
+      if (target === undefined && allergensTouched && declaresAllergens(formData)) {
+        setError(was => [was, 'The price is on a different version now, so its allergens are set on the Allergens page.'].filter(Boolean).join(' '))
+      }
+      if (target !== undefined && allergensTouched && !allergensUnread && !allergensElsewhere && declaresAllergens(formData)) {
+        // On the version when there is one, which is what the sheet reads;
+        // the product's own row only for a MIX or a product never priced.
+        const { error: allergenErr } = target
+          ? await supabase.from('version_allergens')
+              .upsert({ version_id: target, ...allergens, updated_at: new Date().toISOString() },
+                { onConflict: 'version_id' })
+          : await supabase.from('product_allergens')
+              .upsert({ product_id: editingProduct.id, ...allergens, updated_at: new Date().toISOString() },
+                { onConflict: 'product_id' })
 
         if (allergenErr) {
           setFormProblem(savedButNot(formData.name,
@@ -862,6 +953,8 @@ export default function ProductsPage() {
       // with the form, and a product with no allergen row reads to a customer
       // as having none of the fourteen.
       const missed = []
+      // The version the new price started, whose allergens the form set.
+      let createdVersion = null
       // Things that happened after the price, that it is worth knowing did not.
       const notes = []
 
@@ -885,14 +978,15 @@ export default function ProductsPage() {
         if (priceErr) {
           missed.push({ what: 'price', error: priceErr, next: 'Add the price from its Prices page.' })
           // The packs typed in go with it, since they have nothing to hang off.
-          if (formats.packs.length > 0) missed.push({ ...packsMissed, error: priceErr })
+          if (packs.length > 0) missed.push({ ...packsMissed, error: priceErr })
         } else {
+          createdVersion = newPrice?.version_id || null
           notes.push(...await afterPrice(data.id, newPrice, null))
 
           // The packs, which belong to the price rather than to the product and
           // so have to wait for it the same way the recipe waits for the product.
           if (newPrice) {
-            const packsErr = await replacePacks(newPrice.id)
+            const packsErr = await replacePacks(newPrice.id, packs)
             if (packsErr) missed.push({ ...packsMissed, error: packsErr })
           }
         }
@@ -921,9 +1015,11 @@ export default function ProductsPage() {
       // Not written for anything that has none to declare, even if the boxes
       // were ticked before the section was changed to Cleaning.
       if (allergensTouched && declaresAllergens(formData) && data) {
-        const { error: allergenErr } = await supabase
-          .from('product_allergens')
-          .insert({ product_id: data.id, ...allergens })
+        // On the version its price started, which is what the sheet reads.
+        // A product with no price yet keeps them on itself.
+        const { error: allergenErr } = createdVersion
+          ? await supabase.from('version_allergens').insert({ version_id: createdVersion, ...allergens })
+          : await supabase.from('product_allergens').insert({ product_id: data.id, ...allergens })
 
         if (allergenErr) {
           missed.push({ what: 'allergens', plural: true, error: allergenErr, next: 'Set the allergens from its Allergens page.' })
@@ -956,6 +1052,8 @@ export default function ProductsPage() {
     setAllergens(emptyAllergens())
     setAllergensTouched(false)
     setAllergensUnread(false)
+    setAllergensElsewhere(false)
+    allergenFrom.current = { product: true }
     editingId.current = null
     setOpenExtra(null)
     setEditingProduct(null)
@@ -1025,12 +1123,34 @@ export default function ProductsPage() {
     setAllergens(emptyAllergens())
     setAllergensTouched(false)
     setAllergensUnread(false)
+    setAllergensElsewhere(false)
+    allergenFrom.current = null
     editingId.current = product.id
-    const { data: row, error: rowError } = await supabase
-      .from('product_allergens')
-      .select('*')
-      .eq('product_id', product.id)
-      .maybeSingle()
+
+    // The version the form's price is on, when there is one: that is what the
+    // form edits and what the sheet reads. With no price here, the product's
+    // own row, unless it has versions, whose answers live on the Allergens page.
+    let row = null
+    let rowError
+    if (price?.version_id) {
+      ({ data: row, error: rowError } = await supabase.from('version_allergens')
+        .select('*').eq('version_id', price.version_id).maybeSingle())
+      if (!rowError) allergenFrom.current = { version: price.version_id }
+    } else {
+      const { count, error: countError } = await supabase.from('product_versions')
+        .select('id', { count: 'exact', head: true }).eq('product_id', product.id)
+      if (editingId.current !== product.id) return
+      if (countError) {
+        rowError = countError
+      } else if (count > 0) {
+        setAllergensElsewhere(true)
+        return
+      } else {
+        ({ data: row, error: rowError } = await supabase.from('product_allergens')
+          .select('*').eq('product_id', product.id).maybeSingle())
+        if (!rowError) allergenFrom.current = { product: true }
+      }
+    }
 
     // Another product was opened, or the form shut, while this was on its way.
     if (editingId.current !== product.id) return
@@ -1095,8 +1215,9 @@ export default function ProductsPage() {
       items: [
         { label: 'Allergens', onClick: () => navigate(`/catalogue/products/${p.id}/allergens`) },
         p.is_mix && { label: 'Recipe', onClick: () => navigate(`/catalogue/products/${p.id}/recipe`) },
+        !p.is_mix && { label: 'Versions', onClick: () => setVersionsOf(p.id) },
         { label: 'Prices', onClick: () => navigate(`/catalogue/products/${p.id}/prices`) },
-        {
+        keepsTheList && {
           label: p.is_active ? 'Deactivate' : 'Reactivate',
           tone: p.is_active ? 'danger' : 'good',
           onClick: () => toggleActive(p),
@@ -1115,6 +1236,39 @@ export default function ProductsPage() {
         {a.label}
       </button>
     ))
+  }
+
+  // Where it is kept here: each version it buys says where
+  // (lib/brandVersions). The first is the solid badge, the product's own
+  // section when it is one of them, so the badge and the filter agree.
+  function mainPlace(p) {
+    return placesFor(p, kept)[0]
+  }
+  function otherPlaces(p) {
+    return placesFor(p, kept).slice(1)
+  }
+
+  // Whether what this restaurant costs it from is what the brand recommends,
+  // under the supplier it is bought from.
+  function brandMark(p) {
+    const said = recommendationAt(p, versions, getPreferredPrice(p.id))
+    if (!said) return null
+    const look = {
+      good: 'bg-green-100 text-green-800',
+      not: 'bg-amber-100 text-amber-800',
+      any: 'bg-gray-100 text-gray-700',
+      none: 'bg-white text-gray-600 border border-gray-300',
+    }[said.tone]
+    return (
+      <span className="block mt-1">
+        <span className={`${badge} ${look}`}>{said.label}</span>
+        {said.instead && (
+          <span className="block text-xs text-muted mt-0.5">
+            Brand: {said.instead.map(v => versionLabel(v, p, getSupplierName(v.supplier_id))).join(', ')}
+          </span>
+        )}
+      </span>
+    )
   }
 
   // Everything a product shows that is not simply a column off the record,
@@ -1269,7 +1423,7 @@ export default function ProductsPage() {
     // places at once in the sense an and would mean, so picking Freezer and
     // Cold Room together can only sensibly be asking to see both.
     .filter(p => activeSections.length === 0
-      || activeSections.some(place => p.section === place || (p.also_in || []).includes(place)))
+      || activeSections.some(place => placesFor(p, kept).includes(place)))
     .filter(p => activeKind === 'All'
       || (activeKind === 'Drinks' ? p.category === 'drink' : p.category !== 'drink'))
     .filter(p => matches(p.name, search))
@@ -1313,16 +1467,61 @@ export default function ProductsPage() {
     <div>
       <PageHeader title="Products" subtitle={`Showing prices for ${activeRestaurant?.name ?? ''}`}>
         <ShowInactiveButton showing={showInactive} onToggle={() => setShowInactive(on => !on)} />
-        <button
-          onClick={() => { resetForm(); setShowForm(true) }}
-          className={primaryButton()}
-        >
-          + Add product
-        </button>
+        {keepsTheList ? (
+          <>
+            <button onClick={() => setShowReviewers(true)} className={secondaryButton}>
+              Reviewers
+            </button>
+            <button
+              onClick={() => { resetForm(); setShowForm(true) }}
+              className={primaryButton()}
+            >
+              + Add product
+            </button>
+          </>
+        ) : (
+          <button onClick={() => { setRequestSaid(''); setRequesting(true) }} className={primaryButton()}>
+            Request a product
+          </button>
+        )}
       </PageHeader>
 
       {error && (
         <ErrorBanner className="mb-4">{error}</ErrorBanner>
+      )}
+      <Notice tone="good" className="mb-4">{requestSaid}</Notice>
+
+      {keepsTheList && <SentForReview onChanged={fetchProducts} />}
+      {showReviewers && <ReviewersModal onClose={() => setShowReviewers(false)} />}
+      {versionsOf && products.some(p => p.id === versionsOf) && (
+        <VersionsModal
+          product={products.find(p => p.id === versionsOf)}
+          versions={versions}
+          suppliers={suppliers}
+          boughtHere={boughtHere}
+          canRecommend={keepsTheList}
+          onClose={() => setVersionsOf(null)}
+          onAddPrice={() => navigate(`/catalogue/products/${versionsOf}/prices`)}
+          // A recommendation can change which version a restaurant's
+          // allergen sheet reads, so the sidebar counts them again.
+          onChanged={async () => { allergensChanged(); await Promise.all([fetchProducts(), fetchPrices()]) }}
+        />
+      )}
+      {requesting && (
+        <SendForReviewModal
+          suppliers={activeSuppliers}
+          onClose={() => setRequesting(false)}
+          onSend={async said => {
+            const { data: made, error: e1 } = await supabase.from('product_requests')
+              .insert(requestForProduct({ restaurantId: activeRestaurant?.id, userId: user?.id, ...said }))
+              .select('id').single()
+            if (e1) return friendlyError(e1)
+            emailTheReview(made.id)
+            setRequesting(false)
+            setRequestSaid(`Sent for review. ${said.name.trim()} is answered by the owners on Products.`)
+            return null
+          }}
+        />
       )}
 
       {/* The whole form takes the lightest shade of whatever section is chosen,
@@ -1354,6 +1553,7 @@ export default function ProductsPage() {
               onAllergenChange={handleAllergenChange}
               allergensAnswered={allergensTouched}
               allergensUnread={allergensUnread}
+              allergensElsewhere={allergensElsewhere}
               onNoAllergens={handleNoAllergens}
               recipe={recipe}
               onRecipeChange={setRecipe}
@@ -1468,10 +1668,10 @@ export default function ProductsPage() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2 mt-2">
-                  <span className={`${badge} ${sectionBadge(p.section, p.is_active).className}`}>
-                    {p.section}
+                  <span className={`${badge} ${sectionBadge(mainPlace(p), p.is_active).className}`}>
+                    {mainPlace(p)}
                   </span>
-                  {(p.also_in || []).map(place => (
+                  {otherPlaces(p).map(place => (
                     <span
                       key={place}
                       className={`${badge} ${extraPlaceBadge(place, p.is_active).className}`}
@@ -1520,6 +1720,7 @@ export default function ProductsPage() {
                     <dt className="text-muted">Supplier</dt>
                     <dd className={`text-right ${p.is_active ? 'text-gray-700' : 'text-muted'} ${p.is_mix ? 'italic' : ''}`}>
                       {v.supplier}
+                      {brandMark(p)}
                     </dd>
                   </div>
                   <div className="flex items-baseline justify-between gap-3">
@@ -1645,10 +1846,10 @@ export default function ProductsPage() {
                       </td>
                       <td className="px-4 py-3">
                         <span className="flex flex-wrap gap-1">
-                          <span className={`${badge} ${sectionBadge(p.section, p.is_active).className}`}>
-                            {p.section}
+                          <span className={`${badge} ${sectionBadge(mainPlace(p), p.is_active).className}`}>
+                            {mainPlace(p)}
                           </span>
-                          {(p.also_in || []).map(place => (
+                          {otherPlaces(p).map(place => (
                             <span
                               key={place}
                               className={`${badge} ${extraPlaceBadge(place, p.is_active).className}`}
@@ -1674,6 +1875,7 @@ export default function ProductsPage() {
                       </td>
                       <td className={`px-4 py-3 ${p.is_active ? 'text-gray-700' : 'text-muted'}`}>
                         {p.is_mix ? <span className="italic">House-made</span> : getSupplierName(price?.supplier_id)}
+                        {brandMark(p)}
                       </td>
                       <td className={`px-4 py-3 font-medium ${p.is_active ? 'text-gray-900' : 'text-muted'}`}>
                         {p.is_mix
@@ -1713,6 +1915,7 @@ export default function ProductsPage() {
               onSubmit={handleSave}
               onCancel={resetForm}
               submitLabel="Save changes"
+              nameLocked={!keepsTheList}
               saving={saving && !asking}
               errors={errors}
               nameClash={nameClash}
@@ -1729,6 +1932,7 @@ export default function ProductsPage() {
               onAllergenChange={handleAllergenChange}
               allergensAnswered={allergensTouched}
               allergensUnread={allergensUnread}
+              allergensElsewhere={allergensElsewhere}
               onNoAllergens={handleNoAllergens}
               recipe={recipe}
               onRecipeChange={setRecipe}

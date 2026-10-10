@@ -38,7 +38,13 @@ const BORDER = '#E8E3DB'
 // already cream. Two the same colour read as one block.
 const BAND = '#EDE7DC'
 
-const FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
+// No spaces after the commas: this is written into nearly two hundred cells,
+// and a heavy week sits close to the size Gmail cuts a mail off at.
+// Set once, on the body and the frame round the report, and read from there
+// by every cell (his, 8 October). It was on every cell, 165 times in a heavy
+// week, about 14,000 characters, a fifth of the mail. Classic Outlook, which
+// does not pass a font into a table, has its own rule in the head (see page).
+const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif"
 
 // How wide the mail is allowed to get, and it is a maximum rather than a size.
 //
@@ -170,12 +176,54 @@ export function costTone(share, target) {
 //
 // The break is a <br />, so it happens in the same place every time rather
 // than wherever the width runs out.
+//
+// The share on top and the money under it, his order of 4 October: the share
+// against target is what a cost is judged by, so it is what is read first.
+// It wears the target's colour; the money is quiet.
 export function withShare(amount, share, tone) {
     const rate = pct(share)
     if (!rate) return money(amount)
-    const colour = tone || MUTED
-    return `${money(amount)}<br /><span style="color:${colour};font-size:13px;
-        font-weight:400;">(${rate})</span>`
+    const top = tone ? `<span style="color:${tone};">${rate}</span>` : rate
+    return `${top}<br /><span style="color:${MUTED};font-size:13px;
+        font-weight:400;">${money(amount)}</span>`
+}
+
+// The fixed overheads worth a line of their own.
+//
+// All of them the first time, when nothing has been carried from an earlier
+// week. After that only one that moved, or one new this week: a list of
+// eleven lines that are the same as last week's is eleven lines nobody reads,
+// and the one that changed was hidden among them. The total is always shown.
+export function overheadsToShow(items) {
+    const list = items || []
+    const first = list.length > 0 && list.every(i => i.carried_from == null)
+    if (first) return { first, lines: list }
+    return {
+        first,
+        lines: list.filter(i => i.carried_from == null
+            || Math.abs(num(i.amount) - num(i.carried_from)) >= 0.005),
+    }
+}
+
+// The days the platform statements covered, short enough for the line under
+// the delivery figure: "Statements Mon 28 Sept to Sun 4 Oct". Nothing on a
+// report frozen before statements were kept.
+export function statementDays(f) {
+    const s = f?.statement
+    if (!s?.from || !s?.to) return ''
+    const day = iso => new Date(String(iso).slice(0, 10) + 'T00:00:00Z')
+        .toLocaleDateString('en-IE', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })
+        .replace(',', '')
+    return `Statements ${day(s.from)} to ${day(s.to)}`
+}
+
+// Third party delivery as one figure: what the platforms cost, as a share of
+// what the online platforms took this week.
+export function deliverySummary(f) {
+    const online = (f?.platforms || []).filter(p => p.bucket === 'online_platform')
+    const taken = online.reduce((t, p) => t + num(p.taken), 0)
+    const total = num(f?.deliveryTotal)
+    return { total, taken, rate: taken > 0 ? (total / taken) * 100 : null }
 }
 
 export function fmtDate(iso) {
@@ -236,7 +284,7 @@ export function weekWords(weekStart) {
 function band(colour, background, edge, title, body) {
     return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
         style="margin:0 0 20px;border-radius:10px;background:${background};border:1px solid ${edge};">
-        <tr><td style="padding:14px 16px;font-family:${FONT};">
+        <tr><td style="padding:14px 16px;">
             <div style="font-size:15px;font-weight:700;color:${colour};">${title}</div>
             ${body ? `<div style="margin-top:6px;font-size:13px;line-height:1.5;color:${colour};">${body}</div>` : ''}
         </td></tr>
@@ -268,10 +316,10 @@ function band(colour, background, edge, title, body) {
 function heading(title, number) {
     return `<tr><td style="padding:36px 0 14px;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-            <tr><td style="background:${DARK};padding:14px ${SIDE}px;font-family:${FONT};">
+            <tr><td style="background:${DARK};padding:14px ${SIDE}px;">
                 <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
-                    ${number ? `<td width="26" align="center" style="background:#42544B;border-radius:6px;font-family:${FONT};font-size:12px;font-weight:700;color:#ffffff;padding:4px 0;">${number}</td>` : ''}
-                    <td style="${number ? `padding-left:12px;` : ''}font-family:${FONT};font-size:16px;font-weight:700;color:#ffffff;letter-spacing:.02em;">${escapeHtml(title)}</td>
+                    ${number ? `<td width="26" align="center" style="background:#42544B;border-radius:6px;font-size:12px;font-weight:700;color:#ffffff;padding:4px 0;">${number}</td>` : ''}
+                    <td style="${number ? `padding-left:12px;` : ''}font-size:16px;font-weight:700;color:#ffffff;letter-spacing:.02em;">${escapeHtml(title)}</td>
                 </tr></table>
             </td></tr>
         </table>
@@ -290,7 +338,7 @@ function heading(title, number) {
 // padding and this one does not.
 function subHeading(title) {
     return `<tr><td colspan="2" style="background:${BAND};border-bottom:1px solid ${BORDER};
-        padding:9px 14px;font-family:${FONT};font-size:11.5px;font-weight:700;letter-spacing:.1em;
+        padding:9px 14px;font-size:11.5px;font-weight:700;letter-spacing:.1em;
         text-transform:uppercase;color:${DARK};">${escapeHtml(title)}</td></tr>`
 }
 
@@ -324,8 +372,10 @@ function subHeading(title) {
 // would hold the whole table wider than a phone.
 const BREAKS = 'word-break:break-word;overflow-wrap:anywhere;'
 
+// The weight is only written when bold: normal is what a cell is anyway, and
+// saying so twice on every row came to 2KB of a heavy week.
 function line({ label, value, tone, colour, indent, strong, total, inset = 0 }) {
-    const weight = strong || total ? 700 : 400
+    const weight = strong || total ? 'font-weight:700;' : ''
     const size = total ? 15 : 14
     const ground = total ? `background:${CREAM};` : ''
     const rule = total
@@ -335,10 +385,10 @@ function line({ label, value, tone, colour, indent, strong, total, inset = 0 }) 
 
     return `<tr>
         <td width="100%" style="padding:${pad} 0 ${pad} ${inset + (indent ? 14 : (total ? 10 : 0))}px;${rule}${ground}
-            font-family:${FONT};font-size:${size}px;line-height:1.45;font-weight:${weight};
+            font-size:${size}px;line-height:1.45;${weight}
             color:${colour || INK};${BREAKS}">${label}</td>
         <td width="1%" align="right" style="padding:${pad} ${inset + (total ? 10 : 0)}px ${pad} 14px;${rule}${ground}
-            font-family:${FONT};font-size:${size}px;line-height:1.45;font-weight:${weight};
+            font-size:${size}px;line-height:1.45;${weight}
             color:${tone || INK};white-space:nowrap;">${value || ''}</td>
     </tr>`
 }
@@ -352,7 +402,7 @@ function bigFigure({ label, value, share, tone }) {
     return `<tr><td style="padding:18px ${SIDE}px 0;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
             style="background:${CREAM};border:2px solid ${tone};border-radius:12px;">
-            <tr><td style="padding:16px 18px;font-family:${FONT};">
+            <tr><td style="padding:16px 18px;">
                 <div style="font-size:12px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:${MUTED};">${escapeHtml(label)}</div>
                 <div style="margin-top:6px;font-size:30px;line-height:1.1;font-weight:700;color:${tone};">${value}</div>
                 ${share ? `<div style="margin-top:4px;font-size:15px;font-weight:700;color:${MUTED};">${share} of net sales</div>` : ''}
@@ -366,10 +416,103 @@ function figures(rows) {
         cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">${rows.join('')}</table></td></tr>`
 }
 
+// Why the figures may be wrong, the same sentences as figureGaps in the app's
+// weeklyReport, kept equal by a test. A report can go out without hours or
+// invoices entered, and the page says so; the mail said nothing, so a week
+// with no labour went out with earnings far higher than they were.
+export function figureGaps(f) {
+    const out = []
+    const days = f?.tradingDays
+    if (f?.labourDays === 0) {
+        out.push('No hours have been entered for this week, so labour is counted as zero '
+            + 'and net earnings are far higher than they really are.')
+    } else if (days > 0 && f?.labourDays < days) {
+        out.push(`Hours are entered for ${f.labourDays} of the ${days} days traded, `
+            + 'so labour is lower than it really was.')
+    }
+    if (f?.foodEntries === 0) out.push('No food invoices are dated in this week.')
+    if (f?.packagingEntries === 0) out.push('No packaging or cleaning invoices are dated in this week.')
+    return out
+}
+
+function gapsBox(gaps) {
+    if (!gaps.length) return ''
+    return `<tr><td style="padding:12px ${SIDE}px 0;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+            style="border:1px solid ${AMBER};border-radius:6px;"><tr><td style="padding:10px 12px;
+            font-size:13px;line-height:1.55;color:${AMBER};${BREAKS}">
+            <b>These figures are not finished</b><br />${gaps.map(escapeHtml).join('<br />')}
+        </td></tr></table></td></tr>`
+}
+
 function note(text) {
-    return `<tr><td style="padding:10px ${SIDE}px 0;font-family:${FONT};font-size:13px;
+    return `<tr><td style="padding:10px ${SIDE}px 0;font-size:13px;
         line-height:1.55;color:${MUTED};${BREAKS}">${escapeLines(text)}</td></tr>`
 }
+
+// Formatted comments (his, 7 October): bold, three colours and two sizes,
+// stored as a few marks. The same reader as richText.js in the app, which the
+// mail cannot import; a test keeps the two saying the same words. Anything
+// that is not one of the marks is shown as the words it is, never as HTML.
+const RICH_COLOURS = { red: '#B91C1C', green: '#1F7A4C', orange: '#C2410C' }
+const RICH_SIZES = { small: '0.85em', big: '1.25em' }
+const RICH_TOKEN = /<b>|<\/b>|<span data-([cs])="([a-z]+)">|<\/span>|<br>|[^<]+|</g
+const unentity = t => t.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&')
+
+function richTree(stored) {
+    const root = { kids: [] }
+    const stack = [root]
+    const top = () => stack[stack.length - 1]
+    for (const [tok, kind, value] of String(stored || '').matchAll(RICH_TOKEN)) {
+        if (tok === '<b>') {
+            const node = { t: 'b', kids: [] }
+            top().kids.push(node)
+            stack.push(node)
+        } else if (kind && ((kind === 'c' && RICH_COLOURS[value]) || (kind === 's' && RICH_SIZES[value]))) {
+            const node = { t: kind, v: value, kids: [] }
+            top().kids.push(node)
+            stack.push(node)
+        } else if ((tok === '</b>' && top().t === 'b') || (tok === '</span>' && ['c', 's'].includes(top().t))) {
+            stack.pop()
+        } else if (tok === '<br>') {
+            top().kids.push({ t: 'br' })
+        } else {
+            top().kids.push({ t: 'text', v: unentity(tok) })
+        }
+    }
+    return root.kids
+}
+
+export function richHtml(stored) {
+    const walk = nodes => nodes.map(n => {
+        if (n.t === 'text') return escapeHtml(n.v)
+        if (n.t === 'br') return '<br />'
+        if (n.t === 'b') return `<strong>${walk(n.kids)}</strong>`
+        const style = n.t === 'c' ? `color:${RICH_COLOURS[n.v]};` : `font-size:${RICH_SIZES[n.v]};`
+        return `<span style="${style}">${walk(n.kids)}</span>`
+    }).join('')
+    return walk(richTree(stored))
+}
+
+export function richWords(stored) {
+    const walk = nodes => nodes.map(n => (n.t === 'text' ? n.v : n.t === 'br' ? NEW_LINE : walk(n.kids))).join('')
+    return walk(richTree(stored))
+}
+const NEW_LINE = String.fromCharCode(10)
+
+// Whether every platform had to say its refunds before this went out. See
+// FIGURES_VERSION 4 in the app's weeklyReport.
+export const saidRefunds = f => Number(f?.version) >= 4
+
+// The comments on an action, only ever a list of them: what is stored comes
+// from the database and anybody with access could have written something else.
+const commentsOf = action => (Array.isArray(action?.meta?.comments) ? action.meta.comments : [])
+    .filter(c => c && typeof c === 'object')
+
+// What a comment says, as HTML or as words, whether it was written before
+// formatting or after. See meta.rich in richText.js.
+const noteHtml = item => (item?.meta?.rich ? richHtml(item.note) : escapeLines(item?.note || ''))
+const noteWords = item => (item?.meta?.rich ? richWords(item.note) : item?.note || '')
 
 // A comment is a card on the report and a card here, so a section with four of
 // them reads as four remarks rather than one long paragraph.
@@ -378,8 +521,8 @@ function comments(items) {
     return items.map(item => `<tr><td style="padding:8px ${SIDE}px 0;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
             style="background:${CREAM};border-radius:8px;">
-            <tr><td style="padding:11px 13px;font-family:${FONT};font-size:13.5px;
-                line-height:1.55;color:${INK};${BREAKS}">${item.label ? `<strong>${escapeHtml(item.label)}.</strong>&nbsp;` : ''}${escapeLines(item.note || '')}</td></tr>
+            <tr><td style="padding:11px 13px;font-size:13.5px;
+                line-height:1.55;color:${INK};${BREAKS}">${item.label ? `<strong>${escapeHtml(item.label)}.</strong>&nbsp;` : ''}${noteHtml(item)}</td></tr>
         </table>
     </td></tr>`).join('')
 }
@@ -391,17 +534,17 @@ function comments(items) {
 // gone black, floating with nothing round it. Sitting it in a white card with
 // a border and some padding makes that look meant rather than broken, and
 // costs nothing in the light.
-function chart(url, caption) {
+function chart(url, caption, alt = caption) {
     if (!url) return ''
     return `<tr><td style="padding:18px 0 0;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
             style="background:#ffffff;border-top:1px solid ${BORDER};border-bottom:1px solid ${BORDER};">
             <tr><td style="padding:6px 0;">
-                <img src="${escapeHtml(url)}" width="100%" alt="${escapeHtml(caption)}"
+                <img src="${escapeHtml(url)}" width="100%" alt="${escapeHtml(alt)}"
                     style="display:block;width:100%;max-width:${WIDTH}px;height:auto;border:0;" />
             </td></tr>
         </table>
-        <div style="margin-top:7px;padding:0 ${SIDE}px;font-family:${FONT};font-size:12px;color:${MUTED};">${escapeHtml(caption)}</div>
+        ${caption ? `<div style="margin-top:7px;padding:0 ${SIDE}px;font-size:12px;color:${MUTED};">${escapeHtml(caption)}</div>` : ''}
     </td></tr>`
 }
 
@@ -418,7 +561,7 @@ const of = (section, kind) =>
 // two apart, here and on the screen.
 const sectionComments = section => of(section, 'comment').filter(i => !i.key)
 const noteFor = (section, platformId) =>
-    of(section, 'comment').find(i => i.key === platformId)?.note || ''
+    of(section, 'comment').find(i => i.key === platformId) || null
 
 function salesAndCosts(section, f, charts) {
     const t = f.targets || {}
@@ -435,7 +578,7 @@ function salesAndCosts(section, f, charts) {
     // wrong way round: by then you have already done the work the picture was
     // going to save you.
     return heading(section.title, section.number)
-        + chart(charts.sales, 'Net sales against what it cost to make, week by week.')
+        + chart(charts.sales, '', 'Net sales against what it cost to make, week by week.')
         + figures([
         line({ label: 'Net sales', value: money(f.net), total: true }),
         line({ label: 'Gross sales', value: money(f.gross), tone: MUTED }),
@@ -447,124 +590,98 @@ function salesAndCosts(section, f, charts) {
         }),
         line({ label: 'Cost of sales', value: withShare(f.costOfSales, f.costOfSalesPct), total: true }),
     ])
-        + note('Every percentage is of net sales.'
-            + (targetNote
-                ? ` Green is at or under target, amber within two points over, red past that. This week was judged against ${targetNote}.`
-                : ''))
+        + (targetNote ? note(`Current targets: ${targetNote}.`) : '')
         + comments(sectionComments(section))
-}
-
-// What a platform cost the week, and the share it kept.
-//
-// Since figures version 2 the platform carries both, worked out from its
-// Monday to Sunday statement. A report frozen before that has only the typed
-// figure, which was the cost, and a share against what it took in our week.
-function deliveryOf(item, platform) {
-    if (platform && platform.cost != null) {
-        return {
-            cost: num(platform.cost),
-            rate: platform.rate == null ? null : num(platform.rate),
-            // What the share was worked out against: the platform's own
-            // takings over its statement's Monday to Sunday.
-            against: platform.statementTaken == null ? null : num(platform.statementTaken),
-        }
-    }
-    const sales = num(platform?.taken)
-    return {
-        cost: num(item.amount),
-        rate: sales > 0 ? (num(item.amount) / sales) * 100 : null,
-    }
 }
 
 function profitAndLoss(section, f, charts) {
     const overheads = of(section, 'overhead')
     const delivery = of(section, 'delivery')
-    const platforms = f.platforms || []
+    const t = f.targets || {}
 
-    const rows = []
-    for (const item of overheads) {
-        rows.push(line({
-            label: escapeHtml(item.label || 'Overhead'), value: money(item.amount), indent: true,
-        }))
-    }
+    // Every line the first time, then only what changed and what it was.
+    const shown = overheadsToShow(overheads)
+    const rows = shown.lines.map(item => line({
+        label: escapeHtml(item.label || 'Overhead')
+            + (!shown.first && item.carried_from != null ? small(`was ${money(item.carried_from)}`) : '')
+            + (!shown.first && item.carried_from == null ? small('new this week') : ''),
+        value: money(item.amount),
+        indent: true,
+    }))
     if (overheads.length > 0) {
-        rows.push(line({ label: 'Fixed overheads', value: money(f.standing), total: true }))
-    }
-
-    // The delivery platforms get a table of their own, and that is the whole of
-    // the overhead fix.
-    //
-    // A table gives every row in it the same columns, and a column comes out as
-    // wide as the widest thing anywhere in it. The share beside a platform is a
-    // line that cannot break, so in one table it was setting the figure column
-    // for the eleven overheads above it as well, and each of those labels got
-    // whatever was left of a phone screen. Two tables and the overheads are
-    // measured against their own money again.
-    //
-    // Nothing moves. Both tables fill the same cell and the figures are right
-    // aligned in both, so the money still reads as one column, and the rule
-    // under the last overhead meets the first platform with no gap.
-    const paidFrom = rows.length
-
-    for (const item of delivery) {
-        // What is worth knowing about a platform's bill is what share of that
-        // platform's own takings it was. Against total sales it would look
-        // small on every platform and say nothing about any of them.
-        //
-        // It goes UNDER the name, not beside the figure. Beside it, the two
-        // together were a line of forty three characters that could not break,
-        // and in this table that is the widest thing in the figure column: it
-        // squeezed the platform names into two lines and "Third party delivery
-        // costs" into four. Splitting the tables took that string off the
-        // overheads; this takes it off the platforms as well.
-        const platform = platforms.find(p => p.id === item.key)
-        //
-        // Since 27 September it says what the share was taken against and
-        // over which days, his words: "the percentage is calculated against X
-        // amount and done Monday to Sunday as that's the way the cost reports
-        // comes". A report frozen before the statement week keeps saying what
-        // it said.
-        const { cost, rate, against } = deliveryOf(item, platform)
-        const over = against != null && f.statement?.words
-            ? `${pct(rate)} of the ${money(against)} it took ${escapeHtml(f.statement.words)}, the days its statement covers`
-            : `${pct(rate)} of what it took`
         rows.push(line({
-            label: escapeHtml(item.label || 'Platform')
-                + (rate != null
-                    ? `<br /><span style="color:${MUTED};font-size:13px;">${over}</span>`
-                    : ''),
-            colour: platform?.colour,
-            value: money(cost),
-            indent: true,
-        }))
-    }
-    if (delivery.length > 0) {
-        rows.push(line({
-            label: 'Third party delivery costs', value: money(f.deliveryTotal), total: true,
+            label: 'Fixed overheads' + (!shown.first && shown.lines.length === 0 ? small('No change from last week') : ''),
+            value: money(f.standing),
+            total: true,
         }))
     }
 
-    // The platform costs go under the platform costs, and net earnings is what
-    // is left after them, so the picture of what they cost belongs on the near
-    // side of that box rather than three screens past it.
-    return heading(section.title, section.number) + figures(rows.slice(0, paidFrom))
-        + (rows.length > paidFrom ? figures(rows.slice(paidFrom)) : '')
-        + (delivery.length > 0 && f.statement?.words
-            ? note('The platforms bill Monday to Sunday, a day behind our week. Each share is what '
-                + `the platform kept on its statement for ${f.statement.words}, and the cost is that `
-                + 'share of what it took this week.')
-            : '')
-        + chart(charts.delivery, 'What each platform has cost, week by week.')
+    // One line for the platforms, his of 4 October: what they cost against
+    // what the online platforms took. The platform by platform figures are on
+    // the report in the Hub, and the chart under this says which one moved.
+    // The statement days go inside the delivery box, under the online sales
+    // (his, 7 October). As a note under both boxes they read as if they
+    // covered the overheads too.
+    const d = deliverySummary(f)
+    const days = statementDays(f)
+    const deliveryRow = delivery.length > 0
+        ? figures([line({
+            label: 'Third party delivery costs'
+                + (d.rate != null ? small(`of ${money(d.taken)} online sales`) : '')
+                + (days ? small(escapeHtml(days)) : ''),
+            value: d.rate != null ? withShare(d.total, d.rate, costTone(d.rate, t.delivery)) : money(d.total),
+            total: true,
+        })])
+        : ''
+
+    return heading(section.title, section.number)
+        + (rows.length ? figures(rows) : '')
+        + deliveryRow
+        + chart(charts.delivery,
+            t.delivery ? `What each platform kept of its sales. The dashed line is the ${t.delivery}% target.` : '',
+            'What each platform kept of its sales, week by week.')
         + bigFigure({
             label: 'Net earnings',
             value: money(f.earnings),
             share: pct(f.earningsPct),
             tone: num(f.earnings) < 0 ? RED : GREEN,
         })
+        + gapsBox(figureGaps(f))
         + note('Net earnings is net sales minus food, labour, packaging and cleaning, fixed '
-            + 'overheads and third party delivery costs. The percentage under it is of net sales.')
+            + 'overheads and third party delivery costs.')
         + chart(charts.earnings, 'Net earnings, week by week.')
         + comments(sectionComments(section))
+}
+
+// What came of a refund claim: the same reading as claimState and claimAnswer
+// in the app's weeklyReport.js, which this function cannot import. Before 7
+// October a refund was only claimed or not, and claimed is read as waiting.
+export function claimState(item) {
+    const said = item?.meta?.claim
+    if (['none', 'waiting', 'back', 'refused'].includes(said)) return said
+    return item?.meta?.claimed ? 'waiting' : 'none'
+}
+
+export function claimAnswer(item) {
+    const said = item?.meta?.answer
+    return ['waiting', 'back', 'refused'].includes(said) ? said : null
+}
+
+// Each state as a coloured pill, the same colours as on the page, so claimed
+// and paid back are told apart without reading the words.
+const CLAIM_TAG = {
+    none: { text: 'Not claimed', colour: MUTED, ground: '#FFFFFF' },
+    waiting: { text: 'Claimed, waiting', colour: AMBER, ground: '#FEF6E7' },
+    back: { text: '&#10003;&nbsp;Paid back', colour: GREEN, ground: '#EEF6F1' },
+    refused: { text: 'Refused', colour: RED, ground: '#FDEDED' },
+}
+const CLAIM_WORDS = { none: 'not claimed', waiting: 'claimed, waiting', back: 'paid back', refused: 'refused' }
+
+// A pill on a line of its own under a row's words. Its text is short and
+// cannot wrap, well inside the width a phone gives the mail.
+function tagLine(tag) {
+    return `<br /><span style="padding:1px 7px;border-radius:9px;border:1px solid ${tag.colour};`
+        + `background:${tag.ground};color:${tag.colour};font-size:12px;font-weight:700;white-space:nowrap">${tag.text}</span>`
 }
 
 // A review coloured by what it says.
@@ -606,7 +723,7 @@ function ratingMove(rating) {
 // of three had no rating at all, and a reader cannot tell "held at 4.8" from
 // "nobody has entered it" by being shown neither. The move is still called out
 // when there is one, because that is the part that is news.
-function platformBlock(section, platform, rated) {
+function platformBlock(section, platform, rated, f) {
     const rows = []
 
     // A corporate account gets none of what follows. Clockmeal has no star
@@ -629,7 +746,7 @@ function platformBlock(section, platform, rated) {
             ? '<span style="color:' + MUTED + ';">not recorded</span>'
             : `${num(rating.amount).toFixed(1)}&nbsp;out&nbsp;of&nbsp;5`
                 + (moved
-                    ? `<br /><span style="color:${up ? GREEN : AMBER};${change}">(${up ? 'up' : 'down'} from ${num(rating.carried_from).toFixed(1)})</span>`
+                    ? `<br /><span style="color:${up ? GREEN : RED};${change}">(${up ? 'up' : 'down'} from ${num(rating.carried_from).toFixed(1)})</span>`
                     : (rating.carried_from != null
                         ? `<br /><span style="color:${MUTED};${change}">(no change)</span>`
                         : '')),
@@ -649,17 +766,36 @@ function platformBlock(section, platform, rated) {
         }))
     }
 
+    // Said when there were none, the same as the reviews, rather than the
+    // heading left out (his, 7 October): a missing part reads as forgotten.
     const refunds = rated ? of(section, 'refund').filter(r => r.key === platform.id) : []
+    // Only on a report from version 4, when the week could not go out without
+    // somebody saying so. Earlier, an empty list may only mean nobody looked.
+    if (rated && refunds.length === 0 && saidRefunds(f)) rows.push(subHeading('Refunds: none'))
     if (refunds.length > 0) {
         rows.push(subHeading('Refunds'))
         for (const refund of refunds) {
             rows.push(line({ inset: 14,
-                label: escapeHtml(refund.note || 'Refund')
-                    + `<br /><span style="color:${MUTED};">`
-                    + (refund.meta?.claimed ? 'Claimed back' : 'Not claimed')
-                    + '</span>',
+                label: escapeHtml(refund.note || 'Refund') + tagLine(CLAIM_TAG[claimState(refund)]),
                 value: negative(refund.amount),
                 tone: RED,
+            }))
+        }
+    }
+
+    // Claims from earlier weeks, each with what came of it this week. Paid
+    // back is money in, so it reads as a plus.
+    const claims = rated ? of(section, 'refund_claim').filter(c => c.key === platform.id) : []
+    if (claims.length > 0) {
+        rows.push(subHeading('Claims from earlier weeks'))
+        for (const claim of claims) {
+            const answer = claimAnswer(claim)
+            rows.push(line({ inset: 14,
+                label: escapeHtml(claim.note || 'Refund')
+                    + small(`Claimed in the week of ${escapeHtml(dayMonth(claim.opened_on))}`)
+                    + tagLine(CLAIM_TAG[answer || 'waiting']),
+                value: answer === 'back' ? `+${money(Math.abs(num(claim.amount)))}` : money(Math.abs(num(claim.amount))),
+                tone: answer === 'back' ? GREEN : MUTED,
             }))
         }
     }
@@ -673,9 +809,9 @@ function platformBlock(section, platform, rated) {
             <tr><td style="background:${CREAM};padding:12px 14px;">
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                     <tr>
-                        <td width="100%" style="font-family:${FONT};font-size:17px;font-weight:700;
+                        <td width="100%" style="font-size:17px;font-weight:700;
                             color:${platform.colour || INK};">${escapeHtml(platform.name)}</td>
-                        <td width="1%" align="right" style="padding-left:12px;font-family:${FONT};font-size:17px;
+                        <td width="1%" align="right" style="padding-left:12px;font-size:17px;
                             font-weight:700;color:${INK};white-space:nowrap;">${money(platform.taken)}</td>
                     </tr>
                 </table>
@@ -683,18 +819,28 @@ function platformBlock(section, platform, rated) {
             ${rows.length || remark ? `<tr><td style="padding:0 0 4px;">
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
                     style="border-collapse:collapse;">${rows.join('')}</table>
-                ${remark ? `<div style="padding:12px 14px 8px;font-family:${FONT};font-size:13px;line-height:1.55;color:${MUTED};${BREAKS}">${escapeLines(remark)}</div>` : ''}
+                ${remark ? `<div style="padding:12px 14px 8px;font-size:13px;line-height:1.55;color:${MUTED};${BREAKS}">${noteHtml(remark)}</div>` : ''}
             </td></tr>` : ''}
         </table>
     </td></tr>`
 }
 
+// Corporate accounts biggest first, the order the page shows them in: on that
+// section the size is the story. Online platforms keep the order they were set
+// up in, on both.
+export function platformsIn(f, bucket) {
+    const platforms = (f?.platforms || []).filter(p => p.bucket === bucket)
+    return bucket === 'catering'
+        ? platforms.map((p, i) => ({ p, i })).sort((a, b) => num(b.p.taken) - num(a.p.taken) || a.i - b.i).map(x => x.p)
+        : platforms
+}
+
 function platformSection(section, f, charts, bucket, chartKey) {
-    const platforms = (f.platforms || []).filter(p => p.bucket === bucket)
+    const platforms = platformsIn(f, bucket)
 
     const body = platforms.length === 0
         ? note('No platforms were tracked for this week.')
-        : platforms.map(p => platformBlock(section, p, bucket === 'online_platform')).join('')
+        : platforms.map(p => platformBlock(section, p, bucket === 'online_platform', f)).join('')
 
     // Under the band, the same as sales and costs. A section that opens with
     // the shape of the thing and then breaks it down by platform reads in the
@@ -766,8 +912,8 @@ function paperwork(state, title) {
                 + (withDate && p.on ? `&nbsp;(${fmtDate(p.on)})` : '')
                 + renewalWords(p))
             .join('<br />')
-        groups.push(`<div style="margin-top:12px;font-family:${FONT};font-size:13px;color:${MUTED};">${label}</div>`
-            + `<div style="margin-top:4px;font-family:${FONT};font-size:14px;line-height:1.7;color:${INK};">${names}</div>`)
+        groups.push(`<div style="margin-top:12px;font-size:13px;color:${MUTED};">${label}</div>`
+            + `<div style="margin-top:4px;font-size:14px;line-height:1.7;color:${INK};">${names}</div>`)
     }
 
     group('Expired:', state.expired, true)
@@ -780,8 +926,8 @@ function paperwork(state, title) {
             <tr><td style="background:${CREAM};padding:12px 14px;">
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                     <tr>
-                        <td width="100%" style="font-family:${FONT};font-size:16px;font-weight:700;color:${INK};">${escapeHtml(title)}</td>
-                        <td width="1%" align="right" style="padding-left:12px;font-family:${FONT};font-size:15px;
+                        <td width="100%" style="font-size:16px;font-weight:700;color:${INK};">${escapeHtml(title)}</td>
+                        <td width="1%" align="right" style="padding-left:12px;font-size:15px;
                             font-weight:700;color:${tone};white-space:nowrap;">${state.fine} of ${state.total} in date</td>
                     </tr>
                 </table>
@@ -808,13 +954,13 @@ function allergenSheet(due) {
             <tr><td style="background:${CREAM};padding:12px 14px;">
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                     <tr>
-                        <td width="100%" style="font-family:${FONT};font-size:16px;font-weight:700;color:${INK};">Allergen sheet</td>
-                        <td width="1%" align="right" style="padding-left:12px;font-family:${FONT};font-size:15px;
+                        <td width="100%" style="font-size:16px;font-weight:700;color:${INK};">Allergen sheet</td>
+                        <td width="1%" align="right" style="padding-left:12px;font-size:15px;
                             font-weight:700;color:${AMBER};white-space:nowrap;">Print a new one</td>
                     </tr>
                 </table>
             </td></tr>
-            <tr><td style="padding:12px 14px 14px;font-family:${FONT};font-size:14px;line-height:1.55;color:${INK};">${escapeHtml(due.words)}</td></tr>
+            <tr><td style="padding:12px 14px 14px;font-size:14px;line-height:1.55;color:${INK};">${escapeHtml(due.words)}</td></tr>
         </table>
     </td></tr>`
 }
@@ -838,19 +984,59 @@ function weeksOpen(openedOn, weekStart) {
     return Math.max(0, Math.round((to - from) / (7 * 86400000)))
 }
 
+// Still open, longest open first, the order the page lists them in: the one
+// waiting since July is the one worth reading, and the order they were typed in
+// buried it at the bottom.
+export function openActions(section, weekStart) {
+    return of(section, 'action').filter(a => !a.done_on)
+        .map((a, i) => ({ a, i, weeks: weeksOpen(a.opened_on, weekStart) }))
+        .sort((x, y) => y.weeks - x.weeks || x.i - y.i)
+        .map(x => x.a)
+}
+
+// Ticked off this week, in the order they were listed, shown first (his, 8
+// October, option B). A ticked action is only on the report of the week it
+// was ticked, so every one here was done this week.
+export function doneActions(section) {
+    return of(section, 'action').filter(a => a.done_on)
+}
+
+const actionAge = weeks => (weeks === 0 ? 'Raised this week' : `Open ${weeks} week${weeks === 1 ? '' : 's'}`)
+
 function supportActions(section, weekStart) {
-    const actions = of(section, 'action').filter(a => !a.done_on)
-    if (actions.length === 0) {
+    const actions = openActions(section, weekStart)
+    const done = doneActions(section)
+    if (actions.length === 0 && done.length === 0) {
         return heading(section.title, section.number) + note('Nothing outstanding.')
     }
 
-    const rows = actions.map(action => {
+    // Each action across the whole width, as a list with a dot, and how long
+    // it has been open as a pill under it (his, 7 October). With the age in a
+    // column down the right the actions had half a phone and wrapped four
+    // lines deep. Amber from three weeks, the point it is worth chasing.
+    const rows = [...done, ...actions].map(action => {
+        const finished = !!action.done_on
         const weeks = weeksOpen(action.opened_on, weekStart)
-        return line({
-            label: escapeHtml(action.label || ''),
-            value: weeks === 0 ? 'new this week' : `open ${weeks} week${weeks === 1 ? '' : 's'}`,
-            tone: weeks >= 3 ? AMBER : MUTED,
-        })
+        const tone = finished ? GREEN : weeks >= 3 ? AMBER : MUTED
+        const fill = finished ? '#EEF7F1' : weeks >= 3 ? '#FEF6E7' : '#FFFFFF'
+        // The dot hangs in the margin, so a long action wraps under its own
+        // words rather than under the dot. One cell, not a table for the dot:
+        // ten of those took a heavy week past the size Gmail cuts off at.
+        return `<tr><td colspan="2" style="padding:10px 0 10px 18px;text-indent:-18px;border-bottom:1px solid ${BORDER};`
+            + `font-size:14px;line-height:1.65;color:${INK};${BREAKS}">`
+            + `<span style="display:inline-block;width:18px;text-indent:0;color:${GREEN};font-weight:700;">${finished ? '&#10003;' : '&bull;'}</span>`
+            + (finished
+                ? `<span style="color:${MUTED};text-decoration:line-through;">${escapeHtml(action.label || '')}</span>`
+                : escapeHtml(action.label || ''))
+            + `<br /><span style="padding:1px 7px;border-radius:9px;border:1px solid ${tone};background:${fill};`
+            + `color:${tone};font-size:12px;font-weight:700;white-space:nowrap">${finished ? 'Done this week' : actionAge(weeks)}</span>`
+            // Its comments under it, each with its day (his, 7 October).
+            // A thin line down the left of each, the day small above its
+            // words (his, 8 October, style 1).
+            + commentsOf(action).map(c => `<div style="margin-top:6px;text-indent:0;padding:2px 0 2px 10px;border-left:3px solid #D9CFC0;font-size:13px;line-height:1.5;">`
+                + `<span style="display:block;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:${MUTED};">`
+                + `${escapeHtml(dayMonth(c.on))}</span>${richHtml(c.text)}</div>`).join('')
+            + `</td></tr>`
     })
 
     return heading(section.title, section.number) + figures(rows) + comments(sectionComments(section))
@@ -873,7 +1059,7 @@ function cleaningCard(list) {
     const tone = warn ? RED : list.lines.every(l => l.state === 'done') ? GREEN : AMBER
     const lines = list.lines.map(line => {
         const colour = line.warn ? RED : line.state === 'done' ? GREEN : INK
-        let out = `<div style="margin-top:8px;font-family:${FONT};font-size:14px;line-height:1.55;color:${colour};${line.warn ? 'font-weight:700;' : ''}">${escapeHtml(line.words)}</div>`
+        let out = `<div style="margin-top:8px;font-size:14px;line-height:1.55;color:${colour};${line.warn ? 'font-weight:700;' : ''}">${escapeHtml(line.words)}</div>`
         if (line.warn && line.left?.length) {
             // Missed two rounds running is the thing worth a manager's eye,
             // so it is said in red.
@@ -881,20 +1067,20 @@ function cleaningCard(list) {
                 .map(t => '&bull;&nbsp;' + escapeHtml(t.label) + `<span style="color:${MUTED};">, ${escapeHtml(t.lastDoneWords)}</span>`
                     + (t.again ? `<span style="color:${RED};font-weight:700;">, not done the time before either</span>` : ''))
             if (line.left.length > LEFT_IN_MAIL) shown.push(`<span style="color:${MUTED};">and ${line.left.length - LEFT_IN_MAIL} more, on the Hub</span>`)
-            out += `<div style="margin-top:4px;font-family:${FONT};font-size:14px;line-height:1.7;color:${INK};">${shown.join('<br />')}</div>`
+            out += `<div style="margin-top:4px;font-size:14px;line-height:1.7;color:${INK};">${shown.join('<br />')}</div>`
         }
         return out
     }).join('')
     const photos = list.photos?.length
-        ? `<div style="margin-top:10px;font-family:${FONT};font-size:13px;color:${MUTED};">${list.photos.length === 1 ? '1 photo' : `${list.photos.length} photos`} taken this week, on the Hub.</div>`
+        ? `<div style="margin-top:10px;font-size:13px;color:${MUTED};">${list.photos.length === 1 ? '1 photo' : `${list.photos.length} photos`} taken this week, on the Hub.</div>`
         : ''
 
     return `<tr><td style="padding:14px ${SIDE}px 0;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
             style="border:1px solid ${BORDER};border-left:5px solid ${tone};border-radius:10px;">
             <tr><td style="background:${CREAM};padding:12px 14px;">
-                <div style="font-family:${FONT};font-size:16px;font-weight:700;color:${INK};">${escapeHtml(list.name)}</div>
-                <div style="margin-top:2px;font-family:${FONT};font-size:12.5px;color:${MUTED};">${escapeHtml(list.repeats)}</div>
+                <div style="font-size:16px;font-weight:700;color:${INK};">${escapeHtml(list.name)}</div>
+                <div style="margin-top:2px;font-size:12.5px;color:${MUTED};">${escapeHtml(list.repeats)}</div>
             </td></tr>
             <tr><td style="padding:2px 14px 14px;">${lines}${photos}</td></tr>
         </table>
@@ -942,6 +1128,23 @@ export function change(n) {
 const unitMoney = money
 const priceOf = value => money(value)
 
+// What was paid, the way the page says it. For codes bought either way it is
+// an average over the last few deliveries, and the day of the last one is not
+// a day anything was paid that much.
+export function paidWords(r) {
+    if (r.averaged) {
+        return `paid ${unitMoney(r.paid)} on average over the last ${r.averaged.deliveries} deliveries`
+    }
+    return `paid ${unitMoney(r.paid)} on ${dayMonth(r.paidOn)}`
+}
+
+// What a version bought instead is set against: the usual one's last delivery,
+// or what recipes cost it at when the usual one has never come on an invoice.
+// The page labels the second bar "recipes".
+export function againstWords(x) {
+    return x.usualFrom === 'recipes' ? 'in recipes' : 'usually'
+}
+
 // A day and a month, for a row that already says which week it is in.
 export function dayMonth(iso) {
     if (!iso) return ''
@@ -951,6 +1154,35 @@ export function dayMonth(iso) {
 }
 
 const small = text => `<br /><span style="color:${MUTED};font-size:13px;">${text}</span>`
+
+// A row whose figures sit beside its name, with its facts underneath across
+// the whole width (his, 7 October). With the figures in a column of their own
+// down the side, the facts had what was left of a phone and every price broke
+// onto a second line.
+function headedRow({ name, facts: body, value, tone }) {
+    return `<tr><td colspan="2" style="padding:9px 14px;border-bottom:1px solid ${BORDER};`
+        + `font-size:14px;line-height:1.45;color:${INK};${BREAKS}">`
+        + `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>`
+        + `<td width="100%" valign="top" style="font-weight:700;">${name}</td>`
+        + `<td width="1%" align="right" valign="top" style="padding-left:12px;color:${tone};white-space:nowrap;">${value}</td>`
+        + `</tr></table>${body}</td></tr>`
+}
+
+// Facts about one row, each on its own line with a small label to its left,
+// the labels one width so the facts line up. A label is one short word, so it
+// never holds the mail wider than a phone; a long fact wraps under it. Empty
+// entries are left out.
+//
+// Lines rather than a table, and font and wrapping from the row's own cell:
+// a table each came to 5KB in a heavy week and took the mail past the size
+// Gmail cuts off at.
+function facts(pairs) {
+    return `<div style="margin-top:3px;font-size:13px;">`
+        + pairs.filter(Boolean).map(([label, value]) =>
+            `<span style="display:inline-block;width:62px;font-size:12px;color:${MUTED};">${label}</span>${value}`)
+            .join('<br />')
+        + '</div>'
+}
 
 // One kind of thing, as a card: a header with what it came to, then a row each.
 // Built the way the paperwork cards are, and for the same reason: loose rows
@@ -962,8 +1194,8 @@ function priceCard(title, figure, tone, rows, empty) {
             <tr><td style="background:${CREAM};padding:12px 14px;">
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                     <tr>
-                        <td width="100%" style="font-family:${FONT};font-size:16px;font-weight:700;color:${INK};">${escapeHtml(title)}</td>
-                        <td width="1%" align="right" style="padding-left:12px;font-family:${FONT};font-size:15px;
+                        <td width="100%" style="font-size:16px;font-weight:700;color:${INK};">${escapeHtml(title)}</td>
+                        <td width="1%" align="right" style="padding-left:12px;font-size:15px;
                             font-weight:700;color:${tone};white-space:nowrap;">${figure}</td>
                     </tr>
                 </table>
@@ -972,7 +1204,7 @@ function priceCard(title, figure, tone, rows, empty) {
                 ${rows.length
                     ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
                         style="border-collapse:collapse;">${rows.join('')}</table>`
-                    : `<div style="padding:12px 14px;font-family:${FONT};font-size:13px;line-height:1.55;color:${MUTED};">${escapeHtml(empty)}</div>`}
+                    : `<div style="padding:12px 14px;font-size:13px;line-height:1.55;color:${MUTED};">${escapeHtml(empty)}</div>`}
             </td></tr>
         </table>
     </td></tr>`
@@ -1000,8 +1232,8 @@ function pricesInMail(p) {
 function cappedRows(all, shown, toRow) {
     const rows = shown.map(toRow)
     if (all.length > shown.length) {
-        rows.push(`<tr><td colspan="2" style="padding:9px 14px;border-bottom:1px solid ${BORDER};font-family:${FONT};font-size:13px;">`
-            + `<span style="color:${MUTED};font-family:${FONT};">and ${all.length - shown.length} more, on the Hub</span></td></tr>`)
+        rows.push(`<tr><td colspan="2" style="padding:9px 14px;border-bottom:1px solid ${BORDER};font-size:13px;">`
+            + `<span style="color:${MUTED};">and ${all.length - shown.length} more, on the Hub</span></td></tr>`)
     }
     return rows
 }
@@ -1012,20 +1244,75 @@ function cappedText(all, shown, toLine) {
     return lines
 }
 
-// The headlines, one to a line, with what kind of thing it is in bold: his
-// choice on 26 September for the mail (B). The label is everything before the
-// first colon, which is how the app writes them.
-function wordsBlock(words) {
-    if (!words?.length) return ''
-    const one = w => {
-        const at = w.indexOf(': ')
-        return at === -1
-            ? escapeHtml(w)
-            : `<strong style="color:${DARK};">${escapeHtml(w.slice(0, at + 1))}</strong>&#32;${escapeHtml(w.slice(at + 2))}`
+// ---------------------------------------------------------------------------
+// The brand's recommendations
+// ---------------------------------------------------------------------------
+//
+// Layout D, his pick of 4 October: each product bought that the brand does
+// not recommend, with two boxes side by side, what was bought and what the
+// brand recommends, each at its price per unit. Two half width cells in a
+// table, which every client lays out the same; the words wrap inside them,
+// so nothing holds the mail wider than a phone.
+
+const cases = (n, loose = 0) => [
+    n ? `${n} ${n === 1 ? 'case' : 'cases'}` : '',
+    loose ? `${loose} loose` : '',
+].filter(Boolean).join(' and ')
+
+function brandBox(label, name, per, unit, colour, ground, more = 0) {
+    return `<td width="50%" valign="top" style="padding:10px 12px;background:${ground};border:1px solid ${BORDER};
+        border-radius:8px;${BREAKS}">
+        <div style="font-size:11px;letter-spacing:0.6px;font-weight:700;color:${colour};">${escapeHtml(label).toUpperCase()}</div>
+        <div style="font-size:14px;line-height:1.4;color:${INK};margin-top:2px;">${escapeHtml(name)}</div>
+        <div style="font-size:14px;font-weight:700;color:${INK};margin-top:2px;">${per != null
+            ? `${escapeHtml(money(per))} ${escapeHtml(unit)}`
+            : `<span style="font-weight:400;color:${MUTED};">No price here</span>`}</div>
+        ${more > 0 ? `<div style="font-size:12px;color:${MUTED};margin-top:2px;">and ${more} more recommended</div>` : ''}
+    </td>`
+}
+
+function brandRows(rows) {
+    return rows.map(r => `<tr><td colspan="2" style="padding:12px 14px;border-bottom:1px solid ${BORDER};">
+        <div style="font-size:15px;font-weight:700;color:${INK};${BREAKS}">${escapeHtml(r.name)}</div>
+        <div style="font-size:13px;color:${MUTED};margin:2px 0 8px;">${escapeHtml([cases(r.cases), money(r.money)].filter(Boolean).join(', '))}</div>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;border-spacing:0;">
+            <tr>
+                ${brandBox('Bought', r.bought.name, r.bought.per, r.unit, AMBER, '#FEF6E7')}
+                <td width="8" style="width:8px;min-width:8px;font-size:1px;line-height:1px;">&nbsp;</td>
+                ${brandBox('Recommended', r.recommended.name, r.recommended.per, r.unit, GREEN, '#EEF6F1', r.others)}
+            </tr>
+        </table>
+    </td></tr>`)
+}
+
+// The three that came with the brand's recommendations, as cards, each only
+// when it has something in it: the mail is kept short (his list of 4
+// October), and the report in the Hub says when everything was as
+// recommended. Nothing on a report frozen before they existed.
+function brandCards(p) {
+    const t = p.totals || {}
+    let out = ''
+    if (p.notRecommended?.length) {
+        out += priceCard('Not as the brand recommends', String(p.notRecommended.length), AMBER,
+            brandRows(p.notRecommended), '')
     }
-    return `<tr><td style="padding:14px ${SIDE}px 0;font-family:${FONT};font-size:14px;line-height:1.6;color:${INK};">`
-        + words.map(w => `<div style="margin:0 0 8px;">${one(w)}</div>`).join('')
-        + '</td></tr>'
+    if (p.waiting?.length) {
+        out += priceCard('Waiting on a review', money(t.waiting), MUTED,
+            p.waiting.map(w => line({
+                inset: 14,
+                label: escapeHtml(w.name) + small(escapeHtml([cases(w.cases, w.loose), `sent ${dayMonth(w.sent)}`].filter(Boolean).join(', '))),
+                value: money(w.money),
+            })), '')
+    }
+    if (p.notChecked?.length) {
+        out += priceCard('Not checked', money(t.notChecked), MUTED,
+            p.notChecked.map(u => line({
+                inset: 14,
+                label: escapeHtml(u.name) + small(escapeHtml(u.why)),
+                value: money(u.money),
+            })), '')
+    }
+    return out
 }
 
 export function pricesSection(section, f) {
@@ -1038,46 +1325,30 @@ export function pricesSection(section, f) {
     const t = p.totals || {}
     const shown = pricesInMail(p)
 
-    // The four figures an owner reads first, as rows, with what each one is
-    // under its name rather than beside the money.
-    const summary = figures([
-        line({
-            label: 'Same product, new price'
-                + small(p.moves.length ? `${p.moves.length} ${p.moves.length === 1 ? 'product' : 'products'}` : 'Every code cost what it did'),
-            value: p.moves.length ? signedMoney(t.moves) : 'None',
-            tone: toneFor(t.moves),
-        }),
-        line({
-            label: 'Bought as something else'
-                + small(p.switches.length ? `${p.switches.length} ${p.switches.length === 1 ? 'product' : 'products'}` : 'Everything was the usual one'),
-            value: p.switches.length ? signedMoney(t.switches) : 'None',
-            tone: toneFor(t.switches),
-        }),
-        line({
-            label: 'Recipes out of line'
-                + small(t.cannot ? `and ${t.cannot} that cannot be compared` : `more than ${p.threshold}% off what we pay`),
-            value: String(t.recipes || 0),
-            tone: t.recipes ? AMBER : MUTED,
-        }),
-        line({
-            label: 'Came back'
-                + small(`${p.back.length} credit ${p.back.length === 1 ? 'note' : 'notes'}`
-                    + (t.owedCount ? `, ${t.owedCount} still owed` : '')),
-            value: money(t.back),
-        }),
-    ])
-
+    // His of 4 October: the mail carries the cards and nothing above them.
+    // The four figures, the sentences and where the prices were read from
+    // all said again what the cards say, and stay on the report in the Hub.
     const moves = priceCard('Same product, new price', p.moves.length ? signedMoney(t.moves) : '', toneFor(t.moves),
         [
-            ...cappedRows(p.moves, shown.moves, m => line({
-                inset: 14,
-                // The split on a line of its own, "6 cases, €3.15 less each",
-                // so the total beside it can be checked by multiplying. Absent
-                // on anything frozen before it existed.
-                label: escapeHtml(m.name)
-                    + small(`${escapeHtml(priceOf(m.was, m.per))} to ${escapeHtml(priceOf(m.now, m.per))} ${escapeHtml(m.per)}, `
-                        + `${dayMonth(m.on)}${m.invoice ? ` ${escapeHtml(m.invoice)}` : ''}`)
-                    + (m.split ? small(escapeHtml(m.split)) : ''),
+            ...cappedRows(p.moves, shown.moves, m => headedRow({
+                // One fact to a line, each with its label (his, 7 October):
+                // price, date and invoice number ran together in one grey
+                // sentence. The split, "6 cases, €3.15 less each", is there so
+                // the total beside it can be checked by multiplying; absent on
+                // anything frozen before it existed.
+                name: escapeHtml(m.name),
+                facts: facts([
+                    // Codes bought either way are one row, each code's prices
+                    // in words. See together in invoiceReport.
+                    ['Price', m.prices
+                        ? escapeHtml(m.prices)
+                        : `${escapeHtml(priceOf(m.was, m.per))} &rarr; <strong style="color:${m.up ? RED : GREEN};">`
+                            + `${escapeHtml(priceOf(m.now, m.per))}</strong> ${escapeHtml(m.per)}`],
+                    m.split ? ['Bought', escapeHtml(m.split)] : null,
+                    m.invoice
+                        ? ['Invoice', `${escapeHtml(m.invoice)}, ${dayMonth(m.on)}`]
+                        : ['Delivered', dayMonth(m.on)],
+                ]),
                 value: `${change(m.change)}<br /><span style="font-size:13px;">${signedMoney(m.effect)}</span>`,
                 tone: m.up ? RED : GREEN,
             })),
@@ -1098,7 +1369,7 @@ export function pricesSection(section, f) {
                 + small(`${escapeHtml(x.bought)}, ${dayMonth(x.on)}. `
                     + (x.cannot
                         ? 'Cannot be compared.'
-                        : `${unitMoney(x.per)} ${escapeHtml(x.unit)} against ${unitMoney(x.usualPer)} usually`)),
+                        : `${unitMoney(x.per)} ${escapeHtml(x.unit)} against ${unitMoney(x.usualPer)} ${againstWords(x)}`)),
             value: x.cannot ? '' : `${change(x.change)}<br /><span style="font-size:13px;">${signedMoney(x.effect)}</span>`,
             tone: x.cannot ? MUTED : toneFor(x.change),
         })),
@@ -1111,8 +1382,10 @@ export function pricesSection(section, f) {
                 + small(r.state === 'cannot'
                     ? (r.why === 'units'
                         ? 'Cannot be compared: the price recipes use and the invoice are not counted the same way.'
-                        : 'Cannot be compared: counted by weight, sold one at a time.')
-                    : `Recipes ${unitMoney(r.recipe)} ${escapeHtml(r.unit)}, paid ${unitMoney(r.paid)} on ${dayMonth(r.paidOn)}`),
+                        : r.why === 'pack'
+                            ? 'Cannot be compared: the invoice does not say how many are in a case.'
+                            : 'Cannot be compared: counted by weight, sold one at a time.')
+                    : `Recipes ${unitMoney(r.recipe)} ${escapeHtml(r.unit)}, ${paidWords(r)}`),
             value: r.state === 'cannot' ? '' : change(r.gap)
                 + (r.effect ? `<br /><span style="font-size:13px;">${signedMoney(r.effect)}</span>` : ''),
             tone: r.state === 'cannot' ? MUTED : AMBER,
@@ -1123,19 +1396,22 @@ export function pricesSection(section, f) {
     // still owed. The reasons are lines of their own rather than a bar, which
     // a mail cannot be trusted to draw.
     const backRows = [
-        ...(p.reasons || []).map(r => line({
-            inset: 14,
-            label: `<span style="color:${r.colour};">&#9632;</span>&nbsp;${escapeHtml(r.label)}`,
-            value: money(r.money),
-        })),
-        ...p.back.map(b => line({
-            inset: 14,
-            label: escapeHtml(b.what)
-                + small(`${escapeHtml(b.number || 'Credit note')} of ${dayMonth(b.date)}: `
-                    + b.parts.map(part => escapeHtml(part.label)).join(', ')),
-            value: money(b.money),
-            tone: GREEN,
-        })),
+        // Each reason with its total, and under it what came back for it, so
+        // the reason is said once rather than on every line. A credit note
+        // with two reasons is under both, with each one's share of it.
+        ...backByReason(p).flatMap(({ reason, rows }) => [
+            line({
+                inset: 14,
+                label: `<span style="color:${reason.colour};">&#9632;</span>&nbsp;<strong>${escapeHtml(reason.label)}</strong>`,
+                value: `<strong>${money(reason.money)}</strong>`,
+            }),
+            ...rows.map(r => line({
+                inset: 28,
+                label: escapeHtml(r.what) + small(`${escapeHtml(r.number || 'Credit note')} of ${dayMonth(r.date)}`),
+                value: money(r.money),
+                tone: GREEN,
+            })),
+        ]),
         ...(p.owed.length ? [subHeading('Still waiting for a credit')] : []),
         ...p.owed.map(o => line({
             inset: 14,
@@ -1163,30 +1439,48 @@ export function pricesSection(section, f) {
     // has to know which suppliers were only a typed total. Absent on anything
     // frozen before it existed.
     return heading(section.title, section.number)
-        + (p.readFrom?.words ? wordsBlock([p.readFrom.words]) : '')
-        + summary
-        + wordsBlock(p.words)
+        + brandCards(p)
         + moves + switches + recipes + back
         + fresh
         + note(`Recipes checked on ${fmtDate(p.checkedOn)}. Prices are without VAT, as printed on the invoices.`)
         + comments(sectionComments(section))
 }
 
+// The credit notes under each reason, biggest reason first, each with the
+// part of it that reason covers.
+export function backByReason(p) {
+    return (p?.reasons || []).map(reason => ({
+        reason,
+        rows: (p.back || []).flatMap(b => b.parts
+            .filter(part => part.kind === reason.kind)
+            .map(part => ({ what: part.what || b.what, number: b.number, date: b.date, money: part.money }))),
+    }))
+}
+
 function pricesText(p) {
     if (!p) return ['  Prices were not read for this week.']
     const t = p.totals || {}
     const shown = pricesInMail(p)
-    const out = [
-        ...(p.readFrom?.words ? [`  ${p.readFrom.words}`] : []),
-        `  Same product, new price: ${p.moves.length ? signedMoney(t.moves) : 'none'}`,
-        `  Bought as something else: ${p.switches.length ? signedMoney(t.switches) : 'none'}`,
-        `  Recipes out of line: ${t.recipes || 0}${t.cannot ? `, and ${t.cannot} that cannot be compared` : ''}`,
-        `  Came back: ${money(t.back)} on ${p.back.length} credit ${p.back.length === 1 ? 'note' : 'notes'}`,
-    ]
-    for (const w of p.words || []) out.push(`  - ${w}`)
+    const out = []
+    if (p.notRecommended?.length) {
+        out.push('  Not as the brand recommends')
+        for (const r of p.notRecommended) {
+            out.push(`    ${r.name}, ${[cases(r.cases), money(r.money)].filter(Boolean).join(', ')}`)
+            out.push(`      Bought: ${r.bought.name}, ${r.bought.per != null ? `${money(r.bought.per)} ${r.unit}` : 'no price here'}`)
+            out.push(`      Recommended: ${r.recommended.name}, ${r.recommended.per != null ? `${money(r.recommended.per)} ${r.unit}` : 'no price here'}`)
+        }
+    }
+    if (p.waiting?.length) {
+        out.push(`  Waiting on a review: ${money(t.waiting)}`)
+        for (const w of p.waiting) out.push(`    ${w.name}: ${[cases(w.cases, w.loose), money(w.money), `sent ${dayMonth(w.sent)}`].filter(Boolean).join(', ')}`)
+    }
+    if (p.notChecked?.length) {
+        out.push(`  Not checked: ${money(t.notChecked)}`)
+        for (const u of p.notChecked) out.push(`    ${u.name}: ${money(u.money)}, ${u.why}`)
+    }
     if (p.moves.length) {
         out.push('  Same product, new price')
-        out.push(...cappedText(p.moves, shown.moves, m => `    ${m.name}: ${priceOf(m.was, m.per)} to ${priceOf(m.now, m.per)} ${m.per}, ${change(m.change)}, ${signedMoney(m.effect)}`
+        out.push(...cappedText(p.moves, shown.moves, m => `    ${m.name}: ${m.prices || `${priceOf(m.was, m.per)} to ${priceOf(m.now, m.per)} ${m.per}`}, ${change(m.change)}, ${signedMoney(m.effect)}`
             + (m.split ? ` (${m.split})` : '')))
     }
     if (p.switches.length) {
@@ -1198,14 +1492,16 @@ function pricesText(p) {
         out.push('  Recipes not costing what we pay')
         out.push(...cappedText(p.recipes, shown.recipes, r => `    ${r.name}: ` + (r.state === 'cannot'
             ? 'cannot be compared'
-            : `recipes ${unitMoney(r.recipe)}, paid ${unitMoney(r.paid)} ${r.unit}, ${change(r.gap)}`)))
+            : `recipes ${unitMoney(r.recipe)} ${r.unit}, ${paidWords(r)}, ${change(r.gap)}`)))
     }
     if (p.back.length) {
-        out.push('  Came back')
-        for (const b of p.back) {
-            out.push(`    ${b.what}: ${money(b.money)}, ${b.parts.map(part => part.label).join(', ')}`)
+        out.push(`  Came back: ${money(t.back)}`)
+        for (const { reason, rows } of backByReason(p)) {
+            out.push(`    ${reason.label}: ${money(reason.money)}`)
+            for (const r of rows) out.push(`      ${r.what}: ${money(r.money)}`)
         }
     }
+    if (!out.length) out.push('  Nothing moved on prices this week and nothing came back.')
     if (p.owed.length) {
         out.push('  Still waiting for a credit')
         for (const o of p.owed) out.push(`    ${o.what}: ${o.money == null ? 'not priced' : money(o.money)}, since ${dayMonth(o.since)}`)
@@ -1255,8 +1551,13 @@ export function page(inner, { subject = '', preheader = '' } = {}) {
         + `<meta name="format-detection" content="telephone=no,date=no,address=no,email=no" />`
         + `<meta name="color-scheme" content="light dark" />`
         + `<meta name="supported-color-schemes" content="light dark" />`
-        + `<title>${escapeHtml(subject)}</title></head>`
-        + `<body style="margin:0;padding:0;background:${CREAM};">`
+        + `<title>${escapeHtml(subject)}</title>`
+        // Classic Outlook on Windows draws with Word, which does not pass a
+        // font down into a table, so it is told once here. Every other mail
+        // app reads the font off the frame round the report. See FONT.
+        + `<!--[if mso]><style>body,table,td,div,p,span,a{font-family:'Segoe UI',Arial,sans-serif !important;}</style><![endif]-->`
+        + `</head>`
+        + `<body style="margin:0;padding:0;background:${CREAM};font-family:${FONT};">`
         + (preheader
             ? `<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">${escapeHtml(preheader)}${PREVIEW_FILLER}</div>`
             : '')
@@ -1335,23 +1636,23 @@ export function reportEmail({
         ? `<table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
             <tr><td align="center" bgcolor="${BLUE}" style="background:${BLUE};border-radius:10px;">
                 <a href="${escapeHtml(reportLink(appUrl, report))}" style="display:inline-block;padding:16px 32px;
-                    font-family:${FONT};font-size:16px;font-weight:700;color:#ffffff;
+                    font-size:16px;font-weight:700;color:#ffffff;
                     text-decoration:none;">Open this report in the Hub</a>
             </td></tr>
         </table>
-        <div style="margin-top:12px;font-family:${FONT};font-size:13px;line-height:1.55;color:${MUTED};text-align:center;">
+        <div style="margin-top:12px;font-size:13px;line-height:1.55;color:${MUTED};text-align:center;">
             Easier to read there. You can put this week beside any other one, follow a figure back to
             the invoices or the hours behind it, and see every report that has gone out.
         </div>`
         : ''
 
     const html = tidy(page(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-    style="background:${CREAM};padding:0;">
-<tr><td align="center">
+    style="background:${CREAM};padding:0;font-family:${FONT};">
+<tr><td align="center" style="font-family:${FONT};">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-    style="width:100%;max-width:${WIDTH}px;background:#ffffff;overflow:hidden;">
+    style="width:100%;max-width:${WIDTH}px;background:#ffffff;overflow:hidden;font-family:${FONT};">
 
-    <tr><td style="background:${DARK};padding:22px ${SIDE}px;font-family:${FONT};color:#ffffff;">
+    <tr><td style="background:${DARK};padding:22px ${SIDE}px;color:#ffffff;">
         <div style="font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:#A9C0B2;">Weekly summary report</div>
         <div style="margin-top:5px;font-size:22px;font-weight:700;color:#ffffff;">${escapeHtml(place)}</div>
         <div style="margin-top:4px;font-size:14px;color:#D1D5D3;">Week ${weekNumber(weekStart)}&nbsp;&middot;&nbsp;${weekWords(weekStart)}</div>
@@ -1364,7 +1665,7 @@ export function reportEmail({
     </td></tr>
 
     <tr><td style="background:${CREAM};border-top:1px solid ${BORDER};padding:18px ${SIDE}px;
-        font-family:${FONT};font-size:12px;line-height:1.6;color:${MUTED};">${publisher
+        font-size:12px;line-height:1.6;color:${MUTED};">${publisher
             ? `Written up by ${escapeHtml(publisher)}. Replies come straight back to them.` : ''}</td></tr>
 
 </table>
@@ -1405,7 +1706,7 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
     const out = []
     const weekStart = report.week_start
     const share = (label, amount, rate) =>
-        `  ${label}: ${money(amount)}${rate == null ? '' : ` (${pct(rate)})`}`
+        `  ${label}: ${rate == null ? money(amount) : `${pct(rate)} (${money(amount)})`}`
 
     out.push(`${restaurant?.name || 'The restaurant'} weekly summary report`)
     out.push(`Week ${weekNumber(weekStart)} (${slashDate(weekStart)} to ${slashDate(weekEnd(weekStart))})`)
@@ -1437,19 +1738,26 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
             out.push(share('Packaging and cleaning', f.packaging, f.packagingPct))
             out.push(share('Cost of sales', f.costOfSales, f.costOfSalesPct))
         } else if (section.key === 'profit_loss') {
-            for (const item of of(section, 'overhead')) out.push(share(item.label, item.amount, null))
-            out.push(share('Fixed overheads', f.standing, null))
-            for (const item of of(section, 'delivery')) {
-                const platform = (f.platforms || []).find(p => p.id === item.key)
-                out.push(share(item.label, deliveryOf(item, platform).cost, null))
+            const shown = overheadsToShow(of(section, 'overhead'))
+            for (const item of shown.lines) {
+                out.push(share(item.label, item.amount, null)
+                    + (!shown.first && item.carried_from != null ? `, was ${money(item.carried_from)}` : ''))
             }
-            out.push(share('Third party delivery costs', f.deliveryTotal, null))
+            out.push(share('Fixed overheads', f.standing, null))
+            if (of(section, 'delivery').length) {
+                const d = deliverySummary(f)
+                out.push(share('Third party delivery costs', d.total, d.rate)
+                    + (d.rate != null ? ` of ${money(d.taken)} online sales` : ''))
+                if (statementDays(f)) out.push(`    ${statementDays(f)}`)
+            }
             out.push(share('Net earnings', f.earnings, f.earningsPct))
+            const gaps = figureGaps(f)
+            if (gaps.length) out.push('These figures are not finished:', ...gaps.map(g => `  ${g}`))
         } else if (section.key === 'prices_suppliers') {
             out.push(...pricesText(f.prices))
         } else if (section.key === 'online_sales' || section.key === 'corporate_sales') {
             const bucket = section.key === 'online_sales' ? 'online_platform' : 'catering'
-            for (const platform of (f.platforms || []).filter(p => p.bucket === bucket)) {
+            for (const platform of platformsIn(f, bucket)) {
                 out.push(share(platform.name, platform.taken, null))
 
                 // A corporate account has no rating, the same as in the HTML.
@@ -1465,7 +1773,9 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
                 }
 
                 const reviews = of(section, 'review').filter(r => r.key === platform.id)
+                const online = bucket === 'online_platform'
                 if (reviews.length) out.push('    Reviews')
+                else if (online) out.push('    Reviews: none')
                 for (const review of reviews) {
                     out.push(`      ${num(review.meta?.stars)} star x ${num(review.meta?.count) || 1}`
                         + (review.note ? `: ${review.note}` : ''))
@@ -1473,12 +1783,20 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
 
                 const refunds = of(section, 'refund').filter(r => r.key === platform.id)
                 if (refunds.length) out.push('    Refunds')
+                else if (online && saidRefunds(f)) out.push('    Refunds: none')
                 for (const refund of refunds) {
-                    out.push(`      ${negative(refund.amount)} ${refund.note || ''}`
-                        + (refund.meta?.claimed ? ' (claimed back)' : ' (not claimed)'))
+                    out.push(`      ${negative(refund.amount)} ${refund.note || ''} (${CLAIM_WORDS[claimState(refund)]})`)
                 }
 
-                out.push(...typed(noteFor(section, platform.id), '    '))
+                const claims = online ? of(section, 'refund_claim').filter(c => c.key === platform.id) : []
+                if (claims.length) out.push('    Claims from earlier weeks')
+                for (const claim of claims) {
+                    const answer = claimAnswer(claim) || 'waiting'
+                    out.push(`      ${money(Math.abs(num(claim.amount)))} ${claim.note || ''}, `
+                        + `week of ${dayMonth(claim.opened_on)} (${CLAIM_WORDS[answer]})`)
+                }
+
+                out.push(...typed(noteWords(noteFor(section, platform.id)), '    '))
             }
         } else if (section.key === 'people_ops') {
             for (const [state, title] of [
@@ -1521,17 +1839,23 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
             }
             if (c?.busiest) out.push(`  ${c.busiest}`)
         } else if (section.key === 'support_actions') {
-            const open = of(section, 'action').filter(a => !a.done_on)
-            if (open.length === 0) out.push('  Nothing outstanding.')
+            const open = openActions(section, weekStart)
+            const done = doneActions(section)
+            if (open.length === 0 && done.length === 0) out.push('  Nothing outstanding.')
+            for (const action of done) {
+                out.push(`  Done: ${action.label} (done this week)`)
+                for (const c of commentsOf(action)) out.push(...typed(`${dayMonth(c.on)}: ${richWords(c.text)}`, '    '))
+            }
             for (const action of open) {
                 const weeks = weeksOpen(action.opened_on, weekStart)
                 out.push(`  ${action.label}`
-                    + (weeks === 0 ? ' (new this week)' : ` (open ${weeks} week${weeks === 1 ? '' : 's'})`))
+                    + ` (${actionAge(weeks).toLowerCase()})`)
+                for (const c of commentsOf(action)) out.push(...typed(`${dayMonth(c.on)}: ${richWords(c.text)}`, '    '))
             }
         }
 
         for (const comment of sectionComments(section)) {
-            out.push(...typed(`${comment.label ? comment.label + '. ' : ''}${comment.note || ''}`, '  '))
+            out.push(...typed(`${comment.label ? comment.label + '. ' : ''}${noteWords(comment)}`, '  '))
         }
         out.push('')
     }

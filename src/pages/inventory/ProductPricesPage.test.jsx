@@ -20,7 +20,7 @@ const SYSCO = {
 }
 const MUSGRAVE = {
     id: 'pr2', product_id: 'p1', restaurant_id: 'r1', supplier_id: 's2', purchase_type: 'case',
-    supplier_code: null, price_per_case: 10.5, units_per_case: 5, price_per_unit: 2.1, is_preferred: false,
+    supplier_code: 'M-4471', price_per_case: 10.5, units_per_case: 5, price_per_unit: 2.1, is_preferred: false,
 }
 
 let tables
@@ -45,11 +45,16 @@ const db = {
 vi.mock('@/lib/supabase', () => ({ supabase: new Proxy({}, { get: (_, k) => db[k] }) }))
 vi.mock('@/context/auth', () => ({ useAuth: () => ({ user: { id: 'u1', role: 'store_manager' } }) }))
 vi.mock('@/context/restaurant', () => ({ useRestaurant: () => ({ activeRestaurant: { id: 'r1', name: 'Point Campus' } }) }))
-vi.mock('@/context/confirm', () => ({ useConfirm: () => vi.fn(async () => true) }))
+// What the are-you-sure question answers, and what it was asked.
+let answer
+let asked
+vi.mock('@/context/confirm', () => ({ useConfirm: () => async options => { asked.push(options); return answer } }))
 
 const { default: ProductPricesPage } = await import('./ProductPricesPage')
 
 beforeEach(() => {
+    answer = true
+    asked = []
     written = []
     tables = {
         products: [PEPPERS],
@@ -127,6 +132,7 @@ describe('typing a price', () => {
         await clicker.click(await screen.findByRole('button', { name: '+ Add price' }))
 
         await clicker.selectOptions(screen.getByRole('combobox'), 's1')
+        await clicker.type(box(screen, 'Supplier code'), '483508')
         await clicker.type(box(screen, 'Price per case (€)'), '11.5')
         await clicker.type(box(screen, 'Units per case (KG)'), '5')
         await clicker.click(screen.getByRole('button', { name: 'Add price' }))
@@ -144,7 +150,7 @@ describe('typing a price', () => {
         await clicker.click(await screen.findByRole('button', { name: '+ Add price' }))
 
         await clicker.selectOptions(screen.getByRole('combobox'), 's1')
-        await clicker.type(box(screen, 'Supplier code (optional)'), '483508')
+        await clicker.type(box(screen, 'Supplier code'), '483508')
         await clicker.type(box(screen, 'Price per case (€)'), '11.5')
         await clicker.type(box(screen, 'Units per case (KG)'), '5')
         await clicker.click(screen.getByRole('button', { name: 'Add price' }))
@@ -153,5 +159,58 @@ describe('typing a price', () => {
         const price = written.find(w => w.table === 'product_supplier_prices')
         expect(written.find(w => w.table === 'supplier_codes'))
             .toMatchObject({ how: 'update', row: { price_id: `new${written.indexOf(price) + 1}` } })
+    })
+})
+
+// His ask of 4 October: a second price is not quietly an extra one. Whoever
+// adds it says whether recipes cost from it, the way the import asks.
+describe('adding a price to a product that already has one', () => {
+    // The form's own boxes: with a price on the page, the table's headings
+    // say the same words.
+    const field = label => screen.getByText(label, { selector: 'label' }).parentElement.querySelector('input')
+
+    async function addMusgrave(clicker) {
+        await clicker.click(await screen.findByRole('button', { name: '+ Add price' }))
+        await clicker.selectOptions(screen.getByRole('combobox'), 's2')
+        await clicker.type(field('Supplier code'), 'M-9000')
+        await clicker.type(field('Price per case (€)'), '9')
+        await clicker.type(field('Units per case (KG)'), '5')
+        await clicker.click(screen.getByRole('button', { name: 'Add price' }))
+    }
+
+    it('asks whether to cost from it, setting the two prices side by side', async () => {
+        answer = false
+        tables.product_supplier_prices = [SYSCO]
+        const clicker = open()
+        await addMusgrave(clicker)
+        await waitFor(() => expect(asked).toHaveLength(1))
+        expect(asked[0]).toMatchObject({
+            title: 'Cost from this price?',
+            confirmLabel: 'Cost from this one',
+            cancelLabel: 'Keep it as an extra price',
+            details: [
+                { label: 'Costed from now', value: 'Sysco Ireland, €2.3000' },
+                { label: 'This price', value: 'Musgrave, €1.8000' },
+            ],
+        })
+        expect(written.find(w => w.table === 'product_supplier_prices').row.is_preferred).toBeUndefined()
+        expect(written.filter(w => w.how === 'update' && w.row.is_preferred === true)).toEqual([])
+    })
+
+    it('costs from it when told to, and records the move', async () => {
+        tables.product_supplier_prices = [SYSCO]
+        const clicker = open()
+        await addMusgrave(clicker)
+        await waitFor(() => expect(written.some(w => w.how === 'update' && w.row.is_preferred === true)).toBe(true))
+        await waitFor(() => expect(events().some(e => e.reason === 'preferred_moved')).toBe(true))
+    })
+
+    it('does not ask about the first price, which is the one it costs from', async () => {
+        tables.product_supplier_prices = []
+        const clicker = open()
+        await addMusgrave(clicker)
+        await waitFor(() => expect(written.some(w => w.table === 'product_supplier_prices')).toBe(true))
+        expect(asked).toEqual([])
+        expect(written.find(w => w.table === 'product_supplier_prices').row.is_preferred).toBe(true)
     })
 })

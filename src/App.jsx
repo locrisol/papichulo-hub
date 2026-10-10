@@ -57,7 +57,6 @@ const WeeklySalesPage = lazy(() => import('@/pages/sales/WeeklySalesPage'))
 const InvoicesPage = lazy(() => import('@/pages/invoices/InvoicesPage'))
 const InvoiceHistoryPage = lazy(() => import('@/pages/invoices/InvoiceHistoryPage'))
 const InvoiceImportPage = lazy(() => import('@/pages/invoices/InvoiceImportPage'))
-const InvoiceReviewPage = lazy(() => import('@/pages/invoices/InvoiceReviewPage'))
 const SupplierDocumentsPage = lazy(() => import('@/pages/invoices/SupplierDocumentsPage'))
 const ClaimsPage = lazy(() => import('@/pages/invoices/ClaimsPage'))
 const TimesheetPage = lazy(() => import('@/pages/timesheet/TimesheetPage'))
@@ -105,7 +104,8 @@ export default function App() {
                 {/* Reading the documents rather than typing a total off them.
                     Managers and above, the same as the rest of the money. */}
                 <Route path="/invoices/import" element={<RequireRole allowed={MANAGERS}><InvoiceImportPage /></RequireRole>} />
-                <Route path="/invoices/review" element={<RequireRole allowed={MANAGERS}><InvoiceReviewPage /></RequireRole>} />
+                {/* Review is the top of Import invoices since 5 October 2026. */}
+                <Route path="/invoices/review" element={<Navigate to={{ pathname: '/invoices/import', hash: '#waiting' }} replace />} />
                 <Route path="/invoices/documents" element={<RequireRole allowed={MANAGERS}><SupplierDocumentsPage /></RequireRole>} />
 
                 {/* Everybody, and that is the point of it. The person signing

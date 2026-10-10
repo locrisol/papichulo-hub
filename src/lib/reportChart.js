@@ -219,8 +219,9 @@ export function roundScale(low, peak, { zero = true } = {}) {
 }
 
 // The scale for a set of series: what the axis runs between, and where its
-// lines go. See roundScale.
-export function scaleFor(rows, { stacked = [], lines = [], zero = true } = {}) {
+// lines go. See roundScale. `reach` is any other value the axis has to show,
+// a target line, so a quiet year does not draw it off the top.
+export function scaleFor(rows, { stacked = [], lines = [], zero = true, reach = [] } = {}) {
     let peak = 0
     let low = Infinity
 
@@ -233,6 +234,12 @@ export function scaleFor(rows, { stacked = [], lines = [], zero = true } = {}) {
             low = Math.min(low, num(row[key]))
         }
         if (stacked.length) low = Math.min(low, stack)
+    }
+
+    for (const value of reach) {
+        if (value == null || isNaN(Number(value))) continue
+        peak = Math.max(peak, Number(value))
+        low = Math.min(low, Number(value))
     }
 
     if (low === Infinity) low = 0

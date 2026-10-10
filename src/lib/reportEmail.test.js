@@ -2,13 +2,16 @@ import { describe, it, expect } from 'vitest'
 import {
     reportEmail, money, negative, pct, withShare, weekWords, weekNumber, slashDate,
     escapeHtml, tidy, stars, starColour, costTone, senderFor, heldNotice, WIDTH, SIDE,
-    renewalWords, escapeLines, page, headline,
+    renewalWords, escapeLines, page, headline, overheadsToShow, backByReason,
     deliverable, isJustTheGoodbye, replyToFor, switchedOff, whatToSend, correctionSend,
+    paidWords, againstWords, figureGaps as mailGaps, openActions, doneActions, platformsIn, richHtml, richWords, saidRefunds,
 } from '../../supabase/functions/weekly-report-email/email'
 import { readFileSync } from 'node:fs'
 import { MAIL_WIDTH } from '@/lib/reportChartImage'
 import { changesSince } from '../../supabase/functions/weekly-report-email/changes'
-import { priceWeek } from '@/lib/invoiceReport'
+import { priceWeek, backByReason as webBackByReason } from '@/lib/invoiceReport'
+import { figureGaps } from '@/lib/weeklyReport'
+import { richPlain } from '@/lib/richText'
 import { weekCleaning } from '@/lib/checklists'
 
 const figures = {
@@ -161,25 +164,20 @@ describe('reportEmail', () => {
         expect(mail.html).toContain('€16,450.00')
     })
 
-    it('puts the share on the line under the money', () => {
-        // Beside it, a figure and its share together were the widest thing
-        // in the column, and a column is as wide as its widest thing, so
-        // "Net sales" and "Cost of sales" broke in two to make room for a
-        // bracket. Stacked, the column is only as wide as the money and
-        // every label in the section gets those points back.
-        expect(mail.html).toContain('€4,720.00<br /><span')
-        expect(mail.html).toContain('(32.00%)</span>')
+    it('puts the share first and the money on the line under it', () => {
+        // Stacked, the column is only as wide as the money. The share is on
+        // top since 4 October, his order: it is what a cost is judged by.
+        expect(mail.html).toContain('32.00%</span><br /><span')
+        expect(mail.html).toContain('€4,720.00</span>')
     })
 
-    it('shows a platform cost against that platform own takings', () => {
-        // Deliveroo cost 800 of the 3200 it took, which is 25%, not 5.4% of
-        // total sales. The share against the whole week would look small on
-        // every platform and say nothing about any of them.
-        //
-        // Under the name, not beside the figure. Beside it the two together
-        // were the widest unbreakable thing in that table, and it squeezed the
-        // platform names onto two lines and the total onto four.
-        expect(mail.html).toContain('25.00% of what it took')
+    // His of 4 October: one line, the platforms' total against what the
+    // online platforms took. 1,180 of 5,300 is 22.26%.
+    it('gives third party delivery as one line, against online sales', () => {
+        expect(mail.html).toContain('Third party delivery costs')
+        expect(mail.html).toContain('22.26%')
+        expect(mail.html).toContain('of €5,300.00 online sales')
+        expect(mail.html).not.toContain('of what it took')
     })
 
     it('never prints a total for the three delivery platforms that was typed', () => {
@@ -217,18 +215,50 @@ describe('reportEmail', () => {
         expect(mail.html).toContain('&times;&nbsp;1')
     })
 
-    it('writes a refund as a negative, with whether it was claimed', () => {
+    // Claimed before the four states, so read as waiting: nobody said what
+    // came of it.
+    it('writes a refund as a negative, with what came of the claim', () => {
         expect(mail.html).toContain('−€12.50')
-        expect(mail.html).toContain('Claimed back')
+        expect(mail.html).toContain('Claimed, waiting')
+        expect(mail.html).not.toContain('Claimed back')
+        expect(mail.text).toContain('Missing drink (claimed, waiting)')
     })
 
-    it('says how long an action has been open', () => {
-        expect(mail.html).toContain('open 3 weeks')
-        expect(mail.html).toContain('new this week')
+    // His of 7 October: a claim from an earlier week stays on the report
+    // until it is answered, with this week's answer.
+    it('lists claims from earlier weeks under their platform, with the answer given this week', () => {
+        const withClaims = sections.map(s => (s.key === 'online_sales'
+            ? {
+                ...s,
+                items: [
+                    ...s.items,
+                    { kind: 'refund_claim', key: 'p1', label: 'Deliveroo', amount: 22.4, note: 'Arrived cold', opened_on: '2026-08-16', meta: { answer: 'back' } },
+                    { kind: 'refund_claim', key: 'p1', label: 'Deliveroo', amount: 4.95, note: 'Missing chips', opened_on: '2026-08-23', meta: { answer: 'refused' } },
+                ],
+            }
+            : s))
+        const out = reportEmail({ ...base, sections: withClaims })
+        expect(out.html).toContain('Claims from earlier weeks')
+        expect(out.html).toContain('Claimed in the week of 16 Aug')
+        expect(out.html).toContain('+€22.40')
+        expect(out.html).toContain('Paid back')
+        expect(out.html).toContain('Refused')
+        expect(out.text).toContain('€4.95 Missing chips, week of 23 Aug (refused)')
     })
 
-    it('leaves out an action that was ticked off', () => {
-        expect(mail.html).not.toContain('Done thing')
+    it('says how long an action has been open, as a pill under it', () => {
+        expect(mail.html).toContain('Open 3 weeks</span>')
+        expect(mail.html).toContain('Raised this week</span>')
+        expect(mail.html.indexOf('Fryer thermostat')).toBeLessThan(mail.html.indexOf('Open 3 weeks'))
+        expect(mail.text).toContain('  New menu boards (raised this week)')
+    })
+
+    // It used to be left out. His, 8 October: what was done this week is in
+    // the mail, first, ticked and marked done.
+    it('puts an action ticked off this week first, marked done', () => {
+        expect(mail.html).toContain('Done thing')
+        expect(mail.html).toContain('Done this week')
+        expect(mail.text).toContain('Done: Done thing (done this week)')
     })
 
     it('names the people whose paperwork needs doing', () => {
@@ -266,7 +296,7 @@ describe('reportEmail', () => {
         expect(mail.text).toContain('Point Campus weekly summary report')
         expect(mail.text).toContain('Week 35 (30/08/2026 to 05/09/2026)')
         expect(mail.text).toContain('Net sales: €14,750.00')
-        expect(mail.text).toContain('Net earnings: €1,840.00 (12.47%)')
+        expect(mail.text).toContain('Net earnings: 12.47% (€1,840.00)')
         expect(mail.text).toContain('Fryer thermostat')
         expect(mail.text).toContain('    - Joao Silva')
     })
@@ -519,9 +549,9 @@ describe('starColour', () => {
 })
 
 describe('withShare', () => {
-    it('puts the share under the money, in brackets', () => {
-        expect(withShare(284, 1.54)).toContain('€284.00<br />')
-        expect(withShare(284, 1.54)).toContain('(1.54%)')
+    it('puts the share first and the money under it', () => {
+        expect(withShare(284, 1.54)).toMatch(/^1\.54%<br \/>/)
+        expect(withShare(284, 1.54)).toContain('>€284.00</span>')
     })
 
     it('gives the money alone when there is no share to give', () => {
@@ -584,27 +614,27 @@ describe('the cost colours in the mail', () => {
         // Food is 32.00% against a 30% target: two points over, so amber.
         // Labour is 30.50%, also amber. Packaging is 4.14% against 4%, amber.
         const mail = reportEmail(base)
-        expect(mail.html).toContain(`color:${costTone(32, 30)};`)
-        expect(mail.html).toContain('(32.00%)</span>')
+        expect(mail.html).toContain(`<span style="color:${costTone(32, 30)};">32.00%</span>`)
     })
 
     it('goes red once it is more than two points over', () => {
         const mail = reportEmail({
             ...base, figures: { ...figures, foodPct: 34.5 },
         })
-        expect(mail.html).toContain(`color:${costTone(34.5, 30)};`)
-        expect(mail.html).toContain('(34.50%)</span>')
+        expect(mail.html).toContain(`<span style="color:${costTone(34.5, 30)};">34.50%</span>`)
         expect(costTone(34.5, 30)).not.toBe(costTone(32, 30))
     })
 
-    it('says which targets the week was judged against', () => {
-        expect(reportEmail(base).html).toContain('food 30%, labour 30%, packaging 4%')
+    // His wording of 4 October, in place of the paragraph on the colours.
+    it('says which targets the week was judged against, in one line', () => {
+        expect(reportEmail(base).html).toContain('Current targets: food 30%, labour 30%, packaging 4%.')
+        expect(reportEmail(base).html).not.toContain('Every percentage is of net sales')
     })
 
     it('leaves the shares uncoloured when no target was ever set', () => {
         const mail = reportEmail({ ...base, figures: { ...figures, targets: {} } })
-        expect(mail.html).toContain('(32.00%)')
-        expect(mail.html).not.toContain('judged against')
+        expect(mail.html).toContain('32.00%<br />')
+        expect(mail.html).not.toContain('Current targets')
     })
 })
 
@@ -815,7 +845,7 @@ describe('the profit and loss section is two tables, not one', () => {
         // And the platforms' own table is measured against its own money too,
         // because the share sits under the name rather than beside the figure.
         expect(widestIn(bodies[1]).length).toBeLessThan(12)
-        expect(bodies[1]).toContain('of what it took')
+        expect(bodies[1]).toContain('online sales')
     })
 
     it('keeps the money in one column across both tables', () => {
@@ -1049,8 +1079,7 @@ describe('the figure column is only as wide as the money', () => {
     })
 
     it('keeps the target colour on the share where there is one', () => {
-        expect(mail.html).toContain('(32.00%)</span>')
-        expect(mail.html).toContain(`color:${costTone(32, 30)};`)
+        expect(mail.html).toContain(`<span style="color:${costTone(32, 30)};">32.00%</span>`)
     })
 })
 
@@ -1404,31 +1433,67 @@ describe('prices and suppliers', () => {
         expect(mail.html.indexOf('Prices and suppliers')).toBeLessThan(mail.html.indexOf('Online sales'))
     })
 
-    it('opens with the four figures', () => {
-        for (const label of ['Same product, new price', 'Bought as something else', 'Recipes out of line', 'Came back']) {
-            expect(mail.html).toContain(label)
-        }
+    // His of 4 October: the cards and nothing above them. The four figures
+    // and the sentences said again what the cards say.
+    it('goes straight to the cards', () => {
+        expect(mail.html).toContain('Same product, new price')
         expect(mail.html).toContain('-€3.15')
-    })
-
-    // A headline a kind, what kind of thing it is in bold: his choice for the
-    // mail on 26 September.
-    it('says the week a headline a kind, with the kind in bold', () => {
-        expect(prices.words[0]).toMatch(/^Cheaper on the same code: /)
-        expect(mail.html).toContain('>Cheaper on the same code:</strong>')
+        expect(mail.html).not.toContain('Recipes out of line')
+        expect(mail.html).not.toContain('>Cheaper on the same code:</strong>')
     })
 
     it('lists each price that moved with what it was worth', () => {
-        expect(mail.html).toContain('€11.75 to €8.60 a case')
+        expect(mail.html).toContain('€11.75 &rarr; <strong style="color:#1F7A4C;">€8.60</strong> a case')
         expect(mail.html).toContain('-26.8%')
     })
 
-    it('opens by saying which suppliers it was read from, before the figures', () => {
-        const at = mail.html.indexOf('>Read from:</strong>')
-        expect(at).toBeGreaterThan(mail.html.indexOf('Prices and suppliers'))
-        expect(at).toBeLessThan(mail.html.indexOf('Same product, new price'))
-        expect(mail.html).toContain('BWG Foodservice was typed in as a total (1 invoice, €98.50)')
-        expect(mail.text).toContain('Read from: Sysco Ireland (1 invoice).')
+    // His design of 4 October: what was not checked, supplier by supplier.
+    it('lists what was not checked, with why', () => {
+        expect(mail.html).toContain('Not checked')
+        expect(mail.html).toContain('BWG Foodservice')
+        expect(mail.html).toContain('not read line by line yet')
+        expect(mail.text).toContain('  Not checked: €98.50')
+        expect(mail.text).toContain('    BWG Foodservice: €98.50, not read line by line yet')
+    })
+
+    // Layout D, his pick of 4 October: two boxes a product.
+    it('sets what was bought beside what the brand recommends, and what waits on a review', () => {
+        const brand = reportEmail({
+            ...base, sections: withPrices, figures: {
+                ...figures,
+                prices: {
+                    ...prices,
+                    notRecommended: [{
+                        name: 'Flour Tortilla (Burritos)', unit: 'each', cases: 3, money: 99.09, others: 0,
+                        bought: { name: 'Plain wraps 12"', per: 0.3303 },
+                        recommended: { name: 'Santa Maria wrap 12"', per: 0.303 },
+                    }],
+                    waiting: [{ name: 'Corn Tortilla 6 inch', cases: 1, loose: 0, money: 41.8, sent: '2026-09-18' }],
+                    totals: { ...prices.totals, notRecommended: 1, waiting: 41.8 },
+                },
+            },
+        })
+        expect(brand.html).toContain('Not as the brand recommends')
+        expect(brand.html).toContain('BOUGHT')
+        expect(brand.html).toContain('Plain wraps 12&quot;')
+        expect(brand.html).toContain('RECOMMENDED')
+        expect(brand.html).toContain('€0.30 each')
+        expect(brand.html.indexOf('Not as the brand recommends')).toBeLessThan(brand.html.indexOf('Same product, new price'))
+        expect(brand.text).toContain('      Bought: Plain wraps 12", €0.33 each')
+        expect(brand.text).toContain('      Recommended: Santa Maria wrap 12", €0.30 each')
+        expect(brand.text).toContain('    Corn Tortilla 6 inch: 1 case, €41.80, sent 18 Sept')
+    })
+
+    it('leaves the card out when everything bought was what the brand recommends, and on a report frozen before', () => {
+        expect(mail.html).not.toContain('Not as the brand recommends')
+        const old = reportEmail({ ...base, sections: withPrices, figures: { ...figures, prices: { ...prices, notRecommended: undefined, notChecked: undefined } } })
+        expect(old.html).not.toContain('Not as the brand recommends')
+        expect(old.html).not.toContain('Not checked')
+    })
+
+    it('leaves which suppliers it was read from to the report in the Hub', () => {
+        expect(mail.html).not.toContain('Read from:')
+        expect(mail.text).not.toContain('Read from:')
     })
 
     it('leaves the line out of a report frozen before it existed', () => {
@@ -1532,33 +1597,34 @@ describe('delivery costed from the Monday to Sunday statement', () => {
     }
     const mail = reportEmail({ ...base, figures: costed })
 
-    it('prints what each platform cost this week, not its statement', () => {
-        expect(mail.html).toContain('€775.76')
-        expect(mail.html).toContain('€362.73')
-        expect(mail.html).not.toContain('€800.00')
+    // The total is what each platform cost this week, added up: 1,111.11 of
+    // the 5,300 the online platforms took is 20.96%.
+    it('prints the total for the week, not the statements', () => {
+        expect(mail.html).toContain('€1,111.11')
+        expect(mail.html).toContain('20.96%')
+        expect(mail.html).not.toContain('€775.76')
     })
 
-    // His words, 27 September: say what the percentage was worked out
-    // against, and that it runs Monday to Sunday.
-    it('gives the share it kept on its statement, against what and over which days', () => {
-        expect(mail.html).toContain('24.24% of the €3,300.00 it took Monday 31 August to Sunday 6 September, the days its statement covers')
-        expect(mail.html).toContain('17.27% of the €2,200.00 it took Monday 31 August to Sunday 6 September')
+    // His of 4 October, in place of the sentence on why the weeks differ, and
+    // of 7 October: inside the delivery box, so it is not read as covering
+    // the overheads too.
+    it('says which days it was calculated over, inside the delivery line', () => {
+        const days = 'Statements Mon 31 Aug to Sun 6 Sept'
+        expect(mail.html).toContain(days)
+        expect(mail.html.indexOf(days)).toBeGreaterThan(mail.html.indexOf('Third party delivery costs'))
+        expect(mail.html.indexOf(days)).toBeLessThan(mail.html.indexOf('Net earnings is net sales minus'))
+        expect(mail.html).not.toContain('Calculated ')
+        expect(mail.text).toContain(days)
     })
 
-    it('says why the two weeks differ, in words', () => {
-        expect(mail.html).toContain('The platforms bill Monday to Sunday, a day behind our week.')
-        expect(mail.html).toContain('Monday 31 August to Sunday 6 September')
+    it('puts the same figure in the plain text', () => {
+        expect(mail.text).toContain('Third party delivery costs: 20.96% (€1,111.11) of €5,300.00 online sales')
     })
 
-    it('puts the same cost in the plain text', () => {
-        expect(mail.text).toContain('775.76')
-    })
-
-    it('keeps a report frozen before this saying what it said', () => {
+    it('says nothing about a statement on a report frozen before them', () => {
         const old = reportEmail(base)
-        expect(old.html).toContain('€800.00')
-        expect(old.html).toContain('25.00% of what it took')
-        expect(old.html).not.toContain('The platforms bill Monday to Sunday')
+        expect(old.html).toContain('€1,180.00')
+        expect(old.html).not.toContain('Statements ')
     })
 })
 
@@ -1776,7 +1842,7 @@ describe('the page the mail sits in', () => {
 
     it('still lets a held mail put its band first in the body', () => {
         const held = heldNotice(mail, ['ana@p.ie'])
-        expect(held.html).toMatch(/<body style="margin:0;padding:0;background:#F7F5F0;"><table[^>]*background:#7C2D12;/)
+        expect(held.html).toMatch(/<body style="[^"]*"><table[^>]*background:#7C2D12;/)
     })
 })
 
@@ -1996,5 +2062,178 @@ describe('a heavy week', () => {
         expect(light.text.indexOf('Wide gap:')).toBeLessThan(light.text.indexOf('Narrow gap:'))
         expect(light.text.indexOf('Narrow gap:')).toBeLessThan(light.text.indexOf('No compare:'))
         expect(more(light.html)).toEqual([])
+    })
+})
+
+// His of 4 October: every overhead the first time a report goes out, then only
+// what changed and what it was. The total always.
+describe('the fixed overheads in the mail', () => {
+    const rent = { kind: 'overhead', key: 'rent', label: 'Rent', amount: 1500, sort_order: 0 }
+    const insurance = { kind: 'overhead', key: 'insurance', label: 'Insurance', amount: 400, sort_order: 1 }
+    const withOverheads = items => sections.map(s => (s.key === 'profit_loss'
+        ? { ...s, items: [...items, ...s.items.filter(i => i.kind !== 'overhead')] }
+        : s))
+
+    it('shows every line the first time, when nothing was carried', () => {
+        expect(overheadsToShow([rent, insurance])).toEqual({ first: true, lines: [rent, insurance] })
+    })
+
+    it('shows only the line that moved, or one new this week, after that', () => {
+        const moved = { ...rent, amount: 1600, carried_from: 1500 }
+        const same = { ...insurance, carried_from: 400 }
+        const added = { kind: 'overhead', key: 'bins', label: 'Bins', amount: 60, sort_order: 2 }
+        expect(overheadsToShow([moved, same, added]).lines).toEqual([moved, added])
+    })
+
+    it('says what a changed line was, and keeps the total', () => {
+        const mail = reportEmail({
+            ...base,
+            sections: withOverheads([{ ...rent, amount: 1600, carried_from: 1500 }, { ...insurance, carried_from: 400 }]),
+        })
+        expect(mail.html).toContain('was €1,500.00')
+        expect(mail.html).not.toContain('Insurance')
+        expect(mail.html).toContain('Fixed overheads')
+        expect(mail.text).toContain('Rent: €1,600.00, was €1,500.00')
+    })
+
+    it('says there was no change rather than showing nothing', () => {
+        const mail = reportEmail({
+            ...base,
+            sections: withOverheads([{ ...rent, carried_from: 1500 }, { ...insurance, carried_from: 400 }]),
+        })
+        expect(mail.html).toContain('No change from last week')
+        expect(mail.html).not.toContain('Rent')
+    })
+})
+
+// His of 4 October: each reason with its total on top, and the lines under it
+// without the reason said again.
+describe('what came back, by reason', () => {
+    const prices = {
+        moves: [], doubtful: [], switches: [], recipes: [], owed: [], earlier: [], newCodes: [],
+        totals: { back: 118.41 }, threshold: 5, checkedOn: '2026-09-06',
+        reasons: [
+            { kind: 'mistake', label: 'Ordered by mistake', colour: '#B45309', money: 97.42 },
+            { kind: 'short', label: 'Short', colour: '#1D4ED8', money: 20.99 },
+        ],
+        back: [
+            { what: 'Burrito Bowl (750ml)', number: 'C101', date: '2026-09-02', money: 60, parts: [{ kind: 'mistake', label: 'Ordered by mistake', money: 60 }] },
+            { what: 'Limes, Coriander', number: 'C102', date: '2026-09-03', money: 58.41, parts: [
+                { kind: 'mistake', label: 'Ordered by mistake', money: 37.42 },
+                { kind: 'short', label: 'Short', money: 20.99 },
+            ] },
+        ],
+    }
+
+    it('puts each credit note under each reason it covers, with that part of it', () => {
+        const groups = backByReason(prices)
+        expect(groups.map(g => [g.reason.label, g.rows.map(r => [r.what, r.money])])).toEqual([
+            ['Ordered by mistake', [['Burrito Bowl (750ml)', 60], ['Limes, Coriander', 37.42]]],
+            ['Short', [['Limes, Coriander', 20.99]]],
+        ])
+    })
+
+    // The page has its own copy, since the mail cannot import the app's.
+    it('groups exactly as the report in the Hub does', () => {
+        const shape = groups => groups.map(g => [g.reason.kind, g.rows.map(r => [r.what, r.money])])
+        expect(shape(backByReason(prices))).toEqual(shape(webBackByReason(prices.reasons, prices.back)))
+    })
+
+    it('says each reason once, with its total', () => {
+        const withPrices = [...sections, { key: 'prices_suppliers', title: 'Prices and suppliers', sort_order: 9, items: [] }]
+        const mail = reportEmail({ ...base, sections: withPrices, figures: { ...figures, prices } })
+        expect(mail.html.match(/Ordered by mistake/g)).toHaveLength(1)
+        expect(mail.html).toContain('<strong>€97.42</strong>')
+        expect(mail.text).toContain('    Ordered by mistake: €97.42')
+        expect(mail.text).toContain('      Limes, Coriander: €37.42')
+    })
+})
+
+// What the comparison of the page against the mail found, 7 October.
+describe('the mail says what the page says', () => {
+    it('gives an averaged price as an average, not as paid on the last day', () => {
+        expect(paidWords({ paid: 2.524, paidOn: '2026-09-30', averaged: { deliveries: 3, since: '2026-09-15' } }))
+            .toBe('paid €2.52 on average over the last 3 deliveries')
+        expect(paidWords({ paid: 3.008, paidOn: '2026-09-30' })).toBe('paid €3.01 on 30 Sept')
+    })
+
+    it('says a version bought instead is set against recipes when it is', () => {
+        expect(againstWords({ usualFrom: 'recipes' })).toBe('in recipes')
+        expect(againstWords({ usualFrom: 'delivery' })).toBe('usually')
+    })
+})
+
+// Kept equal: the mail cannot import the app.
+describe('figures that are not finished', () => {
+    it('are said in the mail in the same words as on the page', () => {
+        for (const f of [
+            { tradingDays: 7, labourDays: 0, foodEntries: 0, packagingEntries: 0 },
+            { tradingDays: 7, labourDays: 4, foodEntries: 3, packagingEntries: 1 },
+            { tradingDays: 7, labourDays: 7, foodEntries: 3, packagingEntries: 1 },
+        ]) expect(mailGaps(f)).toEqual(figureGaps(f))
+    })
+})
+
+describe('the actions in the mail', () => {
+    it('are longest open first, like the page, and leave out what was ticked', () => {
+        const section = { items: [
+            { kind: 'action', label: 'New', opened_on: '2026-09-27', sort_order: 1 },
+            { kind: 'action', label: 'Old', opened_on: '2026-08-09', sort_order: 2 },
+            { kind: 'action', label: 'Done', opened_on: '2026-08-02', done_on: '2026-09-29', sort_order: 3 },
+        ] }
+        expect(openActions(section, '2026-09-27').map(a => a.label)).toEqual(['Old', 'New'])
+    })
+})
+
+describe('corporate accounts in the mail', () => {
+    it('are biggest first, like the page; online platforms keep their order', () => {
+        const f = { platforms: [
+            { name: 'Lunch Team', bucket: 'catering', taken: 300 },
+            { name: 'Feedr', bucket: 'catering', taken: 900 },
+            { name: 'Deliveroo', bucket: 'online_platform', taken: 100 },
+            { name: 'Just Eat', bucket: 'online_platform', taken: 500 },
+        ] }
+        expect(platformsIn(f, 'catering').map(p => p.name)).toEqual(['Feedr', 'Lunch Team'])
+        expect(platformsIn(f, 'online_platform').map(p => p.name)).toEqual(['Deliveroo', 'Just Eat'])
+    })
+})
+
+// Kept equal: the mail reads the marks with its own copy of the reader.
+describe('formatted comments in the mail', () => {
+    const samples = [
+        'Fan <b>still noisy</b>, <span data-c="red">engineer Thursday</span><br>2 &lt; 3',
+        '<span data-s="big"><b>Big</b></span> and <span data-c="green">green</span>',
+        '<a href="x">link</a> <script>no</script> <span data-c="purple">x</span>',
+        '',
+    ]
+
+    it('says the same words as the app', () => {
+        for (const s of samples) expect(richWords(s)).toBe(richPlain(s))
+    })
+
+    it('draws the marks with the look they stand for and nothing else as HTML', () => {
+        expect(richHtml(samples[0])).toBe('Fan <strong>still noisy</strong>, <span style="color:#B91C1C;">engineer Thursday</span><br />2 &lt; 3')
+        expect(richHtml(samples[2])).not.toMatch(/<a |<script/)
+    })
+})
+
+describe('no refunds in the mail', () => {
+    // Before version 4 the week could go out without anybody looking.
+    it('is said only on a report that had to say it', () => {
+        expect(saidRefunds({ version: 4 })).toBe(true)
+        expect(saidRefunds({ version: 3 })).toBe(false)
+    })
+})
+
+// His, 8 October, option B: what was ticked this week is in the mail, on top.
+describe('actions done this week in the mail', () => {
+    const section = { title: 'Support / actions needed', items: [
+        { kind: 'action', label: 'Find coloured bowls', opened_on: '2026-09-06' },
+        { kind: 'action', label: 'Bag stamper', opened_on: '2026-09-13', done_on: '2026-10-04' },
+    ] }
+
+    it('are listed, apart from the open ones', () => {
+        expect(doneActions(section).map(a => a.label)).toEqual(['Bag stamper'])
+        expect(openActions(section, '2026-10-04').map(a => a.label)).toEqual(['Find coloured bowls'])
     })
 })

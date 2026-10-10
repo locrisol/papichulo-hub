@@ -81,3 +81,19 @@ describe('ReportPaperwork', () => {
         expect(screen.getByText(DUE.words)).toBeTruthy()
     })
 })
+
+// A sent report says what it went out with and when it was checked, not today.
+describe('the paperwork on a sent report', () => {
+    it('says the day it was checked on', () => {
+        const sent = paperworkFor(team, WEEK, MONDAY_AFTER)
+        render(<ReportPaperwork paperwork={sent} weekStart={WEEK} asOf={MONDAY_AFTER} sent={MONDAY_AFTER} />)
+        expect(screen.getByText(/checked on 21 Sept, when the report was sent/)).toBeInTheDocument()
+    })
+
+    // Sent before the count was kept.
+    it('leaves out a count it does not have', () => {
+        const { food, permits } = paperworkFor(team, WEEK, MONDAY_AFTER)
+        render(<ReportPaperwork paperwork={{ food, permits }} weekStart={WEEK} asOf={MONDAY_AFTER} sent={MONDAY_AFTER} />)
+        expect(screen.getByText(/^Everybody on the team in the week of/)).toBeInTheDocument()
+    })
+})

@@ -1339,3 +1339,11 @@ describe('garbled text from the supplier', () => {
         expect(mend('SANTA MARIA FLOUR TORTILLA 12"')).toBe('SANTA MARIA FLOUR TORTILLA 12"')
     })
 })
+
+// His, 7 October: the eggs could not be compared because a dozen meant nothing.
+describe('a pack by the dozen', () => {
+    it('is twelve each', () => {
+        expect(readPackSize('1X15 DZ')).toMatchObject({ count: 1, unit: 'Units', total: 180 })
+        expect(readPackSize('2X1 DOZEN')).toMatchObject({ unit: 'Units', total: 24 })
+    })
+})

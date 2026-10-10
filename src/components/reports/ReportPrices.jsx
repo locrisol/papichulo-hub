@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { fmtMoney } from '@/lib/format'
-import { shortDate } from '@/lib/dates'
+import { shortDate, dayLabel } from '@/lib/dates'
 import { CLAIM_KINDS } from '@/lib/invoiceClaims'
-import { decisionsFrom } from '@/lib/invoiceReport'
+import { backByReason, decisionsFrom } from '@/lib/invoiceReport'
 import { renumberPlan, alternatePlan } from '@/lib/priceEvents'
 import {
     badge, rowButton, compactField, tableHeadRow, tableHeadCell,
@@ -42,6 +42,7 @@ const priceText = value => fmtMoney(value)
 const toneOf = n => (n > 0.004 ? 'up' : n < -0.004 ? 'down' : 'quiet')
 
 const WHY = {
+    pack: 'The invoice does not say how many are in a case, so there is no price for one.',
     weight: 'Recipes count it by weight and it is sold one at a time, so nothing on the invoice says what one weighs.',
     units: 'The price the Hub has and the invoice are not counted the same way. Check the price on the product.',
 }
@@ -58,7 +59,14 @@ export default function ReportPrices({
         <div>
             {/* Where it came from, before anything else: only a document read
                 line by line says anything about a price. See readFrom. */}
-            {section.readFrom && <ReadFrom words={section.readFrom.words} />}
+            {/* Once Not checked lists the typed suppliers, this says only
+                what was read. A report sent before it keeps the whole line. */}
+            {section.readFrom && (
+                <ReadFrom words={section.notChecked && section.readFrom.readWords
+                    ? section.readFrom.readWords
+                    : section.readFrom.words}
+                />
+            )}
 
             {decisions.length > 0 && (
                 <Decisions
@@ -109,6 +117,10 @@ export default function ReportPrices({
             </div>
 
             <WeekInShort section={section} />
+
+            <NotRecommended rows={section.notRecommended} />
+            <Waiting rows={section.waiting} total={t.waiting} />
+            <NotChecked rows={section.notChecked} total={t.notChecked} />
 
             <Moves moves={section.moves} doubtful={section.doubtful || []} />
             <Switches switches={section.switches} canDecide={canDecide} busy={busy} onBuyBoth={onBuyBoth} />
@@ -286,11 +298,14 @@ function Decision({ item, busy, onCostFrom, onMakeUsual, onRenumber, onGiveReaso
 // The four figures
 // ---------------------------------------------------------------------------
 
+// The figure never wraps: a line may break after a minus sign, and on a phone
+// "-€106.82" came out as the minus over the money. One step smaller below sm,
+// where a tile is half a phone wide, so even "-€1,106.82" fits on its line.
 function Tile({ tone, label, value, sub }) {
     return (
         <div className={`rounded-lg border px-3 py-2.5 ${TILE[tone] || TILE.quiet}`}>
             <p className="text-xs font-bold text-muted uppercase tracking-wider">{label}</p>
-            <p className="font-serif text-2xl font-bold text-gray-900 tabular-nums mt-1 leading-tight">{value}</p>
+            <p className="font-serif text-xl sm:text-2xl font-bold text-gray-900 tabular-nums mt-1 leading-tight whitespace-nowrap">{value}</p>
             <p className="text-xs text-muted mt-1">{sub}</p>
         </div>
     )
@@ -458,9 +473,13 @@ function Card({ title, sub, empty, children, count }) {
     )
 }
 
+// Each row lays out its own columns, so none of them may size itself to its
+// words: an auto last column was as wide as the longest line under the money,
+// and Green Peppers' chart sat to the left of every other one. A share each,
+// and the words wrap.
 function Row({ children }) {
     return (
-        <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1.5fr)_minmax(0,1.4fr)_auto] gap-2 sm:gap-4 items-center px-3 py-2.5 border-b border-border last:border-b-0">
+        <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1.5fr)_minmax(0,1.4fr)_minmax(0,1fr)] gap-2 sm:gap-4 items-center px-3 py-2.5 border-b border-border last:border-b-0">
             {children}
         </div>
     )
@@ -485,7 +504,7 @@ function Money({ change, effect, under }) {
     return (
         <div className="sm:text-right flex sm:block items-center gap-3">
             {change != null && <Pill tone={change > 0 ? 'up' : change < 0 ? 'down' : 'grey'}>{pct(change)}</Pill>}
-            <p className="text-sm font-bold tabular-nums text-gray-900 sm:mt-1">{signed(effect)}</p>
+            <p className="text-sm font-bold tabular-nums whitespace-nowrap text-gray-900 sm:mt-1">{signed(effect)}</p>
             {under && <p className="text-xs text-muted">{under}</p>}
         </div>
     )
@@ -511,7 +530,9 @@ function Moves({ moves, doubtful }) {
                     <div className="min-w-0">
                         <Spark series={m.series} down={!m.up} />
                         <p className="text-xs text-muted tabular-nums mt-0.5">
-                            {priceText(m.was, m.per)} to <b className="text-gray-900">{priceText(m.now, m.per)}</b> {m.per}
+                            {m.prices ? m.prices : (
+                                <>{priceText(m.was, m.per)} to <b className="text-gray-900">{priceText(m.now, m.per)}</b> {m.per}</>
+                            )}
                         </p>
                     </div>
                     <Money change={m.change} effect={m.effect} under={m.split} />
@@ -551,7 +572,12 @@ function Switches({ switches, canDecide, busy, onBuyBoth }) {
                         {/* Any row here can be the same thing bought either
                             way, not only the ones whose words match: the
                             tortillas come in two brands depending on stock. */}
-                        {canDecide && alternatePlan(s, 'new') && (
+                        {s.since && (
+                            <p className="text-xs text-muted">
+                                {s.since.usual ? 'It is the usual one now.' : 'The usual one has changed since this week.'}
+                            </p>
+                        )}
+                        {canDecide && !s.since && alternatePlan(s, 'new') && (
                             <button
                                 type="button"
                                 disabled={!!busy}
@@ -597,6 +623,13 @@ function Recipes({ recipes, checkedOn, threshold }) {
                                 ? `Average of the last ${r.averaged.deliveries} deliveries, since ${shortDate(r.averaged.since)}`
                                 : `Last paid on ${shortDate(r.paidOn)}${r.invoice ? `, ${r.invoice}` : ''}${r.code ? `, code ${r.code}` : ''}`}
                         </p>
+                        {r.since && (
+                            <p className="text-xs text-muted">
+                                {r.since.per == null
+                                    ? 'Changed since this week.'
+                                    : `Since this week, recipes cost it at ${fmtMoney(r.since.per)} ${r.unit}.`}
+                            </p>
+                        )}
                     </div>
                     {r.state === 'cannot' ? (
                         <p className="text-xs text-muted">{WHY[r.why] || WHY.weight}</p>
@@ -635,51 +668,36 @@ function Back({ back, reasons, owed, earlier = [], total, canEdit, jobs, busy, o
             empty="Nothing came back this week and nothing is owed."
             count={listed}
         >
-            {reasons.length > 0 && (
-                <div className="px-3 pt-3 pb-1">
-                    <div className="flex h-3 rounded-md overflow-hidden gap-0.5" role="img" aria-label="What came back, by reason">
-                        {reasons.map(r => (
-                            <i
-                                key={r.kind}
-                                className="block h-full"
-                                style={{ width: `${(100 * r.money) / (total || 1)}%`, background: r.colour }}
-                            />
-                        ))}
-                    </div>
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-gray-700">
-                        {reasons.map(r => (
-                            <span key={r.kind} className="inline-flex items-center gap-1.5">
-                                <i className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: r.colour }} />
-                                {r.label} <b className="tabular-nums">{fmtMoney(r.money)}</b>
-                            </span>
-                        ))}
-                    </div>
-                </div>
-            )}
-
-            {back.map(b => (
-                <Row key={b.id}>
-                    <div className="min-w-0">
-                        <p className="text-sm font-semibold text-gray-900">{b.what}</p>
-                        <p className="text-xs text-muted">
-                            {b.number || 'Credit note'} of {shortDate(b.date)}
-                            {b.against ? `, on ${b.against.number || 'an invoice'} of ${shortDate(b.against.date)}` : ''}
-                        </p>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                        {b.parts.map(part => (
-                            <span
-                                key={part.kind}
-                                className={`${badge} border bg-white text-gray-800`}
-                                style={{ borderColor: part.colour }}
-                            >
-                                {part.label}{b.parts.length > 1 ? ` ${fmtMoney(part.money)}` : ''}
-                            </span>
-                        ))}
-                        {b.given && <span className="text-xs text-muted self-center">given afterwards</span>}
-                    </div>
-                    <p className="text-sm font-bold tabular-nums text-green-700 sm:text-right">{fmtMoney(b.money)}</p>
-                </Row>
+            {/* Each reason with its total on top and what came back for it
+                underneath, so the reason is said once (his, 4 October). */}
+            {backByReason(reasons, back).map(({ reason, rows }) => (
+                <Fragment key={reason.kind}>
+                    <p className="px-3 py-2 bg-app-bg border-y border-border flex items-center justify-between gap-3 text-sm">
+                        <span className="inline-flex items-center gap-2 font-bold text-gray-900">
+                            <i className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: reason.colour }} />
+                            {reason.label}
+                        </span>
+                        <b className="tabular-nums text-green-700">{fmtMoney(reason.money)}</b>
+                    </p>
+                    {rows.map(b => (
+                        <Row key={`${reason.kind}-${b.id}`}>
+                            <div className="min-w-0">
+                                <p className="text-sm font-semibold text-gray-900">{b.what}</p>
+                                <p className="text-xs text-muted">
+                                    {b.number || 'Credit note'} of {shortDate(b.date)}
+                                    {b.against ? `, on ${b.against.number || 'an invoice'} of ${shortDate(b.against.date)}` : ''}
+                                </p>
+                            </div>
+                            <div>
+                                {b.whole !== b.money && (
+                                    <span className="text-xs text-muted">Part of {fmtMoney(b.whole)}</span>
+                                )}
+                                {b.given && <span className="text-xs text-muted">Reason given afterwards</span>}
+                            </div>
+                            <p className="text-sm font-bold tabular-nums text-green-700 sm:text-right">{fmtMoney(b.money)}</p>
+                        </Row>
+                    ))}
+                </Fragment>
             ))}
 
             {owed.length > 0 && (
@@ -748,6 +766,108 @@ function Back({ back, reasons, owed, earlier = [], total, canEdit, jobs, busy, o
                     ))}
                 </>
             )}
+        </Card>
+    )
+}
+
+// ---------------------------------------------------------------------------
+// The brand's recommendations
+// ---------------------------------------------------------------------------
+
+const quantity = (cases, loose = 0) => [
+    cases ? `${cases} ${cases === 1 ? 'case' : 'cases'}` : '',
+    loose ? `${loose} loose` : '',
+].filter(Boolean).join(' and ')
+
+// What was bought that the brand does not recommend, each product with two
+// boxes: what was bought and what the brand recommends, each at its price per
+// unit here (layout D, his pick of 4 October). Absent on a report sent before
+// it existed.
+function NotRecommended({ rows }) {
+    if (!rows) return null
+    return (
+        <Card
+            title="Not as the brand recommends"
+            sub={rows.length ? `${rows.length} ${rows.length === 1 ? 'product' : 'products'}` : ''}
+            empty="Everything bought was what the brand recommends."
+            count={rows.length}
+        >
+            <ul>
+                {rows.map(r => (
+                    <li key={r.name} className="px-3 py-3 border-b border-border last:border-b-0">
+                        <p className="text-sm font-bold text-gray-900">{r.name}</p>
+                        <p className="text-xs text-muted mb-2">{[quantity(r.cases), fmtMoney(r.money)].filter(Boolean).join(', ')}</p>
+                        <div className="grid grid-cols-2 gap-2">
+                            <BrandBox label="Bought" name={r.bought.name} per={r.bought.per} unit={r.unit} tone="not" />
+                            <BrandBox
+                                label="Recommended"
+                                name={r.recommended.name}
+                                per={r.recommended.per}
+                                unit={r.unit}
+                                tone="good"
+                                more={r.others}
+                            />
+                        </div>
+                    </li>
+                ))}
+            </ul>
+        </Card>
+    )
+}
+
+function BrandBox({ label, name, per, unit, tone, more = 0 }) {
+    const look = tone === 'good' ? 'border-green-200 bg-green-50' : 'border-amber-200 bg-amber-50'
+    return (
+        <div className={`rounded-lg border p-2.5 min-w-0 ${look}`}>
+            <p className="text-xs font-semibold text-muted uppercase tracking-wider">{label}</p>
+            <p className="text-sm text-gray-900 mt-0.5 break-words">{name}</p>
+            <p className="text-sm font-bold tabular-nums text-gray-900 mt-0.5">
+                {per != null ? `${priceText(per)} ${unit}` : <span className="font-normal text-muted">No price here</span>}
+            </p>
+            {more > 0 && <p className="text-xs text-muted mt-0.5">and {more} more recommended</p>}
+        </div>
+    )
+}
+
+// Bought under a code that is waiting on a review. It does not hold the
+// report, so it is said here.
+function Waiting({ rows, total }) {
+    if (!rows?.length) return null
+    return (
+        <Card title="Waiting on a review" sub={fmtMoney(total)} count={rows.length}>
+            <ul>
+                {rows.map(r => (
+                    <li key={r.name} className="flex items-baseline justify-between gap-3 px-3 py-2.5 border-b border-border last:border-b-0">
+                        <span className="min-w-0">
+                            <span className="block text-sm text-gray-900 break-words">{r.name}</span>
+                            <span className="block text-xs text-muted">
+                                {[quantity(r.cases, r.loose), `sent ${dayLabel(r.sent)}`].filter(Boolean).join(', ')}
+                            </span>
+                        </span>
+                        <span className="text-sm font-bold tabular-nums text-gray-900">{fmtMoney(r.money)}</span>
+                    </li>
+                ))}
+            </ul>
+        </Card>
+    )
+}
+
+// What was spent with suppliers whose invoices are only a total here.
+function NotChecked({ rows, total }) {
+    if (!rows?.length) return null
+    return (
+        <Card title="Not checked" sub={fmtMoney(total)} count={rows.length}>
+            <ul>
+                {rows.map(r => (
+                    <li key={r.name} className="flex items-baseline justify-between gap-3 px-3 py-2.5 border-b border-border last:border-b-0">
+                        <span className="min-w-0">
+                            <span className="block text-sm text-gray-900">{r.name}</span>
+                            <span className="block text-xs text-muted">{r.why}</span>
+                        </span>
+                        <span className="text-sm font-bold tabular-nums text-gray-900">{fmtMoney(r.money)}</span>
+                    </li>
+                ))}
+            </ul>
         </Card>
     )
 }
@@ -860,37 +980,57 @@ function LedgerGroup({ title, rows }) {
 
 // The price at each delivery, as steps. Grey dots for the ones before, the
 // last one in the colour of which way it went.
+// The price at every delivery over the last eight weeks, in steps, because
+// it held until the next invoice changed it. Before this week in grey, this
+// week in the colour of the move, with the first and last day under it so it
+// says how far back it goes. Each chart is scaled to its own prices, so the
+// size of a step is the words beside it, not its height.
+//
+// A report frozen before the eight weeks has two figures a point and the
+// first one is the delivery before the week.
 function Spark({ series, down }) {
     if (!series?.length) return null
     const w = 200
     const h = 30
     const pad = 4
-    const ys = series.map(p => p[1])
-    const lo = Math.min(...ys)
-    const hi = Math.max(...ys)
-    const x = i => pad + (series.length === 1 ? 0 : (i * (w - pad * 2)) / (series.length - 1))
+    const points = series.map((p, i) => ({ day: p[0], v: p[1], now: p.length > 2 ? p[2] === 1 : i > 0 }))
+    const lo = Math.min(...points.map(p => p.v))
+    const hi = Math.max(...points.map(p => p.v))
+    const x = i => pad + (points.length === 1 ? 0 : (i * (w - pad * 2)) / (points.length - 1))
     const y = v => (hi === lo ? h / 2 : pad + ((hi - v) * (h - pad * 2)) / (hi - lo))
-    const d = series.map((p, i) => (i === 0 ? `M${x(i)},${y(p[1])}` : `H${x(i)} V${y(p[1])}`)).join(' ')
-    const last = series.length - 1
+    const step = (from, to) => points.slice(from, to + 1)
+        .map((p, k) => (k === 0 ? `M${x(from)},${y(p.v)}` : `H${x(from + k)} V${y(p.v)}`)).join(' ')
+    const firstNow = points.findIndex(p => p.now)
+    const before = firstNow === -1 ? points.length - 1 : Math.max(firstNow - 1, 0)
+    const last = points.length - 1
 
     return (
-        <svg
-            viewBox={`0 0 ${w} ${h}`}
-            className={`block w-full max-w-[200px] h-[30px] ${down ? 'text-green-700' : 'text-red-700'}`}
-            role="img"
-            aria-label="The price at each delivery"
-        >
-            <path d={d} fill="none" stroke="currentColor" strokeWidth="2" />
-            {series.map((p, i) => (
-                <circle
-                    key={`${p[0]}-${i}`}
-                    cx={x(i)}
-                    cy={y(p[1])}
-                    r={i === last ? 3.5 : 2}
-                    fill={i === last ? 'currentColor' : '#9CA3AF'}
-                />
-            ))}
-        </svg>
+        <div className="max-w-[200px]">
+            <svg
+                viewBox={`0 0 ${w} ${h}`}
+                className={`block w-full h-[30px] ${down ? 'text-green-700' : 'text-red-700'}`}
+                role="img"
+                aria-label={`The price at each delivery from ${shortDate(points[0].day)} to ${shortDate(points[last].day)}`}
+            >
+                {before > 0 && <path d={step(0, before)} fill="none" stroke="#9CA3AF" strokeWidth="2" />}
+                {firstNow !== -1 && <path d={step(before, last)} fill="none" stroke="currentColor" strokeWidth="2" />}
+                {points.map((p, i) => (
+                    <circle
+                        key={`${p.day}-${i}`}
+                        cx={x(i)}
+                        cy={y(p.v)}
+                        r={i === last ? 3.5 : 2}
+                        fill={p.now ? 'currentColor' : '#9CA3AF'}
+                    />
+                ))}
+            </svg>
+            {points.length > 1 && (
+                <div className="flex justify-between text-[11px] leading-tight text-muted tabular-nums">
+                    <span>{shortDate(points[0].day)}</span>
+                    <span>{shortDate(points[last].day)}</span>
+                </div>
+            )}
+        </div>
     )
 }
 

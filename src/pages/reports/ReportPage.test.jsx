@@ -13,6 +13,8 @@ import { addDays, todayISO, weekStartOf } from '@/lib/dates'
 // manager adding one back would then have saved a list of one over the whole
 // stored list.
 
+// A sent report's paperwork, the shape paperworkSummary freezes.
+const SUMMED = { ok: 0, fine: 0, total: 0, expired: [], missing: [], expiring: [] }
 const WEEK = addDays(weekStartOf(todayISO()), -7)
 
 const HEAD = {
@@ -151,8 +153,9 @@ describe('a read that fails', () => {
         let letItThrough
         const team = new Promise(resolve => { letItThrough = resolve })
         answer({ ...fine, waiting: { employees: team } })
-        const box = screen.getByPlaceholderText('Add a comment')
-        fireEvent.change(box, { target: { value: 'Two new starters on Monday' } })
+        const box = screen.getByRole('textbox', { name: 'Add a comment' })
+        box.innerHTML = 'Two new starters on Monday'
+        fireEvent.input(box)
         fireEvent.blur(box)
 
         await waitFor(() => expect(db.from.mock.calls.filter(([t]) => t === 'employees')).toHaveLength(2))
@@ -170,8 +173,9 @@ describe('a read that fails', () => {
         expect(publish).toBeEnabled()
 
         answer({ ...fine, failing: ['the report'] })
-        const box = screen.getByPlaceholderText('Add a comment')
-        fireEvent.change(box, { target: { value: 'Two new starters on Monday' } })
+        const box = screen.getByRole('textbox', { name: 'Add a comment' })
+        box.innerHTML = 'Two new starters on Monday'
+        fireEvent.input(box)
         fireEvent.blur(box)
 
         expect(await screen.findByText('Could not read the report')).toBeInTheDocument()
@@ -194,7 +198,7 @@ describe('a read that fails', () => {
 describe('a report published but not sent', () => {
     const notSent = {
         ...HEAD, status: 'published', send_count: 1, sent_to: null, published_at: `${WEEK}T09:00:00Z`,
-        figures: { net: 1000, gross: 1100, version: 3, paperwork: { food: [], permits: [] } },
+        figures: { net: 1000, gross: 1100, version: 3, paperwork: { food: SUMMED, permits: SUMMED } },
     }
 
     it('sends it as it was frozen, and writes nothing to the report', async () => {
@@ -245,7 +249,7 @@ describe('a report published but not sent', () => {
 // His answer of 30 September: the report cannot be sent while anything on
 // Review is not actioned, counting only lines on invoices dated up to the
 // report's week.
-describe('lines still waiting on Review', () => {
+describe('lines still waiting for a decision', () => {
     const fine = { changedAt: { data: null, error: null } }
     const waitingOn = date => ({
         id: `l-${date}`, invoice_id: `i-${date}`, supplier_code: '777001', line_total: 14.5, decision: null,
@@ -258,16 +262,16 @@ describe('lines still waiting on Review', () => {
     it('holds Publish while a line from its week is waiting, and says where to decide it', async () => {
         answer({ ...fine, lines: [waitingOn(addDays(WEEK, 2))] })
         renderReport()
-        expect(await screen.findByText('1 invoice line from this week or earlier is still waiting in Review.'))
+        expect(await screen.findByText('1 invoice line from this week or earlier is still waiting for a decision.'))
             .toBeInTheDocument()
-        expect(screen.getByRole('link', { name: 'Open Review' })).toHaveAttribute('href', '/invoices/review')
+        expect(screen.getByRole('link', { name: 'Decide them' })).toHaveAttribute('href', '/invoices/import#waiting')
         expect(screen.getByRole('button', { name: 'Publish and send' })).toBeDisabled()
     })
 
     it('counts a line from a week before as well', async () => {
         answer({ ...fine, lines: [waitingOn(addDays(WEEK, -40)), waitingOn(addDays(WEEK, 6))] })
         renderReport()
-        expect(await screen.findByText('2 invoice lines from this week or earlier are still waiting in Review.'))
+        expect(await screen.findByText('2 invoice lines from this week or earlier are still waiting for a decision.'))
             .toBeInTheDocument()
     })
 
@@ -275,7 +279,7 @@ describe('lines still waiting on Review', () => {
         answer({ ...fine, lines: [waitingOn(addDays(WEEK, 7))] })
         renderReport()
         expect(await screen.findByRole('button', { name: 'Publish and send' })).toBeEnabled()
-        expect(screen.queryByText(/still waiting in Review/)).toBeNull()
+        expect(screen.queryByText(/still waiting for a decision/)).toBeNull()
     })
 
     it('holds Publish when what is waiting could not be read', async () => {
@@ -363,14 +367,16 @@ describe('the save line', () => {
     it('says Not saved once a write fails, rather than the time of the last one', async () => {
         answer({ ...fine, items: makeQuery({ data: null, error: null }) })
         renderReport()
-        const box = await screen.findByPlaceholderText('Add a comment')
-        fireEvent.change(box, { target: { value: 'Two new starters on Monday' } })
+        const box = await screen.findByRole('textbox', { name: 'Add a comment' })
+        box.innerHTML = 'Two new starters on Monday'
+        fireEvent.input(box)
         fireEvent.blur(box)
         expect(await screen.findByText(/^Saved at /)).toBeInTheDocument()
 
         answer({ ...fine, items: makeQuery({ data: null, error: { message: 'No permission' } }) })
-        const again = screen.getByPlaceholderText('Add a comment')
-        fireEvent.change(again, { target: { value: 'One leaving on Friday' } })
+        const again = screen.getByRole('textbox', { name: 'Add a comment' })
+        again.innerHTML = 'One leaving on Friday'
+        fireEvent.input(again)
         fireEvent.blur(again)
 
         expect(await screen.findByText('Not saved')).toBeInTheDocument()

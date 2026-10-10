@@ -10,8 +10,8 @@ import { friendlyError } from '@/lib/errors'
 import { matches } from '@/lib/search'
 import { countName, compareForCount } from '@/lib/products'
 import { countedLine } from '@/lib/countedAt'
-import { orderFormats } from '@/lib/countUnits'
-import { badge, captionClass, card, chip, fieldClass, labelClass, primaryButton, rowButton } from '@/lib/controlStyles'
+import { orderFormats, packLabel, unitWords } from '@/lib/countUnits'
+import { badge, captionClass, card, chip, fieldBase, fieldClass, labelClass, primaryButton, rowButton } from '@/lib/controlStyles'
 import SearchBox from '@/components/ui/SearchBox'
 import { sectionColour, sectionRank } from '@/lib/sections'
 import { breakdownParts, justLoose } from '@/lib/stockTakeSummary'
@@ -21,6 +21,7 @@ import Notice from '@/components/ui/Notice'
 import CountedAs from '@/components/inventory/CountedAs'
 import { can, MANAGERS } from '@/lib/access'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import { placesFor } from '@/lib/brandVersions'
 
 // One row is one product in one place, and a product can be kept in more than
 // one. Tacos live in the freezer and there are two boxes in the cold room
@@ -38,19 +39,24 @@ const REFRESH_EVERY = 60 * 1000
 // in it, so adding it again counted it twice.
 const withLine = line => prev => (prev.some(l => l.id === line.id) ? prev : [...prev, line])
 
-function placesOf(product) {
-    const main = product.section || 'Other'
-    const extra = (product.also_in || []).filter(place => place && place !== main)
-    return [main, ...extra]
+// Every place a product is kept at this restaurant: the places of each
+// version it buys there, or the product's own section and Also in when it
+// buys none (lib/brandVersions). Frozen and ambient tortillas are two
+// versions in two places, so the product is counted under both. And every
+// place this count already has a line for it in, so a place changed during
+// the count never hides what was counted.
+function placesOf(product, kept, lines) {
+    const counted = (lines || []).filter(l => l.product_id === product.id).map(l => l.section || 'Other')
+    return placesFor(product, kept, counted)
 }
 
 // Products filed under every heading they belong to, in the order the store is
 // walked. A heading with nothing under it is dropped rather than left as an
 // empty bar, which matters once the list can be searched.
-function group(list) {
+function group(list, kept, lines) {
     const grouped = {}
     for (const product of list) {
-        for (const section of placesOf(product)) {
+        for (const section of placesOf(product, kept, lines)) {
             if (!grouped[section]) grouped[section] = []
             grouped[section].push(product)
         }
@@ -73,6 +79,8 @@ export default function StockTakeCountPage() {
     const [products, setProducts] = useState([])
     const [lines, setLines] = useState([])
     const [preferredPrices, setPreferredPrices] = useState([])
+    // Where each product is kept at this restaurant, version by version.
+    const [kept, setKept] = useState([])
     const [recipeLines, setRecipeLines] = useState([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
@@ -162,6 +170,15 @@ export default function StockTakeCountPage() {
             .eq('is_preferred', true)
         if (pricesErr) { setError(friendlyError(pricesErr)); setLoading(false); return }
         setPreferredPrices(pricesData || [])
+
+        // Where each product is kept there, from the versions it buys. The
+        // view carries nothing about suppliers or prices, so staff read it.
+        const { data: keptData, error: keptErr } = await supabase
+            .from('restaurant_kept_in')
+            .select('*')
+            .eq('restaurant_id', sessionData.restaurant_id)
+        if (keptErr) { setError(friendlyError(keptErr)); setLoading(false); return }
+        setKept(keptData || [])
 
         // Fetch pack formats for the preferred prices, build a per-product lookup.
         const preferredPriceIds = (pricesData || []).map(p => p.id)
@@ -551,7 +568,7 @@ export default function StockTakeCountPage() {
 
     const sections = useMemo(() => {
         const term = search.trim()
-        return group(products)
+        return group(products, kept, lines)
             .map(({ section, items }) => ({
                 section,
                 items: items.filter(p =>
@@ -563,12 +580,12 @@ export default function StockTakeCountPage() {
                         || stillToCount.has(placeKey(p.id, section)))),
             }))
             .filter(entry => entry.items.length > 0)
-    }, [products, search, showUncountedOnly, stillToCount])
+    }, [products, kept, lines, search, showUncountedOnly, stillToCount])
 
     // The value card at the top is about the whole count and not about what is
     // on screen. Searching for one product should not make it look as though
     // the freezer is worth nothing.
-    const allSections = useMemo(() => group(products), [products])
+    const allSections = useMemo(() => group(products, kept, lines), [products, kept, lines])
 
     // Not wrapped in useMemo, deliberately. The React Compiler could not
     // preserve that memoization and was skipping the optimisation of this whole
@@ -576,7 +593,7 @@ export default function StockTakeCountPage() {
     // one Set this was saving. Left plain, the compiler memoizes it itself.
     const countedPlaces = new Set(lines.map(l => placeKey(l.product_id, l.section || 'Other')))
 
-    const allPlaces = products.flatMap(p => placesOf(p).map(section => placeKey(p.id, section)))
+    const allPlaces = products.flatMap(p => placesOf(p, kept, lines).map(section => placeKey(p.id, section)))
 
     // Products, not places.
     //
@@ -768,7 +785,7 @@ export default function StockTakeCountPage() {
                                     // The other places this one turns up, said
                                     // on the row so nobody counts the freezer
                                     // boxes twice thinking they were missed.
-                                    const elsewhere = placesOf(product).filter(place => place !== section)
+                                    const elsewhere = placesOf(product, kept, lines).filter(place => place !== section)
 
                                     // Nothing counted here and nothing typed, so the
                                     // whole of this row is the offer to say there is
@@ -938,28 +955,46 @@ export default function StockTakeCountPage() {
                                                         const { total, hasAny } = computeDraft(product)
                                                         return (
                                                             <div className="space-y-2">
-                                                                <div className="flex flex-wrap gap-2">
-                                                                    {config.formats.map(fmt => (
-                                                                        <div key={fmt.id} className="flex-1 min-w-[120px]">
-                                                                            <label htmlFor={`count-pack-${fmt.id}`} className={labelClass}>
-                                                                                {fmt.label} ({fmtQty(fmt.factor)} {product.unit})
-                                                                            </label>
-                                                                            <input
-                                                                                id={`count-pack-${fmt.id}`}
-                                                                                type="text"
-                                                                                inputMode="decimal"
-                                                                                onFocus={e => e.target.select()}
-                                                                                value={draftCounts[fmt.id] || ''}
-                                                                                onChange={e => setDraftCounts(prev => ({ ...prev, [fmt.id]: e.target.value.replace(/[^0-9.]/g, '') }))}
-                                                                                placeholder="0"
-                                                                                className={fieldClass}
-                                                                            />
+                                                                {/* The packs in a panel of their own, the
+                                                                    loose box plain under it, so a box meant
+                                                                    for boxes is never mistaken for kilos
+                                                                    (his choice, 5 October 2026). */}
+                                                                {config.formats.length > 0 && (
+                                                                    <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 pt-2.5 pb-3">
+                                                                        <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-orange-800 mb-2">
+                                                                            <svg className="w-3.5 h-3.5" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M21 8l-9-5-9 5 9 5 9-5zM3 8v8l9 5 9-5V8M12 13v8" />
+                                                                            </svg>
+                                                                            Packs
+                                                                        </p>
+                                                                        <div className="flex flex-wrap gap-2">
+                                                                            {config.formats.map(fmt => (
+                                                                                <div key={fmt.id} className="flex-1 min-w-[120px]">
+                                                                                    <label htmlFor={`count-pack-${fmt.id}`} className={labelClass}>
+                                                                                        {packLabel(fmt, product.unit)}
+                                                                                    </label>
+                                                                                    <input
+                                                                                        id={`count-pack-${fmt.id}`}
+                                                                                        type="text"
+                                                                                        inputMode="decimal"
+                                                                                        onFocus={e => e.target.select()}
+                                                                                        value={draftCounts[fmt.id] || ''}
+                                                                                        onChange={e => setDraftCounts(prev => ({ ...prev, [fmt.id]: e.target.value.replace(/[^0-9.]/g, '') }))}
+                                                                                        placeholder="0"
+                                                                                        className={`${fieldBase} bg-white border-orange-200`}
+                                                                                    />
+                                                                                </div>
+                                                                            ))}
                                                                         </div>
-                                                                    ))}
+                                                                    </div>
+                                                                )}
+                                                                <div className="flex flex-wrap gap-2">
                                                                     {looseAllowed && (
                                                                         <div className="flex-1 min-w-[120px]">
                                                                             <label htmlFor="count-loose" className={labelClass}>
-                                                                                {config.formats.length > 0 ? 'Loose' : 'Quantity'} ({product.unit})
+                                                                                {config.formats.length > 0
+                                                                                    ? `Loose, in ${unitWords(product.unit, 2)}`
+                                                                                    : `Quantity (${product.unit})`}
                                                                             </label>
                                                                             <input
                                                                                 id="count-loose"

@@ -51,6 +51,29 @@ export function inviteProblem({ fullName, email, role, restaurantId, employeeId 
     return ''
 }
 
+// What is wrong with changing an account, or '' when it can go: the same
+// fields an account is given, on one that exists. `current` is the users row
+// as it stands, `employee` the person on the team to link to, already read,
+// or null, and `callerId` whoever is asking.
+//
+// Their own role is not theirs to change: a super admin who steps down has
+// nobody left to step them back up.
+export function updateProblem({ id, fullName, email, role, restaurantId, employeeId }, current, employee = null, callerId = null) {
+    if (!current) return 'That account does not exist.'
+    if (!String(fullName || '').trim()) return 'Enter their name.'
+    const wrong = emailProblem(email)
+    if (wrong) return wrong
+    if (!ROLES.includes(role)) return 'Pick a role.'
+    if (role !== 'super_admin' && !restaurantId) return 'Pick a restaurant.'
+    if (current.id === callerId && role !== current.role) return 'Your own role cannot be changed from here.'
+    if (employeeId) {
+        if (!employee) return 'That person is not on the team list.'
+        if (employee.user_id && employee.user_id !== id) return 'That person already has an account.'
+        if (restaurantId && employee.restaurant_id !== restaurantId) return 'That person works at another restaurant.'
+    }
+    return ''
+}
+
 // Where the emailed link opens: the site the invite was sent from, if it looks
 // like a site. Supabase checks it against the Redirect URLs list as well.
 export function linkSite(origin) {

@@ -66,6 +66,10 @@ describe('a first read that failed', () => {
         render(tree())
         expect(await screen.findByText('error: TypeError: Failed to fetch')).toBeInTheDocument()
 
+        // The message can be on screen a step before anything listens for the
+        // connection coming back, and on a busy machine the signal then went
+        // to nobody and the test waited out its five seconds.
+        await act(async () => {})
         act(() => { window.dispatchEvent(new Event('online')) })
         expect(await screen.findByText('Point Campus')).toBeInTheDocument()
         expect(reads()).toBe(2)

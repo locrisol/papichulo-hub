@@ -94,6 +94,7 @@ CREATE TABLE IF NOT EXISTS "public"."restaurants" (
     "recipe_gap_percent" numeric(5,2) DEFAULT 5.00 NOT NULL,
     "allergen_sheet_printed_at" timestamp with time zone,
     "allergen_sheet_every_months" integer DEFAULT 3 NOT NULL,
+    "delivery_cost_target" numeric(5,2) DEFAULT 30.00,
     -- The payroll list, and nobody is on it by role. See the comment below.,
     CONSTRAINT "restaurants_recipe_gap_percent_check" CHECK ((("recipe_gap_percent" >= (0)::numeric) AND ("recipe_gap_percent" <= (100)::numeric))),
     CONSTRAINT "restaurants_allergen_sheet_every_months_check" CHECK ((("allergen_sheet_every_months" >= 1) AND ("allergen_sheet_every_months" <= 24))),
@@ -107,6 +108,7 @@ COMMENT ON COLUMN "public"."restaurants"."timesheet_recipients" IS 'Who the week
 COMMENT ON COLUMN "public"."restaurants"."pay_period_start" IS 'The first day of any one pay period, which is always a fortnight. Every other period is worked out from this by counting in fourteens, so the exact one that was typed does not matter as long as it really was a period start. It is read back as the Sunday of its own week, because a period that began mid week would put its boundary inside a Hub week and leave the two halves belonging to different weeks. Empty means nobody has said yet, and the hours cannot be sent until they do.';
 COMMENT ON COLUMN "public"."restaurants"."recipe_gap_percent" IS 'How far what recipes cost a product at can be from what was last paid for the version usually bought, before the weekly report lists it. Either way: 5 means five per cent dearer or cheaper. It stays on every report until the two are closer than this.';
 COMMENT ON COLUMN "public"."restaurants"."allergen_sheet_printed_at" IS 'When the allergen sheet was last printed from the Hub for this restaurant, stamped by allergen_sheet_printed(). Null means never, which counts as due.';
+COMMENT ON COLUMN "public"."restaurants"."delivery_cost_target" IS 'What each delivery platform should keep, as a percentage of what that platform took, not of net sales. The line on the weekly report''s delivery chart. Overridden from a given week in cost_target_overrides, as the other three are.';
 COMMENT ON COLUMN "public"."restaurants"."allergen_sheet_every_months" IS 'How many months the printed allergen sheet stays up before it is due again when nothing on it has changed. A change makes it due straight away whatever this says.';
 COMMENT ON COLUMN "public"."restaurants"."watch_city_events" IS 'Whether something big a few kilometres away is worth a badge. On by default and worth turning off for a restaurant nowhere near a city, where it would only ever be noise.';
 COMMENT ON COLUMN "public"."restaurants"."google_calendar_id" IS 'The Google calendar this restaurant writes to, owned by hub@ rather than by a manager, because a secondary calendar is deleted along with the account that owns it and managers leave. Null means it has none yet and its entries stay in the Hub.';
@@ -242,8 +244,11 @@ CREATE TABLE IF NOT EXISTS "public"."suppliers" (
     "notes" "text",
     "is_active" boolean DEFAULT true,
     "created_at" timestamp with time zone DEFAULT "now"(),
+    "works_without_codes" boolean DEFAULT false NOT NULL,
     CONSTRAINT "suppliers_category_check" CHECK (("category" IN ('food', 'packaging', 'cleaning', 'other')))
 );
+
+comment on column public.suppliers.works_without_codes is 'A supplier whose prices need no code: a local shop, or one whose codes are not worth keeping. Its versions are the supplier and the product, its invoices are typed as a total, and the weekly report shows what was spent there without checking it against the brand''s recommendations. Owners and the super admin set it.';
 
 ALTER TABLE ONLY "public"."suppliers"
     ADD CONSTRAINT "suppliers_pkey" PRIMARY KEY ("id");
@@ -265,12 +270,16 @@ CREATE TABLE IF NOT EXISTS "public"."products" (
     "held_for" "text",
     "piece_weight" numeric(10,3),
     CONSTRAINT "products_also_in_known" CHECK (("also_in" <@ ARRAY['Freezer'::"text", 'Cold Room'::"text", 'Dry'::"text", 'Packaging'::"text", 'Cleaning'::"text"])),
+    "recommends" "text" DEFAULT 'versions'::"text" NOT NULL,
     CONSTRAINT "products_category_known" CHECK (("category" = ANY (ARRAY['ingredient'::"text", 'drink'::"text"]))),
     CONSTRAINT "products_count_frequency_check" CHECK ((("count_frequency" IS NULL) OR ("count_frequency" = ANY (ARRAY['daily'::"text", 'weekly'::"text", 'monthly'::"text"])))),
     CONSTRAINT "products_section_check" CHECK (("section" IN ('Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning'))),
     CONSTRAINT "products_unit_check" CHECK (("unit" IN ('KG', 'Units', 'Litre'))),
-    CONSTRAINT "products_piece_weight_positive" CHECK (("piece_weight" IS NULL OR "piece_weight" > (0)::numeric))
+    CONSTRAINT "products_piece_weight_positive" CHECK (("piece_weight" IS NULL OR "piece_weight" > (0)::numeric)),
+    CONSTRAINT "products_recommends_known" CHECK (("recommends" = ANY (ARRAY['versions'::"text", 'any'::"text"])))
 );
+
+comment on column public.products.recommends is 'versions: the brand recommends the versions marked recommended, and buying any other is named on the weekly report. any: nothing in particular, any version is fine and the report never mentions it, for cleaning and packaging the brand leaves free. Owners and the super admin set it.';
 
 COMMENT ON COLUMN "public"."products"."also_in" IS 'The other places this product turns up, on top of its own section. It only affects where it appears on a stock take: the section is still what the product is, and the costing and the reports read that and never this. Empty for nearly everything.';
 COMMENT ON COLUMN "public"."products"."category" IS 'What kind of thing this is, as opposed to where it is kept, which is the section. ingredient is anything that can go into a recipe and is the default. drink is counted on a stock take like everything else but is never offered as an ingredient in a MIX. Menu items are not filtered by this: a can of Coke is a real line on a menu.';
@@ -293,6 +302,7 @@ CREATE TABLE IF NOT EXISTS "public"."product_supplier_prices" (
     "is_preferred" boolean DEFAULT false,
     "updated_at" timestamp with time zone DEFAULT "now"(),
     "allow_loose_count" boolean DEFAULT true NOT NULL,
+    "version_id" "uuid" NOT NULL,
     CONSTRAINT "product_supplier_prices_purchase_type_check" CHECK (("purchase_type" IN ('case', 'loose')))
 );
 
@@ -304,6 +314,8 @@ ALTER TABLE ONLY "public"."product_supplier_prices"
     ADD CONSTRAINT "product_supplier_prices_unique" UNIQUE NULLS NOT DISTINCT ("product_id", "supplier_id", "restaurant_id", "purchase_type", "units_per_case", "supplier_code");
 CREATE INDEX "idx_prices_restaurant" ON "public"."product_supplier_prices" USING "btree" ("restaurant_id", "is_preferred");
 CREATE INDEX "idx_prices_supplier" ON "public"."product_supplier_prices" USING "btree" ("supplier_id");
+COMMENT ON COLUMN "public"."product_supplier_prices"."version_id" IS 'Which version this price is for. Set by the price_version trigger from the product, supplier and code, never by the app.';
+CREATE INDEX "idx_product_supplier_prices_version" ON "public"."product_supplier_prices" USING "btree" ("version_id");
 
 CREATE TABLE IF NOT EXISTS "public"."price_count_units" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
@@ -388,6 +400,68 @@ ALTER TABLE ONLY "public"."product_allergens"
     ADD CONSTRAINT "product_allergens_pkey" PRIMARY KEY ("id");
 ALTER TABLE ONLY "public"."product_allergens"
     ADD CONSTRAINT "product_allergens_product_id_key" UNIQUE ("product_id");
+
+-- Versions of a product: what can be bought for it, from which supplier and
+-- under which code, each with its own allergens (added 4 October 2026). See
+-- lib/allergensAt for how a restaurant's sheet is built from them.
+create table if not exists public.product_versions (
+    id uuid default gen_random_uuid() not null primary key,
+    product_id uuid not null references public.products(id) on delete cascade,
+    supplier_id uuid not null references public.suppliers(id),
+    supplier_code text,
+    name text,
+    is_recommended boolean not null default false,
+    is_active boolean not null default true,
+    created_at timestamp with time zone not null default now(),
+    created_by uuid references public.users(id) on delete set null,
+    section text,
+    also_in text[],
+    constraint product_versions_code_not_blank check (supplier_code is null or btrim(supplier_code) <> ''),
+    constraint product_versions_name_not_blank check (name is null or btrim(name) <> ''),
+    constraint product_versions_section_known
+        check (section is null or section in ('Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning')),
+    constraint product_versions_also_in_known
+        check (also_in is null or also_in <@ array['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning'])
+);
+
+comment on table public.product_versions is 'One thing that can be bought for a product: a supplier, and the supplier''s code for it. Shared by every restaurant, the way products are; each restaurant''s price for it is a product_supplier_prices row pointing here. Made by the price_version trigger whenever a price names a supplier and code no version has yet, so nothing that writes prices has to know.';
+comment on column public.product_versions.supplier_code is 'The supplier''s code. Empty only for a supplier that works without codes, or for a price typed before codes were asked for, which the Products page marks.';
+comment on column public.product_versions.name is 'What this version is, when the product''s name is not enough: Santa Maria 12" wraps. Empty means the product''s name.';
+comment on column public.product_versions.is_recommended is 'One of the versions the brand recommends for its product. A product can have several (ambient or frozen tortillas both fine). Ignored when the product recommends nothing in particular. Owners and the super admin set it.';
+comment on column public.product_versions.section is 'Where this version is kept. Empty means where the product is kept (products.section). Frozen tortillas and ambient ones are two versions of one product kept in two places.';
+comment on column public.product_versions.also_in is 'The other places this version is also kept. Empty means the product''s own (products.also_in).';
+
+-- One version per supplier and code for a product, ignoring case and spaces;
+-- one with no code per supplier.
+create unique index if not exists product_versions_one_per_code
+    on public.product_versions (product_id, supplier_id, lower(btrim(coalesce(supplier_code, ''))));
+create index if not exists idx_product_versions_product on public.product_versions (product_id);
+create index if not exists idx_product_versions_supplier on public.product_versions (supplier_id);
+
+
+-- Each version's allergens. The same fourteen as product_allergens, which now
+-- answers only for a MIX's own allergens and for a product with no versions.
+create table if not exists public.version_allergens (
+    id uuid default gen_random_uuid() not null primary key,
+    version_id uuid not null unique references public.product_versions(id) on delete cascade,
+    gluten varchar(15) not null default 'none' check (gluten in ('contains', 'may_contain', 'none')),
+    crustaceans varchar(15) not null default 'none' check (crustaceans in ('contains', 'may_contain', 'none')),
+    eggs varchar(15) not null default 'none' check (eggs in ('contains', 'may_contain', 'none')),
+    fish varchar(15) not null default 'none' check (fish in ('contains', 'may_contain', 'none')),
+    peanuts varchar(15) not null default 'none' check (peanuts in ('contains', 'may_contain', 'none')),
+    soybeans varchar(15) not null default 'none' check (soybeans in ('contains', 'may_contain', 'none')),
+    milk varchar(15) not null default 'none' check (milk in ('contains', 'may_contain', 'none')),
+    nuts varchar(15) not null default 'none' check (nuts in ('contains', 'may_contain', 'none')),
+    celery varchar(15) not null default 'none' check (celery in ('contains', 'may_contain', 'none')),
+    mustard varchar(15) not null default 'none' check (mustard in ('contains', 'may_contain', 'none')),
+    sesame varchar(15) not null default 'none' check (sesame in ('contains', 'may_contain', 'none')),
+    sulphites varchar(15) not null default 'none' check (sulphites in ('contains', 'may_contain', 'none')),
+    lupin varchar(15) not null default 'none' check (lupin in ('contains', 'may_contain', 'none')),
+    molluscs varchar(15) not null default 'none' check (molluscs in ('contains', 'may_contain', 'none')),
+    updated_at timestamp with time zone default now()
+);
+
+comment on table public.version_allergens is 'The allergens of one version of a product. A version with no row has not been answered, and a dish using it says Ask a member of staff at a restaurant that buys it. A restaurant''s sheet takes every version it buys together, the worst answer for each allergen.';
 
 
 -- -- The menu ----------------------------------------------------------
@@ -780,6 +854,64 @@ CREATE UNIQUE INDEX "supplier_codes_one_per_price" ON "public"."supplier_codes" 
 CREATE INDEX "idx_supplier_codes_alternate_group" ON "public"."supplier_codes" USING "btree" ("alternate_group") WHERE ("alternate_group" IS NOT NULL);
 COMMENT ON COLUMN "public"."supplier_codes"."alternate_group" IS 'Codes for the same thing that are bought either way, depending on what the supplier has. Every code in a group keeps its own price and none is ever bought instead of another; recipes cost from the one chosen and are checked against what the group cost on average. Empty for a code on its own, which is nearly all of them.';
 
+-- -- Settings for the whole brand ---------------------------------------------
+
+create table if not exists public.brand_settings (
+    id boolean default true not null primary key,
+    review_recipients text[] default '{}'::text[] not null,
+    updated_at timestamp with time zone default now() not null,
+    constraint brand_settings_one_row check (id)
+);
+
+comment on table public.brand_settings is 'What belongs to the brand rather than to one restaurant. Always one row.';
+comment on column public.brand_settings.review_recipients is 'Addresses typed in that get an email when a store manager sends something for review. The super admin always gets it as well. Owners and the super admin set it.';
+
+-- -- What was sent for review --------------------------------------------------
+
+create table if not exists public.product_requests (
+    id uuid default gen_random_uuid() not null primary key,
+    restaurant_id uuid not null references public.restaurants(id) on delete cascade,
+    kind text not null,
+    name text,
+    reason text,
+    supplier_id uuid references public.suppliers(id) on delete set null,
+    supplier_code text,
+    description text,
+    pack_size text,
+    price_per_case numeric(10,4),
+    units_per_case numeric(10,3),
+    invoice_line_id uuid references public.invoice_lines(id) on delete set null,
+    sent_by uuid references public.users(id) on delete set null,
+    sent_at timestamp with time zone default now() not null,
+    answer text,
+    product_id uuid references public.products(id) on delete set null,
+    answered_by uuid references public.users(id) on delete set null,
+    answered_at timestamp with time zone,
+    constraint product_requests_kind_known check (kind in ('new', 'not_stock', 'mistake')),
+    constraint product_requests_answer_known
+        check (answer is null or answer in ('new_product', 'version', 'not_stock', 'do_not_buy', 'leave')),
+    constraint product_requests_answered_together check ((answer is null) = (answered_at is null)),
+    constraint product_requests_new_has_name check (kind <> 'new' or nullif(btrim(name), '') is not null),
+    constraint product_requests_line_has_code check (kind = 'new' or supplier_code is not null)
+);
+
+comment on table public.product_requests is 'Something a store manager sent for review: a code on an invoice nobody has bought before, or a product asked for from the Products page. Waiting while answer is empty. While it waits, the lines carrying its code at its restaurant are not asked about on Review and do not hold the weekly report.';
+comment on column public.product_requests.kind is 'What the manager says it is. new: something we should stock. not_stock: a charge, a deposit, a delivery fee. mistake: ordered by mistake and sent back.';
+comment on column public.product_requests.name is 'What the manager thinks it should be called on the brand''s list. Needed for something new.';
+comment on column public.product_requests.supplier_code is 'The code on the invoice. Every line with this code at this restaurant is settled by the answer. Empty for a product asked for from the Products page.';
+comment on column public.product_requests.description is 'The line as the supplier printed it.';
+comment on column public.product_requests.units_per_case is 'How many of the product''s units the Hub read in the pack when it was sent. A starting point for whoever answers.';
+comment on column public.product_requests.answer is 'new_product: added to the brand''s list. version: a version of a product we have. not_stock: the code is not stock. do_not_buy: the brand does not want it bought. leave: ordered by mistake, left as it is. Empty while it waits.';
+comment on column public.product_requests.product_id is 'The product the answer settled it on, for new_product and version.';
+
+create unique index if not exists product_requests_one_waiting
+    on public.product_requests (restaurant_id, supplier_id, supplier_code)
+    where answer is null and supplier_code is not null;
+create index if not exists idx_product_requests_waiting
+    on public.product_requests (restaurant_id) where answer is null;
+
+comment on index public.product_requests_one_waiting is 'One waiting request per code at a restaurant: the same code on three deliveries is one question.';
+
 -- What a product's cost did, and why. The decision log, as against the evidence.
 --
 -- An invoice proves what a supplier charged. It proves nothing about what the
@@ -1065,7 +1197,7 @@ CREATE TABLE IF NOT EXISTS "public"."cost_target_overrides" (
     "effective_until" "date",
     "created_by" "uuid",
     "created_at" timestamp with time zone DEFAULT "now"(),
-    CONSTRAINT "cost_target_overrides_target_type_check" CHECK (("target_type" IN ('food', 'labour', 'packaging')))
+    CONSTRAINT "cost_target_overrides_target_type_check" CHECK (("target_type" IN ('food', 'labour', 'packaging', 'delivery')))
 );
 
 ALTER TABLE ONLY "public"."cost_target_overrides"
@@ -1497,12 +1629,12 @@ CREATE TABLE IF NOT EXISTS "public"."report_items" (
     "opened_on" "date",
     "done_on" "date",
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    CONSTRAINT "report_items_kind_check" CHECK (("kind" = ANY (ARRAY['comment'::"text", 'overhead'::"text", 'delivery'::"text", 'refund'::"text", 'review'::"text", 'rating'::"text", 'action'::"text"])))
+    CONSTRAINT "report_items_kind_check" CHECK (("kind" = ANY (ARRAY['comment'::"text", 'overhead'::"text", 'delivery'::"text", 'refund'::"text", 'review'::"text", 'rating'::"text", 'action'::"text", 'refund_claim'::"text"])))
 );
 
 COMMENT ON TABLE "public"."report_items" IS 'Every line inside a report section. One table on purpose: an overhead, a refund, a review, a comment and an action are the same shape, and a table each would mean a migration every time the report grows.';
 COMMENT ON COLUMN "public"."report_items"."carried_from" IS 'What an overhead line was set to last week. Equal to amount means untouched; different means somebody opened it and changed it, and the report says so.';
-COMMENT ON COLUMN "public"."report_items"."kind" IS 'overhead is a fixed cost line. delivery is what one platform charged this week. refund and review are one each, never a total, because a total cannot say what it was about. rating is the platform''s overall score, which carries from last week and is only mentioned when it moves. action is a support item that stays until it is ticked off. comment is a note against the section.';
+COMMENT ON COLUMN "public"."report_items"."kind" IS 'overhead is a fixed cost line. delivery is what one platform charged this week. refund and review are one each, never a total, because a total cannot say what it was about. rating is the platform''s overall score, which carries from last week and is only mentioned when it moves. action is a support item that stays until it is ticked off. refund_claim is a refund claimed in an earlier week and not yet answered, which carries until it is paid back or refused. comment is a note against the section.';
 COMMENT ON COLUMN "public"."report_items"."opened_on" IS 'The Sunday of the week an action first appeared. Everything else about how long it has been open is worked out from this.';
 ALTER TABLE ONLY "public"."report_items"
     ADD CONSTRAINT "report_items_pkey" PRIMARY KEY ("id");
@@ -1831,10 +1963,10 @@ CREATE INDEX "idx_change_log_user" ON "public"."change_log" USING "btree" ("user
 CREATE INDEX "idx_change_log_when" ON "public"."change_log" USING "btree" ("changed_at" DESC);
 -- For allergens_changed_at(), which the customer allergen page calls on every
 -- visit. Without it the function walks back through every change to every
--- table until it meets one of these six.
-CREATE INDEX "idx_change_log_allergen_sheet" ON "public"."change_log" USING "btree" ("changed_at" DESC) WHERE ("table_name" = ANY (ARRAY['product_allergens'::"text", 'menu_items'::"text", 'menu_item_components'::"text", 'menu_categories'::"text", 'mix_recipes'::"text", 'products'::"text"]));
+-- table until it meets one of these.
+CREATE INDEX "idx_change_log_allergen_sheet" ON "public"."change_log" USING "btree" ("changed_at" DESC) WHERE ("table_name" = ANY (ARRAY['product_allergens'::"text", 'menu_items'::"text", 'menu_item_components'::"text", 'menu_categories'::"text", 'mix_recipes'::"text", 'products'::"text", 'version_allergens'::"text", 'product_versions'::"text", 'product_supplier_prices'::"text"]));
 
-COMMENT ON INDEX "public"."idx_change_log_allergen_sheet" IS 'Only the six tables the allergen sheet is made from, newest first, for allergens_changed_at(), which the customer allergen page calls on every visit.';
+COMMENT ON INDEX "public"."idx_change_log_allergen_sheet" IS 'Only the tables the allergen sheet is made from, newest first, for allergens_changed_at(), which the customer allergen page calls on every visit.';
 COMMENT ON INDEX "public"."menu_item_components_once_as_ingredient" IS 'A product is in a dish once. Its appearances inside a choice are counted separately.';
 COMMENT ON INDEX "public"."menu_item_components_once_per_choice" IS 'A product is one option of a choice once, and may be an option of a different choice on the same dish.';
 COMMENT ON INDEX "public"."report_items_one_per_key" IS 'One row per key, but only for the kinds where the key names a thing there can be only one of: an overhead line, a platform''s delivery cost, a platform''s rating. Reviews and refunds use the key to say which platform they are about and there can be any number of them.';
@@ -1881,6 +2013,8 @@ ALTER TABLE ONLY "public"."product_supplier_prices"
     ADD CONSTRAINT "product_supplier_prices_restaurant_id_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id");
 ALTER TABLE ONLY "public"."product_supplier_prices"
     ADD CONSTRAINT "product_supplier_prices_supplier_id_fkey" FOREIGN KEY ("supplier_id") REFERENCES "public"."suppliers"("id");
+ALTER TABLE ONLY "public"."product_supplier_prices"
+    ADD CONSTRAINT "product_supplier_prices_version_id_fkey" FOREIGN KEY ("version_id") REFERENCES "public"."product_versions"("id");
 ALTER TABLE ONLY "public"."price_count_units"
     ADD CONSTRAINT "price_count_units_price_id_fkey" FOREIGN KEY ("price_id") REFERENCES "public"."product_supplier_prices"("id") ON DELETE CASCADE;
 ALTER TABLE ONLY "public"."product_aliases"
@@ -3309,13 +3443,21 @@ create or replace function public.allergens_changed_at() returns timestamp with 
     select l.changed_at
       from public.change_log l
      where l.table_name in ('product_allergens', 'menu_items', 'menu_item_components',
-                            'menu_categories', 'mix_recipes', 'products')
+                            'menu_categories', 'mix_recipes', 'products', 'version_allergens',
+                            'product_versions', 'product_supplier_prices')
        and case
             -- A new product is on no dish yet. The allergen row it is saved
             -- with still counts, as an insert on product_allergens.
             when l.table_name = 'products' and l.action = 'insert' then false
+            -- A price only when it starts or stops a version at a restaurant,
+            -- not every time what it costs moves.
+            when l.table_name = 'product_supplier_prices' then
+                l.action <> 'update' or l.changes ? 'version_id'
             when l.action <> 'update' then true
             when l.table_name = 'products' then l.changes ?| array['name', 'is_active', 'is_mix', 'section']
+            -- Recommended counts: a restaurant that buys none of a product's
+            -- versions has its sheet built from the recommended ones.
+            when l.table_name = 'product_versions' then l.changes ?| array['is_active', 'product_id', 'is_recommended']
             when l.table_name = 'menu_items' then exists (
                 select 1 from jsonb_object_keys(l.changes) k
                  where k <> all (array['selling_price', 'vat_rate', 'notes']))
@@ -3330,6 +3472,147 @@ create or replace function public.allergens_changed_at() returns timestamp with 
      order by l.changed_at desc
      limit 1
 $$;
+
+create or replace function public.price_version() returns trigger
+    language plpgsql security definer
+    set search_path to 'public', 'pg_temp'
+    as $$
+declare
+    code text := nullif(btrim(new.supplier_code), '');
+    found uuid;
+    others integer;
+begin
+    select v.id into found
+      from public.product_versions v
+     where v.product_id = new.product_id and v.supplier_id = new.supplier_id
+       and lower(btrim(coalesce(v.supplier_code, ''))) = lower(coalesce(code, ''));
+
+    if found is not null then
+        new.version_id := found;
+        return new;
+    end if;
+
+    if tg_op = 'UPDATE' and old.version_id is not null
+       and new.product_id = old.product_id and new.supplier_id = old.supplier_id then
+        select count(*) into others
+          from public.product_supplier_prices p
+         where p.version_id = old.version_id and p.id <> old.id;
+        if others = 0 then
+            update public.product_versions set supplier_code = code where id = old.version_id;
+            new.version_id := old.version_id;
+            return new;
+        end if;
+        insert into public.product_versions (product_id, supplier_id, supplier_code, name, section, also_in,
+                                             is_recommended, created_by)
+        select new.product_id, new.supplier_id, code, v.name, v.section, v.also_in, v.is_recommended, auth.uid()
+          from public.product_versions v where v.id = old.version_id
+        returning id into found;
+        insert into public.version_allergens (version_id, gluten, crustaceans, eggs, fish, peanuts, soybeans, milk,
+                                              nuts, celery, mustard, sesame, sulphites, lupin, molluscs)
+        select found, a.gluten, a.crustaceans, a.eggs, a.fish, a.peanuts, a.soybeans, a.milk,
+               a.nuts, a.celery, a.mustard, a.sesame, a.sulphites, a.lupin, a.molluscs
+          from public.version_allergens a where a.version_id = old.version_id;
+        new.version_id := found;
+        return new;
+    end if;
+
+    insert into public.product_versions (product_id, supplier_id, supplier_code, created_by)
+    values (new.product_id, new.supplier_id, code, auth.uid())
+    returning id into found;
+    new.version_id := found;
+    return new;
+end $$;
+
+comment on function public.price_version() is 'Points a price at its version, from the product, supplier and code, starting a version when none matches. A new code for the same product and supplier renumbers the version and keeps its allergens; anything else new starts with none.';
+
+drop trigger if exists product_supplier_prices_version on public.product_supplier_prices;
+create trigger product_supplier_prices_version
+    before insert or update of product_id, supplier_id, supplier_code, version_id on public.product_supplier_prices
+    for each row execute function public.price_version();
+
+-- What only owners and the super admin decide: what the brand recommends,
+-- and which suppliers work without codes. A store manager still adds
+-- versions, by buying them, and sets their allergens.
+create or replace function public.brand_choice_guard() returns trigger
+    language plpgsql
+    set search_path to 'public', 'pg_temp'
+    as $$
+begin
+    if nullif(current_setting('request.jwt.claims', true), '') is null then
+        return coalesce(new, old);
+    end if;
+    if public.get_my_role() in ('owner', 'super_admin') then
+        return coalesce(new, old);
+    end if;
+    if tg_table_name = 'product_versions' then
+        -- A version is one supplier's code for one product. Moved to another
+        -- product its allergens would answer for that one, and the prices
+        -- on it would still say the first. Nothing in the app does it.
+        if tg_op = 'UPDATE' and (new.product_id is distinct from old.product_id
+                                 or new.supplier_id is distinct from old.supplier_id) then
+            raise exception 'A version stays with its product and supplier';
+        end if;
+        -- The one insert that may carry a recommendation for a store manager:
+        -- price_version's copy of a renumbered version, which keeps what the
+        -- brand already said about it. It comes from inside that trigger, so
+        -- it is a level deeper than anything the app writes.
+        if (tg_op = 'INSERT' and new.is_recommended and pg_trigger_depth() < 2)
+           or (tg_op = 'UPDATE' and new.is_recommended is distinct from old.is_recommended) then
+            raise exception 'Only an owner can choose what the brand recommends';
+        end if;
+    elsif tg_table_name = 'products' then
+        if tg_op = 'INSERT' then
+            raise exception 'Only an owner can add a product. Send it for review instead';
+        end if;
+        if tg_op = 'DELETE' then
+            raise exception 'Only an owner can remove a product';
+        end if;
+        if new.name is distinct from old.name or new.is_active is distinct from old.is_active then
+            raise exception 'Only an owner can rename a product or switch it off';
+        end if;
+        if new.recommends is distinct from old.recommends then
+            raise exception 'Only an owner can choose what the brand recommends';
+        end if;
+    elsif tg_table_name = 'suppliers' then
+        if (tg_op = 'INSERT' and new.works_without_codes)
+           or (tg_op = 'UPDATE' and new.works_without_codes is distinct from old.works_without_codes) then
+            raise exception 'Only an owner can say a supplier works without codes';
+        end if;
+    end if;
+    return coalesce(new, old);
+end $$;
+
+comment on function public.brand_choice_guard() is 'Keeps to owners and the super admin what the brand decides: adding, renaming and switching off a product, the recommendations, and the suppliers that work without codes. Store managers write the same rows for everything else.';
+create or replace function public.set_aside_guard() returns trigger
+    language plpgsql
+    set search_path to 'public', 'pg_temp'
+    as $$
+begin
+    if nullif(current_setting('request.jwt.claims', true), '') is null then
+        return new;
+    end if;
+    if public.get_my_role() in ('owner', 'super_admin') then
+        return new;
+    end if;
+    if tg_table_name = 'supplier_codes' then
+        if new.ignored and (tg_op = 'INSERT' or not old.ignored) then
+            raise exception 'Only an owner can say a code is not stock. Send it for review instead';
+        end if;
+    elsif tg_table_name = 'invoice_lines' then
+        if new.decision = 'ignored'
+           and (tg_op = 'INSERT' or old.decision is distinct from 'ignored')
+           and not exists (
+               select 1 from public.invoices i
+                 join public.supplier_codes c
+                   on c.restaurant_id = i.restaurant_id and c.supplier_id = i.supplier_id
+                where i.id = new.invoice_id and c.supplier_code = new.supplier_code and c.ignored) then
+            raise exception 'Only an owner can set an invoice line aside. Send it for review instead';
+        end if;
+    end if;
+    return new;
+end $$;
+
+comment on function public.set_aside_guard() is 'Keeps setting an invoice line aside, and saying a code is not stock, to owners and the super admin, so a store manager sends it for review instead. A line on a code already marked not stock is still settled by the import.';
 
 -- The PDF button says the sheet was printed. An owner can print but cannot
 -- write the restaurant row, so the stamp goes through here. The restaurant is
@@ -3376,6 +3659,7 @@ declare
     today date := (now() at time zone 'Europe/Dublin')::date;
     -- The Hub's weeks start on Sunday (weekStartOf).
     this_week date := today - (extract(dow from today))::int;
+    last_week date := today - (extract(dow from today))::int - 7;
     out jsonb := '{}'::jsonb;
     first_read timestamptz;
 begin
@@ -3397,18 +3681,39 @@ begin
                and least(g.shift_date, t.shift_date) >= today));
     end if;
 
-    -- Everything else is about one restaurant, and only managers act on it.
-    if my_role not in ('store_manager', 'owner', 'super_admin') then
+    -- Everything else is about one restaurant: their own, or any one for
+    -- the super admin.
+    if my_role <> 'super_admin' and restaurant is distinct from my_restaurant then
         return out;
     end if;
-    if my_role <> 'super_admin' and restaurant is distinct from my_restaurant then
+
+    -- Checklists, which everybody at the restaurant ticks: each live list
+    -- with something on it to tick, and when a round of it last ended.
+    -- Whether that falls inside the list's current stretch, and how near
+    -- its end today is, is lib/checklists' periodOf, the card's own rule.
+    out := out || jsonb_build_object(
+        'today', today,
+        'checklists', coalesce((
+            select jsonb_agg(jsonb_build_object(
+                'id', l.id, 'repeats', l.repeats, 'every_weeks', l.every_weeks,
+                'starts_on', l.starts_on, 'finish_by', l.finish_by,
+                'ended_at', (select max(r.ended_at) from public.checklist_rounds r where r.checklist_id = l.id)))
+              from public.checklists l
+             where l.restaurant_id = restaurant and l.is_active and l.starts_on <= today
+               and exists (select 1 from public.checklist_tasks t
+                             join public.checklist_categories c on c.id = t.category_id
+                             left join public.checklist_tasks p on p.id = t.parent_id
+                            where t.checklist_id = l.id and t.is_active and c.is_active
+                              and (t.parent_id is null or p.is_active))), '[]'::jsonb));
+
+    -- The rest is for managers.
+    if my_role not in ('store_manager', 'owner', 'super_admin') then
         return out;
     end if;
 
     out := out || jsonb_build_object(
         'me', me,
         'role', my_role,
-        'today', today,
 
         -- Roster: swaps both people agreed, still to come, and time off not
         -- answered. Who may answer which is worked out by the app (lib/badges).
@@ -3436,6 +3741,42 @@ begin
             select jsonb_agg(jsonb_build_object('shift_date', s.shift_date, 'published_at', s.published_at))
               from public.roster_shifts s
              where s.restaurant_id = restaurant and s.shift_date between today and this_week + 13), '[]'::jsonb),
+
+        -- Hours taken off the roster by time off still to come, with the
+        -- shifts on those days, for whether anybody now covers them
+        -- (lib/timeOff openGaps, the roster's own rule).
+        'freed', coalesce((
+            select jsonb_agg(jsonb_build_object(
+                'id', a.id, 'employee_id', a.employee_id, 'status', a.status, 'cleared_shifts', a.cleared_shifts))
+              from public.absences a
+             where a.restaurant_id = restaurant and a.status = 'approved' and a.ends_on >= today
+               and jsonb_typeof(a.cleared_shifts) = 'array' and jsonb_array_length(a.cleared_shifts) > 0), '[]'::jsonb),
+        'cover', coalesce((
+            select jsonb_agg(jsonb_build_object(
+                'employee_id', s.employee_id, 'shift_date', s.shift_date, 'starts_at', s.starts_at, 'ends_at', s.ends_at))
+              from public.roster_shifts s
+             where s.restaurant_id = restaurant and s.shift_date >= today
+               and s.shift_date in (
+                   select (g->>'date')::date
+                     from public.absences a, jsonb_array_elements(a.cleared_shifts) g
+                    where a.restaurant_id = restaurant and a.status = 'approved' and a.ends_on >= today
+                      and jsonb_typeof(a.cleared_shifts) = 'array')), '[]'::jsonb),
+
+        -- Team: whoever is rostered this week or next whose permission to
+        -- work has run out, or runs out by the end of next week. Whether a
+        -- renewal covers them is lib/workRules' graceFor, under the
+        -- restaurant's own rule, the same as the roster's check.
+        'permits', coalesce((
+            select jsonb_agg(jsonb_build_object(
+                'id', e.id, 'work_permission_expires', e.work_permission_expires,
+                'permission_renewal_applied', e.permission_renewal_applied))
+              from public.employees e
+             where e.restaurant_id = restaurant and e.work_permission_expires is not null
+               and e.work_permission_expires <= this_week + 13
+               and (e.ended_on is null or e.ended_on >= today)
+               and exists (select 1 from public.roster_shifts s
+                            where s.employee_id = e.id and s.shift_date between today and this_week + 13)), '[]'::jsonb),
+        'rules', (select r.roster_rules from public.restaurants r where r.id = restaurant),
 
         -- Public allergens: whether a new printed sheet is due.
         'sheet', (
@@ -3470,7 +3811,8 @@ begin
                and (cl.amount is null or coalesce(cl.credited_amount, 0) < cl.amount))
     );
 
-    -- Reports owed and re-opened, for whoever writes them.
+    -- Reports owed and re-opened, and last week's sales and timesheet, for
+    -- whoever writes the report.
     if my_role in ('store_manager', 'super_admin') then
         out := out || jsonb_build_object(
             'reports', coalesce((
@@ -3484,7 +3826,64 @@ begin
                 select count(*) from public.users u
                  where u.restaurant_id = restaurant and u.is_active and not u.is_test
                    and u.role in ('employee', 'store_manager')
-                   and not exists (select 1 from public.employees e where e.user_id = u.id)));
+                   and not exists (select 1 from public.employees e where e.user_id = u.id)),
+
+            -- Weekly sales: last week's days with nothing saved, the Reports
+            -- list's own test (weekReadiness: a day with no row; a day marked
+            -- closed has one). Only where the Hub keeps the sales at all: a
+            -- restaurant with none saved in the ten weeks before last is not
+            -- reminded every Sunday.
+            'sales_missing', (
+                select count(*) from generate_series(last_week, last_week + 6, interval '1 day') d
+                 where not exists (select 1 from public.sales_records s
+                                    where s.restaurant_id = restaurant and s.sale_date = d::date)),
+            'keeps_sales', exists (
+                select 1 from public.sales_records s
+                 where s.restaurant_id = restaurant and s.sale_date >= last_week - 70 and s.sale_date < last_week),
+
+            -- Timesheet: last week as the Reports list reads it, for the
+            -- same rule (lib/timesheet personWeek and unanswered): who was
+            -- on the team, what they were rostered, what was clocked or
+            -- typed, who was away, and whether the till's file was read in.
+            'timesheet', jsonb_build_object(
+                'week_start', last_week,
+                'imported', exists (
+                    select 1 from public.timesheet_weeks w
+                     where w.restaurant_id = restaurant and w.week_start = last_week and w.imported_at is not null),
+                'people', coalesce((
+                    select jsonb_agg(jsonb_build_object('id', e.id))
+                      from public.employees e
+                     where e.restaurant_id = restaurant
+                       and (e.ended_on is null or e.ended_on >= last_week)
+                       and (e.started_on is null or e.started_on <= last_week + 6)), '[]'::jsonb),
+                'shifts', coalesce((
+                    select jsonb_agg(jsonb_build_object('employee_id', s.employee_id, 'shift_date', s.shift_date))
+                      from public.roster_shifts s
+                     where s.restaurant_id = restaurant and s.shift_date between last_week and last_week + 6), '[]'::jsonb),
+                'entries', coalesce((
+                    select jsonb_agg(jsonb_build_object(
+                        'id', t.id, 'employee_id', t.employee_id, 'work_date', t.work_date,
+                        'starts_at', t.starts_at, 'ends_at', t.ends_at, 'kind', t.kind, 'source', t.source, 'note', t.note))
+                      from public.timesheet_entries t
+                     where t.restaurant_id = restaurant and t.work_date between last_week and last_week + 6), '[]'::jsonb),
+                'absences', coalesce((
+                    select jsonb_agg(jsonb_build_object(
+                        'employee_id', a.employee_id, 'kind', a.kind, 'starts_on', a.starts_on, 'ends_on', a.ends_on,
+                        'hours', a.hours, 'status', a.status, 'can_work_from', a.can_work_from, 'can_work_to', a.can_work_to))
+                      from public.absences a
+                     where a.restaurant_id = restaurant and a.starts_on <= last_week + 6 and a.ends_on >= last_week), '[]'::jsonb)),
+            -- The pay period: where the fortnights fall, which recent weeks
+            -- have gone to the accountant, and whether any ever has. A test
+            -- send never files a week, so a restaurant that has never really
+            -- sent one is never told a period is waiting.
+            'pay', jsonb_build_object(
+                'start', (select r.pay_period_start from public.restaurants r where r.id = restaurant),
+                'filed', coalesce((
+                    select jsonb_agg(w.week_start) from public.timesheet_weeks w
+                     where w.restaurant_id = restaurant and w.filed_at is not null and w.week_start >= this_week - 35), '[]'::jsonb),
+                'ever_filed', exists (
+                    select 1 from public.timesheet_weeks w
+                     where w.restaurant_id = restaurant and w.filed_at is not null)));
     end if;
 
     -- Published reports an owner has not opened. Only once they have opened
@@ -3501,6 +3900,14 @@ begin
         end);
     end if;
 
+    -- Products: what store managers sent for review, for whoever answers
+    -- it. Every restaurant's for the super admin, their own for an owner.
+    if my_role in ('owner', 'super_admin') then
+        out := out || jsonb_build_object('requests', (
+            select count(*) from public.product_requests pr
+             where pr.answer is null and (my_role = 'super_admin' or pr.restaurant_id = restaurant)));
+    end if;
+
     -- A listings page that has not been read for eight days, for the super admin.
     if my_role = 'super_admin' then
         out := out || jsonb_build_object('dead_pages', (
@@ -3513,7 +3920,16 @@ begin
     return out;
 end $$;
 
-comment on function public.my_badges(uuid) is 'Everything the sidebar badges count for the person asking, at one restaurant, in one call. Security definer, so it repeats the policies'' checks: nothing for a switched off account, and only their own shift asks for anybody but a super admin looking at another restaurant.';
+comment on function public.my_badges(uuid) is 'Everything the sidebar badges count for the person asking, at one restaurant, in one call. Security definer, so it repeats the policies'' checks: nothing for a switched off account, and only their own shift asks for anybody looking at a restaurant that is not theirs. Rows go out as they are where a page already has the rule, so the badge and the page agree.';
+
+create or replace function public.user_emails() returns table (id uuid, email text)
+    language sql stable security definer set search_path to 'public', 'pg_temp' as $$
+    select u.id, u.email::text
+      from auth.users u
+     where public.get_my_role() = 'super_admin'
+$$;
+
+comment on function public.user_emails() is 'Every account''s email address, for the Users page. Security definer because the addresses live in auth.users; only an active super admin gets rows, everybody else gets none.';
 
 COMMENT ON FUNCTION "public"."allergen_sheet_printed"("restaurant" "uuid") IS 'Stamps now() as when the allergen sheet was last printed for a restaurant. Managers and owners for their own restaurant, the super admin for any. Returns the stamp.';
 COMMENT ON FUNCTION "public"."allergens_changed_at"() IS 'When anything on the allergen sheet last changed, from the change log: allergens, dishes, what is in them, their categories, recipes, and a product renamed, switched on or off, made a MIX or moved section. Not prices, VAT, quantities or notes. Null when the log holds no such change.';
@@ -3537,6 +3953,12 @@ revoke all on function "public"."allergen_sheet_printed"("restaurant" "uuid") fr
 grant execute on function "public"."allergen_sheet_printed"("restaurant" "uuid") to authenticated;
 revoke all on function "public"."allergens_changed_at"() from public, anon, authenticated, service_role;
 grant execute on function "public"."allergens_changed_at"() to anon, authenticated;
+revoke all on function "public"."brand_choice_guard"() from public, anon, authenticated, service_role;
+grant execute on function "public"."brand_choice_guard"() to service_role;
+revoke all on function public.set_aside_guard() from public, anon, authenticated, service_role;
+grant execute on function public.set_aside_guard() to service_role;
+revoke all on function "public"."price_version"() from public, anon, authenticated, service_role;
+grant execute on function "public"."price_version"() to service_role;
 revoke all on function "public"."answer_time_off"("request_id" "uuid", "answer" "text", "clear_shift_ids" "uuid"[]) from public, anon, authenticated, service_role;
 grant execute on function "public"."answer_time_off"("request_id" "uuid", "answer" "text", "clear_shift_ids" "uuid"[]) to authenticated;
 revoke all on function "public"."checklist_photos_due"() from public, anon, authenticated, service_role;
@@ -3559,6 +3981,8 @@ revoke all on function "public"."finish_checklist_round"("round" "uuid") from pu
 grant execute on function "public"."finish_checklist_round"("round" "uuid") to authenticated, service_role;
 revoke all on function "public"."my_badges"("restaurant" "uuid") from public, anon;
 grant execute on function "public"."my_badges"("restaurant" "uuid") to authenticated, service_role;
+revoke all on function "public"."user_emails"() from public, anon;
+grant execute on function "public"."user_emails"() to authenticated, service_role;
 revoke all on function "public"."handle_delete_user"() from public, anon, authenticated, service_role;
 grant execute on function "public"."handle_delete_user"() to service_role;
 revoke all on function "public"."handle_new_user"() from public, anon, authenticated, service_role;
@@ -3716,6 +4140,60 @@ ALTER TABLE "public"."product_allergens" ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "product_allergens_select" ON "public"."product_allergens" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
 CREATE POLICY "product_allergens_write" ON "public"."product_allergens" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
+
+-- The same for versions and their allergens. A store manager adds versions
+-- by buying them and answers their allergens; what is recommended is kept to
+-- owners by brand_choice_guard.
+alter table public.product_versions enable row level security;
+alter table public.version_allergens enable row level security;
+
+create policy product_versions_select on public.product_versions for select to authenticated
+    using ((select public.get_my_role()) = any (array['super_admin', 'owner', 'store_manager']));
+create policy product_versions_write on public.product_versions to authenticated
+    using ((select public.get_my_role()) = any (array['super_admin', 'owner', 'store_manager']))
+    with check ((select public.get_my_role()) = any (array['super_admin', 'owner', 'store_manager']));
+
+create policy version_allergens_select on public.version_allergens for select to authenticated
+    using ((select public.get_my_role()) = any (array['super_admin', 'owner', 'store_manager']));
+create policy version_allergens_write on public.version_allergens to authenticated
+    using ((select public.get_my_role()) = any (array['super_admin', 'owner', 'store_manager']))
+    with check ((select public.get_my_role()) = any (array['super_admin', 'owner', 'store_manager']));
+
+-- What was sent for review, and who reviews. The brand's settings are the
+-- owners' and the super admin's.
+alter table public.brand_settings enable row level security;
+alter table public.product_requests enable row level security;
+
+create policy brand_settings_select on public.brand_settings for select to authenticated
+    using ((select public.get_my_role()) = any (array['super_admin', 'owner']));
+create policy brand_settings_update on public.brand_settings for update to authenticated
+    using ((select public.get_my_role()) = any (array['super_admin', 'owner']))
+    with check ((select public.get_my_role()) = any (array['super_admin', 'owner']));
+
+-- Read at the restaurant it came from, and by the super admin everywhere.
+-- Sent by a manager or an owner as themselves, waiting. Answered by an owner
+-- there, or the super admin: an owner belongs to one restaurant, and the
+-- answer writes that restaurant's prices and codes.
+create policy product_requests_select on public.product_requests for select to authenticated
+    using (((select public.get_my_role()) = 'super_admin')
+        or (((select public.get_my_role()) = any (array['owner', 'store_manager']))
+            and restaurant_id = (select public.get_my_restaurant_id())));
+create policy product_requests_insert on public.product_requests for insert to authenticated
+    with check (sent_by = (select auth.uid()) and answer is null
+        and (((select public.get_my_role()) = 'super_admin')
+            or (((select public.get_my_role()) = any (array['owner', 'store_manager']))
+                and restaurant_id = (select public.get_my_restaurant_id()))));
+create policy product_requests_answer on public.product_requests for update to authenticated
+    using (((select public.get_my_role()) = 'super_admin')
+        or ((select public.get_my_role()) = 'owner' and restaurant_id = (select public.get_my_restaurant_id())))
+    with check (((select public.get_my_role()) = 'super_admin')
+        or ((select public.get_my_role()) = 'owner' and restaurant_id = (select public.get_my_restaurant_id())));
+-- Only what the policies allow anyway: no inserts or deletes on the settings,
+-- which are one row, and no deletes on requests, which are kept answered.
+revoke all on table public.brand_settings from anon, authenticated, public;
+grant select, update on table public.brand_settings to authenticated;
+revoke all on table public.product_requests from anon, authenticated, public;
+grant select, insert, update on table public.product_requests to authenticated;
 
 
 -- -- The menu ----------------------------------------------------------
@@ -4553,6 +5031,45 @@ CREATE OR REPLACE VIEW "public"."public_restaurants" AS
    FROM "public"."restaurants" "r"
   WHERE ("is_active" = true);
 
+-- What a restaurant's allergen sheet is worked out from, for the customer
+-- page: the versions, their allergens, and which versions each restaurant
+-- buys. No codes, no suppliers, no prices. Since 4 October.
+create or replace view public.public_product_versions as
+ select v.id, v.product_id, v.is_recommended, v.is_active
+   from public.product_versions v;
+
+create or replace view public.public_version_allergens as
+ select a.version_id, a.gluten, a.crustaceans, a.eggs, a.fish, a.peanuts, a.soybeans, a.milk,
+        a.nuts, a.celery, a.mustard, a.sesame, a.sulphites, a.lupin, a.molluscs
+   from public.version_allergens a;
+
+create or replace view public.public_restaurant_versions as
+ select distinct p.restaurant_id, p.version_id
+   from public.product_supplier_prices p;
+
+comment on view public.public_product_versions is 'Each version of each product, for the customer allergen page: which product it is of, whether the brand recommends it and whether it is in use. Not the supplier, the code or the price.';
+comment on view public.public_version_allergens is 'Each version''s allergens, for the customer allergen page.';
+-- What the stock take reads, for everybody who counts: at each restaurant,
+-- where each product it buys is kept, version by version. Nothing about
+-- suppliers, codes or prices. A product with no price at a restaurant has no
+-- row, and is counted where the product says. A version switched off says
+-- nothing about where anything is kept. Their own restaurant only, or
+-- every one for the super admin.
+create or replace view public.restaurant_kept_in as
+ select distinct p.restaurant_id, v.product_id,
+        coalesce(v.section, pr.section::text) as section,
+        coalesce(v.also_in, pr.also_in) as also_in
+   from public.product_supplier_prices p
+   join public.product_versions v on v.id = p.version_id
+   join public.products pr on pr.id = v.product_id
+  where v.is_active
+    and ((select public.get_my_role()) = 'super_admin'
+         or p.restaurant_id = (select public.get_my_restaurant_id()));
+
+comment on view public.restaurant_kept_in is 'Where each product a restaurant buys is kept there, one row for each place its versions say. For the stock take, which staff count, so it carries no supplier, code or price.';
+
+comment on view public.public_restaurant_versions is 'Which versions each restaurant has a price for, which is which versions its allergen sheet is built from. Not the price.';
+
 COMMENT ON VIEW "public"."roster_published" IS 'The week as it went out to staff, at your restaurant: every published shift as it stands, and a shift changed since the week went out as it was then, from published_as. Changing a shift takes it back to a draft so the roster can say so, and without this it vanished from somebody''s week and phone until the week was published again. The note is there only for the person the shift is on and for the managers. Only shifts from nine weeks before today to nine after, by the day as it went out: the weeks My shifts opens and one more. My shifts reads this rather than roster_shifts.';
 COMMENT ON VIEW "public"."roster_asks" IS 'Which shifts at your restaurant somebody has asked about and is still waiting on, for the mark on My shifts: the shift given, the shift asked for and the status. Not who asked whom, the hours or the message, which only the two people in it and the managers read on shift_requests.';
 COMMENT ON VIEW "public"."roster_away" IS 'The days somebody is not there, with no reason attached, the hours they can still work when it is only part of a day, and the shifts a freed day left going spare. Only time off that touches the weeks from nine before today to nine after, the weeks My shifts opens and one more. The kind, the note and the hours stay on the absences table, which nobody below a manager can read. This is what the staff week greys out, and it reads Not available the same way the picture that goes to the WhatsApp group does.';
@@ -4619,6 +5136,10 @@ revoke all on public.public_mix_recipes          from anon, authenticated, publi
 revoke all on public.public_product_allergens    from anon, authenticated, public;
 revoke all on public.public_products             from anon, authenticated, public;
 revoke all on public.public_restaurants          from anon, authenticated, public;
+revoke all on public.public_product_versions     from anon, authenticated, public;
+revoke all on public.public_version_allergens    from anon, authenticated, public;
+revoke all on public.public_restaurant_versions  from anon, authenticated, public;
+revoke all on public.restaurant_kept_in from anon, authenticated, public;
 grant select on public.public_menu_categories      to anon, authenticated;
 grant select on public.public_menu_item_components to anon, authenticated;
 grant select on public.public_menu_items           to anon, authenticated;
@@ -4626,6 +5147,10 @@ grant select on public.public_mix_recipes          to anon, authenticated;
 grant select on public.public_product_allergens    to anon, authenticated;
 grant select on public.public_products             to anon, authenticated;
 grant select on public.public_restaurants          to anon, authenticated;
+grant select on public.public_product_versions     to anon, authenticated;
+grant select on public.public_version_allergens    to anon, authenticated;
+grant select on public.public_restaurant_versions  to anon, authenticated;
+grant select on public.restaurant_kept_in to authenticated;
 
 
 -- ======================================================================
@@ -4821,6 +5346,13 @@ CREATE OR REPLACE TRIGGER "users_password_set_at_guard" BEFORE INSERT OR UPDATE 
 CREATE OR REPLACE TRIGGER "restaurants_updated_at" BEFORE UPDATE ON "public"."restaurants" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "product_supplier_prices_updated_at" BEFORE UPDATE ON "public"."product_supplier_prices" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "product_allergens_updated_at" BEFORE UPDATE ON "public"."product_allergens" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
+CREATE OR REPLACE TRIGGER "version_allergens_updated_at" BEFORE UPDATE ON "public"."version_allergens" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
+CREATE OR REPLACE TRIGGER "product_supplier_prices_version" BEFORE INSERT OR UPDATE OF "product_id", "supplier_id", "supplier_code", "version_id" ON "public"."product_supplier_prices" FOR EACH ROW EXECUTE FUNCTION "public"."price_version"();
+CREATE OR REPLACE TRIGGER "product_versions_brand_choice" BEFORE INSERT OR UPDATE ON "public"."product_versions" FOR EACH ROW EXECUTE FUNCTION "public"."brand_choice_guard"();
+CREATE OR REPLACE TRIGGER "products_brand_choice" BEFORE INSERT OR UPDATE OR DELETE ON "public"."products" FOR EACH ROW EXECUTE FUNCTION "public"."brand_choice_guard"();
+CREATE OR REPLACE TRIGGER "invoice_lines_set_aside" BEFORE INSERT OR UPDATE OF "decision" ON "public"."invoice_lines" FOR EACH ROW EXECUTE FUNCTION "public"."set_aside_guard"();
+CREATE OR REPLACE TRIGGER "supplier_codes_set_aside" BEFORE INSERT OR UPDATE OF "ignored" ON "public"."supplier_codes" FOR EACH ROW EXECUTE FUNCTION "public"."set_aside_guard"();
+CREATE OR REPLACE TRIGGER "suppliers_brand_choice" BEFORE INSERT OR UPDATE ON "public"."suppliers" FOR EACH ROW EXECUTE FUNCTION "public"."brand_choice_guard"();
 CREATE OR REPLACE TRIGGER "sales_platforms_key" BEFORE INSERT OR UPDATE ON "public"."sales_platforms" FOR EACH ROW EXECUTE FUNCTION "public"."sales_platform_key"();
 CREATE OR REPLACE TRIGGER "roster_shifts_updated_at" BEFORE UPDATE ON "public"."roster_shifts" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "roster_shifts_keep_what_went_out" BEFORE INSERT OR UPDATE ON "public"."roster_shifts" FOR EACH ROW EXECUTE FUNCTION "public"."roster_shift_keeps_what_went_out"();

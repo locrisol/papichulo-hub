@@ -61,6 +61,20 @@ six as at the last check, all understood:
   lower case and this file in upper. The same SQL. The next time either is
   replaced they agree again.
 
+## Folded again, 10 October 2026
+
+Before development went to main, `001` to `008` from after the restart were
+taken out the same way: five more badges, user emails, the delivery cost
+target, product versions, product requests, where a version is kept, a
+renumbered code keeping its recommendation, and refund claims. All eight were
+run on live, and they are in git history like the rest.
+
+Live was dumped first, after all eight had run: `schema-2026-10-10.sql`,
+`roles-2026-10-10.sql` and `data-2026-10-10.sql` in `papichulo-backups`.
+
+**1,490 statements on live against 1,491 from `schema.sql` alone**, and the
+only differences are the same six as above. Numbering starts again at `001`.
+
 ## How to check it again
 
 Dump live and build a second database from `schema.sql` alone, with this folder

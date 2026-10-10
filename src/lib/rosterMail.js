@@ -97,3 +97,12 @@ export function emailTheShiftDecision(requestId) {
     if (!requestId) return
     post({ requestId, event: 'swap-decided' })
 }
+
+// --------------------------------------------------------- sent for review
+
+// A store manager sent something for review. The reviewers hear about it:
+// the super admin and whoever is on Reviewers on Products.
+export function emailTheReview(productRequestId) {
+    if (!productRequestId) return
+    post({ productRequestId, event: 'review-asked' })
+}

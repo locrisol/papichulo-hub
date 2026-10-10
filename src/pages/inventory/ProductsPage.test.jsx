@@ -62,7 +62,12 @@ vi.mock('@/lib/supabase', async importOriginal => ({
     everyRow: (await importOriginal()).everyRow,
     supabase: new Proxy({}, { get: (_, k) => db[k] }),
 }))
-vi.mock('@/context/auth', () => ({ useAuth: () => ({ user: { id: 'u1', role: 'store_manager' } }) }))
+// An owner, who keeps the brand's list, unless a test says otherwise: since
+// 4 October a store manager asks for a product instead of adding one.
+let me
+vi.mock('@/context/auth', () => ({ useAuth: () => ({ user: me }) }))
+const emailTheReview = vi.fn()
+vi.mock('@/lib/rosterMail', () => ({ emailTheReview: id => emailTheReview(id) }))
 // One restaurant object for the whole test, the way the real context keeps
 // one. A new one on every render made the prices fetch run again on every
 // render, so the page never stopped reading and a test could not wait for it.
@@ -80,7 +85,13 @@ beforeAll(() => {
     globalThis.IntersectionObserver = class { observe() {} disconnect() {} }
 })
 
+// One test swaps how a table answers; every test starts from the real one.
+const realFrom = db.from.getMockImplementation()
+
 beforeEach(() => {
+    db.from.mockImplementation(realFrom)
+    me = { id: 'u1', role: 'owner' }
+    emailTheReview.mockClear()
     written = []
     refused = null
     held = null
@@ -146,6 +157,7 @@ describe('the price on the product form', () => {
         await clicker.type(box(form, 'Name'), 'Red Onions')
         await clicker.click(form.getByRole('button', { name: /Supplier and price/ }))
         await clicker.selectOptions(form.getByText('Supplier').parentElement.querySelector('select'), 's1')
+        await clicker.type(box(form, 'Supplier code'), '777001')
         await clicker.type(box(form, 'Price per case (€)'), '9')
         await clicker.type(box(form, 'Units per case (KG)'), '10')
         await clicker.click(form.getByRole('button', { name: 'Add product' }))
@@ -168,6 +180,7 @@ describe('adding a product when part of it does not save', () => {
         await clicker.type(box(form, 'Name'), 'Red Onions')
         await clicker.click(form.getByRole('button', { name: /Supplier and price/ }))
         await clicker.selectOptions(form.getByText('Supplier').parentElement.querySelector('select'), 's1')
+        await clicker.type(box(form, 'Supplier code'), '777001')
         await clicker.type(box(form, 'Price per case (€)'), '9')
         await clicker.type(box(form, 'Units per case (KG)'), '10')
         return form
@@ -312,6 +325,31 @@ describe('the pack sizes on an edit', () => {
         await waitFor(() => expect(written.some(w => w.table === 'price_count_units' && w.how === 'delete')).toBe(true))
         const packs = written.filter(w => w.table === 'price_count_units')
         expect(packs.map(w => w.how)).toEqual(['insert', 'delete'])
+    })
+
+    // His, 4 October: Add pack reads as "add another one", so the pack still
+    // in the boxes is the one he meant.
+    it('saves a pack typed in and never added', async () => {
+        tables.price_count_units = [{ id: 'cu1', price_id: 'pr1', label: 'Box', factor: 5, sort_order: 0, is_active: true }]
+        const clicker = userEvent.setup()
+        const dialog = await editPeppers(clicker)
+        await clicker.type(dialog.getByPlaceholderText('Box, Bag, Tin'), 'Bag')
+        await clicker.type(dialog.getByPlaceholderText('KG'), '1')
+        await clicker.click(dialog.getByRole('button', { name: 'Save changes' }))
+
+        await waitFor(() => expect(written.some(w => w.table === 'price_count_units' && w.how === 'insert')).toBe(true))
+        const put = written.find(w => w.table === 'price_count_units' && w.how === 'insert').row
+        expect(put.map(p => [p.label, p.factor])).toEqual([['Box', 5], ['Bag', 1]])
+    })
+
+    it('asks about a pack typed half way instead of saving', async () => {
+        const clicker = userEvent.setup()
+        const dialog = await editPeppers(clicker)
+        await clicker.type(dialog.getByPlaceholderText('Box, Bag, Tin'), 'Tin')
+        await clicker.click(dialog.getByRole('button', { name: 'Save changes' }))
+
+        expect(await dialog.findByText('Enter how many KG are in one Tin, or clear its boxes.')).toBeInTheDocument()
+        expect(written.some(w => w.table === 'product_supplier_prices')).toBe(false)
     })
 })
 
@@ -870,5 +908,175 @@ describe('the filters above the list', () => {
         await me.click(freezer)
         expect(freezer).toHaveAttribute('aria-pressed', 'true')
         expect(all).toHaveAttribute('aria-pressed', 'false')
+    })
+})
+
+// Since 4 October a bought product's allergens live on its versions, and the
+// form writes them back only where it read them. The review of that day: a
+// form opened at the other restaurant, or with its supplier changed, wrote
+// old answers over a version another restaurant had since corrected.
+describe('the allergens on the product form, with versions', () => {
+    const versionAnswer = { version_id: 'v1', ...emptyAllergens(), gluten: 'contains' }
+    // The trigger that points a price at its version is in the database, so
+    // the update hands back the version the test says it moved to.
+    function pricesAnswerWith(versionId) {
+        const answer = db.from.getMockImplementation() || (t => tableOf(tables[t] || []))
+        db.from.mockImplementation(table => {
+            const q = answer(table)
+            if (table === 'product_supplier_prices') {
+                q.update = vi.fn(row => {
+                    written.push({ table, how: 'update', row })
+                    return makeQuery({ data: { ...SYSCO, ...row, version_id: versionId }, error: null })
+                })
+            }
+            if (table === 'version_allergens') {
+                q.upsert = vi.fn(row => { written.push({ table, how: 'upsert', row }); return makeQuery({ data: null, error: null }) })
+            }
+            return q
+        })
+    }
+
+    it('writes them back onto the version they were read from', async () => {
+        tables.product_supplier_prices = [{ ...SYSCO, version_id: 'v1' }]
+        tables.version_allergens = [versionAnswer]
+        pricesAnswerWith('v1')
+        const clicker = userEvent.setup()
+        const dialog = await editPeppers(clicker)
+        await clicker.click(dialog.getByRole('button', { name: 'Save changes' }))
+
+        await waitFor(() => expect(written.some(w => w.table === 'version_allergens')).toBe(true))
+        const put = written.find(w => w.table === 'version_allergens').row
+        expect(put.version_id).toBe('v1')
+        expect(put.gluten).toBe('contains')
+        expect(written.some(w => w.table === 'product_allergens')).toBe(false)
+    })
+
+    it('does not carry them onto another version when the price moves to one', async () => {
+        tables.product_supplier_prices = [{ ...SYSCO, version_id: 'v1' }]
+        tables.version_allergens = [versionAnswer]
+        pricesAnswerWith('v2')
+        const clicker = userEvent.setup()
+        const dialog = await editPeppers(clicker)
+        await clicker.click(dialog.getByRole('button', { name: 'Save changes' }))
+
+        await waitFor(() => expect(written.some(w => w.table === 'product_supplier_prices')).toBe(true))
+        expect(await screen.findByText(/its allergens are set on the Allergens page/)).toBeInTheDocument()
+        expect(written.some(w => w.table === 'version_allergens' || w.table === 'product_allergens')).toBe(false)
+    })
+
+    // Bought at the other restaurant only: there is no price here to follow.
+    it('leaves them to the Allergens page when it has versions and no price here', async () => {
+        tables.product_supplier_prices = []
+        tables.product_allergens = [{ product_id: 'p1', ...emptyAllergens() }]
+        const answer = db.from.getMockImplementation()
+        db.from.mockImplementation(table => (table === 'product_versions'
+            ? makeQuery({ data: [{ id: 'v1', product_id: 'p1' }], error: null, count: 1 })
+            : answer(table)))
+        const clicker = userEvent.setup()
+        renderWithRouter(<ProductsPage />)
+        await clicker.click((await screen.findAllByRole('button', { name: 'Edit' }))[0])
+        const dialog = within(screen.getByRole('dialog'))
+        expect(await dialog.findByText('On the Allergens page')).toBeInTheDocument()
+        await clicker.click(dialog.getByRole('button', { name: 'Save changes' }))
+
+        await waitFor(() => expect(written.some(w => w.table === 'products')).toBe(true))
+        expect(written.some(w => w.table === 'version_allergens' || w.table === 'product_allergens')).toBe(false)
+    })
+})
+
+// His design of 4 October: the brand's list is the owners'. A store manager
+// asks for a product instead of adding one, and cannot rename or switch one
+// off; an owner answers what was sent for review here.
+describe('the brand\'s list', () => {
+    it('gives a store manager Request a product instead of Add product', async () => {
+        me = { id: 'u1', role: 'store_manager' }
+        renderWithRouter(<ProductsPage />)
+        expect(await screen.findByRole('button', { name: 'Request a product' })).toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: '+ Add product' })).toBeNull()
+        expect(screen.queryByRole('button', { name: 'Reviewers' })).toBeNull()
+        expect(screen.queryAllByRole('button', { name: 'Deactivate' })).toEqual([])
+    })
+
+    it('sends what a store manager asks for to the owners', async () => {
+        me = { id: 'u1', role: 'store_manager' }
+        const user = userEvent.setup()
+        renderWithRouter(<ProductsPage />)
+        await user.click(await screen.findByRole('button', { name: 'Request a product' }))
+        const dialog = within(screen.getByRole('dialog'))
+        await user.type(dialog.getByLabelText('What should it be called?'), 'Oat milk')
+        await user.selectOptions(dialog.getByLabelText('Supplier, if you know one'), 's1')
+        await user.type(dialog.getByLabelText('Why do we need it?'), 'For the coffee.')
+        await user.click(dialog.getByRole('button', { name: 'Send for review' }))
+
+        await waitFor(() => expect(written.filter(w => w.table === 'product_requests')).toHaveLength(1))
+        expect(written.find(w => w.table === 'product_requests').row).toEqual({
+            restaurant_id: 'r1', kind: 'new', name: 'Oat milk', reason: 'For the coffee.', supplier_id: 's1', sent_by: 'u1',
+        })
+        expect(emailTheReview).toHaveBeenCalled()
+        expect(await screen.findByText(/Sent for review. Oat milk is answered by the owners/)).toBeInTheDocument()
+    })
+
+    it('does not let a store manager rename a product', async () => {
+        me = { id: 'u1', role: 'store_manager' }
+        const user = userEvent.setup()
+        renderWithRouter(<ProductsPage />)
+        await user.click((await screen.findAllByRole('button', { name: 'Edit' }))[0])
+        const dialog = within(screen.getByRole('dialog'))
+        expect(dialog.getByDisplayValue('Green Peppers')).toBeDisabled()
+        expect(dialog.getByText('Only an owner can rename a product.')).toBeInTheDocument()
+    })
+
+    it('shows an owner what was sent for review, with what they need to answer it', async () => {
+        tables.product_requests = [{
+            id: 'q1', restaurant_id: 'r1', kind: 'new', name: 'Corn Tortilla 6 inch', reason: 'For the taco special.',
+            supplier_id: 's1', supplier_code: '5019120', description: 'MISSION CORN TORTILLA 6" 12X30 EA',
+            price_per_case: 41.8, sent_at: '2026-10-02T09:00:00Z', answer: null,
+            sender: { full_name: 'Maria', role: 'store_manager' }, restaurants: { name: 'Point Campus' },
+            suppliers: { name: 'Sysco Ireland' },
+        }]
+        renderWithRouter(<ProductsPage />)
+        expect(await screen.findByText('Corn Tortilla 6 inch')).toBeInTheDocument()
+        expect(screen.getByText('Maria, Point Campus')).toBeInTheDocument()
+        expect(screen.getByText('Fri 2 Oct')).toBeInTheDocument()
+        expect(screen.getByText('5019120')).toBeInTheDocument()
+        expect(screen.getByText(/For the taco special/)).toBeInTheDocument()
+        for (const name of ['Add it as a new product', 'A version of one we have', 'Not stock', 'Do not buy it']) {
+            expect(screen.getByRole('button', { name })).toBeInTheDocument()
+        }
+        expect(screen.getByRole('button', { name: 'Reviewers' })).toBeInTheDocument()
+    })
+})
+
+// What the brand recommends, said under the supplier it is bought from, and
+// where each version is kept here (his design, 4 October).
+describe('the brand\'s versions on a row', () => {
+    const versions = (recommendedId) => [
+        { id: 'v1', product_id: 'p1', supplier_id: 's1', supplier_code: '483508', name: null, is_recommended: recommendedId === 'v1', is_active: true },
+        { id: 'v2', product_id: 'p1', supplier_id: 's1', supplier_code: '5018758', name: 'Green peppers 5 kg', is_recommended: recommendedId === 'v2', is_active: true },
+    ]
+
+    it('says it is recommended when this restaurant buys a recommended version', async () => {
+        tables.product_supplier_prices = [{ ...SYSCO, version_id: 'v1' }]
+        tables.product_versions = versions('v1')
+        renderWithRouter(<ProductsPage />)
+        expect((await screen.findAllByText('Recommended')).length).toBeGreaterThan(0)
+        expect(screen.queryByText(/^Brand:/)).toBeNull()
+    })
+
+    it('names what the brand recommends when it buys another version', async () => {
+        tables.product_supplier_prices = [{ ...SYSCO, version_id: 'v1' }]
+        tables.product_versions = versions('v2')
+        renderWithRouter(<ProductsPage />)
+        expect((await screen.findAllByText('Not recommended')).length).toBeGreaterThan(0)
+        expect(screen.getAllByText('Brand: Green peppers 5 kg').length).toBeGreaterThan(0)
+    })
+
+    it('shows the places each version it buys is kept in', async () => {
+        tables.restaurant_kept_in = [
+            { restaurant_id: 'r1', product_id: 'p1', section: 'Cold Room', also_in: [] },
+            { restaurant_id: 'r1', product_id: 'p1', section: 'Freezer', also_in: [] },
+        ]
+        renderWithRouter(<ProductsPage />)
+        expect((await screen.findAllByText('Freezer', { selector: 'span' })).length).toBeGreaterThan(0)
     })
 })

@@ -80,7 +80,7 @@ const lockedMoneyBox = `${lockedField} w-full px-2 py-1.5 text-base pointer-fine
 // One standing cost. Locked until somebody opens it, unless it has never been
 // set, in which case it is open from the start and stays open. On the first
 // report every line is like that, and so is any line added afterwards.
-function OverheadLine({ item, net, canEdit, onSave, onRename, onRemove }) {
+function OverheadLine({ item, net, canEdit, onSave, onRename, onRemove, isNew = false }) {
     const confirm = useConfirm()
     const never = startsOpen(item)
     const [open, setOpen] = useState(false)
@@ -185,7 +185,7 @@ function OverheadLine({ item, net, canEdit, onSave, onRename, onRemove }) {
                 )}
             </div>
 
-            <span className="w-12 text-right text-xs tabular-nums text-muted">{fmtPct(share)}</span>
+            <span className="w-12 text-right text-xs tabular-nums text-muted">{fmtPct(share, 2)}</span>
 
             {canEdit && !editing && (
                 <button
@@ -215,12 +215,14 @@ function OverheadLine({ item, net, canEdit, onSave, onRename, onRemove }) {
 
     return (
         <Row
-            tint={changed ? 'bg-accent-light/40' : ''}
+            tint={changed || isNew ? 'bg-accent-light/40' : ''}
             left={left}
             right={right}
-            extra={changed && (
+            extra={(changed || isNew) && (
                 <span className="text-xs text-accent-ink">
-                    Changed this week, was {fmtMoney(item.carried_from)}. The report will say so.
+                    {changed
+                        ? `Changed this week, was ${fmtMoney(item.carried_from)}. The report will say so.`
+                        : 'New this week. The report will say so.'}
                 </span>
             )}
         />
@@ -256,7 +258,7 @@ function DeliveryLine({ row, statement, waiting, canEdit, onSave }) {
                 // September: "the percentage is calculated against X amount
                 // and done Monday to Sunday as that's the way the cost reports
                 // comes like".
-                : `${fmtPct(row.rate)} is what it kept of the ${fmtMoney(row.statementTaken)} it took ${statement}`
+                : `${fmtPct(row.rate, 2)} is what it kept of the ${fmtMoney(row.statementTaken)} it took ${statement}`
                     + `${waiting ? ' so far' : ''}, the days its statement covers. The same share of the `
                     + `${fmtMoney(row.weekTaken)} it took this week, Sunday to Saturday, is ${fmtMoney(row.cost)}.`
 
@@ -290,7 +292,7 @@ function DeliveryLine({ row, statement, waiting, canEdit, onSave }) {
                     )}
                     <span className={`w-14 text-right text-sm tabular-nums font-bold ${
                         row.rate == null ? 'text-muted' : 'text-gray-900'}`}>
-                        {fmtPct(row.rate)}
+                        {fmtPct(row.rate, 2)}
                     </span>
                 </>
             }
@@ -319,7 +321,7 @@ function FigureRow({ label, hint, amount, share, tint, strong }) {
                         {fmtMoney(amount)}
                     </span>
                     <span className="w-12 text-right text-xs tabular-nums text-muted">
-                        {share == null ? '' : fmtPct(share)}
+                        {share == null ? '' : fmtPct(share, 2)}
                     </span>
                 </>
             }
@@ -338,6 +340,12 @@ export default function ReportProfitLoss({
     // The first report a restaurant writes: nothing carried into any line, so
     // there is nothing for a lock to protect.
     const firstTime = overheads.length > 0 && overheads.every(startsOpen)
+    // Every line the first time. After that only one that moved or is new,
+    // the rest folded, which is what the mail shows. See overheadsToShow.
+    const shownOverheads = firstTime ? overheads : overheads.filter(i => startsOpen(i) || wasChanged(i))
+    const sameOverheads = overheads.filter(i => !shownOverheads.includes(i))
+    // A report frozen before standing was kept has it as the lines added up.
+    const standing = figures.standing ?? overheads.reduce((t, i) => t + (Number(i.amount) || 0), 0)
     const legacy = rows.some(r => r.legacy)
 
     const net = figures.net
@@ -395,28 +403,57 @@ export default function ReportProfitLoss({
             <p className="text-xs text-muted mb-2">
                 {firstTime
                     ? 'Nothing has been set for this restaurant yet, so every line is open. Fill in what you know, and remove any that will never apply. From next week they carry and lock.'
-                    : 'Locked at what each was last week. Edit one to change it, and it carries forward from then on. Press a name to rename it.'}
+                    : 'Locked at what each was last week, and only a line that changed or is new is shown. The rest are folded under the lines the same as last week. Edit one to change it, and it carries forward from then on.'}
             </p>
 
             <div className="rounded-lg border border-border bg-white overflow-hidden">
-                {overheads.map(item => (
+                {shownOverheads.map(item => (
                     <OverheadLine
                         key={item.id}
                         item={item}
                         net={net}
                         canEdit={canEdit}
+                        isNew={!firstTime && startsOpen(item)}
                         onSave={onSaveOverhead}
                         onRename={onRenameOverhead}
                         onRemove={onRemoveOverhead}
                     />
                 ))}
 
+                {/* The rest folded away, the same as the mail, which shows only
+                    what moved (his, 7 October): eleven lines the same as last
+                    week are eleven lines nobody reads. */}
+                {sameOverheads.length > 0 && (
+                    <details className="border-b border-border">
+                        <summary className="cursor-pointer px-3 py-2.5 text-sm text-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+                            {sameOverheads.length} {sameOverheads.length === 1 ? 'line' : 'lines'} the same as last week
+                        </summary>
+                        <div className="border-t border-border">
+                            {sameOverheads.map(item => (
+                                <OverheadLine
+                                    key={item.id}
+                                    item={item}
+                                    net={net}
+                                    canEdit={canEdit}
+                                    onSave={onSaveOverhead}
+                                    onRename={onRenameOverhead}
+                                    onRemove={onRemoveOverhead}
+                                />
+                            ))}
+                        </div>
+                    </details>
+                )}
+
+                {/* The overheads only. It used to be figures.overhead, which
+                    has the delivery costs in it as well, so the total did not
+                    add up to the lines above it and said more than the mail. */}
                 <FigureRow
                     strong
                     tint="bg-app-bg"
                     label="Total fixed overhead"
-                    amount={figures.overhead}
-                    share={figures.overheadPct}
+                    hint={!firstTime && shownOverheads.length === 0 && overheads.length > 0 ? 'No change from last week' : null}
+                    amount={standing}
+                    share={net > 0 ? (standing / net) * 100 : null}
                 />
             </div>
 
@@ -475,9 +512,14 @@ export default function ReportProfitLoss({
                     share={figures.grossProfitPct}
                 />
                 <FigureRow
-                    label="Less total fixed overhead"
-                    amount={figures.overhead}
-                    share={figures.overheadPct}
+                    label="Less fixed overhead"
+                    amount={standing}
+                    share={net > 0 ? (standing / net) * 100 : null}
+                />
+                <FigureRow
+                    label="Less third party delivery"
+                    amount={figures.deliveryTotal}
+                    share={net > 0 ? (figures.deliveryTotal / net) * 100 : null}
                 />
             </div>
 
@@ -487,7 +529,7 @@ export default function ReportProfitLoss({
                     {fmtMoney(figures.earnings)}
                 </p>
                 <p className="text-sm mt-2 tabular-nums opacity-85">
-                    {fmtPct(figures.earningsPct)} of net sales
+                    {fmtPct(figures.earningsPct, 2)} of net sales
                 </p>
             </div>
 

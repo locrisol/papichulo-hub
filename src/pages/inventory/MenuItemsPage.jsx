@@ -1,7 +1,8 @@
 import { fmtMoney, fmtPct } from '@/lib/format'
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
+import { readAllergensAt } from '@/lib/allergensAt'
 import { useRestaurant } from '@/context/restaurant'
 import { useConfirm } from '@/context/confirm'
 import { menuItemCost, menuMargin, marginTone } from '@/lib/mixCost'
@@ -86,10 +87,6 @@ export default function MenuItemsPage() {
     }
   }
 
-  useEffect(() => {
-    fetchAll()
-  }, [])
-
   
 
   // quiet is for reading the same page again after changing something on it:
@@ -105,7 +102,14 @@ export default function MenuItemsPage() {
   // is a page that has lost its place rather than one being helpful.
   useKeepScroll('menu-items', !loading, to => to.startsWith('/catalogue/menu-items/'))
 
-  async function fetchAll({ quiet = false } = {}) {
+  // Which read is the latest. The allergens depend on the restaurant open, so
+  // a read for the one before that answers late must not land on this one.
+  const reading = useRef(0)
+
+  // Read again when the restaurant changes: the allergens depend on what it
+  // buys.
+  const fetchAll = useCallback(async ({ quiet = false } = {}) => {
+    const ticket = ++reading.current
     if (!quiet) setLoading(true)
     const [
       menuItemsRes, categoriesRes, componentsRes, productsRes,
@@ -116,7 +120,8 @@ export default function MenuItemsPage() {
       supabase.from('menu_item_components').select('*'),
       supabase.from('products').select('*').order('name'),
       supabase.from('mix_recipes').select('*'),
-      supabase.from('product_allergens').select('*'),
+      // At the restaurant open, from the versions it buys (lib/allergensAt).
+      readAllergensAt(activeRestaurant?.id),
     ])
 
     // All of it or none of it. supabase-js hands a failed read back rather
@@ -124,6 +129,7 @@ export default function MenuItemsPage() {
     // the allergens put None against every dish on the menu, and a failed
     // read of the components made every dish look empty. So one failed read
     // shows the failure and no list, the same as the customer page.
+    if (ticket !== reading.current) return
     const reads = [menuItemsRes, categoriesRes, componentsRes, productsRes, recipeLinesRes, allergensRes]
     if (!everyReadArrived(reads)) {
       const failed = reads.find(r => r.error)?.error
@@ -143,7 +149,16 @@ export default function MenuItemsPage() {
     setAllergens(allergensRes.data)
 
     setLoading(false)
-  }
+  }, [activeRestaurant])
+
+  useEffect(() => {
+    // The fetch sets a loading state before it starts, which is one render
+    // this rule would rather avoid. The alternative is to leave it,
+    // and then a change of what is shown keeps the previous one's figures
+    // on screen under the new one's heading until the answer arrives.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchAll()
+  }, [fetchAll])
 
   // A failed read is said as one. Left empty, every dish read as Incomplete,
   // the same as a dish with a price missing.

@@ -1,9 +1,14 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { weeksOpen } from '@/lib/weeklyReport'
 import { useRemoveCard } from '@/components/reports/useRemoveCard'
-import { removeButton, fieldClass } from '@/lib/controlStyles'
+import { removeButton, fieldClass, denseField } from '@/lib/controlStyles'
 import AutoTextarea from '@/components/ui/AutoTextarea'
 import AddButton from '@/components/ui/AddButton'
+import RichEditor from '@/components/ui/RichEditor'
+import RichText from '@/components/ui/RichText'
+import { richPlain } from '@/lib/richText'
+import { newGroupId } from '@/lib/priceEvents'
+import { shortDate, todayISO } from '@/lib/dates'
 
 // Support and actions needed: the running list.
 //
@@ -32,8 +37,111 @@ function weeksWords(n) {
     return `${n} weeks open`
 }
 
+// Comments on one action (his, 7 October), kept on the action and carried
+// with it, so what was said about the extractor fan in July is still under it
+// in September. Each has the day it was written. This week's can be changed or
+// taken off; an earlier week's went out on that week's report and stays.
+export function ActionComments({ item, weekStart, canEdit, onSave }) {
+    // Only ever a list: what is stored comes from the database.
+    const comments = (Array.isArray(item.meta?.comments) ? item.meta.comments : [])
+        .filter(c => c && typeof c === 'object')
+    const [open, setOpen] = useState(false)
+    const [draft, setDraft] = useState('')
+    const [fresh, setFresh] = useState(0)
+
+    // Every change is made to the latest list, not the one on screen. Editing
+    // one and then removing another saved the edit and then a list from
+    // before it, which lost the edit.
+    const latest = useRef(comments)
+    const shown = JSON.stringify(comments)
+    useEffect(() => { latest.current = JSON.parse(shown) }, [shown])
+
+    function save(change) {
+        latest.current = change(latest.current)
+        return onSave(item.id, { meta: { ...(item.meta || {}), comments: latest.current } })
+    }
+
+    async function add(text = draft) {
+        if (!richPlain(text).trim()) return
+        setDraft('')
+        setFresh(n => n + 1)
+        setOpen(false)
+        await save(list => [...list, { id: newGroupId(), on: todayISO(), week: weekStart, text }])
+    }
+
+    return (
+        <div className="pl-9 mt-1.5 space-y-1.5">
+            {comments.map(c => {
+                const mine = canEdit && c.week === weekStart
+                return (
+                    // The same as the mail: a thin line down the left, the
+                    // day small above its words (his, 8 October, style 1).
+                    <div key={c.id} className="flex items-start gap-2 border-l-[3px] border-[#D9CFC0] pl-2.5 py-0.5">
+                        <div className="flex-1 min-w-0">
+                            <span className="block text-[11px] font-bold uppercase tracking-wide text-muted">{shortDate(c.on)}</span>
+                            {mine ? (
+                                <RichEditor
+                                    value={c.text}
+                                    label="Comment on this action"
+                                    onCommit={text => {
+                                        if (text === c.text) return
+                                        save(list => (richPlain(text).trim()
+                                            ? list.map(x => (x.id === c.id ? { ...x, text } : x))
+                                            : list.filter(x => x.id !== c.id)))
+                                    }}
+                                    className="bg-transparent text-base pointer-fine:text-sm text-gray-800 focus:outline-none"
+                                />
+                            ) : (
+                                <RichText text={c.text} rich className="text-sm text-gray-800" />
+                            )}
+                        </div>
+                        {mine && (
+                            <button
+                                onClick={() => save(list => list.filter(x => x.id !== c.id))}
+                                aria-label="Remove this comment"
+                                className={removeButton}
+                            >
+                                &times;
+                            </button>
+                        )}
+                    </div>
+                )
+            })}
+
+            {canEdit && (open ? (
+                <div>
+                    <RichEditor
+                        key={fresh}
+                        value=""
+                        minRows={1}
+                        placeholder="Add a comment"
+                        label="Add a comment on this action"
+                        onChange={setDraft}
+                        onCommit={text => (richPlain(text).trim() ? add(text) : setOpen(false))}
+                        className={fieldClass}
+                    />
+                    {richPlain(draft).trim() && (
+                        <AddButton className="mt-2" keepFocus onClick={() => add()}>Add comment</AddButton>
+                    )}
+                </div>
+            ) : (
+                <button
+                    type="button"
+                    onClick={() => setOpen(true)}
+                    className="text-xs font-semibold text-muted hover:text-accent-ink"
+                >
+                    + Comment
+                </button>
+            ))}
+        </div>
+    )
+}
+
 export default function ReportActions({ section, weekStart, canEdit, onAdd, onSave, onRemove }) {
     const removeCard = useRemoveCard()
+    // The one being changed, opened by its Edit or by pressing its words.
+    const [editingId, setEditingId] = useState(null)
+    const cancelled = useRef(false)
     const [adding, setAdding] = useState('')
     const [busy, setBusy] = useState(false)
     const pending = useRef(false)
@@ -42,8 +150,10 @@ export default function ReportActions({ section, weekStart, canEdit, onAdd, onSa
     // Longest open first. The one that has been waiting since July is the one
     // worth reading, and it is the one an ordinary list would bury at the top
     // where nobody scrolls to.
+    // Done this week on top (his, 8 October): what got done is the first thing
+    // worth reading, and it is only on this week's report.
     const ordered = actions.slice().sort((a, b) => {
-        if (!!a.done_on !== !!b.done_on) return a.done_on ? 1 : -1
+        if (!!a.done_on !== !!b.done_on) return a.done_on ? -1 : 1
         return weeksOpen(b, weekStart) - weeksOpen(a, weekStart)
     })
 
@@ -110,26 +220,60 @@ export default function ReportActions({ section, weekStart, canEdit, onAdd, onSa
                             </button>
 
                             <div className="flex-1 min-w-0">
-                                {canEdit && !done ? (
+                                {canEdit && !done && editingId === item.id ? (
                                     <AutoTextarea
                                         defaultValue={item.label || ''}
+                                        autoFocus
+                                        aria-label="What needs doing"
+                                        onKeyDown={e => {
+                                            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.currentTarget.blur() }
+                                            if (e.key === 'Escape') { cancelled.current = true; e.currentTarget.blur() }
+                                        }}
                                         onBlur={e => {
+                                            setEditingId(null)
+                                            if (cancelled.current) { cancelled.current = false; return }
                                             const text = e.target.value.trim()
                                             if (!text) return onRemove(item.id)
                                             if (text !== item.label) onSave(item.id, { label: text })
                                         }}
-                                        className="w-full bg-transparent text-base pointer-fine:text-sm text-gray-800 focus:outline-none"
+                                        className={denseField}
                                     />
+                                ) : canEdit && !done ? (
+                                    // The words open it too. It was always a box,
+                                    // but one with no edge, and pressing it did
+                                    // nothing anybody could see (his, 7 October).
+                                    <button
+                                        type="button"
+                                        onClick={() => setEditingId(item.id)}
+                                        className="w-full text-left text-sm text-gray-800 whitespace-pre-line break-words hover:text-accent-ink"
+                                    >
+                                        {item.label}
+                                    </button>
                                 ) : (
-                                    <p className={`text-sm ${done ? 'text-muted line-through' : 'text-gray-800'}`}>
+                                    <p className={`text-sm whitespace-pre-line break-words ${done ? 'text-muted line-through' : 'text-gray-800'}`}>
                                         {item.label}
                                     </p>
                                 )}
                             </div>
 
                             <span className="hidden sm:block flex-shrink-0 text-xs text-muted whitespace-nowrap mt-0.5">
-                                {done ? 'closed this week' : weeksWords(weeksOpen(item, weekStart))}
+                                {done ? 'done this week' : weeksWords(weeksOpen(item, weekStart))}
                             </span>
+
+                            {canEdit && !done && editingId !== item.id && (
+                                <button
+                                    type="button"
+                                    onClick={() => setEditingId(item.id)}
+                                    aria-label={`Edit: ${item.label}`}
+                                    className="flex-shrink-0 min-h-[2.25rem] inline-flex items-center gap-1 text-xs font-semibold text-muted hover:text-accent-ink transition-colors"
+                                >
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-3.5 h-3.5" aria-hidden="true">
+                                        <path d="M4 20h4l10-10-4-4L4 16v4z" />
+                                        <path d="M13.5 6.5l4 4" />
+                                    </svg>
+                                    Edit
+                                </button>
+                            )}
 
                             {canEdit && (
                                 <button
@@ -150,8 +294,9 @@ export default function ReportActions({ section, weekStart, canEdit, onAdd, onSa
                         {/* Lined up under the text rather than under the tick,
                             so it reads as belonging to the item. */}
                         <p className="sm:hidden text-xs text-muted mt-1.5 pl-9">
-                            {done ? 'closed this week' : weeksWords(weeksOpen(item, weekStart))}
+                            {done ? 'done this week' : weeksWords(weeksOpen(item, weekStart))}
                         </p>
+                        <ActionComments item={item} weekStart={weekStart} canEdit={canEdit} onSave={onSave} />
                         </div>
                     )
                 })}

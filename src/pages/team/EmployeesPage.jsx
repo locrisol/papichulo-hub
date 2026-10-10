@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { useRestaurant } from '@/context/restaurant'
 import { useAuth } from '@/context/auth'
 import { useConfirm } from '@/context/confirm'
+import { useRecountBadges } from '@/context/badges'
 import { friendlyError } from '@/lib/errors'
 import { todayISO, fullDate } from '@/lib/dates'
 import {
@@ -49,6 +50,9 @@ export default function EmployeesPage() {
     const { activeRestaurant } = useRestaurant()
     const { user } = useAuth()
     const confirm = useConfirm()
+    // The sidebar counts permission to work running out, which a saved
+    // renewal or expiry date clears.
+    const recountBadges = useRecountBadges()
 
     const [employees, setEmployees] = useState([])
     const [positions, setPositions] = useState([])
@@ -163,6 +167,7 @@ export default function EmployeesPage() {
         setAdding(false)
         setEditing(null)
         load({ quiet: true })
+        recountBadges()
     }
 
     // The whole order written at once, from the arrange dialog.

@@ -13,7 +13,7 @@ import ErrorBanner from '@/components/ui/ErrorBanner'
 import ArrangeList from '@/components/ui/ArrangeList'
 import PageHeader from '@/components/ui/PageHeader'
 import Notice from '@/components/ui/Notice'
-import AddUserModal from '@/components/settings/AddUserModal'
+import UserModal from '@/components/settings/UserModal'
 
 // Everyone with an account, and turning them on or off.
 //
@@ -22,9 +22,10 @@ import AddUserModal from '@/components/settings/AddUserModal'
 // own restaurant and a super admin gets everybody. This page does not filter
 // anything itself, it shows whatever came back.
 //
-// Deactivating is the only change that can be made from here, and there is no
-// deleting. Everything a person did stays pointing at their row, so removing it
-// would break the history of every count and every waste entry they logged.
+// An account can be edited here, the same fields it was given, and switched
+// off. There is no deleting. Everything a person did stays pointing at their
+// row, so removing it would break the history of every count and every waste
+// entry they logged.
 
 // Everybody, under the restaurant they belong to.
 //
@@ -116,7 +117,11 @@ export default function UsersPage() {
   const [logins, setLogins] = useState([])
   const [arranging, setArranging] = useState(false)
   const [adding, setAdding] = useState(false)
+  const [editing, setEditing] = useState(null)
   const [added, setAdded] = useState('')
+  // Each account's email, by id. They live in auth.users, so they come
+  // through user_emails(), which answers the super admin only.
+  const [emails, setEmails] = useState({})
   const [showFor, setShowFor] = useState(null)
   const [showEvents, setShowEvents] = useState([])
 
@@ -132,15 +137,20 @@ export default function UsersPage() {
     // back on sent them somewhere else in the list. Users come back by name and
     // are re-sorted by role once grouped; restaurants come back in the arranged
     // order, with name as the tie-break so a fresh database is still stable.
-    const [usersRes, restaurantsRes] = await Promise.all([
+    const [usersRes, restaurantsRes, emailsRes] = await Promise.all([
       supabase.from('users').select('*').order('full_name'),
-      supabase.from('restaurants').select('*').order('sort_order').order('name')
+      supabase.from('restaurants').select('*').order('sort_order').order('name'),
+      supabase.rpc('user_emails'),
     ])
 
     if (usersRes.error) setError(friendlyError(usersRes.error))
     else setUsers(usersRes.data)
 
     if (!restaurantsRes.error) setRestaurants(restaurantsRes.data)
+
+    // A database without the function, or anybody but the super admin: no
+    // addresses, nothing broken.
+    setEmails(Object.fromEntries((emailsRes.data || []).map(e => [e.id, e.email])))
 
     // Asked for unconditionally, and the database decides. The policy on
     // login_events returns nothing at all to anybody who is not Super Admin,
@@ -281,11 +291,13 @@ export default function UsersPage() {
       )}
       {added && <Notice tone="good" className="mb-4">{added}</Notice>}
 
-      {adding && (
-        <AddUserModal
+      {(adding || editing) && (
+        <UserModal
+          person={editing}
+          email={editing ? (emails[editing.id] || '') : ''}
           restaurants={restaurants}
-          onClose={() => setAdding(false)}
-          onAdded={said => { setAdding(false); setAdded(said); fetchData() }}
+          onClose={() => { setAdding(false); setEditing(null) }}
+          onSaved={said => { setAdding(false); setEditing(null); setAdded(said); fetchData() }}
         />
       )}
 
@@ -352,6 +364,8 @@ export default function UsersPage() {
                 </span>
               </div>
 
+              {emails[u.id] && <p className="text-xs text-muted mt-1 break-all">{emails[u.id]}</p>}
+
               <button
                 onClick={() => openHistory(u)}
                 className="mt-2 text-xs text-muted hover:text-accent-ink transition-colors"
@@ -359,16 +373,17 @@ export default function UsersPage() {
                 Last seen <span className="font-semibold">{seenWords(u)}</span>
               </button>
 
-              {canManageUser(user, u) && (
-                <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-black/10">
+              <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-black/10">
+                <button onClick={() => setEditing(u)} className={rowButton('edit')}>Edit</button>
+                {canManageUser(user, u) && (
                   <button
                     onClick={() => toggleUserActive(u, u.is_active)}
                     className={rowButton(u.is_active ? 'danger' : 'good')}
                   >
                     {u.is_active ? 'Deactivate' : 'Reactivate'}
                   </button>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -391,7 +406,8 @@ export default function UsersPage() {
                     {u.full_name}
                     {u.id === user?.id && <span className="text-xs text-muted ml-2">you</span>}
                     <TestChip person={u} />
-                  <NoPasswordChip person={u} />
+                    <NoPasswordChip person={u} />
+                    {emails[u.id] && <p className="text-xs font-normal text-muted">{emails[u.id]}</p>}
                   </td>
                   <td className="px-4 py-3">
                     <span className={`${badge} bg-green-50 text-green-700`}>
@@ -412,17 +428,20 @@ export default function UsersPage() {
                     </button>
                   </td>
                   <td className="px-4 py-3">
-                    {/* Only show the button if this person can actually use it.
-                        Before, it showed on every row and did nothing on most of
-                        them, because the database refused the change. */}
-                    {canManageUser(user, u) && (
-                      <button
-                        onClick={() => toggleUserActive(u, u.is_active)}
-                        className={rowButton(u.is_active ? 'danger' : 'good')}
-                      >
-                        {u.is_active ? 'Deactivate' : 'Reactivate'}
-                      </button>
-                    )}
+                    <div className="flex flex-wrap gap-2">
+                      <button onClick={() => setEditing(u)} className={rowButton('edit')}>Edit</button>
+                      {/* Only show the button if this person can actually use it.
+                          Before, it showed on every row and did nothing on most of
+                          them, because the database refused the change. */}
+                      {canManageUser(user, u) && (
+                        <button
+                          onClick={() => toggleUserActive(u, u.is_active)}
+                          className={rowButton(u.is_active ? 'danger' : 'good')}
+                        >
+                          {u.is_active ? 'Deactivate' : 'Reactivate'}
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

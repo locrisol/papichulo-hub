@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
 import { useConfirm } from '@/context/confirm'
+import { useRecountBadges } from '@/context/badges'
 import { can, MANAGERS } from '@/lib/access'
 import { stampDateTime } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
@@ -38,10 +39,21 @@ import { signer } from '@/components/checklists/signPhotos'
 // round is open, however long that is, and deletes one never submitted once the
 // round has ended. A photo that went missing anyway is refused on Submit, with
 // the task named, so it can be taken again.
+//
+// Several people work one list at once (seven on a deep clean, 10 October), so
+// what the others have submitted is read again every half minute, on coming
+// back to the page, and on every tick. Without it a phone only learnt of
+// somebody else's tick on Submit, and two people could do the same thing.
+
+// Shorter than the stock take's minute: a tick is quicker than a count.
+const REFRESH_EVERY = 30 * 1000
+
 export default function ChecklistRoundPage() {
     const { id } = useParams()
     const navigate = useNavigate()
     const confirm = useConfirm()
+    // The sidebar counts a list running out of time until a round of it ends.
+    const recountBadges = useRecountBadges()
     const { user } = useAuth()
     const { restaurants, activeRestaurant } = useRestaurant()
     const isManager = can(user, MANAGERS)
@@ -121,6 +133,32 @@ export default function ChecklistRoundPage() {
         load()
     }, [load, version])
 
+    // Only the round and its ticks: the list itself does not change while it
+    // is being worked. A read that fails is left for the next one.
+    const refresh = useCallback(async () => {
+        const [r, ticks] = await Promise.all([
+            supabase.from('checklist_rounds').select('*').eq('id', id).maybeSingle(),
+            supabase.from('checklist_ticks').select('*').eq('round_id', id),
+        ])
+        if (r.error || ticks.error || !r.data) return
+        setRound(r.data)
+        setSaved(ticks.data)
+    }, [id])
+
+    const isOpen = Boolean(round && !round.ended_at)
+    useEffect(() => {
+        if (!isOpen) return
+        const again = () => { if (document.visibilityState !== 'hidden') refresh() }
+        window.addEventListener('focus', again)
+        document.addEventListener('visibilitychange', again)
+        const timer = setInterval(again, REFRESH_EVERY)
+        return () => {
+            window.removeEventListener('focus', again)
+            document.removeEventListener('visibilitychange', again)
+            clearInterval(timer)
+        }
+    }, [isOpen, refresh])
+
     // If storage is off the ticks still work, they just do not survive the
     // page closing.
     function keep(next) {
@@ -166,7 +204,12 @@ export default function ChecklistRoundPage() {
         if (!open || byTask.has(task.id)) return
         const next = { ...pending }
         if (next[task.id]) delete next[task.id]
-        else next[task.id] = { at: new Date().toISOString(), photos: [] }
+        else {
+            next[task.id] = { at: new Date().toISOString(), photos: [] }
+            // Somebody may have just done it. If so it turns to theirs now,
+            // not at Submit.
+            refresh()
+        }
         keep(next)
     }
 
@@ -177,6 +220,7 @@ export default function ChecklistRoundPage() {
             writeStored('local', draftKey, JSON.stringify(next))
             return next
         })
+        refresh()
     }
 
     function removePhoto(task, path) {
@@ -212,7 +256,9 @@ export default function ChecklistRoundPage() {
         setNotice(theirs
             ? `${got.size} saved. ${theirs === 1 ? 'One was' : `${theirs} were`} already done by somebody else, so theirs stands.`
             : `${got.size === 1 ? '1 tick' : `${got.size} ticks`} saved.`)
-        load()
+        // After the read, which is what ends the round once everything is ticked.
+        await load()
+        recountBadges()
     }
 
     // What is left comes back on the next round as High priority. No reason is
@@ -235,6 +281,7 @@ export default function ChecklistRoundPage() {
         if (endErr) { setError(friendlyError(endErr)); return }
         keep({})
         load()
+        recountBadges()
     }
 
     function jumpTo(taskId) {
@@ -252,6 +299,7 @@ export default function ChecklistRoundPage() {
         const { error: delErr } = await supabase.from('checklist_rounds').delete().eq('id', round.id)
         if (delErr) { setError(friendlyError(delErr)); return }
         keep({})
+        recountBadges()
         navigate('/checklists')
     }
 

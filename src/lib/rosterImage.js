@@ -440,8 +440,22 @@ export function drawWeek(canvas, table) {
             text(person.holiday, l.holidayCentreX, middle, { align: 'center', colour: '#4a7fb5' })
         }
 
+        // Where each day's times end and its breaks begin: the middle of the
+        // row, unless the day has two shifts. Two were drawn 15 apart in yellow
+        // boxes 18 tall, so a box sat on the line under it (his, 10 October). A
+        // day with two takes what it needs from the breaks half, which only
+        // ever holds one short line, and the step is a box and a pixel.
+        const STEP = 19
+        const splits = person.days.map(day => {
+            const stack = day.shifts.length
+            if (stack < 2) return l.shiftH
+            const needed = stack * 18 + (stack - 1) * 1 + 2
+            return l.shiftH + Math.min(Math.max(0, l.breakH - 12), Math.max(0, needed - l.shiftH))
+        })
+
         person.days.forEach((day, i) => {
             const x = l.columnX(i) + l.dayCol / 2
+            const split = splits[i]
             if (table.head[i]?.holiday) {
                 box(l.columnX(i), top, l.dayCol, l.shiftH + l.breakH, BANK_HOLIDAY_WASH)
             }
@@ -462,14 +476,14 @@ export function drawWeek(canvas, table) {
 
             font(13, '600')
             day.shifts.forEach((s, n) => {
-                marked(s, x, y + l.shiftH / 2 + (n - (day.shifts.length - 1) / 2) * 15)
+                marked(s, x, y + split / 2 + (n - (day.shifts.length - 1) / 2) * STEP)
             })
             font(10)
             const stack = day.breaks.length
             day.breaks.forEach((words, n) => {
                 // In the middle of the break half rather than hard against the
                 // line above it, which left the row bottom heavy.
-                text(words, x, y + l.shiftH + l.breakH / 2 + (n - (stack - 1) / 2) * 11, {
+                text(words, x, y + split + (l.shiftH + l.breakH - split) / 2 + (n - (stack - 1) / 2) * 11, {
                     align: 'center', colour: RED, max: l.dayCol - 8,
                 })
             })
@@ -484,7 +498,7 @@ export function drawWeek(canvas, table) {
         // anything, and a line through it only says there might have been.
         person.days.forEach((day, i) => {
             if (day.away) return
-            rule(l.columnX(i), top + l.shiftH, l.columnX(i) + l.dayCol, top + l.shiftH, FAINT)
+            rule(l.columnX(i), top + splits[i], l.columnX(i) + l.dayCol, top + splits[i], FAINT)
         })
 
         // Recorded rather than drawn. A row paints its own background and a

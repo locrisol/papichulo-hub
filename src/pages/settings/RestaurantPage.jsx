@@ -39,6 +39,9 @@ const TARGET_TYPES = [
     { key: 'food', label: 'Food cost', column: 'food_cost_target' },
     { key: 'labour', label: 'Labour cost', column: 'labour_cost_target' },
     { key: 'packaging', label: 'Packaging and cleaning', column: 'packaging_cost_target' },
+    // Of what each delivery platform took, not of net sales: what a platform
+    // keeps is judged against its own takings.
+    { key: 'delivery', label: 'Delivery platforms', column: 'delivery_cost_target' },
 ]
 
 export default function RestaurantPage() {
@@ -186,7 +189,11 @@ export default function RestaurantPage() {
         const timeline = describeTargets(overrides, type.key, week)
         const current = timeline.find(t => t.status === 'current')
         const upcoming = timeline.filter(t => t.status === 'upcoming')
-        const fallback = Number(activeRestaurant?.[type.column])
+        // Nothing, not NaN, when the restaurant was read before the column
+        // existed: the Hub keeps the row it read when it opened, and the
+        // delivery target arrived in a migration while it was open.
+        const raw = activeRestaurant?.[type.column]
+        const fallback = raw == null || raw === '' ? null : Number(raw)
         const value = resolveTarget(overrides, type.key, week, fallback)
         return { current, upcoming, value, count: timeline.length }
     }

@@ -17,6 +17,7 @@ import Notice from '@/components/ui/Notice'
 import PageHeader from '@/components/ui/PageHeader'
 import { can, MANAGERS } from '@/lib/access'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import { placesFor } from '@/lib/brandVersions'
 
 // The last look before a stock take is closed. Managers only.
 //
@@ -58,6 +59,7 @@ export default function StockTakeReviewPage() {
   const [products, setProducts] = useState([])
   const [lines, setLines] = useState([])
   const [preferredPrices, setPreferredPrices] = useState([])
+  const [kept, setKept] = useState([])
   const [recipeLines, setRecipeLines] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -107,7 +109,11 @@ export default function StockTakeReviewPage() {
     const { data: recipesData, error: recipesErr } = await supabase
       .from('mix_recipes').select('*')
 
-    const failed = productsErr || linesErr || pricesErr || recipesErr
+    // Where each product is kept there, from the versions it buys.
+    const { data: keptData, error: keptErr } = await supabase
+      .from('restaurant_kept_in').select('*').eq('restaurant_id', sessionData.restaurant_id)
+
+    const failed = productsErr || linesErr || pricesErr || recipesErr || keptErr
     if (failed) {
       setError(friendlyError(failed))
       setLoading(false)
@@ -119,6 +125,7 @@ export default function StockTakeReviewPage() {
     setLines(linesData || [])
     setPreferredPrices(pricesData || [])
     setRecipeLines(recipesData || [])
+    setKept(keptData || [])
     setLoading(false)
     }, [id])
 
@@ -151,8 +158,8 @@ export default function StockTakeReviewPage() {
   const partlyCounted = useMemo(() => {
     return products
       .map(product => {
-        const places = [product.section || 'Other', ...(product.also_in || [])]
-          .filter((place, i, all) => place && all.indexOf(place) === i)
+        const places = placesFor(product, kept,
+          lines.filter(l => l.product_id === product.id).map(l => l.section || 'Other'))
         if (places.length < 2) return null
 
         const counted = places.filter(place =>
@@ -163,7 +170,7 @@ export default function StockTakeReviewPage() {
       })
       .filter(Boolean)
       .sort((a, b) => a.product.name.localeCompare(b.product.name))
-  }, [products, lines])
+  }, [products, lines, kept])
 
   // Counted while they had no price, so they add nothing to the total about
   // to be saved. Nothing on this page said so, and the total read as the

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase, everyRow } from '@/lib/supabase'
 import { sheetRows, everyReadArrived, productsWithARow } from '@/lib/allergenSheet'
+import { readAllergensAt } from '@/lib/allergensAt'
 import AllergenList from '@/components/allergens/AllergenList'
 import { card, primaryButton, warningNote } from '@/lib/controlStyles'
 import { allergenLook } from '@/lib/allergens'
@@ -128,7 +129,9 @@ export default function PublicAllergensPage({ slugOverride }) {
       everyRow(() => supabase.from('public_menu_item_components').select('*').order('id')),
       everyRow(() => supabase.from('public_products').select('*').order('name').order('id')),
       everyRow(() => supabase.from('public_mix_recipes').select('*').order('id')),
-      everyRow(() => supabase.from('public_product_allergens').select('*').order('product_id')),
+      // What this restaurant's products carry, from the versions it buys
+      // (lib/allergensAt), in the shape the sheet has always read.
+      readAllergensAt(restRes.data.id, { customer: true }),
     ])
 
     // All of them or none of them. A failed read of the allergens used to

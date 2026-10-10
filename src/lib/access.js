@@ -16,6 +16,11 @@ export const ADMIN_ONLY = ['super_admin']
 // Owners see their restaurants but do not change how one is set up.
 export const RESTAURANT_CONFIG = ['store_manager', 'super_admin']
 
+// What the brand decides for every restaurant: which versions of a product it
+// recommends, and which suppliers work without codes. brand_choice_guard in
+// schema.sql holds the same line.
+export const BRAND_CHOICES = ['owner', 'super_admin']
+
 // Who can see records that have been turned off: deactivated products, menu
 // items no longer sold, suppliers nobody buys from any more.
 //

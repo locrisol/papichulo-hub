@@ -6,7 +6,7 @@
 import { weekDates, weekStartOf, todayISO, addDays, dayMonth, WEEKDAY_NAMES } from '@/lib/dates'
 import { tendersToShow, tenderVariance, platformsToShow, num } from '@/lib/salesTenders'
 import { byWeek } from '@/lib/reportChart'
-import { round2 } from '@/lib/format'
+import { round2, fmtMoney } from '@/lib/format'
 import { spendOn, FOOD, PACKAGING } from '@/lib/invoiceCategories'
 
 // The sections every report starts with, in the order they are read.
@@ -482,11 +482,15 @@ export function deliveryBlockers({ weekStart, today = todayISO(), rows = [], day
 // ticked off, with the week they first appeared, which is the whole point of
 // them: a thing nobody did stays visible instead of quietly dropping out.
 //
-// Refunds, reviews and comments do not carry. They belong to their week.
-export function carriedItems(previousItems = [], weekStart) {
+// Refunds, reviews and comments do not carry. They belong to their week. A
+// refund claimed and not yet answered does, as a claim of its own: see
+// claimState.
+export function carriedItems(previousItems = [], weekStart, previousWeekStart = addDays(weekStart, -7)) {
     const out = []
 
     for (const item of previousItems) {
+        const claim = carriedClaim(item, previousWeekStart)
+        if (claim) out.push(claim)
         if (item.kind === 'overhead') {
             out.push({
                 kind: 'overhead', key: item.key, label: item.label,
@@ -505,11 +509,79 @@ export function carriedItems(previousItems = [], weekStart) {
                 kind: 'action', key: item.key, label: item.label,
                 note: item.note, sort_order: item.sort_order,
                 opened_on: item.opened_on || weekStart,
+                // Its comments go with it, every week's, each with its day.
+                ...(Array.isArray(item.meta?.comments) && item.meta.comments.length
+                    ? { meta: { comments: item.meta.comments } } : {}),
             })
         }
     }
 
     return out
+}
+
+// ---------------------------------------------------------------------------
+// Refund claims
+// ---------------------------------------------------------------------------
+
+// What happened to the money on a refund, his of 7 October.
+//
+// Claiming a refund back from a platform is asking, not getting: the answer
+// comes later by email, or as an adjustment on a statement. So a refund is
+// one of four: not claimed, claimed and waiting, paid back, or refused. The
+// answer can already be in by the time the report is written, so all four
+// are offered on the week's own refund.
+//
+// One still waiting carries to the next week as a refund_claim, and that has
+// to be answered before the week can go out: paid back, refused, or still
+// waiting, which carries it again. It stays on every report until it is
+// paid back or refused.
+//
+// Before this a refund was claimed or not, in meta.claimed, and claimed is
+// read as waiting: nobody had said what came of it.
+export const CLAIM_STATES = ['none', 'waiting', 'back', 'refused']
+export const CLAIM_ANSWERS = ['waiting', 'back', 'refused']
+
+export function claimState(item) {
+    const said = item?.meta?.claim
+    if (CLAIM_STATES.includes(said)) return said
+    return item?.meta?.claimed ? 'waiting' : 'none'
+}
+
+// The meta to save for a new state, without the old claimed flag, so the two
+// can never disagree.
+export function withClaim(meta, state) {
+    const rest = { ...(meta || {}) }
+    delete rest.claimed
+    return { ...rest, claim: state }
+}
+
+// A carried claim's answer for this week, or null while nobody has given one.
+export function claimAnswer(item) {
+    const said = item?.meta?.answer
+    return CLAIM_ANSWERS.includes(said) ? said : null
+}
+
+// What carries from last week's refund or claim: one still waiting, with the
+// week it was first claimed in. The answer is for that week only, so it starts
+// empty and somebody says it again.
+function carriedClaim(item, previousWeekStart) {
+    const waiting = (item.kind === 'refund' && claimState(item) === 'waiting')
+        || (item.kind === 'refund_claim' && claimAnswer(item) !== 'back' && claimAnswer(item) !== 'refused')
+    if (!waiting) return null
+    return {
+        kind: 'refund_claim', key: item.key, label: item.label,
+        amount: Math.abs(num(item.amount)), note: item.note,
+        opened_on: item.opened_on || previousWeekStart,
+        sort_order: item.sort_order,
+    }
+}
+
+// Every carried claim answered before the week goes out (his, 7 October).
+export function claimsUnanswered(items = []) {
+    return items
+        .filter(i => i.kind === 'refund_claim' && !claimAnswer(i))
+        .map(i => `The ${fmtMoney(Math.abs(num(i.amount)))} claim on ${i.label} from the week of `
+            + `${dayMonth(i.opened_on)} needs an answer: paid back, refused or still waiting.`)
 }
 
 // Is this line open to be typed into, rather than locked?
@@ -581,6 +653,35 @@ export function blockers(items = []) {
         out.push(`The refund on ${item.label} needs a note saying what it was about.`)
     }
 
+    out.push(...claimsUnanswered(items))
+
+    return out
+}
+
+// Every online platform says something about its reviews and its refunds
+// before the week goes out (his, 7 October): one entered, or "No reviews" or
+// "No refunds" pressed. An empty list could mean there were none or that
+// nobody looked, and the report cannot tell the two apart.
+//
+// The press is kept on the platform's rating line, in meta.none, because that
+// is the one line each platform has. It is said for this week only: ratings
+// carry and their meta does not. One entered later wins over the press.
+export function saidNothing(rating, which) {
+    return !!rating?.meta?.none?.[which]
+}
+
+export function platformsUnsaid(items = [], platforms = []) {
+    const out = []
+    for (const p of platforms) {
+        const rating = items.find(i => i.kind === 'rating' && i.key === p.id)
+        const has = kind => items.some(i => i.kind === kind && i.key === p.id)
+        const reviews = !has('review') && !saidNothing(rating, 'reviews')
+        const refunds = !has('refund') && !saidNothing(rating, 'refunds')
+        // One line a platform: three platforms made six.
+        if (reviews && refunds) out.push(`${p.name}: add its reviews and refunds, or press No reviews and No refunds.`)
+        else if (reviews) out.push(`${p.name}: add its reviews, or press No reviews.`)
+        else if (refunds) out.push(`${p.name}: add its refunds, or press No refunds.`)
+    }
     return out
 }
 
@@ -626,7 +727,12 @@ export function publishCheck(sections = [], figures = null, held = []) {
 // printed allergen sheet. Null means it was checked and a new one was not
 // due. It is missing when it could not be checked, and on a report frozen
 // before 3, because nobody asked.
-export const FIGURES_VERSION = 3
+// 4, 7 October 2026: each online platform has its reviews and refunds said,
+// one entered or "none" pressed, before the week can go out, so the mail can
+// say "Refunds: none". Before 4 an empty list may only mean nobody looked.
+// paperwork.asOf and paperwork.people, the day here it was checked and how
+// many were.
+export const FIGURES_VERSION = 4
 
 export function figuresToStore(figures, at = new Date()) {
     return { ...figures, version: FIGURES_VERSION, frozen_at: at.toISOString() }

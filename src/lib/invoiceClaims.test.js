@@ -801,6 +801,50 @@ describe('matching a note to a line', () => {
     })
 })
 
+// His, 7 October: both credits of 5 October went to the wrong notes.
+describe('notes from the door with no amount, on one docket', () => {
+    const door = over => claim({ amount: null, invoice_id: null, ...over })
+    const paid = out => Object.fromEntries(out.settle.map(s => [s.id, s.patch.credited_amount]))
+
+    it('gives a credit line to the note that names it, not the first one logged', () => {
+        const orange = door({ id: 'orange', docket_number: '45732977', what: 'Club Orange CAN delivered instead of Fanta Orange CAN', raised_on: '2026-09-30' })
+        const salt = door({ id: 'salt', docket_number: '45732977', what: 'Salt bucket not delivered', raised_on: '2026-09-30' })
+        const out = creditSettles({
+            credit: { id: 'cr', orderReference: '45732977', date: '2026-09-30' },
+            lines: [{ code: '5018115', description: 'GEM SALT 1X6 KG', value: -6.28 }],
+            claims: [orange, salt], supplierId: 's1', restaurantId: 'r1',
+        })
+        expect(paid(out)).toEqual({ salt: 6.28 })
+        expect(out.extra).toBeNull()
+    })
+
+    it('gives a line nobody names to a note that has had nothing', () => {
+        const chorizo = door({ id: 'chorizo', docket_number: '45747318', what: '1 Unit of Chorizo delivered instead of 1 case.', raised_on: '2026-10-02' })
+        const chili = door({ id: 'chili', docket_number: '45747318', what: 'Delivered red chili powder', raised_on: '2026-10-05' })
+        const out = creditSettles({
+            credit: { id: 'cr', orderReference: '45747318', date: '2026-10-02' },
+            lines: [
+                { code: '33585', description: 'SYSCO CLASSIC PAPRIKA PEPPER 1X480 GM', value: -16.05 },
+                { code: '485073', description: 'CHORIZO CUBES 1X500 GM', value: -20.99 },
+            ],
+            claims: [chorizo, chili], supplierId: 's1', restaurantId: 'r1',
+        })
+        expect(paid(out)).toEqual({ chorizo: 20.99, chili: 16.05 })
+    })
+
+    // One note for a whole delivery's trouble still takes the whole credit.
+    it('gives a single note every line', () => {
+        const one = door({ id: 'one', docket_number: '1', what: 'Two things missing' })
+        const out = creditSettles({
+            credit: { id: 'cr', orderReference: '1', date: '2026-10-02' },
+            lines: [{ code: 'A', description: 'RICE', value: -10 }, { code: 'B', description: 'BEANS', value: -5 }],
+            claims: [one], supplierId: 's1', restaurantId: 'r1',
+        })
+        expect(paid(out)).toEqual({ one: 15 })
+        expect(out.extra).toBeNull()
+    })
+})
+
 describe('when the credit note turns up', () => {
     const invoice = { id: 'i1', invoice_number: '45612214', invoice_date: '2026-09-14' }
     const credit = { id: 'cr1', number: 'C1', orderReference: '45612214', date: '2026-09-15', goodsTotal: -69.98 }

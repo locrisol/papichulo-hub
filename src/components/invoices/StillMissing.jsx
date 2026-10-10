@@ -25,7 +25,13 @@ import ErrorBanner from '@/components/ui/ErrorBanner'
 // totals, meant it could never empty itself. See not_needed_at. Anything
 // cleared by mistake is put back from the same place, and anything new on a
 // list pasted later still shows.
-export default function StillMissing({ restaurantId, refresh = 0, pasteLink = false }) {
+//
+// **Cleared is kept, and kept out of the way** (his ask, 5 October): one at a
+// time with Not needed, or the whole list. Deleting the row would forget it,
+// and the next list pasted would bring it back, so the date it was cleared is
+// what remembers. The import screen shows only what is still to download;
+// Supplier documents, with `showCleared`, lists what was cleared, to put back.
+export default function StillMissing({ restaurantId, refresh = 0, pasteLink = false, showCleared = false }) {
     const [data, setData] = useState(null)
     const [error, setError] = useState('')
     const [busy, setBusy] = useState('')
@@ -143,14 +149,22 @@ export default function StillMissing({ restaurantId, refresh = 0, pasteLink = fa
                                             </span>
                                         )}
                                         <span className="text-sm tabular-nums text-gray-900">{fmtMoney(row.value)}</span>
+                                        <button
+                                            type="button"
+                                            disabled={!!busy}
+                                            onClick={() => mark([row], new Date().toISOString(), `one-${row.id}`)}
+                                            className={rowButton()}
+                                        >
+                                            {busy === `one-${row.id}` ? 'Clearing...' : 'Not needed'}
+                                        </button>
                                     </span>
                                 </li>
                             ))}
                         </ul>
                         <p className={hintClass}>
                             Oldest first. Download these off the supplier&apos;s own site and upload them
-                            here, and each one drops off this list as it goes in. Clear the list for
-                            anything you are not going to download.
+                            here, and each one drops off this list as it goes in. Not needed takes off
+                            one you are not going to download, and Clear the list takes them all.
                         </p>
                         <button
                             type="button"
@@ -163,20 +177,48 @@ export default function StillMissing({ restaurantId, refresh = 0, pasteLink = fa
                     </>
                 )}
 
-                {cleared.length > 0 && (
-                    <p className="text-sm text-muted mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
-                        <span>
-                            {cleared.length} {cleared.length === 1 ? 'document' : 'documents'} cleared as not needed.
-                        </span>
-                        <button
-                            type="button"
-                            disabled={!!busy}
-                            onClick={() => mark(cleared, null, 'back')}
-                            className={rowButton()}
-                        >
-                            {busy === 'back' ? 'Putting back...' : 'Put them back'}
-                        </button>
-                    </p>
+                {showCleared && cleared.length > 0 && (
+                    <details className="mt-4 rounded-lg border border-border">
+                        <summary className="cursor-pointer px-3 py-2.5 text-sm font-semibold text-gray-900 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+                            Not needed: {cleared.length} {cleared.length === 1 ? 'document' : 'documents'}
+                        </summary>
+                        <ul className="divide-y divide-border px-3">
+                            {cleared.map(row => (
+                                <li
+                                    key={`${row.supplier_id}-${row.document_id}`}
+                                    className="py-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1"
+                                >
+                                    <span className="text-sm text-gray-900 min-w-0">
+                                        <span className="font-mono">{row.document_id}</span>
+                                        <span className="text-xs text-muted">
+                                            {' '}&#183; {named(row.supplier_id)}, {shortDate(row.document_date)}
+                                        </span>
+                                    </span>
+                                    <span className="flex items-center gap-2">
+                                        <span className="text-sm tabular-nums text-gray-900">{fmtMoney(row.value)}</span>
+                                        <button
+                                            type="button"
+                                            disabled={!!busy}
+                                            onClick={() => mark([row], null, `back-${row.id}`)}
+                                            className={rowButton()}
+                                        >
+                                            {busy === `back-${row.id}` ? 'Putting back...' : 'Put back'}
+                                        </button>
+                                    </span>
+                                </li>
+                            ))}
+                        </ul>
+                        <div className="px-3 pb-3 pt-1">
+                            <button
+                                type="button"
+                                disabled={!!busy}
+                                onClick={() => mark(cleared, null, 'back')}
+                                className={rowButton()}
+                            >
+                                {busy === 'back' ? 'Putting back...' : 'Put them all back'}
+                            </button>
+                        </div>
+                    </details>
                 )}
             </div>
         </div>

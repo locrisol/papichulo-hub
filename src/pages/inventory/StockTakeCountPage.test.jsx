@@ -33,7 +33,7 @@ let tables
 let releases
 // failing: a table whose read comes back with an error, the way it does on a
 // weak signal. hold: lines being saved wait until the test lets them go.
-function setUp({ products = [CHEDDAR], prices, recipes = [], failing = null, hold = false }) {
+function setUp({ products = [CHEDDAR], prices, recipes = [], kept = [], failing = null, hold = false }) {
     saved = []
     releases = []
     tables = {
@@ -44,6 +44,7 @@ function setUp({ products = [CHEDDAR], prices, recipes = [], failing = null, hol
         price_count_units: CASES,
         staff_mix_recipes: recipes,
         users: [{ id: 'u9', full_name: 'Maria' }],
+        restaurant_kept_in: kept,
     }
     db = {
         from: vi.fn(table => {
@@ -77,10 +78,11 @@ function open() {
 }
 
 // Open the product, type into one of its boxes and press Add. A box is named
-// by its label, which goes on to say the unit: "Loose (KG)".
+// by its label, which goes on to say the unit: "Loose, in kg", "Case of 12,
+// 12 kg each".
 async function count(clicker, name, box, quantity) {
     await clicker.click(await screen.findByText(name))
-    await clicker.type(screen.getByLabelText(new RegExp(`^${box} `)), quantity)
+    await clicker.type(screen.getByLabelText(new RegExp(`^${box}[ ,]`)), quantity)
     await clicker.click(screen.getByRole('button', { name: 'Add' }))
     await waitFor(() => expect(saved).toHaveLength(1))
     return saved[0]
@@ -101,8 +103,8 @@ describe('a super admin counting one restaurant', () => {
         setUp({ prices: [AT_POINT_CAMPUS, AT_DUN_LAOGHAIRE] })
         const clicker = open()
         await clicker.click(await screen.findByText('Cheddar'))
-        expect(screen.getByLabelText(/^Case of 12 /)).toBeInTheDocument()
-        expect(screen.queryByLabelText(/^Case of 6 /)).not.toBeInTheDocument()
+        expect(screen.getByLabelText(/^Case of 12,/)).toBeInTheDocument()
+        expect(screen.queryByLabelText(/^Case of 6,/)).not.toBeInTheDocument()
     })
 })
 
@@ -192,6 +194,43 @@ describe('the products on a count', () => {
     })
 })
 
+// His answer of 4 October: where a product is kept is said by the versions a
+// restaurant buys, so frozen and ambient versions put it under both headings.
+describe('where each product is counted', () => {
+    it('is under the place of every version this restaurant buys', async () => {
+        user = { id: 'u2', role: 'employee', full_name: 'Maria' }
+        setUp({
+            prices: [AT_POINT_CAMPUS],
+            kept: [
+                { restaurant_id: 'r1', product_id: 'p1', section: 'Cold Room', also_in: [] },
+                { restaurant_id: 'r1', product_id: 'p1', section: 'Freezer', also_in: [] },
+                { restaurant_id: 'r2', product_id: 'p1', section: 'Dry', also_in: [] },
+            ],
+        })
+        open()
+        await waitFor(() => expect(screen.getAllByText('Cheddar')).toHaveLength(2))
+        const asked = db.from.mock.results.find((r, i) => db.from.mock.calls[i][0] === 'restaurant_kept_in').value
+        expect(asked.eq).toHaveBeenCalledWith('restaurant_id', 'r1')
+    })
+
+    // A version moved while the count is open: what was counted where it
+    // used to be stays on the count.
+    it('keeps a place it was already counted in', async () => {
+        user = { id: 'u2', role: 'employee', full_name: 'Maria' }
+        setUp({ prices: [AT_POINT_CAMPUS], kept: [{ restaurant_id: 'r1', product_id: 'p1', section: 'Freezer', also_in: [] }] })
+        tables.stock_take_lines = [{ id: 'old', stock_take_id: 'st1', product_id: 'p1', section: 'Cold Room', quantity: 2, counted_by: 'u2' }]
+        open()
+        await waitFor(() => expect(screen.getAllByText('Cheddar')).toHaveLength(2))
+    })
+
+    it('is where the product says when this restaurant buys no version of it', async () => {
+        user = { id: 'u2', role: 'employee', full_name: 'Maria' }
+        setUp({ prices: [AT_POINT_CAMPUS] })
+        open()
+        expect(await screen.findAllByText('Cheddar')).toHaveLength(1)
+    })
+})
+
 // Closed by a manager while somebody is still counting. An employee cannot
 // read a closed count or its lines, so the next refresh came back with
 // nothing and every product went back to uncounted.
@@ -225,7 +264,7 @@ describe('a refresh that lands while a line is being saved', () => {
         setUp({ prices: [AT_POINT_CAMPUS], hold: true })
         const clicker = open()
         await clicker.click(await screen.findByText('Cheddar'))
-        await clicker.type(screen.getByLabelText(/^Loose /), '2')
+        await clicker.type(screen.getByLabelText(/^Loose,/), '2')
         await clicker.click(screen.getByRole('button', { name: 'Add' }))
         await waitFor(() => expect(releases).toHaveLength(1))
 
@@ -285,5 +324,29 @@ describe('the bar over the count', () => {
         expect(filter).toHaveAttribute('aria-pressed', 'false')
         await clicker.click(filter)
         expect(screen.getByRole('button', { name: 'Showing uncounted' })).toHaveAttribute('aria-pressed', 'true')
+    })
+})
+
+// His choice of 5 October: the packs in a panel of their own, the loose box
+// plain under it, each pack saying what one holds.
+describe('the boxes to count in', () => {
+    it('puts the packs in a panel of their own, apart from loose', async () => {
+        user = { id: 'u2', role: 'employee', full_name: 'Maria' }
+        setUp({ prices: [AT_POINT_CAMPUS] })
+        const clicker = open()
+        await clicker.click(await screen.findByText('Cheddar'))
+        const pack = screen.getByLabelText('Case of 12, 12 kg each')
+        const panel = screen.getByText('Packs').closest('div')
+        expect(panel).toContainElement(pack)
+        expect(panel).not.toContainElement(screen.getByLabelText('Loose, in kg'))
+    })
+
+    it('keeps one Quantity box for a product with no packs', async () => {
+        user = { id: 'u2', role: 'employee', full_name: 'Maria' }
+        setUp({ prices: [{ ...AT_POINT_CAMPUS, id: 'none' }] })
+        const clicker = open()
+        await clicker.click(await screen.findByText('Cheddar'))
+        expect(screen.getByLabelText('Quantity (KG)')).toBeInTheDocument()
+        expect(screen.queryByText('Packs')).toBeNull()
     })
 })

@@ -863,9 +863,9 @@ export function creditSettles({ credit, lines = [], against = null, claims = [],
     // What each credit line gives back is what it cost: its value, VAT and
     // deposit, the same footing the claim was priced on.
     const pots = (lines.length ? lines : [{ code: null, value: documentTotal(credit) || credit.total_amount }])
-        .map(l => ({ code: l.code || null, money: Math.abs(lineCost(l)) }))
+        .map(l => ({ code: l.code || null, description: l.description || null, money: Math.abs(lineCost(l)) }))
 
-    // Same product code first, then anything still open, oldest first.
+    // Same product code first.
     for (const pot of pots) {
         for (const c of mine.filter(c => pot.code && c.code === pot.code)) {
             if (pot.money > 0.004) {
@@ -874,9 +874,35 @@ export function creditSettles({ credit, lines = [], against = null, claims = [],
             }
         }
     }
+
+    // **Then a note from the door gets the line that names what it says.**
+    // A note with no amount took whatever came first, so on 5 October the
+    // salt credit went to "Club Orange instead of Fanta", logged a minute
+    // before "Salt bucket not delivered" on the same docket, and the chorizo
+    // note took the paprika line as well, leaving the chili powder waiting.
+    // A note named this way has had its money, and takes nothing else.
+    const unpriced = mine.filter(c => c.amount == null)
+    for (const pot of pots) {
+        if (pot.money <= 0.004 || !pot.description) continue
+        const best = unpriced
+            .map(c => ({ c, score: similarWords(c.what, pot.description) }))
+            .filter(x => x.score > 0 && left.get(x.c.id) > 0.004)
+            .sort((a, b) => b.score - a.score)[0]
+        if (!best) continue
+        pot.money = give(best.c, pot.money)
+        pot.took = best.c
+    }
+    for (const c of unpriced) if (got.get(c.id) > 0) left.set(c.id, 0)
+
+    // Then anything still open, oldest first. A note that has had a line
+    // waits while another note has had nothing, so one line each before any
+    // takes two.
+    const waiting = () => unpriced.some(c => !got.get(c.id) && left.get(c.id) > 0.004)
     for (const pot of pots) {
         for (const c of mine) {
-            if (pot.money > 0.004 && left.get(c.id) > 0.004) pot.money = give(c, pot.money)
+            if (pot.money <= 0.004 || left.get(c.id) <= 0.004) continue
+            if (c.amount == null && got.get(c.id) > 0 && waiting()) continue
+            pot.money = give(c, pot.money)
         }
     }
 

@@ -109,19 +109,41 @@ describe('still to download', () => {
         })
     })
 
-    it('leaves a cleared document off, and offers to put it back', async () => {
+    // His ask of 5 October: cleared is cleared. The import screen shows
+    // only what is still to download.
+    it('leaves a cleared document off the import screen altogether', async () => {
         answers({ recorded: RECORDED.map(r => (r.id === 'd1' ? { ...r, not_needed_at: '2026-09-27T01:00:00Z' } : r)) })
         renderWithRouter(<StillMissing restaurantId="r1" />)
 
         expect(await screen.findByText('45612214')).toBeInTheDocument()
         expect(screen.queryByText('45448455')).toBeNull()
-        expect(screen.getByText('1 document cleared as not needed.')).toBeInTheDocument()
+        expect(screen.queryByText(/Not needed: /)).toBeNull()
+        expect(screen.queryByRole('button', { name: /Put/ })).toBeNull()
+    })
 
-        fireEvent.click(screen.getByRole('button', { name: 'Put them back' }))
+    // Supplier documents keeps the cleared ones, each with its own way back.
+    it('lists what was cleared where asked to, and puts one back', async () => {
+        answers({ recorded: RECORDED.map(r => (r.id === 'd1' ? { ...r, not_needed_at: '2026-09-27T01:00:00Z' } : r)) })
+        renderWithRouter(<StillMissing restaurantId="r1" showCleared />)
+
+        expect(await screen.findByText('Not needed: 1 document')).toBeInTheDocument()
+        fireEvent.click(screen.getByRole('button', { name: 'Put back' }))
         await waitFor(() => {
             const writes = db.from.mock.results.map(r => r.value).filter(q => q.update.mock.calls.length)
             expect(writes[0].update).toHaveBeenCalledWith({ not_needed_at: null })
             expect(writes[0].in).toHaveBeenCalledWith('id', ['d1'])
+        })
+    })
+
+    it('clears one document at a time', async () => {
+        answers({ recorded: RECORDED })
+        renderWithRouter(<StillMissing restaurantId="r1" />)
+        await screen.findByText('45448455')
+        fireEvent.click(screen.getAllByRole('button', { name: 'Not needed' })[0])
+        await waitFor(() => {
+            const writes = db.from.mock.results.map(r => r.value).filter(q => q.update.mock.calls.length)
+            expect(writes[0].update.mock.calls[0][0].not_needed_at).toBeTruthy()
+            expect(writes[0].in.mock.calls[0][1]).toHaveLength(1)
         })
     })
 })

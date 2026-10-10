@@ -72,6 +72,17 @@ describe('the lines still waiting for somebody', () => {
         const out = stillToDecide([line('charge', inv, 'DEL01'), line('elsewhere', other, 'DEL01')], [], notStock)
         expect(out.map(l => l.id)).toEqual(['elsewhere'])
     })
+
+    // His design of 4 October: a line sent for review is the owners' question
+    // while it waits, and it does not hold the report.
+    it('leaves out a line whose code is waiting on a review, for that supplier only', () => {
+        const inv = invoice('a', '2026-09-22')
+        const other = invoice('b', '2026-09-22', { supplier_id: 's2' })
+        const sent = [{ supplier_id: 's1', supplier_code: '5019120' }, { supplier_id: 's1', supplier_code: null }]
+        const out = stillToDecide(
+            [line('corn', inv, '5019120'), line('elsewhere', other, '5019120'), line('rice', inv, '111')], [], [], sent)
+        expect(out.map(l => l.id)).toEqual(['elsewhere', 'rice'])
+    })
 })
 
 describe('reading them', () => {
@@ -116,6 +127,21 @@ describe('reading them', () => {
         expect(q.eq).toHaveBeenCalledWith('restaurant_id', 'r1')
     })
 
+    it('reads what is waiting on a review, and keeps its lines only when asked to', async () => {
+        const inv = invoice('a', '2026-09-22')
+        tables.invoice_lines = [line('l1', inv, '5019120'), line('l2', inv, '111')]
+        tables.product_requests = [{ id: 'q1', supplier_id: 's1', supplier_code: '5019120' }]
+        const waiting = await readToDecide('r1')
+        expect(waiting.lines.map(l => l.id)).toEqual(['l2'])
+        expect(waiting.sent.map(r => r.id)).toEqual(['q1'])
+        const q = asked.find(a => a.table === 'product_requests').q
+        expect(q.eq).toHaveBeenCalledWith('restaurant_id', 'r1')
+        expect(q.is).toHaveBeenCalledWith('answer', null)
+
+        const answering = await readToDecide('r1', { withSent: true })
+        expect(answering.lines.map(l => l.id)).toEqual(['l1', 'l2'])
+    })
+
     it('says so when a read fails, rather than saying nothing is waiting', async () => {
         tables['invoices:error'] = { message: 'no' }
         const { lines, error } = await readToDecide('r1')
@@ -152,6 +178,6 @@ describe('a price typed with a code', () => {
 
     it('says so when it could not, and where to do it instead', async () => {
         tables['supplier_codes:error'] = { message: 'Failed to fetch' }
-        expect(await claimCode(price, 'r1')).toMatch(/^The price was saved, but it could not be matched to code 777002: .* Match the code on Review instead\.$/)
+        expect(await claimCode(price, 'r1')).toMatch(/^The price was saved, but it could not be matched to code 777002: .* Match the code on Import invoices instead\.$/)
     })
 })

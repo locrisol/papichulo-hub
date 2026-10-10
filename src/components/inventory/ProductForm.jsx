@@ -12,7 +12,7 @@
 import { numberField } from '@/lib/numberInput'
 import {
   checkbox, labelClass, captionClass, fieldClass, hintClass, fieldError, primaryButton, secondaryButton,
-  removeButton, chip,
+  removeButton, chip, lockedField,
 } from '@/lib/controlStyles'
 import { PriceFields } from '@/components/inventory/PriceForm'
 import ProductSelect from '@/components/ui/ProductSelect'
@@ -37,9 +37,9 @@ export default function ProductForm({
   priceForm, onPriceChange, priceErrors, suppliers, nameClash,
   formats, onFormatsChange,
   recipe, onRecipeChange, ingredientOptions,
-  allergens, onAllergenChange, allergensAnswered, onNoAllergens, allergensUnread = false,
+  allergens, onAllergenChange, allergensAnswered, onNoAllergens, allergensUnread = false, allergensElsewhere = false,
   extras, openExtra, onOpenExtra,
-  otherPriceCount = 0, onOpenPrices, recipeBlock = true, saving = false,
+  otherPriceCount = 0, onOpenPrices, recipeBlock = true, saving = false, nameLocked = false,
 }) {
   // Both of these only make sense for something you buy. A mix has no supplier
   // by definition, and its allergens come from its recipe rather than from
@@ -78,12 +78,17 @@ export default function ProductForm({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
         <div>
           <label className={labelClass}>Name</label>
+          {/* Locked for a store manager: the brand's list is the owners', so
+              renaming is theirs (brand_choice_guard says the same). */}
           <input
             type="text"
             value={formData.name}
             onChange={e => onChange('name', e.target.value)}
-            className={fieldClass}
+            disabled={nameLocked}
+            readOnly={nameLocked}
+            className={nameLocked ? `${lockedField} w-full px-3 py-2.5 text-base` : fieldClass}
           />
+          {nameLocked && <p className={hintClass}>Only an owner can rename a product.</p>}
           {errors.name && <p className={fieldError}>{errors.name}</p>}
           {/* Said while it is being typed rather than after it is saved, and it
               stops the save. Two products with the same name is one added
@@ -628,11 +633,12 @@ export default function ProductForm({
             title="Allergens"
             summary={(() => {
               if (allergensUnread) return 'Could not be read'
+              if (allergensElsewhere) return 'On the Allergens page'
               const set = declaredCount(allergens)
               if (set > 0) return `${set} of 14`
               return allergensAnswered ? 'None of the 14' : 'Not answered'
             })()}
-            action={!allergensUnread && !allergensAnswered && declaredCount(allergens) === 0 && (
+            action={!allergensUnread && !allergensElsewhere && !allergensAnswered && declaredCount(allergens) === 0 && (
               <button type="button" onClick={onNoAllergens} className={sectionBarAction}>
                 Declare the product has no allergens
               </button>
@@ -647,6 +653,11 @@ export default function ProductForm({
               {allergensUnread ? (
                 <p className="text-xs text-muted mb-3">
                   The allergens could not be read. Close this and open it again to change them.
+                </p>
+              ) : allergensElsewhere ? (
+                <p className="text-xs text-muted mb-3">
+                  This product has no price here for the form to follow, so its allergens are set
+                  version by version on its Allergens page.
                 </p>
               ) : (
                 <>

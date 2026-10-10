@@ -10,7 +10,7 @@
 // The category list is not free text. suppliers has a check constraint on it, so
 // anything outside these four is refused by the database rather than saved as a
 // typo. Adding one means a migration first.
-import { labelClass, fieldClass, primaryButton, secondaryButton } from '@/lib/controlStyles'
+import { labelClass, fieldClass, primaryButton, secondaryButton, checkbox } from '@/lib/controlStyles'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 
 const CATEGORIES = [
@@ -20,7 +20,7 @@ const CATEGORIES = [
     { value: 'other', label: 'Other' },
 ]
 
-export default function SupplierForm({ problem, formData, onChange, onSubmit, onCancel, submitLabel, saving = false }) {
+export default function SupplierForm({ problem, formData, onChange, onSubmit, onCancel, submitLabel, saving = false, canChooseCodes = false }) {
 
     return (
         <form onSubmit={onSubmit}>
@@ -76,6 +76,28 @@ export default function SupplierForm({ problem, formData, onChange, onSubmit, on
                     className={fieldClass}
                 />
             </div>
+
+            {/* An owner's choice, like what the brand recommends: a supplier
+                left out of the codes is a supplier the weekly report does not
+                check. A store manager sees it, read only. */}
+            {(canChooseCodes || formData.works_without_codes) && (
+                <label className={`flex items-start gap-2 mb-4 ${canChooseCodes ? 'cursor-pointer' : ''}`}>
+                    <input
+                        type="checkbox"
+                        checked={!!formData.works_without_codes}
+                        onChange={e => onChange('works_without_codes', e.target.checked)}
+                        disabled={!canChooseCodes}
+                        className={`${checkbox} mt-0.5`}
+                    />
+                    <span className="text-sm text-gray-900">
+                        Works without codes
+                        <span className="block text-xs text-muted">
+                            Its prices need no code, and the weekly report shows what was spent here without
+                            checking it against the brand's recommendations.
+                        </span>
+                    </span>
+                </label>
+            )}
 
             {/* Beside the button that caused it. A message written at the top of
                 the page is off the screen when you press Save at the foot of a form

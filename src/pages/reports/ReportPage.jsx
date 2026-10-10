@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase, everyRow } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
@@ -18,13 +18,14 @@ import {
     reportFigures, sectionKey, publishCheck, figuresToStore, platformShare,
     deliveryRows, deliveryBlockers, deliveryCost, platformTaken, statementWeek, statementWords, platformWeeks,
     isCorrection, mailMissing,
+    platformsUnsaid,
 } from '@/lib/weeklyReport'
 import { keyedPlatforms, platformsToShow } from '@/lib/salesTenders'
 import { paperworkFor } from '@/lib/reportPeople'
 import { reprintDue } from '@/lib/allergenSheet'
 import { weeksBack, byWeek } from '@/lib/reportChart'
 import { FOOD, PACKAGING } from '@/lib/invoiceCategories'
-import { chartSpecs } from '@/lib/reportCharts'
+import { chartSpecs, deliveryRates, accountColour } from '@/lib/reportCharts'
 import { brandFor } from '@/lib/platformBrand'
 import { uploadCharts, sendReport, sendWords } from '@/lib/reportMail'
 import ReportComments from '@/components/reports/ReportComments'
@@ -196,6 +197,17 @@ export default function ReportPage() {
         enabled: report?.status === 'draft',
     })
 
+    // The paperwork a sent report went out with, checked on the day it was
+    // frozen. Read live, a permit renewed since made September say "in date".
+    const sentPaperwork = report?.status === 'published' && figures?.paperwork?.food?.expiring
+        ? {
+            people: figures.paperwork.people,
+            food: figures.paperwork.food,
+            permits: figures.paperwork.permits,
+            on: figures.paperwork.asOf || String(figures.frozen_at || '').slice(0, 10) || todayISO(),
+        }
+        : null
+
     // Up here rather than beside the charts, because publishing needs them to
     // draw the pictures and publishing is defined before the page is.
     const onlinePlatforms = platforms.filter(p => p.bucket === 'online_platform')
@@ -242,20 +254,25 @@ export default function ReportPage() {
         : []
 
     // Invoice lines from this week or before that nobody has decided on
-    // Review. His answer of 30 September: the report cannot go out while any
+    // Import invoices. His answer of 30 September: the report cannot go out while any
     // are waiting. Only up to its own week, so a delivery on the Monday after
     // does not hold last week's report.
     const [toDecide, setToDecide] = useState(0)
     const reviewHeld = report?.status === 'draft' && toDecide > 0
         ? [{
             text: `${toDecide} invoice ${toDecide === 1 ? 'line' : 'lines'} from this week or earlier `
-                + `${toDecide === 1 ? 'is' : 'are'} still waiting in Review.`,
-            to: '/invoices/review',
-            link: 'Open Review',
+                + `${toDecide === 1 ? 'is' : 'are'} still waiting for a decision.`,
+            to: '/invoices/import#waiting',
+            link: 'Decide them',
         }]
         : []
-    const held = [...deliveryHeld, ...reviewHeld]
-    const specs = chartSpecs({ onlinePlatforms, corporatePlatforms })
+    // Each online platform has a review or "No reviews", and a refund or "No
+    // refunds", before the week goes out. See platformsUnsaid.
+    const unsaid = report?.status === 'draft' && sections.some(s => s.key === 'online_sales')
+        ? platformsUnsaid(sections.find(s => s.key === 'online_sales')?.items || [], onlinePlatforms)
+        : []
+    const held = [...deliveryHeld, ...reviewHeld, ...unsaid]
+    const specs = chartSpecs({ onlinePlatforms, corporatePlatforms, deliveryTarget: targets.delivery })
 
     // How the last send went, so somebody who presses publish is told whether
     // five people have the week or nobody does.
@@ -359,7 +376,13 @@ export default function ReportPage() {
             // days, the same as the week grid shows. Retiring one mid week
             // must not take what it took out of that week's report.
             const allPlatforms = keyedPlatforms(plats.data)
-            const shownPlatforms = platformsToShow(allPlatforms, (days2.data || []).map(d => d.platform_sales))
+            // A sent report shows the platforms it was sent with, and what each
+            // took then, the same as its mail. Read live, a Saturday corrected
+            // after it went out changed the page and not the mail.
+            const sentWith = head.status === 'published' ? head.figures?.platforms : null
+            const shownPlatforms = sentWith
+                ? allPlatforms.filter(p => sentWith.some(f => f.id === p.id))
+                : platformsToShow(allPlatforms, (days2.data || []).map(d => d.platform_sales))
             setPlatforms(shownPlatforms)
             setAround(days2.data || [])
 
@@ -451,7 +474,11 @@ export default function ReportPage() {
             // Left unanswered when the date would not come back, rather than
             // null, which is what a sheet that is not due gets. A reminder
             // worked out from half of what it needs would be a guess.
-            setAllergenSheet(changedRes.error || !activeRestaurant ? undefined : reprintDue({
+            // A sent report says what it was sent with, the same as the rest
+            // of its paperwork.
+            const sentPaper = head.status === 'published' ? head.figures?.paperwork : null
+            if (sentPaper) setAllergenSheet(sentPaper.allergenSheet)
+            else setAllergenSheet(changedRes.error || !activeRestaurant ? undefined : reprintDue({
                 printedAt: activeRestaurant.allergen_sheet_printed_at,
                 everyMonths: activeRestaurant.allergen_sheet_every_months,
                 changedAt: changedRes.data,
@@ -460,7 +487,9 @@ export default function ReportPage() {
             // Our week only. The days read above run a day past it.
             const totals = {}
             for (const p of shownPlatforms) {
-                totals[p.id] = platformTaken(days2.data, p.key, weekStart, end)
+                totals[p.id] = sentWith
+                    ? num(sentWith.find(f => f.id === p.id)?.taken)
+                    : platformTaken(days2.data, p.key, weekStart, end)
             }
             setTaken(totals)
 
@@ -586,7 +615,8 @@ export default function ReportPage() {
                         - pl.standing - pl.deliveryTotal
                 }
 
-                return row
+                // What each platform kept of what it took, for the delivery chart.
+                return { ...row, ...deliveryRates(row, shownPlatforms) }
             }))
 
             // The team, for the paperwork lines. Only the fields the
@@ -608,10 +638,16 @@ export default function ReportPage() {
                 .eq('restaurant_id', head.restaurant_id)
             if (targetError) return stop(targetError)
 
-            setTargets({
+            // A sent report was judged against the targets frozen into it.
+            // Worked out again, a default changed since repainted it.
+            if (head.status === 'published' && head.figures?.targets) setTargets(head.figures.targets)
+            else setTargets({
                 food: resolveTarget(overrides || [], 'food', weekStart, num(activeRestaurant?.food_cost_target)),
                 labour: resolveTarget(overrides || [], 'labour', weekStart, num(activeRestaurant?.labour_cost_target)),
                 packaging: resolveTarget(overrides || [], 'packaging', weekStart, num(activeRestaurant?.packaging_cost_target)),
+                // What each delivery platform should keep under, of what it
+                // took. Drawn on the delivery chart as its line.
+                delivery: resolveTarget(overrides || [], 'delivery', weekStart, num(activeRestaurant?.delivery_cost_target)),
             })
 
             setReadFailed('')
@@ -645,8 +681,9 @@ export default function ReportPage() {
     async function addComment(sectionId, note) {
         const section = sections.find(s => s.id === sectionId)
         const order = (section?.items.filter(i => i.kind === 'comment').length) || 0
+        // Formatted, as every comment written from now on. See richText.
         return write(() => supabase.from('report_items')
-            .insert({ section_id: sectionId, kind: 'comment', note, sort_order: order }))
+            .insert({ section_id: sectionId, kind: 'comment', note, sort_order: order, meta: { rich: true } }))
     }
 
     async function saveItem(itemId, patch) {
@@ -657,7 +694,12 @@ export default function ReportPage() {
         return write(() => supabase.from('report_items').delete().eq('id', itemId))
     }
 
-    const saveComment = (itemId, note) => saveItem(itemId, { note })
+    // Saved formatted, which a comment from before formatting becomes once it
+    // is edited.
+    const saveComment = (itemId, note) => {
+        const item = sections.flatMap(s => s.items).find(i => i.id === itemId)
+        return saveItem(itemId, { note, meta: { ...(item?.meta || {}), rich: true } })
+    }
 
     // An overhead keeps its carried_from, so the report can always say what it
     // was before somebody opened it. Only the amount moves.
@@ -698,18 +740,40 @@ export default function ReportPage() {
     // week's notes, the way it used to orphan its takings.
     const online = () => sections.find(s => s.key === 'online_sales')
 
-    async function saveRating(platform, value) {
+    // A platform's rating line takes the rating and the "No reviews" and "No
+    // refunds" presses, so the three are written one after another, each
+    // reading the line fresh first. Read from the page, two quick presses
+    // both made the line and the second was refused, or the second wrote over
+    // the first, and the report stayed held.
+    const ratingQueue = useRef(Promise.resolve())
+    function onRatingLine(platform, change) {
         const section = online()
-        if (!section) return
-        const existing = section.items.find(i => i.kind === 'rating' && i.key === platform.id)
-
-        return write(() => existing
-            ? supabase.from('report_items').update({ amount: value }).eq('id', existing.id)
-            : supabase.from('report_items').insert({
-                section_id: section.id, kind: 'rating', key: platform.id,
-                label: platform.name, amount: value, sort_order: platform.sort_order || 0,
-            }))
+        if (!section) return undefined
+        const job = ratingQueue.current.then(async () => {
+            const { data: row, error: e1 } = await supabase.from('report_items')
+                .select('id, meta').eq('section_id', section.id).eq('kind', 'rating').eq('key', platform.id)
+                .maybeSingle()
+            if (e1) return write(() => Promise.resolve({ error: e1 }))
+            const patch = change(row)
+            return write(() => row
+                ? supabase.from('report_items').update(patch).eq('id', row.id)
+                : supabase.from('report_items').insert({
+                    section_id: section.id, kind: 'rating', key: platform.id,
+                    label: platform.name, amount: null, sort_order: platform.sort_order || 0, ...patch,
+                }))
+        })
+        ratingQueue.current = job.catch(() => {})
+        return job
     }
+
+    const saveRating = (platform, value) => onRatingLine(platform, () => ({ amount: value }))
+
+    // "No reviews" or "No refunds" for this week, pressed or taken back. Kept
+    // on the platform's rating line, which is made for it if there is none
+    // yet. See saidNothing.
+    const saveNothing = (platform, which, on) => onRatingLine(platform, row => ({
+        meta: { ...(row?.meta || {}), none: { ...(row?.meta?.none || {}), [which]: on } },
+    }))
 
     async function addReview(platform, stars, count) {
         const section = online()
@@ -737,10 +801,10 @@ export default function ReportPage() {
         }
 
         return write(() => existing
-            ? supabase.from('report_items').update({ note }).eq('id', existing.id)
+            ? supabase.from('report_items').update({ note, meta: { ...(existing.meta || {}), rich: true } }).eq('id', existing.id)
             : supabase.from('report_items').insert({
                 section_id: sectionId, kind: 'comment', key: platform.id,
-                label: platform.name, note, sort_order: platform.sort_order || 0,
+                label: platform.name, note, sort_order: platform.sort_order || 0, meta: { rich: true },
             }))
     }
 
@@ -758,7 +822,7 @@ export default function ReportPage() {
     // change what a report sent in September said. So they are frozen here
     // beside the figures, and the mail reads the frozen copy.
     function frozenFigures() {
-        const { food, permits } = paperworkFor(employees, report.week_start, todayISO())
+        const { people, food, permits } = paperworkFor(employees, report.week_start, todayISO())
 
         return figuresToStore({
             ...figures,
@@ -780,8 +844,12 @@ export default function ReportPage() {
                 // what is inside a function's own folder gets deployed with
                 // it, so the alternative was writing the brand colours down a
                 // second time where nobody would think to change them.
-                mark: brandFor(p.name).mark,
-                colour: brandFor(p.name).ink,
+                //
+                // A corporate account is in the colour the page and its chart
+                // give it. It has no brand, so brandFor gave Feedr and the rest
+                // the same grey in the mail.
+                mark: p.bucket === 'catering' ? accountColour(corporatePlatforms, p.id) : brandFor(p.name).mark,
+                colour: p.bucket === 'catering' ? accountColour(corporatePlatforms, p.id) : brandFor(p.name).ink,
             })),
 
             // The targets this week was judged against, frozen with everything
@@ -801,6 +869,11 @@ export default function ReportPage() {
             // photos so the page can still show them while they are kept.
             cleaning: liveCleaning.ready ? liveCleaning.data : null,
             paperwork: {
+                // The day here it was checked on, for the sent page. frozen_at
+                // is UTC, a day early for a report sent after midnight.
+                asOf: todayISO(),
+                // How many were checked, so the sent page can say so.
+                people,
                 food,
                 // Frozen with whether a renewal had been applied for, because
                 // that is the difference between somebody who cannot legally be
@@ -859,6 +932,7 @@ export default function ReportPage() {
             // stopping the report.
             const charts = await uploadCharts({
                 reportId: report.id, rows: history, onlinePlatforms, corporatePlatforms,
+                deliveryTarget: targets.delivery,
             })
 
             // What the last mail said, kept so the next one can say what
@@ -947,7 +1021,8 @@ export default function ReportPage() {
         setSaving(true)
         try {
             const charts = await uploadCharts({
-                reportId: report.id, rows: history, onlinePlatforms, corporatePlatforms, test: true,
+                reportId: report.id, rows: history, onlinePlatforms, corporatePlatforms,
+                deliveryTarget: targets.delivery, test: true,
             })
             const result = await sendReport({
                 reportId: report.id, test: true, figures: frozenFigures(), charts,
@@ -1502,9 +1577,10 @@ export default function ReportPage() {
                                     )}
                                     {section.key === 'people_ops' && (
                                         <ReportPaperwork
-                                            paperwork={paperworkFor(employees, week, todayISO())}
+                                            paperwork={sentPaperwork || paperworkFor(employees, week, todayISO())}
                                             weekStart={week}
-                                            asOf={todayISO()}
+                                            asOf={sentPaperwork ? sentPaperwork.on : todayISO()}
+                                            sent={sentPaperwork ? sentPaperwork.on : null}
                                             allergenSheet={allergenSheet}
                                         />
                                     )}
@@ -1546,9 +1622,11 @@ export default function ReportPage() {
                                             section={section}
                                             platforms={onlinePlatforms}
                                             taken={taken}
+                                            weekStart={report.week_start}
                                             canEdit={canEdit}
                                             handlers={{
                                                 onSaveRating: saveRating,
+                                                onSaveNothing: saveNothing,
                                                 onAddReview: addReview,
                                                 onAddRefund: addRefund,
                                                 onSaveItem: saveItem,

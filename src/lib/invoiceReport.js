@@ -37,8 +37,9 @@
 
 import { num, fmtMoney, fmtQty, namesList, round2, round4 } from '@/lib/format'
 import { renumberPlan } from '@/lib/priceEvents'
-import { addDays, dayMonth } from '@/lib/dates'
-import { samePrice, sameWords, SAME_WORDS, byPieceWeight } from '@/lib/invoiceImport'
+import { pricesAsAt } from '@/lib/pricesAsAt'
+import { addDays, dayMonth, stampDay } from '@/lib/dates'
+import { samePrice, sameWords, similarWords, SAME_WORDS, byPieceWeight } from '@/lib/invoiceImport'
 import { readPackSize, mend } from '@/lib/invoiceSysco'
 import {
     claimBalance, claimIsOpen, claimKind, CLAIM_KINDS, NOT_LOGGED, voidedBy, sentBack, fromEarlierWeeks,
@@ -110,8 +111,13 @@ function delivery(l) {
     // In the product's own unit through what one piece weighs, where the
     // product says: ten cabbages at about a kilo are ten kilos, whatever the
     // line was stored as before anybody said.
-    const weighed = byPieceWeight(readPackSize(l.pack_size), l.products)
-    const units = weighed ?? (l.units_per_case == null ? null : num(l.units_per_case))
+    const pack = readPackSize(l.pack_size)
+    const weighed = byPieceWeight(pack, l.products)
+    // A line stored without its units, because the reader did not know the
+    // pack then, is read again now, when the pack is in the product's own
+    // unit: the eggs of 29 September, "1X15 DZ", before it knew a dozen.
+    const read = pack?.unit && pack.unit === l.products?.unit && pack.total > 0 ? pack.total : null
+    const units = weighed ?? (l.units_per_case == null ? read : num(l.units_per_case))
     const perCase = num(l.price_per_case)
     const perUnit = units > 0
         ? perCase / units
@@ -225,6 +231,15 @@ export function notFood(product) {
 // White Cabbage is the one on the first fortnight.
 //
 // Unless the product says what one weighs, which is the whole point of saying.
+// Why a price could not be compared, for the words beside it. "weight" was
+// said for every one with no price per unit, and Eggs, counted one at a time
+// in recipes, were said to be weighed: the invoice had not said how many were
+// in the case.
+export function whyNot(d, weight) {
+    if (d?.perUnit == null) return 'pack'
+    return weight ? 'weight' : 'units'
+}
+
 export function cannotCompare(d, product = d?.product) {
     if (d?.perUnit == null) return true
     if (num(product?.piece_weight) > 0) return false
@@ -345,8 +360,10 @@ export function priceMoves(all, { weekStart, weekEnd, codes = [] }) {
     }
 
     const out = []
+    const raw = new Map()
     for (const [key, week] of byVersion) {
         const family = lineage(key)
+        const group = lineage.groupOf?.(key) || null
         const before = lastOf(all, d => d.at < week[0].at && family.includes(d.key))
         const series = before ? [before, ...week] : week
 
@@ -389,11 +406,20 @@ export function priceMoves(all, { weekStart, weekEnd, codes = [] }) {
             mixed: new Set(moved.map(d => round4(d.perUnit))).size > 1,
         })
 
+        raw.set(key, {
+            moved,
+            byCase,
+            unit: byCase ? 'a case' : unitOf(to),
+            // What the week's deliveries would have cost at the old price,
+            // for the change of codes shown together. See together.
+            old: week.reduce((t, d) => t + (d.perUnit ? d.cost * (from.perUnit / d.perUnit) : 0), 0),
+        })
         out.push({
             // More likely a pack read wrong on one of the two than a real
             // price. Kept, so it can be said and checked, but never added up.
             doubtful: outOfReason(to.perUnit, from.perUnit),
             key,
+            group,
             code: to.code,
             productId: to.productId,
             name: nameOf(to),
@@ -411,11 +437,87 @@ export function priceMoves(all, { weekStart, weekEnd, codes = [] }) {
             on: series[changedAt].date,
             invoice: series[changedAt].number,
             since: before?.date || null,
-            series: series.map(d => [d.date, round4(d.perUnit)]),
+            // Every delivery of it over the last eight weeks, so the chart
+            // shows where the price has been and not only last time and now
+            // (his, 7 October). The third figure is one for this week's.
+            series: historyOf(all, d => family.includes(d.key) || (!!group && lineage.groupOf(d.key) === group),
+                weekStart, weekEnd),
         })
     }
 
-    return out.sort((a, b) => Math.abs(b.effect) - Math.abs(a.effect) || Math.abs(b.change) - Math.abs(a.change))
+    const byChange = (a, b) => Math.abs(b.effect) - Math.abs(a.effect) || Math.abs(b.change) - Math.abs(a.change)
+    return together(out.sort(byChange), raw).sort(byChange)
+}
+
+// How far back the chart on a price move goes.
+export const MOVE_WEEKS = 8
+
+function historyOf(all, mine, weekStart, weekEnd) {
+    const from = addDays(weekEnd, -(MOVE_WEEKS * 7 - 1))
+    return all
+        .filter(d => d.date >= from && d.date <= weekEnd && d.perUnit != null && mine(d))
+        .map(d => [d.date, round4(d.perUnit), d.date >= weekStart ? 1 : 0])
+}
+
+// **Codes bought either way are one product on the report** (his, 7 October).
+// The green peppers come as 483508 or 5018758, both went up that week, and
+// the report said Green Peppers twice. Shown as one: the money added up, the
+// change as what the week paid over what it would have at the old prices, and
+// what each code went from and to said in words, because the two can be priced
+// differently. One that looks like a pack read wrong stays on its own.
+function together(moves, raw) {
+    const out = []
+    const groups = new Map()
+    for (const m of moves) {
+        if (!m.group || m.doubtful) { out.push(m); continue }
+        const key = `${m.productId}|${m.group}`
+        if (!groups.has(key)) { groups.set(key, []); out.push(key) }
+        groups.get(key).push(m)
+    }
+    return out.flatMap(m => (typeof m === 'string' ? oneRow(groups.get(m), raw) : [m]))
+}
+
+function oneRow(moves, raw) {
+    const parts = moves.map(m => raw.get(m.key))
+    // Counted differently, a kilo against one each, the quantity under the
+    // row could not be said in one unit, so they stay a row each.
+    if (moves.length === 1 || new Set(parts.map(r => r.unit)).size > 1) return moves
+    const [first] = moves
+    const effect = round2(moves.reduce((t, m) => t + m.effect, 0))
+    const old = parts.reduce((t, r) => t + r.old, 0)
+    const moved = parts.flatMap(r => r.moved)
+    const byCase = parts.every(r => r.byCase) && new Set(moves.map(m => m.per)).size === 1
+    const quantity = byCase
+        ? moved.reduce((t, d) => t + d.cases, 0)
+        : moved.reduce((t, d) => t + (d.perUnit ? d.cost / d.perUnit : 0), 0)
+    const earliest = moves.reduce((a, m) => (m.on < a.on ? m : a), first)
+    const series = moves.flatMap(m => m.series)
+        .filter((p, i, list) => list.findIndex(q => q[0] === p[0] && q[1] === p[1]) === i)
+        .sort((a, b) => a[0].localeCompare(b[0]))
+    const change = old > 0 ? Math.round((effect / old) * 1000) / 10 : first.change
+    return [{
+        ...first,
+        key: `${first.productId}|${first.group}`,
+        code: moves.map(m => m.code).join(', '),
+        codes: moves.map(m => m.code),
+        pack: new Set(moves.map(m => m.pack)).size === 1 ? first.pack : null,
+        change,
+        up: change > 0,
+        effect,
+        split: eachWords({
+            quantity,
+            each: quantity > 0 ? effect / quantity : null,
+            unit: byCase ? 'a case' : parts[0].unit,
+            mixed: true,
+        }),
+        // Each code's own, in words here because the mail says the same.
+        prices: moves.map(m => `${fmtMoney(m.was)} to ${fmtMoney(m.now)} ${m.per} on ${m.code}`).join(', '),
+        deliveries: moves.reduce((t, m) => t + m.deliveries, 0),
+        on: earliest.on,
+        invoice: earliest.invoice,
+        since: moves.map(m => m.since).filter(Boolean).sort()[0] || null,
+        series,
+    }]
 }
 
 // ---------------------------------------------------------------------------
@@ -428,9 +530,20 @@ export function priceMoves(all, { weekStart, weekEnd, codes = [] }) {
 // recipes cost it at when the usual one has never come on an invoice. Never a
 // price rise: the plain wraps costing more than the Santa Maria tortillas is a
 // different thing being dearer, not the tortillas going up.
-export function switchesIn(all, { weekStart, weekEnd, prices = [], codes = [] }) {
+//
+// **Not a version the brand recommends** (his, 7 October): the eggs and the
+// sides boxes come as two versions the brand recommends both of, and buying
+// either is what the brand asked for. **Nor any version of a product the brand
+// leaves free** (recommends 'any', his, 8 October). Unless it reads as the
+// usual one under a new number, which is the one place that is asked.
+export function switchesIn(all, { weekStart, weekEnd, prices = [], codes = [], versions = [] }) {
     const lineage = lineageOf(codes)
     const groups = new Map()
+    const priceById = new Map((prices || []).map(p => [p.id, p]))
+    const recommended = d => {
+        const version = (versions || []).find(v => v.id === priceById.get(d.priceId)?.version_id)
+        return !!version?.is_recommended && version.is_active !== false
+    }
 
     for (const d of all) {
         if (d.date < weekStart || d.date > weekEnd || !d.productId) continue
@@ -444,6 +557,8 @@ export function switchesIn(all, { weekStart, weekEnd, prices = [], codes = [] })
     const out = []
     for (const { usual, list } of groups.values()) {
         const last = list[list.length - 1]
+        const free = last.product?.recommends === 'any'
+        if ((free || recommended(last)) && !looksRenumbered(last, usual)) continue
         const usualLast = lastOf(all, d => d.at < last.at && d.productId === last.productId && isUsual(d, usual, lineage))
         const usualPer = usualLast?.perUnit ?? (usual.row.price_per_unit == null ? null : num(usual.row.price_per_unit))
         const weight = cannotCompare(last)
@@ -474,7 +589,7 @@ export function switchesIn(all, { weekStart, weekEnd, prices = [], codes = [] })
             usualGroup: usual.group,
             renumbered: looksRenumbered(last, usual),
             newer: isNewer(list[0], usual, all, lineage, codes),
-            why: cannot ? (weight ? 'weight' : 'units') : null,
+            why: cannot ? whyNot(last, weight) : null,
             usualPriceId: usual.row.id,
             usualCodeRowId: usual.codeRowId,
             bought: nameOf({ description: last.description }),
@@ -643,7 +758,7 @@ export function recipeGaps(all, { weekStart, weekEnd, prices = [], codes = [], t
         }
 
         if (cannotCompare(last) || outOfReason(averaged ?? last.perUnit, recipe)) {
-            const why = cannotCompare(last) ? 'weight' : 'units'
+            const why = whyNot(last, cannotCompare(last))
             if (thisWeek.length) out.push({ ...base, state: 'cannot', why, gap: null, effect: 0 })
             continue
         }
@@ -705,10 +820,11 @@ export function cameBack(credits, claims, { weekStart, weekEnd, invoices = [] })
                 explained = round2(explained + got)
             }
             const rest = round2(money - explained)
+            const restKind = credit.credit_reason || NOT_LOGGED.value
             if (rest > 0.004) {
-                const kind = credit.credit_reason || NOT_LOGGED.value
-                parts.set(kind, round2(num(parts.get(kind)) + rest))
+                parts.set(restKind, round2(num(parts.get(restKind)) + rest))
             }
+            const linesOf = linesByReason(credit.invoice_lines || [], logged, rest > 0.004 ? restKind : null)
 
             const against = byId.get(credit.credit_of_invoice_id) || null
             const whole = !!against && !!voidedBy(against, [credit])
@@ -731,6 +847,9 @@ export function cameBack(credits, claims, { weekStart, weekEnd, invoices = [] })
                 money,
                 parts: [...parts.entries()].map(([kind, amount]) => ({
                     kind, label: claimKind(kind).label, colour: claimKind(kind).colour, money: amount,
+                    // Only the lines this reason was for, so a credit with two
+                    // reasons does not say "Paprika, Chorizo" under both.
+                    what: linesOf.get(kind) ? listNames(linesOf.get(kind)) : null,
                 })),
                 logged: logged.length > 0,
                 // Money on it nobody has said anything about yet.
@@ -738,6 +857,53 @@ export function cameBack(credits, claims, { weekStart, weekEnd, invoices = [] })
                 given: credit.credit_reason || null,
             }
         })
+}
+
+// Which of a credit note's lines each reason was for (his, 7 October: the
+// paprika and chorizo credit said "Paprika, Chorizo" under short and under
+// wrong item). The same order the credit was shared out in when it was
+// imported: a line whose words match a note from the door, then a line whose
+// money is what a note got, then one each to a note with none yet. What is
+// left is the part nobody logged. Nothing when a line cannot be placed, and
+// the row says the whole credit as before.
+export function linesByReason(lines, claims, restKind) {
+    const named = lines.map(l => ({
+        name: nameOf({ product: l.products, description: l.raw_description }),
+        words: l.raw_description || '',
+        money: round2(Math.abs(num(l.line_total))),
+    }))
+    const owner = new Map()
+    const has = c => [...owner.values()].includes(c)
+    named.forEach((l, i) => {
+        const best = claims
+            .map(c => ({ c, score: similarWords(c.what, l.words) }))
+            .filter(x => x.score > 0)
+            .sort((a, b) => b.score - a.score)[0]
+        if (best) owner.set(i, best.c)
+    })
+    named.forEach((l, i) => {
+        if (owner.has(i)) return
+        const same = claims.find(c => !has(c) && Math.abs(num(c.credited_amount) - l.money) < 0.05)
+        if (same) owner.set(i, same)
+    })
+    named.forEach((l, i) => {
+        if (owner.has(i)) return
+        const free = claims.find(c => !has(c))
+        if (free) owner.set(i, free)
+        else if (restKind) owner.set(i, { kind: restKind })
+    })
+    const out = new Map()
+    named.forEach((l, i) => {
+        const kind = owner.get(i)?.kind
+        if (!kind) return
+        if (!out.has(kind)) out.set(kind, [])
+        out.get(kind).push(l.name)
+    })
+    return out
+}
+
+function listNames(names) {
+    return names.slice(0, 3).join(', ') + (names.length > 3 ? ` and ${names.length - 3} more` : '')
 }
 
 // What is still owed, oldest first. Every open claim, not only this week's:
@@ -824,7 +990,7 @@ export function readFrom(documents = []) {
     for (const d of documents || []) {
         const name = d.suppliers?.name || 'A supplier with no name'
         const into = num(d.invoice_lines?.[0]?.count) > 0 ? read : typed
-        const s = into.get(name) || { name, invoices: 0, credits: 0, money: 0 }
+        const s = into.get(name) || { name, invoices: 0, credits: 0, money: 0, withoutCodes: !!d.suppliers?.works_without_codes }
         if (d.document_type === 'credit') s.credits += 1
         else s.invoices += 1
         s.money = round2(s.money + num(d.total_amount))
@@ -850,35 +1016,151 @@ export function readFrom(documents = []) {
             + `so ${one ? 'its' : 'their'} prices are not checked here.`
     }
 
-    return { read: readList, typed: typedList, words: `Read from: ${first}${second}` }
+    return {
+        read: readList,
+        typed: typedList,
+        words: `Read from: ${first}${second}`,
+        // Only what was read, for the page once Not checked says the rest.
+        readWords: `Read from: ${first}`,
+    }
 }
 
+// ---------------------------------------------------------------------------
+// The brand's recommendations
+// ---------------------------------------------------------------------------
+
+// What was bought this week that the brand does not recommend, each product
+// once: what was bought beside what the brand recommends, each at its price
+// per unit here, so 1 kg bags and a 5 kg case are both a price a kg (layout
+// D, his pick of 4 October).
+//
+// Only lines read off an invoice can say which version was bought. Not a
+// product the brand leaves free (recommends any), nor one with nothing
+// recommended yet, which would have nothing to set beside it. `versions` are
+// the brand's versions of the products bought; `prices` this restaurant's,
+// which say which version each line was bought as.
+//
+// A line waiting on a review is said under that, not here as well.
+export function notAsRecommended(all, { weekStart, weekEnd, prices = [], versions = [], requests = [] }) {
+    const priceById = new Map((prices || []).map(p => [p.id, p]))
+    const waiting = new Set((requests || []).filter(r => r.supplier_code && !r.answer)
+        .map(r => versionKey(r.supplier_id, r.supplier_code)))
+    const out = new Map()
+    for (const d of all) {
+        if (d.date < weekStart || d.date > weekEnd || !d.productId || !d.priceId) continue
+        if (waiting.has(d.key)) continue
+        if (d.product?.recommends === 'any') continue
+        const bought = (versions || []).find(v => v.id === priceById.get(d.priceId)?.version_id)
+        if (!bought || bought.is_recommended) continue
+        const recommended = (versions || [])
+            .filter(v => v.product_id === d.productId && v.is_recommended && v.is_active !== false)
+        if (!recommended.length) continue
+
+        const seen = out.get(d.productId)
+        if (seen) {
+            seen.cases += d.cases
+            seen.money = round2(seen.money + d.cost)
+            continue
+        }
+        // The recommended version this restaurant has a price for, when one
+        // does, so its price can stand beside what was paid.
+        const priced = recommended
+            .map(v => ({ v, price: (prices || []).find(p => p.version_id === v.id) }))
+        const best = priced.find(x => x.price) || priced[0]
+        const name = d.product?.name || nameOf(d)
+        out.set(d.productId, {
+            name,
+            unit: unitOf(d),
+            // Not a per piece price shown as a price a kg.
+            bought: { name: bought.name || nameOf({ description: d.description }), per: cannotCompare(d) ? null : d.perUnit },
+            recommended: {
+                name: best.v.name || name,
+                per: best.price && num(best.price.price_per_unit) > 0 ? num(best.price.price_per_unit) : null,
+            },
+            others: recommended.length - 1,
+            cases: d.cases,
+            money: round2(d.cost),
+        })
+    }
+    return [...out.values()].sort((a, b) => b.money - a.money || a.name.localeCompare(b.name))
+}
+
+// What was bought this week that is waiting on a review: the lines carrying a
+// code a store manager sent for review, with when it was sent. It does not
+// hold the report (his answer, 3 October), so it is said here instead.
+export function waitingOnReview(all, requests = [], { weekStart, weekEnd }) {
+    return (requests || [])
+        .filter(r => r.supplier_code && !r.answer)
+        .map(r => {
+            const key = versionKey(r.supplier_id, r.supplier_code)
+            const lines = all.filter(d => d.key === key && d.date >= weekStart && d.date <= weekEnd)
+            if (!lines.length) return null
+            return {
+                name: r.name || nameOf({ description: r.description || lines[0].description }),
+                cases: lines.reduce((t, d) => t + d.cases, 0),
+                loose: lines.reduce((t, d) => t + d.loose, 0),
+                money: round2(lines.reduce((t, d) => t + d.cost, 0)),
+                sent: stampDay(r.sent_at),
+            }
+        })
+        .filter(Boolean)
+        .sort((a, b) => b.money - a.money || a.name.localeCompare(b.name))
+}
+
+// The money this week that nothing here could check, supplier by supplier:
+// typed in as a total, either because the supplier works without codes or
+// because its invoices are not read line by line yet.
+export function notChecked(read) {
+    return (read?.typed || []).map(s => ({
+        name: s.name,
+        money: s.money,
+        why: s.withoutCodes ? 'works without codes' : 'not read line by line yet',
+    }))
+}
+
+// **Read against the prices as they stood at the end of the week**, when
+// `events` are given, so deciding next week's invoices cannot change what this
+// week says (his, 5 October). `prices` are today's: the buttons on the
+// decisions change today's prices, so a decision that today's prices have
+// already moved past says so instead of offering one. See withSince.
 export function priceWeek({
     weekStart, weekEnd, lines = [], credits = [], invoices = [], prices = [], codes = [], claims = [],
-    documents = [], threshold = DEFAULT_RECIPE_GAP, today = null,
+    documents = [], versions = [], requests = [], events = null, threshold = DEFAULT_RECIPE_GAP, today = null,
 }) {
     const all = deliveriesFrom(lines, credits)
-    const scope = { weekStart, weekEnd, prices, codes, threshold }
+    const then = events ? pricesAsAt(prices, events, weekEnd) : prices
+    const scope = { weekStart, weekEnd, prices: then, codes, threshold }
 
     const everyMove = priceMoves(all, scope)
     const moves = everyMove.filter(m => !m.doubtful)
     const doubtful = everyMove.filter(m => m.doubtful)
-    const switches = switchesIn(all, scope)
-    const recipes = recipeGaps(all, scope)
-    const suggestions = usualSuggestions(all, scope)
+    const switches = withSince(switchesIn(all, { ...scope, versions }), 'switch', prices, codes)
+    // One fixed since, so recipes cost now what the week paid, is not said
+    // at all (his, 7 October): only a costing still out of line is news.
+    const recipes = withSince(recipeGaps(all, scope), 'recipe', prices, codes)
+        .filter(r => !fixedSince(r, threshold))
+    const suggestions = withSince(usualSuggestions(all, scope), 'usual', prices, codes)
     const back = cameBack(credits, claims, { weekStart, weekEnd, invoices })
     const owed = stillOwed(claims)
     // `invoices` also carries the documents this week's claims were put
     // against, so each one knows the day its delivery landed.
     const earlier = fromEarlierWeeks(claims, invoices, weekStart)
     const fresh = newCodes(all, scope)
+    const read = readFrom(documents)
+    const brand = notAsRecommended(all, { weekStart, weekEnd, prices: then, versions, requests })
+    const waiting = waitingOnReview(all, requests, { weekStart, weekEnd })
+    const unchecked = notChecked(read)
 
     const section = {
         weekStart,
         weekEnd,
-        checkedOn: today,
+        // As at the end of the week, once it is over.
+        checkedOn: events && today && today > weekEnd ? weekEnd : today,
         threshold: num(threshold),
-        readFrom: readFrom(documents),
+        readFrom: read,
+        notRecommended: brand,
+        waiting,
+        notChecked: unchecked,
         moves,
         doubtful,
         switches,
@@ -902,9 +1184,56 @@ export function priceWeek({
             earlier: round2(earlier.reduce((t, e) => t + e.money, 0)),
             earlierCount: earlier.length,
             newCodes: fresh.length,
+            notRecommended: brand.length,
+            waiting: round2(waiting.reduce((t, w) => t + w.money, 0)),
+            notChecked: round2(unchecked.reduce((t, u) => t + u.money, 0)),
         },
     }
     return { ...section, words: priceWords(section) }
+}
+
+// What recipes cost a product from today, per unit.
+function costsNow(productId, prices, codes) {
+    const usual = usualFor(productId, prices, codes)
+    if (!usual) return null
+    const units = num(usual.row.units_per_case)
+    const per = usual.row.price_per_unit != null
+        ? num(usual.row.price_per_unit)
+        : (units > 0 ? num(usual.row.price_per_case) / units : null)
+    return { id: usual.row.id, per: per == null ? null : round4(per) }
+}
+
+// Whether a decision still means what it says, against today's prices.
+//
+// The section is read as at the end of its week and the buttons change today's
+// prices. Costing week 38's recipes from what week 38 paid, after week 39 moved
+// them on, would pull them back, so a decision today's prices have moved past
+// carries `since`, what recipes cost it at now and whether the one bought is
+// the usual one now, and is not asked about. A switch whose usual one has
+// changed since the same, or joining codes would join it to the old one.
+function withSince(items, kind, prices, codes) {
+    return items.map(item => {
+        const now = costsNow(item.productId, prices, codes)
+        const moved = kind === 'recipe'
+            ? !now || now.id !== item.priceId || now.per !== item.recipe
+            : kind === 'switch'
+                ? !now || now.id !== item.usualPriceId
+                : !now || now.id !== item.fromPriceId || per4Of(prices, item.fromPriceId) !== item.recipe
+                    || per4Of(prices, item.priceId) !== item.rowPer
+        const usual = !!now && now.id === (kind === 'switch' ? item.ownPriceId : item.priceId)
+        return moved ? { ...item, since: { per: now?.per ?? null, usual } } : item
+    })
+}
+
+// Whether recipes cost now what the week paid, near enough.
+function fixedSince(item, threshold) {
+    if (!item.since || item.since.per == null || item.state === 'cannot') return false
+    return Math.abs(pctOf(item.paid, item.since.per)) <= num(threshold)
+}
+
+const per4Of = (prices, id) => {
+    const row = (prices || []).find(p => p.id === id)
+    return row?.price_per_unit == null ? null : round4(row.price_per_unit)
 }
 
 // What came back, by reason, biggest first. One bar on the page and one list
@@ -921,21 +1250,38 @@ export function reasonsOf(back) {
     return [...by.values()].sort((a, b) => b.money - a.money)
 }
 
+// The credit notes under each reason, biggest reason first, each with the part
+// of it that reason covers, so the reason is said once with its total rather
+// than on every line (his, 4 October). A credit note with two reasons is under
+// both. The mail has its own copy, kept equal by a test.
+export function backByReason(reasons, back) {
+    return (reasons || []).map(reason => ({
+        reason,
+        rows: (back || []).flatMap(b => b.parts
+            .filter(part => part.kind === reason.kind)
+            .map(part => ({ ...b, what: part.what || b.what, money: part.money, whole: b.money }))),
+    }))
+}
+
 // What somebody has to decide, for the box at the top.
 //
 // Recipes that are off, a version bought three times in a row, and a credit
 // with nobody saying why. Nothing in it has to be answered this week: leave it
 // and it is on next week's report too.
+//
+// Not one today's prices have moved past (`since`): there is nothing left to
+// decide about it from this week, and its button would pull today's back.
 export function decisionsFrom(section) {
     if (!section) return []
+    const suggestions = (section.suggestions || []).filter(s => !s.since)
     return [
-        ...(section.recipes || []).filter(r => r.state !== 'cannot').map(r => ({ kind: 'recipe', ...r })),
-        ...(section.suggestions || []).map(s => ({ kind: 'usual', ...s })),
+        ...(section.recipes || []).filter(r => r.state !== 'cannot' && !r.since).map(r => ({ kind: 'recipe', ...r })),
+        ...suggestions.map(s => ({ kind: 'usual', ...s })),
         // A switch that reads like the usual one under a new number, and that
         // is not already being asked about as three in a row.
         ...(section.switches || [])
-            .filter(s => s.renumbered && renumberPlan(s)
-                && !(section.suggestions || []).some(g => g.productId === s.productId && g.code === s.code))
+            .filter(s => s.renumbered && !s.since && renumberPlan(s)
+                && !suggestions.some(g => g.productId === s.productId && g.code === s.code))
             .map(s => ({ kind: 'renumbered', ...s })),
         ...(section.back || []).filter(b => b.unexplained > 0).map(b => ({ kind: 'reason', ...b })),
     ]

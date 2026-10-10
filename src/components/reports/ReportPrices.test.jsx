@@ -59,6 +59,23 @@ function draw(over = {}) {
 }
 
 describe('prices and suppliers on the report', () => {
+    // His, 7 October: the chart says how far back it goes.
+    it('draws each price move with the first and last day under it', () => {
+        draw()
+        expect(screen.getByRole('img', { name: /^The price at each delivery from .+ to .+/ })).toBeInTheDocument()
+    })
+
+    // Read as at the end of the week, and today's prices moved on since.
+    it('says what recipes cost now and offers nothing to press for it', () => {
+        const recipes = section.recipes.map(r => ({ ...r, since: { per: 1.2939, usual: true } }))
+        const switches = section.switches.map(s => ({ ...s, since: { per: 0.3303, usual: true } }))
+        draw({ section: { ...section, recipes, switches } })
+        expect(screen.getByText('Since this week, recipes cost it at €1.29 each.')).toBeInTheDocument()
+        expect(screen.getByText('It is the usual one now.')).toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: /Cost from/ })).not.toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: /usually buy both/ })).not.toBeInTheDocument()
+    })
+
     it('opens with the four figures', () => {
         draw()
         expect(screen.getAllByText('Same product, new price').length).toBeGreaterThan(0)
@@ -78,10 +95,53 @@ describe('prices and suppliers on the report', () => {
         expect(tomatoes).toHaveTextContent('Tomatoes -27%')
     })
 
-    it('says first which suppliers it was read from and which were only typed in', () => {
+    // What was read first, and the typed totals under Not checked, each
+    // supplier with its money and why (his design, 4 October).
+    it('says first which suppliers it was read from, and lists the typed ones as not checked', () => {
         draw()
         const line = screen.getByText('Read from:').closest('p')
-        expect(line).toHaveTextContent('Read from: Sysco Ireland (1 invoice). BWG Foodservice was typed in as a total')
+        expect(line).toHaveTextContent('Read from: Sysco Ireland (1 invoice).')
+        expect(line).not.toHaveTextContent('typed in')
+        const card = screen.getByText('Not checked').closest('div.rounded-lg')
+        expect(card).toHaveTextContent('BWG Foodservice')
+        expect(card).toHaveTextContent('not read line by line yet')
+    })
+
+    // Layout D: each product with what was bought beside what the brand
+    // recommends, and what is waiting on a review under it.
+    it('sets what was bought beside what the brand recommends', () => {
+        draw({
+            section: {
+                ...section,
+                notRecommended: [{
+                    name: 'Flour Tortilla (Burritos)', unit: 'each', cases: 3, money: 99.09, others: 1,
+                    bought: { name: 'Plain wraps 12"', per: 0.3303 },
+                    recommended: { name: 'Santa Maria wrap 12"', per: null },
+                }],
+                waiting: [{ name: 'Corn Tortilla 6 inch', cases: 1, loose: 0, money: 41.8, sent: '2026-09-18' }],
+                totals: { ...section.totals, waiting: 41.8 },
+            },
+        })
+        const brand = screen.getByText('Not as the brand recommends').closest('div.rounded-lg')
+        expect(brand).toHaveTextContent('3 cases, €99.09')
+        expect(brand).toHaveTextContent('BoughtPlain wraps 12"€0.33 each')
+        expect(brand).toHaveTextContent('RecommendedSanta Maria wrap 12"No price hereand 1 more recommended')
+        const waiting = screen.getByText('Waiting on a review').closest('div.rounded-lg')
+        expect(waiting).toHaveTextContent('1 case, sent Fri 18 Sept')
+        expect(waiting).toHaveTextContent('€41.80')
+    })
+
+    it('says when everything bought was what the brand recommends', () => {
+        draw({ section: { ...section, notRecommended: [] } })
+        expect(screen.getByText('Everything bought was what the brand recommends.')).toBeInTheDocument()
+    })
+
+    // A report sent before Not checked existed still says it all in one line.
+    it('keeps the whole line on a report sent before', () => {
+        const { notChecked, ...before } = section
+        expect(notChecked).toBeDefined()
+        render(<ReportPrices section={before} />)
+        expect(screen.getByText('Read from:').closest('p')).toHaveTextContent('BWG Foodservice was typed in as a total')
     })
 
     it('says under a price move how many came at the new price and what each one came to', () => {

@@ -11,7 +11,7 @@
 
 import { CHART_TOTAL } from '@/lib/reportChart'
 import { brandFor } from '@/lib/platformBrand'
-import { fmtMoney } from '@/lib/format'
+import { fmtMoney, fmtPct, num } from '@/lib/format'
 
 // The axis wants €14,750 rather than €14,750.00. Four gridlines each carrying
 // two zeroes nobody reads is width taken off the chart itself.
@@ -54,7 +54,18 @@ function platformSeries(platforms, totalKey, totalLabel, branded) {
     ]
 }
 
-export function chartSpecs({ onlinePlatforms = [], corporatePlatforms = [] } = {}) {
+// What each platform kept of what it took, a week at a time, and all of them
+// together, as the percentage keys the delivery chart draws. Null where a week
+// has no cost written up or the platform took nothing, so the chart leaves a
+// gap rather than drawing a nought.
+export function deliveryRates(row, platforms = []) {
+    const rate = (cost, taken) => (cost == null || !(num(taken) > 0) ? null : (num(cost) / num(taken)) * 100)
+    const out = { deliveryRate: rate(row.deliveryTotal, row.onlineTotal) }
+    for (const p of platforms) out[`dr_${p.id}`] = rate(row[`d_${p.id}`], row[`p_${p.id}`])
+    return out
+}
+
+export function chartSpecs({ onlinePlatforms = [], corporatePlatforms = [], deliveryTarget = null } = {}) {
     const specs = {}
 
     specs.sales = {
@@ -75,31 +86,29 @@ export function chartSpecs({ onlinePlatforms = [], corporatePlatforms = [] } = {
         ],
     }
 
+    // What each platform kept of its own takings, against the target. His of
+    // 4 October: the percentage is what is aimed at, 30% for every platform,
+    // so the chart draws that and the line it should stay under. Against
+    // total sales it would look small on every platform and say nothing.
     specs.delivery = {
         title: 'What each platform has cost',
-        caption: "The percentage on hover is what that platform kept of its own takings that week, "
-            + 'so forty three percent is only alarming once you can see it was thirty eight in May. '
-            + 'Weeks with no report are left as gaps rather than drawn as nothing.',
-        mailCaption: 'What each platform has cost, week by week.',
+        caption: 'What each platform kept of what it took that week'
+            + (deliveryTarget ? `, against the ${deliveryTarget}% target` : '')
+            + '. Weeks with no report are left as gaps rather than drawn as nothing.',
+        mailCaption: 'What each platform kept of what it took, week by week.',
         pageHeading: true,
-        format: fmtMoney,
-        formatAxis: axis,
+        format: v => fmtPct(v),
+        formatAxis: v => `${Math.round(v)}%`,
+        target: deliveryTarget ? { value: Number(deliveryTarget), label: `${deliveryTarget}% target` } : null,
         empty: 'No week has had its delivery costs entered yet. This fills in as reports are written.',
-        // Each platform's cost is quoted against its own takings, so the figure
-        // on hover is the rate it charged that week. Against total sales it
-        // would look small on every platform and say nothing about any of them.
-        series: [
-            {
-                key: 'deliveryTotal', label: 'All platforms',
-                colour: CHART_TOTAL, heavy: true, shareOf: 'onlineTotal',
-            },
-            ...onlinePlatforms.map(p => ({
-                key: `d_${p.id}`,
-                label: p.name,
-                colour: brandFor(p.name).mark,
-                shareOf: `p_${p.id}`,
-            })),
-        ],
+        // The platforms only, his of 4 October: an average of three rates is
+        // not a rate anybody is charged, and the line to read them against is
+        // the target.
+        series: onlinePlatforms.map(p => ({
+            key: `dr_${p.id}`,
+            label: p.name,
+            colour: brandFor(p.name).mark,
+        })),
     }
 
     specs.earnings = {

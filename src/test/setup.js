@@ -15,8 +15,16 @@ if (inBrowser) {
     // missing.
     await import('@testing-library/jest-dom/vitest')
 
-    const { cleanup } = await import('@testing-library/react')
+    const { cleanup, configure } = await import('@testing-library/react')
     const { afterEach, vi } = await import('vitest')
+
+    // findBy and waitFor give up after a second by default. Alone a screen
+    // answers in a few hundred milliseconds, but with the whole suite running
+    // at once a busy machine passed that second three times on 4 October, on
+    // three different screens, and one of them failed the checks on GitHub
+    // after a merge. Five seconds is still a failure for anything truly
+    // missing, and stops the machine's load reading as a broken screen.
+    configure({ asyncUtilTimeout: 5000 })
 
     // React Testing Library leaves the last render in the document otherwise,
     // so the next test in the file finds two of everything and getByText throws.
