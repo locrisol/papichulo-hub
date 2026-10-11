@@ -151,3 +151,17 @@ describe('always high priority', () => {
         expect(written('checklist_tasks', 'update')[0]).toMatchObject({ high_priority: true })
     })
 })
+
+// His, 11 October: photos can be made not required for a whole list.
+describe('photos required on a list', () => {
+    it('is on by default and saved off from its tick box', async () => {
+        const user = open()
+        const box = await screen.findByLabelText(/Photos are required/)
+        expect(box).toBeChecked()
+        await user.click(box)
+        expect(screen.getByText(/Off for now: tasks marked as needing a photo can be ticked without one./)).toBeInTheDocument()
+        await user.click(screen.getByRole('button', { name: 'Save' }))
+        await waitFor(() => expect(written('checklists', 'update')).toHaveLength(1))
+        expect(written('checklists', 'update')[0]).toMatchObject({ photos_required: false })
+    })
+})
