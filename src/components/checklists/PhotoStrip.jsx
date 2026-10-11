@@ -5,7 +5,7 @@ import useSignedUrls from '@/components/checklists/useSignedUrls'
 
 // The photos on a tick, small, and large when one is pressed.
 //
-// A photo that has not been submitted yet can be taken off again, which is
+// A photo not on a saved tick yet can be taken off again, which is
 // what onRemove is for. One that has been saved never can: that is the proof,
 // and the bucket refuses to let anybody but the nightly job delete it.
 //

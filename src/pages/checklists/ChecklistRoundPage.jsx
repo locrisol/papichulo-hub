@@ -24,30 +24,38 @@ import useKeepPlace from '@/components/checklists/useKeepPlace'
 
 // Working through one round of a list, on the phone.
 //
-// Tick as you go, then Submit. Until Submit a tick can be taken off again,
-// which is what a mis-tap needs; after it nobody can change it, and that is
-// the database's rule rather than this screen's (see checklist_tick_guard).
-// His answer, 27 September. The time kept is when the box was ticked, not when
-// Submit was pressed, so ten things done over an hour and saved at the end
-// still say when each was done.
+// Each tick is saved the moment it is made (his, 11 October). It used to wait
+// on the phone for Submit, which was easy to leave without pressing. Once
+// saved nobody can change it, and that is the database's rule rather than this
+// screen's (see checklist_tick_guard), with one exception for a mis-tap: the
+// one who ticked it can take it back for ten minutes while the round is open.
 //
-// Ticks not yet submitted are kept on this phone, so a page closed by mistake
-// or a phone that went to sleep does not lose them. They are only this phone's:
-// somebody else on another phone sees what has been submitted and nothing else.
+// A tick that could not be saved, on bad wifi say, is kept on this phone and
+// tried again by itself every half minute, on coming back to the page and when
+// the phone is back online, so a page closed or a phone gone to sleep loses
+// nothing.
 //
-// A photo is uploaded the moment it is taken, because that is where the waiting
-// is, and only joined to its tick on Submit. The nightly job keeps it while the
-// round is open, however long that is, and deletes one never submitted once the
-// round has ended. A photo that went missing anyway is refused on Submit, with
-// the task named, so it can be taken again.
+// A task that needs a photo has its photos taken first and is then ticked,
+// which saves the tick with them. A photo is uploaded the moment it is taken;
+// the nightly job keeps it while the round is open and deletes one never used
+// once the round has ended. A list can say its photos are not needed for now
+// (photos_required), and then a photo is offered but not asked for.
 //
 // Several people work one list at once (seven on a deep clean, 10 October), so
-// what the others have submitted is read again every half minute, on coming
-// back to the page, and on every tick. Without it a phone only learnt of
-// somebody else's tick on Submit, and two people could do the same thing.
+// what the others have saved is read again every half minute, on coming back
+// to the page, and on every tick.
 
 // Shorter than the stock take's minute: a tick is quicker than a count.
 const REFRESH_EVERY = 30 * 1000
+
+// How long a mis-tap can be taken back. The database holds the same number
+// (checklist_ticks_delete).
+const TAKE_BACK_MINUTES = 10
+
+// A tick waiting on this phone. Kept from before saving was immediate, a tick
+// with nothing saying otherwise is one waiting to be saved; ticked: false is
+// photos taken for a task not ticked yet.
+const isTick = entry => Boolean(entry) && entry.ticked !== false
 
 export default function ChecklistRoundPage() {
     const { id } = useParams()
@@ -69,6 +77,12 @@ export default function ChecklistRoundPage() {
     const [version, setVersion] = useState(0)
     const [loading, setLoading] = useState(true)
     const [busy, setBusy] = useState(false)
+    // The tasks being saved right now, so a second tap does not save twice.
+    const [saving, setSaving] = useState(() => new Set())
+    const savingRef = useRef(new Set())
+    const pendingRef = useRef(pending)
+    // Read on every refresh, for how long a tick can still be taken back.
+    const [now, setNow] = useState(() => Date.now())
     const [error, setError] = useState('')
     const [notice, setNotice] = useState('')
     const [before, setBefore] = useState({ round: null, ticks: [] })
@@ -81,8 +95,8 @@ export default function ChecklistRoundPage() {
 
     const draftKey = `checklist-draft-${id}`
 
-    // A saved note says so for a few seconds and goes. It sits by the Submit
-    // button, since the page no longer moves to show what is at the top.
+    // A note says so for a few seconds and goes. It sits in the bar at the
+    // bottom, since the page no longer moves to show what is at the top.
     useEffect(() => {
         if (!notice) return
         const timer = setTimeout(() => setNotice(''), 6000)
@@ -153,39 +167,105 @@ export default function ChecklistRoundPage() {
         load()
     }, [load, version])
 
-    // Only the round and its ticks: the list itself does not change while it
-    // is being worked. A read that fails is left for the next one.
+    // If storage is off the ticks still work, they just do not survive the
+    // page closing.
+    const keep = useCallback(next => {
+        pendingRef.current = next
+        setPending(next)
+        if (Object.keys(next).length) writeStored('local', draftKey, JSON.stringify(next))
+        else forgetStored('local', draftKey)
+    }, [draftKey])
+
+    // What waits on this phone, changed from what it is right now rather than
+    // from what the screen last drew: two photos landing between two draws
+    // would otherwise keep only the second.
+    const change = useCallback(fn => keep(fn(pendingRef.current)), [keep])
+
+    // The round, its ticks, and the list and its tasks, since a manager may
+    // have changed whether a photo is needed while it is being worked. A read
+    // that fails is left for the next one.
     const refresh = useCallback(async () => {
         const [r, ticks] = await Promise.all([
             supabase.from('checklist_rounds').select('*').eq('id', id).maybeSingle(),
             supabase.from('checklist_ticks').select('*').eq('round_id', id),
         ])
+        setNow(Date.now())
         if (r.error || ticks.error || !r.data) return
+        const [l, tsk] = await Promise.all([
+            supabase.from('checklists').select('*').eq('id', r.data.checklist_id).single(),
+            supabase.from('checklist_tasks').select('*').eq('checklist_id', r.data.checklist_id),
+        ])
         setRound(r.data)
         setSaved(ticks.data)
-    }, [id])
+        if (!l.error && l.data) setList(l.data)
+        if (!tsk.error && tsk.data) setTasks(tsk.data)
+        // Anything waiting here that is saved now, by this phone or another,
+        // waits no longer.
+        const done = new Set(ticks.data.map(t => t.task_id))
+        const waitingHere = pendingRef.current
+        if (Object.keys(waitingHere).some(k => done.has(k))) {
+            keep(Object.fromEntries(Object.entries(waitingHere).filter(([k]) => !done.has(k))))
+        }
+    }, [id, keep])
+
+    // Saves the ticks waiting on this phone, one at a time so one refused does
+    // not hold up the rest. only names the ones to try; none means all.
+    const save = useCallback(async only => {
+        const waitingHere = pendingRef.current
+        const ids = (only || Object.keys(waitingHere))
+            .filter(k => isTick(waitingHere[k]) && !savingRef.current.has(k))
+        if (!ids.length) return
+        ids.forEach(k => savingRef.current.add(k))
+        setSaving(new Set(savingRef.current))
+        let theirs = 0
+        let failed = null
+        for (const k of ids) {
+            const entry = pendingRef.current[k]
+            if (!isTick(entry)) continue
+            // Somebody on another phone may have ticked the same thing in the
+            // meantime. Theirs stands, and this says so rather than failing.
+            const { data, error: saveErr } = await supabase
+                .from('checklist_ticks')
+                .upsert([{ round_id: id, task_id: k, done_at: entry.at, photos: entry.photos || [] }],
+                    { onConflict: 'round_id,task_id', ignoreDuplicates: true })
+                .select('task_id')
+            if (saveErr) { failed = saveErr; continue }
+            if (!data?.length) theirs += 1
+            const after = { ...pendingRef.current }
+            delete after[k]
+            keep(after)
+        }
+        ids.forEach(k => savingRef.current.delete(k))
+        setSaving(new Set(savingRef.current))
+        if (failed) setError(friendlyError(failed))
+        else setError('')
+        if (theirs) setNotice(`${theirs === 1 ? 'One was' : `${theirs} were`} already done by somebody else, so theirs stands.`)
+        // After the read, which is what ends the round once everything is ticked.
+        await refresh()
+        recountBadges()
+    }, [id, keep, refresh, recountBadges])
 
     const isOpen = Boolean(round && !round.ended_at)
     useEffect(() => {
         if (!isOpen) return
-        const again = () => { if (document.visibilityState !== 'hidden') refresh() }
+        const again = () => {
+            if (document.visibilityState === 'hidden') return
+            refresh()
+            save()
+        }
+        // Anything left waiting from before goes as soon as the round is up.
+        save()
         window.addEventListener('focus', again)
+        window.addEventListener('online', again)
         document.addEventListener('visibilitychange', again)
         const timer = setInterval(again, REFRESH_EVERY)
         return () => {
             window.removeEventListener('focus', again)
+            window.removeEventListener('online', again)
             document.removeEventListener('visibilitychange', again)
             clearInterval(timer)
         }
-    }, [isOpen, refresh])
-
-    // If storage is off the ticks still work, they just do not survive the
-    // page closing.
-    function keep(next) {
-        setPending(next)
-        if (Object.keys(next).length) writeStored('local', draftKey, JSON.stringify(next))
-        else forgetStored('local', draftKey)
-    }
+    }, [isOpen, refresh, save])
 
     // What the round shows. For one still going, the list as it is now. For
     // one that has ended, the list as it is now plus anything ticked on it
@@ -212,7 +292,12 @@ export default function ChecklistRoundPage() {
     const byTask = new Map(saved.map(t => [t.task_id, t]))
     const all = tickable(tree)
     const allIds = new Set(all.map(t => t.id))
-    const waiting = Object.keys(pending).filter(k => allIds.has(k) && !byTask.has(k))
+    const waiting = Object.keys(pending).filter(k => allIds.has(k) && !byTask.has(k) && isTick(pending[k]))
+    // A task marked as needing a photo needs one unless the list says not.
+    const photosRequired = list.photos_required !== false
+    const needsPhoto = t => Boolean(t.needs_photo) && photosRequired
+    const canTakeBack = tick => open && tick.done_by === user?.id
+        && now - new Date(tick.saved_at).getTime() < TAKE_BACK_MINUTES * 60 * 1000
     const done = all.filter(t => byTask.has(t.id)).length
     const outcome = roundOutcome(round)
     // High priority until it is ticked: left undone last time, or marked on
@@ -244,64 +329,65 @@ export default function ChecklistRoundPage() {
         keepAt(button, () => showOpen(allOpen ? new Set() : new Set(shown)))
     }
 
+    // A tap saves it. A tap on one still waiting to be saved takes it off
+    // again, keeping any photos, which is the mis-tap undo before it is saved.
     function toggle(task) {
-        if (!open || byTask.has(task.id)) return
-        const next = { ...pending }
-        if (next[task.id]) delete next[task.id]
-        else {
-            next[task.id] = { at: new Date().toISOString(), photos: [] }
-            // Somebody may have just done it. If so it turns to theirs now,
-            // not at Submit.
-            refresh()
-        }
-        keep(next)
+        if (!open || byTask.has(task.id) || saving.has(task.id)) return
+        let saveIt = false
+        change(current => {
+            const entry = current[task.id]
+            const next = { ...current }
+            if (isTick(entry)) {
+                if (entry.photos?.length) next[task.id] = { ...entry, ticked: false }
+                else delete next[task.id]
+                return next
+            }
+            if (needsPhoto(task) && !entry?.photos?.length) return current
+            saveIt = true
+            next[task.id] = { at: new Date().toISOString(), photos: entry?.photos || [], ticked: true }
+            return next
+        })
+        if (saveIt) save([task.id])
     }
 
+    // A photo waits with its task until the task is ticked, so one to four
+    // can be taken first.
     function addPhoto(task, path) {
-        setPending(before => {
-            const entry = before[task.id] || { at: new Date().toISOString(), photos: [] }
-            const next = { ...before, [task.id]: { ...entry, photos: [...entry.photos, path] } }
-            writeStored('local', draftKey, JSON.stringify(next))
-            return next
+        change(current => {
+            const entry = current[task.id] || { at: null, photos: [], ticked: false }
+            return { ...current, [task.id]: { ...entry, photos: [...entry.photos, path] } }
         })
         refresh()
     }
 
     function removePhoto(task, path) {
-        const entry = pending[task.id]
-        if (!entry) return
-        const photos = entry.photos.filter(p => p !== path)
-        const next = { ...pending }
-        // A thing that needs a photo is not ticked without one.
-        if (task.needs_photo && !photos.length) delete next[task.id]
-        else next[task.id] = { ...entry, photos }
-        keep(next)
+        change(current => {
+            const entry = current[task.id]
+            if (!entry || isTick(entry)) return current
+            const photos = entry.photos.filter(x => x !== path)
+            const next = { ...current }
+            if (photos.length) next[task.id] = { ...entry, photos }
+            else delete next[task.id]
+            return next
+        })
     }
 
-    async function submit() {
-        const rows = waiting.map(taskId => ({
-            round_id: round.id, task_id: taskId, done_at: pending[taskId].at, photos: pending[taskId].photos || [],
-        }))
-        if (!rows.length) return
-        setBusy(true)
+    // A mis-tap taken back. The database says whether it still can be: only
+    // the one who ticked it, within ten minutes, with the round still open.
+    // Its photos come back to the phone, ready to tick it again.
+    async function takeBack(tick) {
         setError('')
-        setNotice('')
-        // Somebody on another phone may have ticked the same thing in the
-        // meantime. Theirs stands, and this says so rather than failing.
-        const { data, error: saveErr } = await supabase
-            .from('checklist_ticks')
-            .upsert(rows, { onConflict: 'round_id,task_id', ignoreDuplicates: true })
-            .select('task_id')
-        setBusy(false)
-        if (saveErr) { setError(friendlyError(saveErr)); load(); return }
-        const got = new Set((data || []).map(d => d.task_id))
-        const theirs = rows.length - got.size
-        keep({})
-        setNotice(theirs
-            ? `${got.size} saved. ${theirs === 1 ? 'One was' : `${theirs} were`} already done by somebody else, so theirs stands.`
-            : `${got.size === 1 ? '1 tick' : `${got.size} ticks`} saved.`)
-        // After the read, which is what ends the round once everything is ticked.
-        await load()
+        const { data, error: delErr } = await supabase.from('checklist_ticks').delete().eq('id', tick.id).select('id')
+        if (delErr) { setError(friendlyError(delErr)); return }
+        if (!data?.length) {
+            setError(`That tick can no longer be taken back: only for ${TAKE_BACK_MINUTES} minutes, and only by whoever made it.`)
+            refresh()
+            return
+        }
+        if (tick.photos?.length && !tick.photos_gone_at) {
+            change(current => ({ ...current, [tick.task_id]: { at: null, photos: tick.photos, ticked: false } }))
+        }
+        await refresh()
         recountBadges()
     }
 
@@ -459,7 +545,8 @@ export default function ChecklistRoundPage() {
                     )}
                     {open && (
                         <p className={hintClass}>
-                            Tick things as you do them, then press Submit. Once submitted, a tick cannot be changed.
+                            Each tick is saved as soon as you make it. A mis-tap can be undone for {TAKE_BACK_MINUTES} minutes.
+                            {!photosRequired && ' Photos are not needed on this list for now.'}
                         </p>
                     )}
 
@@ -467,6 +554,10 @@ export default function ChecklistRoundPage() {
                         <p className="text-sm text-muted mt-6">There is nothing on this list yet.</p>
                     )}
 
+                    {/* The row handlers read what waits on this phone through
+                        change(), and only when tapped, never while drawing.
+                        The rule cannot see that through the props object. */}
+                    {/* eslint-disable-next-line react-hooks/refs */}
                     {tree.map(({ category, elements }) => {
                         if (!elements.length) return null
                         const leaves = elements.flatMap(e => (e.subs.length ? e.subs : [e.task]))
@@ -507,6 +598,9 @@ export default function ChecklistRoundPage() {
                                             const rowProps = t => ({
                                                 key: t.id, task: t, tick: byTask.get(t.id), draft: pending[t.id], lastDone: lastDone.get(t.id),
                                                 open, restaurantId: round.restaurant_id, roundId: round.id,
+                                                needsPhoto: needsPhoto(t), saving: saving.has(t.id),
+                                                canTakeBack: byTask.has(t.id) && canTakeBack(byTask.get(t.id)),
+                                                onTakeBack: () => takeBack(byTask.get(t.id)),
                                                 onToggle: () => toggle(t), onAddPhoto: path => addPhoto(t, path),
                                                 onRemovePhoto: path => removePhoto(t, path), onError: setError,
                                                 urgent: open && isUrgent(t),
@@ -558,8 +652,8 @@ export default function ChecklistRoundPage() {
                 </div>
             </div>
 
-            {/* What was saved, or what went wrong, shows here by the Submit
-                button rather than at the top: the page holds its place now, so
+            {/* What went wrong, or what is still waiting, shows here at the
+                bottom rather than at the top: the page holds its place, so
                 anything at the top would be out of sight. */}
             {((open && waiting.length > 0) || notice || error) && (
                 <div className="flex-shrink-0 sticky bottom-0 md:static z-20 bg-white border-t border-border shadow-[0_-4px_12px_rgba(0,0,0,0.08)] px-4 md:px-7 py-3">
@@ -570,9 +664,10 @@ export default function ChecklistRoundPage() {
                             <div className={`flex items-center gap-3 ${error || notice ? 'mt-3' : ''}`}>
                                 <p className="text-sm text-gray-700 flex-1 min-w-0">
                                     {waiting.length === 1 ? '1 tick' : `${waiting.length} ticks`} not saved yet.
+                                    {' '}{saving.size ? 'Saving...' : 'Tried again by itself.'}
                                 </p>
-                                <button type="button" onClick={submit} disabled={busy} className={primaryButton('lg')}>
-                                    {busy ? 'Saving...' : 'Submit'}
+                                <button type="button" onClick={() => save()} disabled={saving.size > 0} className={primaryButton('lg')}>
+                                    Try again
                                 </button>
                             </div>
                         )}
@@ -598,18 +693,22 @@ function Chevron({ open }) {
 
 // One thing to tick. The whole name is the label, so a thumb landing anywhere
 // on the words ticks it rather than having to find the box.
-function TickRow({ task, tick, draft, lastDone, open, urgent, restaurantId, roundId, onToggle, onAddPhoto, onRemovePhoto, onError }) {
+function TickRow({
+    task, tick, draft, lastDone, open, urgent, restaurantId, roundId, needsPhoto, saving,
+    canTakeBack, onTakeBack, onToggle, onAddPhoto, onRemovePhoto, onError,
+}) {
     const photos = draft?.photos || []
-    const needsOne = task.needs_photo && !tick && !photos.length
+    const waiting = isTick(draft)
+    const needsOne = needsPhoto && !tick && !photos.length
     const inputId = `tick-${task.id}`
 
     return (
         <div
             id={`row-${task.id}`}
             data-place
-            className={`flex items-start gap-3 px-4 py-3 min-h-[56px] scroll-mt-32 ${tick ? 'bg-green-50' : urgent ? 'bg-red-50 shadow-[inset_4px_0_0_#b91c1c]' : draft ? 'bg-accent-light/50' : ''}`}
+            className={`flex items-start gap-3 px-4 py-3 min-h-[56px] scroll-mt-32 ${tick ? 'bg-green-50' : urgent ? 'bg-red-50 shadow-[inset_4px_0_0_#b91c1c]' : waiting ? 'bg-accent-light/50' : ''}`}
         >
-            {/* A submitted tick is a solid green mark rather than a box. A
+            {/* A saved tick is a solid green mark rather than a box. A
                 disabled box is drawn grey by the browser, which reads as "you
                 cannot tick this" when what it means is "done". The box is still
                 there for a screen reader, just not drawn. */}
@@ -624,8 +723,8 @@ function TickRow({ task, tick, draft, lastDone, open, urgent, restaurantId, roun
                 id={inputId}
                 type="checkbox"
                 className={tick ? 'sr-only' : `${checkbox} mt-0.5`}
-                checked={Boolean(tick || draft)}
-                disabled={!open || Boolean(tick) || (task.needs_photo && !photos.length)}
+                checked={Boolean(tick) || waiting}
+                disabled={!open || Boolean(tick) || saving || (needsPhoto && !photos.length)}
                 onChange={onToggle}
             />
             <div className="flex-1 min-w-0">
@@ -635,9 +734,20 @@ function TickRow({ task, tick, draft, lastDone, open, urgent, restaurantId, roun
                 {task.guide_photos?.length > 0 && <GuidePicture paths={task.guide_photos} name={task.name} />}
 
                 {tick ? (
-                    <p className="text-xs text-green-900 mt-1.5">Done by {tick.done_by_name}, {stampDateTime(tick.done_at)}</p>
-                ) : draft ? (
-                    <p className="text-xs text-accent-ink font-semibold mt-1.5">Ticked, not saved yet</p>
+                    <p className="text-xs text-green-900 mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <span>Done by {tick.done_by_name}, {stampDateTime(tick.done_at)}</span>
+                        {canTakeBack && (
+                            <button type="button" onClick={onTakeBack} className="inline-flex items-center min-h-[36px] px-2 -mx-2 -my-2 font-semibold underline underline-offset-2 text-green-900 hover:text-green-700">
+                                Undo
+                            </button>
+                        )}
+                    </p>
+                ) : waiting ? (
+                    <p className="text-xs text-accent-ink font-semibold mt-1.5">
+                        {saving ? 'Saving...' : 'Not saved yet. It is tried again by itself.'}
+                    </p>
+                ) : photos.length ? (
+                    <p className="text-xs text-accent-ink font-semibold mt-1.5">Photo added. Tick it to save it.</p>
                 ) : (
                     <p className="text-xs text-muted mt-1.5">
                         {lastDone ? `Last done ${doneDay(lastDone)}` : 'Not done before'}
@@ -646,9 +756,11 @@ function TickRow({ task, tick, draft, lastDone, open, urgent, restaurantId, roun
                 )}
 
                 {tick && <PhotoStrip paths={tick.photos || []} gone={Boolean(tick.photos_gone_at)} />}
-                {!tick && <PhotoStrip paths={photos} onRemove={open ? onRemovePhoto : undefined} />}
+                {!tick && <PhotoStrip paths={photos} onRemove={open && !waiting ? onRemovePhoto : undefined} />}
 
-                {open && !tick && task.needs_photo && (
+                {/* Offered on a task marked for a photo even when the list
+                    says photos are not needed for now, just not asked for. */}
+                {open && !tick && !waiting && task.needs_photo && (
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                         <PhotoButton
                             restaurantId={restaurantId}
@@ -657,7 +769,7 @@ function TickRow({ task, tick, draft, lastDone, open, urgent, restaurantId, roun
                             onAdded={onAddPhoto}
                             onError={onError}
                         >
-                            {photos.length ? 'Add another photo' : 'Take photo'}
+                            {photos.length ? 'Add another photo' : needsPhoto ? 'Take photo' : 'Add photo (optional)'}
                         </PhotoButton>
                         {needsOne && <span className="text-xs text-amber-800">Needs a photo before it can be ticked.</span>}
                     </div>
@@ -678,7 +790,8 @@ function readOpen(key) {
     }
 }
 
-// Ticks this phone has not submitted yet, if it kept any.
+// Ticks this phone has not saved yet, and photos taken for a task not ticked
+// yet, if it kept any.
 function readDraft(key) {
     try {
         const kept = JSON.parse(readStored('local', key) || '{}')

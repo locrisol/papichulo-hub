@@ -134,7 +134,7 @@ export default function ChecklistsPage() {
         <>
             <PageHeader
                 title="Checklists"
-                subtitle={`${activeRestaurant.name} · tick things off as you go, then press Submit.`}
+                subtitle={`${activeRestaurant.name} · tick things off as you go. Each tick is saved straight away.`}
             >
                 {isManager && (
                     <>

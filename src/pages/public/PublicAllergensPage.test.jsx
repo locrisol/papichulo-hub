@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { makeQuery, mockSupabase, renderWithRouter } from '@/test/helpers'
@@ -109,7 +109,9 @@ describe('the title on the tab', () => {
             </MemoryRouter>,
         )
         await screen.findByText('Plain Rice')
-        expect(document.title).toBe('Point Campus allergens')
+        // Set just after the dishes show, so on a slow machine it can land a
+        // moment after this sees them (the checks on PR 306).
+        await waitFor(() => expect(document.title).toBe('Point Campus allergens'))
         unmount()
         expect(document.title).toBe('Papi Chulo Hub')
     })
