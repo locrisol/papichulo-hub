@@ -403,6 +403,7 @@ function TaskLine({ task, bold, hasSubs, onEdit, onRemove, onAddSub }) {
                         </span>
                     )}
                     {task.needs_photo && !hasSubs && <span className={`${badge} bg-amber-100 text-amber-900`}>Needs a photo</span>}
+                    {task.high_priority && <span className={`${badge} bg-red-700 text-white`}>{hasSubs ? 'High priority, all under it' : 'High priority'}</span>}
                 </div>
             </div>
             <div className="flex flex-wrap gap-2 flex-shrink-0">
@@ -503,6 +504,7 @@ function TaskDialog({ list, editing, restaurantId, onClose, onSaved }) {
     const original = task?.guide_photos || []
     const [pictures, setPictures] = useState(original)
     const [needsPhoto, setNeedsPhoto] = useState(Boolean(task?.needs_photo))
+    const [highPriority, setHighPriority] = useState(Boolean(task?.high_priority))
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState('')
     // Uploaded while this was open and not saved to anything yet.
@@ -525,7 +527,7 @@ function TaskDialog({ list, editing, restaurantId, onClose, onSaved }) {
         if (!name.trim()) return
         setSaving(true)
         setError('')
-        const row = { name: name.trim(), how_to: howTo.trim() || null, guide_photos: pictures, needs_photo: needsPhoto }
+        const row = { name: name.trim(), how_to: howTo.trim() || null, guide_photos: pictures, needs_photo: needsPhoto, high_priority: highPriority }
         const { error: saveErr } = task
             ? await supabase.from('checklist_tasks').update(row).eq('id', task.id)
             : await supabase.from('checklist_tasks').insert({
@@ -602,6 +604,21 @@ function TaskDialog({ list, editing, restaurantId, onClose, onSaved }) {
                     {editing.hasSubs && (
                         <p className={hintClass}>This element is ticked through its sub elements, so a photo is asked for on those instead.</p>
                     )}
+                    {/* His, 11 October: for the couple of things that matter
+                        more than the rest every time. On an element with sub
+                        elements it makes every one of them red. */}
+                    <label className={`${checkRow} cursor-pointer`}>
+                        <input type="checkbox" className={checkbox} checked={highPriority} onChange={e => setHighPriority(e.target.checked)} />
+                        <span>
+                            <span className="text-sm font-medium text-gray-900 block">Always high priority</span>
+                            <span className={hintClass}>
+                                {editing.hasSubs
+                                    ? 'Every sub element under it is shown in red at the top of every round until it is ticked.'
+                                    : 'Shown in red at the top of every round until it is ticked.'}
+                                {' '}Best kept for a couple of things, or red stops standing out.
+                            </span>
+                        </span>
+                    </label>
                 </div>
                 <div className={modalFooter}>
                     <button type="button" onClick={close} className={secondaryButton}>Cancel</button>

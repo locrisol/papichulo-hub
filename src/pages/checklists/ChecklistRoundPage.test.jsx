@@ -31,12 +31,12 @@ const EARLIER = {
 const EARLIER_TICKS = [{ round_id: 'r0', task_id: 't2' }]
 
 let db
-function setUp({ round = ROUND, saved = SAVED, upsertResult, earlier = null } = {}) {
+function setUp({ round = ROUND, saved = SAVED, upsertResult, earlier = null, earlierTicks = EARLIER_TICKS, categories = CATEGORIES, tasks = TASKS } = {}) {
     const upsert = makeQuery(upsertResult || { data: [{ task_id: 't3' }], error: null })
     db = mockSupabase({
         checklists: { data: LIST, error: null },
-        checklist_categories: { data: CATEGORIES, error: null },
-        checklist_tasks: { data: TASKS, error: null },
+        checklist_categories: { data: categories, error: null },
+        checklist_tasks: { data: tasks, error: null },
         checklist_last_done: { data: [{ task_id: 't3', done_at: '2026-09-15T10:00:00+00:00' }], error: null },
     })
     const plain = db.from.getMockImplementation()
@@ -51,7 +51,7 @@ function setUp({ round = ROUND, saved = SAVED, upsertResult, earlier = null } = 
         let roundId
         const read = makeQuery()
         read.eq = vi.fn((column, value) => { if (column === 'round_id') roundId = value; return read })
-        read.then = (resolve, reject) => Promise.resolve({ data: roundId === 'r0' ? EARLIER_TICKS : [...saved], error: null }).then(resolve, reject)
+        read.then = (resolve, reject) => Promise.resolve({ data: roundId === 'r0' ? earlierTicks : [...saved], error: null }).then(resolve, reject)
         read.upsert = vi.fn(() => upsert)
         return read
     })
@@ -82,6 +82,11 @@ function open() {
 
 beforeEach(() => {
     localStorage.clear()
+    sessionStorage.clear()
+    // Categories start closed. Everything below is about the rows, so Kitchen
+    // is open on this tab, as if it had been opened before; the closing and
+    // opening have their own tests.
+    sessionStorage.setItem('checklist-open-r1', JSON.stringify(['c1']))
     role = 'employee'
     setUp()
 })
@@ -209,6 +214,77 @@ describe('several people on one list', () => {
     })
 })
 
+// His, 11 October: every category starts closed, a heading opens only its own,
+// and one button opens or closes them all without changing size.
+describe('categories that open and close', () => {
+    const BAR = { id: 'c2', checklist_id: 'L1', name: 'Bar', sort_order: 2, is_active: true }
+    const TAPS = { id: 't5', checklist_id: 'L1', category_id: 'c2', parent_id: null, name: 'Clean the taps', sort_order: 1, is_active: true }
+    const heading = name => screen.getByRole('button', { name: new RegExp(`^${name}`) })
+
+    beforeEach(() => {
+        sessionStorage.clear()
+        setUp({ categories: [...CATEGORIES, BAR], tasks: [...TASKS, TAPS] })
+    })
+
+    it('starts with every category closed', async () => {
+        open()
+        expect(await screen.findByText('Kitchen')).toBeInTheDocument()
+        expect(heading('Kitchen')).toHaveAttribute('aria-expanded', 'false')
+        expect(heading('Bar')).toHaveAttribute('aria-expanded', 'false')
+        expect(screen.queryByLabelText('Clean toaster sides')).toBeNull()
+        expect(screen.queryByLabelText('Clean the taps')).toBeNull()
+    })
+
+    it('opens only the category whose heading is tapped', async () => {
+        const user = open()
+        await screen.findByText('Kitchen')
+        await user.click(heading('Bar'))
+        expect(screen.getByLabelText('Clean the taps')).toBeInTheDocument()
+        expect(screen.queryByLabelText('Clean toaster sides')).toBeNull()
+        await user.click(heading('Bar'))
+        expect(screen.queryByLabelText('Clean the taps')).toBeNull()
+    })
+
+    it('opens and closes them all from one button that keeps its size', async () => {
+        const user = open()
+        const button = await screen.findByRole('button', { name: /Expand all/ })
+        // Both words are always in it and only one shows.
+        expect(within(button).getByText('Collapse all')).toHaveClass('invisible')
+        await user.click(button)
+        expect(screen.getByLabelText('Clean toaster sides')).toBeInTheDocument()
+        expect(screen.getByLabelText('Clean the taps')).toBeInTheDocument()
+        expect(button).toHaveAttribute('aria-expanded', 'true')
+        expect(within(button).getByText('Expand all')).toHaveClass('invisible')
+        expect(within(button).getByText('Collapse all')).not.toHaveClass('invisible')
+        await user.click(button)
+        expect(screen.queryByLabelText('Clean the taps')).toBeNull()
+    })
+
+    it('says Expand all again once any one is closed', async () => {
+        const user = open()
+        await user.click(await screen.findByRole('button', { name: /Expand all/ }))
+        await user.click(heading('Bar'))
+        expect(within(screen.getByRole('button', { name: /Expand all/ })).getByText('Expand all')).not.toHaveClass('invisible')
+    })
+
+    it('remembers which are open on this tab, for a reload', async () => {
+        const user = open()
+        await screen.findByText('Kitchen')
+        await user.click(heading('Bar'))
+        expect(JSON.parse(sessionStorage.getItem('checklist-open-r1'))).toEqual(['c2'])
+    })
+
+    it('says on a closed heading that something in it is High priority, and opens it to go there', async () => {
+        setUp({ earlier: EARLIER, categories: [...CATEGORIES, BAR], tasks: [...TASKS, TAPS] })
+        const user = open()
+        const box = await screen.findByRole('note')
+        expect(within(heading('Kitchen')).getByText('2 high priority')).toBeInTheDocument()
+        await user.click(within(box).getByRole('button', { name: 'Mop the floor' }))
+        expect(screen.getByLabelText('Mop the floor')).toBeInTheDocument()
+        expect(heading('Kitchen')).toHaveAttribute('aria-expanded', 'true')
+    })
+})
+
 describe('a round that has ended', () => {
     it('says so, and nothing on it can be ticked', async () => {
         setUp({ round: { ...ROUND, ended_at: '2026-09-23T09:00:00+00:00', ended_by: 'u9', ended_by_name: 'Ciara' } })
@@ -254,7 +330,7 @@ describe('what was left last time', () => {
         open()
         const box = await screen.findByRole('note')
         expect(within(box).getByText('High priority')).toBeInTheDocument()
-        expect(within(box).getByText(/These were not done last time, so do them first. Ciara ended that round on Friday/)).toBeInTheDocument()
+        expect(within(box).getByText(/These were not done last time, so do them first. Ciara ended the last round on Friday/)).toBeInTheDocument()
         expect(within(box).queryByText(/saying/)).toBeNull()
         expect(within(box).getByRole('button', { name: 'Small toaster area: Clean toaster sides' })).toBeInTheDocument()
         expect(within(box).getByRole('button', { name: 'Mop the floor' })).toBeInTheDocument()
@@ -277,5 +353,44 @@ describe('what was left last time', () => {
         await screen.findByText('Kitchen')
         expect(screen.queryByRole('note')).toBeNull()
         expect(screen.queryByText('High priority')).toBeNull()
+    })
+})
+
+// His, 11 October: a couple of things marked on the list as always High
+// priority, red on every round until ticked. Marked on an element with sub
+// elements, every sub element under it is.
+describe('always high priority', () => {
+    const marking = (...ids) => TASKS.map(t => (ids.includes(t.id) ? { ...t, high_priority: true } : t))
+
+    it('puts a marked task in red at the top until it is ticked', async () => {
+        setUp({ tasks: marking('t4') })
+        open()
+        const box = await screen.findByRole('note')
+        expect(within(box).getByText('This is always high priority on this list, so do it first.')).toBeInTheDocument()
+        expect(within(box).getByRole('button', { name: 'Mop the floor' })).toBeInTheDocument()
+        const row = screen.getByLabelText('Mop the floor').closest('[id^="row-"]')
+        expect(row.className).toMatch(/bg-red-50/)
+        expect(within(row).getByText('High priority')).toBeInTheDocument()
+    })
+
+    it('makes every sub element red when the element is marked, until each is ticked', async () => {
+        setUp({ tasks: marking('t1') })
+        open()
+        const box = await screen.findByRole('note')
+        // Clean under the toaster is already ticked, so only the sides are left.
+        expect(within(box).getByRole('button', { name: 'Small toaster area: Clean toaster sides' })).toBeInTheDocument()
+        expect(within(box).queryByRole('button', { name: /Clean under the toaster/ })).toBeNull()
+        expect(screen.getByLabelText('Clean toaster sides').closest('[id^="row-"]').className).toMatch(/bg-red-50/)
+        expect(screen.getByLabelText('Clean under the toaster').closest('[id^="row-"]').className).not.toMatch(/bg-red-50/)
+        expect(within(screen.getByText('Small toaster area').closest('[id^="group-"]')).getAllByText('High priority')).not.toHaveLength(0)
+    })
+
+    it('says which is which when some were left last time and some are marked', async () => {
+        setUp({ tasks: marking('t4'), earlier: EARLIER, earlierTicks: [{ round_id: 'r0', task_id: 't2' }, { round_id: 'r0', task_id: 't4' }] })
+        open()
+        const box = await screen.findByRole('note')
+        expect(within(box).getByText(/^Do these first. Ciara ended the last round on/)).toBeInTheDocument()
+        expect(within(box).getByText('Kitchen · Not done last time')).toBeInTheDocument()
+        expect(within(box).getByText('Kitchen · Always high priority')).toBeInTheDocument()
     })
 })

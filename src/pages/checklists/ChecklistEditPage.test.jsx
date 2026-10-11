@@ -137,3 +137,17 @@ describe('guide pictures', () => {
         expect(written('checklist_tasks', 'update')[0].guide_photos).toEqual(['r1/guides/m1.jpg', 'r1/guides/m3.jpg', 'r1/guides/m4.jpg'])
     })
 })
+
+// His, 11 October: a couple of things marked as always High priority.
+describe('always high priority', () => {
+    it('is saved from its tick box and shown on the task', async () => {
+        const user = open()
+        const row = (await screen.findByText('Mop the floor')).closest('li')
+        expect(within(row).queryByText('High priority')).toBeNull()
+        await user.click(within(row).getByRole('button', { name: 'Edit' }))
+        await user.click(screen.getByLabelText(/Always high priority/))
+        await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Save' }))
+        await waitFor(() => expect(written('checklist_tasks', 'update')).toHaveLength(1))
+        expect(written('checklist_tasks', 'update')[0]).toMatchObject({ high_priority: true })
+    })
+})
