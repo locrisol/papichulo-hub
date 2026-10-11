@@ -1,6 +1,7 @@
 # Migrations
 
-**Empty. The next one is `001`.**
+**Numbering started again at `001` after the fold of 10 October. Whatever is
+in here was added since.**
 
 The design lives in `../schema.sql`, written by hand and grouped by what each
 part is for, and `../seed.sql` has the rows and scheduled jobs it cannot start
@@ -9,8 +10,8 @@ from here that means **new functionality**, not catching up on anything.
 
 ## Adding one
 
-1. Write `001_what_it_does.sql` in here. One change, and a comment at the top
-   saying why, not what.
+1. Write `001_what_it_does.sql` in here, with the next number free. One
+   change, and a comment at the top saying why, not what.
 2. Fold the same change into `../schema.sql` by hand, where it belongs by
    subject rather than at the end. A scheduled job goes in `../seed.sql`.
 3. Commit the two together. A change in one and not the other is how the two

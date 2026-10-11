@@ -1345,6 +1345,7 @@ CREATE TABLE IF NOT EXISTS "public"."checklist_tasks" (
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "guide_photos" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
+    "high_priority" boolean DEFAULT false NOT NULL,
     CONSTRAINT "checklist_tasks_has_a_name" CHECK (("btrim"("name") <> ''::"text")),
     CONSTRAINT "checklist_tasks_not_its_own_parent" CHECK ((("parent_id" IS NULL) OR ("parent_id" <> "id"))),
     CONSTRAINT "checklist_tasks_a_few_pictures" CHECK (("cardinality"("guide_photos") <= 4))
@@ -1359,6 +1360,7 @@ COMMENT ON TABLE "public"."checklist_tasks" IS 'An element of a list, or a sub e
 COMMENT ON COLUMN "public"."checklist_tasks"."how_to" IS 'How to do it, shown under the name: use the blue roll and the green spray.';
 COMMENT ON COLUMN "public"."checklist_tasks"."guide_photos" IS 'Up to four pictures showing what is meant, in checklist-photos under <restaurant>/guides/. Hidden behind a button on the phone. Each is kept until it is taken off the task, or the task or its list is.';
 COMMENT ON COLUMN "public"."checklist_tasks"."needs_photo" IS 'It cannot be ticked without a photo of it done.';
+COMMENT ON COLUMN "public"."checklist_tasks"."high_priority" IS 'Always High priority: shown in red at the top of every round until it is ticked. On an element with sub elements, every sub element under it is High priority.';
 
 CREATE TABLE IF NOT EXISTS "public"."checklist_rounds" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
