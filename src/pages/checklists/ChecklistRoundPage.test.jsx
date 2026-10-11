@@ -31,10 +31,11 @@ const EARLIER = {
 const EARLIER_TICKS = [{ round_id: 'r0', task_id: 't2' }]
 
 let db
-function setUp({ round = ROUND, saved = SAVED, upsertResult, earlier = null, earlierTicks = EARLIER_TICKS, categories = CATEGORIES, tasks = TASKS } = {}) {
+function setUp({ round = ROUND, saved = SAVED, upsertResult, deleteResult, list = LIST, earlier = null, earlierTicks = EARLIER_TICKS, categories = CATEGORIES, tasks = TASKS } = {}) {
     const upsert = makeQuery(upsertResult || { data: [{ task_id: 't3' }], error: null })
+    const taken = makeQuery(deleteResult || { data: [{ id: 'k9' }], error: null })
     db = mockSupabase({
-        checklists: { data: LIST, error: null },
+        checklists: { data: list, error: null },
         checklist_categories: { data: categories, error: null },
         checklist_tasks: { data: tasks, error: null },
         checklist_last_done: { data: [{ task_id: 't3', done_at: '2026-09-15T10:00:00+00:00' }], error: null },
@@ -53,6 +54,7 @@ function setUp({ round = ROUND, saved = SAVED, upsertResult, earlier = null, ear
         read.eq = vi.fn((column, value) => { if (column === 'round_id') roundId = value; return read })
         read.then = (resolve, reject) => Promise.resolve({ data: roundId === 'r0' ? earlierTicks : [...saved], error: null }).then(resolve, reject)
         read.upsert = vi.fn(() => upsert)
+        read.delete = vi.fn(() => taken)
         return read
     })
     db.storage.from.mockImplementation(() => ({
@@ -125,36 +127,49 @@ describe('the list as it reads', () => {
     })
 })
 
-describe('ticking and submitting', () => {
-    it('holds a tick on the phone until Submit, and lets a mis-tap be undone', async () => {
-        const user = open()
-        await user.click(await screen.findByLabelText('Clean toaster sides'))
-        expect(screen.getByText('Ticked, not saved yet')).toBeInTheDocument()
-        expect(screen.getByRole('button', { name: 'Submit' })).toBeInTheDocument()
-        expect(JSON.parse(localStorage.getItem('checklist-draft-r1'))).toHaveProperty('t3')
-        await user.click(screen.getByLabelText('Clean toaster sides'))
-        expect(screen.queryByRole('button', { name: 'Submit' })).toBeNull()
-        expect(localStorage.getItem('checklist-draft-r1')).toBeNull()
-    })
+const sentTicks = () => db.from.mock.results.map(r => r.value).filter(q => q.upsert?.mock?.calls.length)
+    .flatMap(q => q.upsert.mock.calls)
 
-    it('saves what was ticked, with the time it was ticked, and forgets the draft', async () => {
+// His, 11 October: a tick is saved the moment it is made. Submit used to hold
+// them on the phone, and it was easy to leave without pressing it.
+describe('ticking', () => {
+    it('saves a tick the moment it is made, with the time it was ticked', async () => {
         const user = open()
         await user.click(await screen.findByLabelText('Clean toaster sides'))
-        await user.click(screen.getByRole('button', { name: 'Submit' }))
-        expect(await screen.findByText('1 tick saved.')).toBeInTheDocument()
-        const sent = db.from.mock.results.map(r => r.value).find(q => q.upsert?.mock?.calls.length)
-        const [sentRows, sentOptions] = sent.upsert.mock.calls[0]
-        expect(sentRows).toEqual([{ round_id: 'r1', task_id: 't3', done_at: expect.any(String), photos: [] }])
-        expect(sentOptions).toEqual({ onConflict: 'round_id,task_id', ignoreDuplicates: true })
-        expect(localStorage.getItem('checklist-draft-r1')).toBeNull()
+        await waitFor(() => expect(sentTicks()).toHaveLength(1))
+        const [rows, options] = sentTicks()[0]
+        expect(rows).toEqual([{ round_id: 'r1', task_id: 't3', done_at: expect.any(String), photos: [] }])
+        expect(options).toEqual({ onConflict: 'round_id,task_id', ignoreDuplicates: true })
+        expect(screen.queryByRole('button', { name: 'Submit' })).toBeNull()
+        await waitFor(() => expect(localStorage.getItem('checklist-draft-r1')).toBeNull())
     })
 
     it('says so when somebody else ticked it first', async () => {
         setUp({ upsertResult: { data: [], error: null } })
         const user = open()
         await user.click(await screen.findByLabelText('Clean toaster sides'))
-        await user.click(screen.getByRole('button', { name: 'Submit' }))
         expect(await screen.findByText(/One was already done by somebody else, so theirs stands./)).toBeInTheDocument()
+    })
+
+    it('keeps a tick that could not be saved, says so, and tries again', async () => {
+        setUp({ upsertResult: { data: null, error: { message: 'Failed to fetch' } } })
+        const user = open()
+        await user.click(await screen.findByLabelText('Clean toaster sides'))
+        expect(await screen.findByText('Not saved yet. It is tried again by itself.')).toBeInTheDocument()
+        expect(screen.getByText(/1 tick not saved yet/)).toBeInTheDocument()
+        expect(JSON.parse(localStorage.getItem('checklist-draft-r1')).t3.ticked).toBe(true)
+        await user.click(screen.getByRole('button', { name: 'Try again' }))
+        await waitFor(() => expect(sentTicks()).toHaveLength(2))
+    })
+
+    it('lets one not saved yet be taken off again, the mis-tap undo before saving', async () => {
+        setUp({ upsertResult: { data: null, error: { message: 'Failed to fetch' } } })
+        const user = open()
+        await user.click(await screen.findByLabelText('Clean toaster sides'))
+        await screen.findByText('Not saved yet. It is tried again by itself.')
+        await user.click(screen.getByLabelText('Clean toaster sides'))
+        expect(screen.getByLabelText('Clean toaster sides')).not.toBeChecked()
+        expect(localStorage.getItem('checklist-draft-r1')).toBeNull()
     })
 
     it('will not tick something that needs a photo until it has one', async () => {
@@ -164,25 +179,84 @@ describe('ticking and submitting', () => {
         expect(screen.getByRole('button', { name: 'Take photo' })).toBeInTheDocument()
     })
 
-    it('keeps ticks from before the page was closed', async () => {
+    // From before saving was immediate: ticks left waiting for Submit go by
+    // themselves when the page opens.
+    it('saves ticks left waiting on the phone as soon as the round opens', async () => {
         localStorage.setItem('checklist-draft-r1', JSON.stringify({ t3: { at: '2026-09-22T10:00:00.000Z', photos: [] } }))
         open()
-        expect(await screen.findByText('Ticked, not saved yet')).toBeInTheDocument()
-        expect(screen.getByText('1 tick not saved yet.')).toBeInTheDocument()
+        await waitFor(() => expect(sentTicks()).toHaveLength(1))
+        expect(sentTicks()[0][0]).toEqual([{ round_id: 'r1', task_id: 't3', done_at: '2026-09-22T10:00:00.000Z', photos: [] }])
     })
 
     // A private window, or a browser told to keep nothing, refuses the store.
-    // The tick still works; it only does not survive the page closing.
-    it('still ticks when the browser will not keep anything', async () => {
+    // The tick is still saved.
+    it('still saves when the browser will not keep anything', async () => {
         const refuse = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('refused') })
         try {
             const user = open()
             await user.click(await screen.findByLabelText('Clean toaster sides'))
-            expect(screen.getByText('Ticked, not saved yet')).toBeInTheDocument()
-            expect(screen.getByRole('button', { name: 'Submit' })).toBeInTheDocument()
+            await waitFor(() => expect(sentTicks()).toHaveLength(1))
         } finally {
             refuse.mockRestore()
         }
+    })
+})
+
+// A mis-tap once saved: the one who ticked it can take it back for ten
+// minutes while the round is open. The database holds the same rule.
+describe('taking a tick back', () => {
+    const mine = minutesAgo => ({
+        id: 'k5', round_id: 'r1', task_id: 't3', done_by: 'u1', done_by_name: 'Aoife',
+        done_at: new Date(Date.now() - minutesAgo * 60000).toISOString(),
+        saved_at: new Date(Date.now() - minutesAgo * 60000).toISOString(), photos: [],
+    })
+
+    it('offers Undo on your own tick for ten minutes, and takes it back', async () => {
+        setUp({ saved: [...SAVED, mine(2)] })
+        const user = open()
+        const row = (await screen.findByLabelText('Clean toaster sides')).closest('[id^="row-"]')
+        await user.click(within(row).getByRole('button', { name: 'Undo' }))
+        const ticks = db.from.mock.results.map(r => r.value).find(q => q.delete?.mock?.calls.length)
+        expect(ticks.delete).toHaveBeenCalled()
+        expect(ticks.delete.mock.results[0].value.eq).toHaveBeenCalledWith('id', 'k5')
+    })
+
+    it('does not offer it after ten minutes', async () => {
+        setUp({ saved: [...SAVED, mine(11)] })
+        open()
+        const row = (await screen.findByLabelText('Clean toaster sides')).closest('[id^="row-"]')
+        expect(within(row).queryByRole('button', { name: 'Undo' })).toBeNull()
+    })
+
+    it('never offers it on somebody else\'s tick', async () => {
+        setUp({ saved: [...SAVED, { ...mine(2), done_by: 'u7', done_by_name: 'Ciara' }] })
+        open()
+        const row = (await screen.findByLabelText('Clean toaster sides')).closest('[id^="row-"]')
+        expect(within(row).queryByRole('button', { name: 'Undo' })).toBeNull()
+    })
+
+    it('says so when the database will not take it back any more', async () => {
+        setUp({ saved: [...SAVED, mine(2)], deleteResult: { data: [], error: null } })
+        const user = open()
+        const row = (await screen.findByLabelText('Clean toaster sides')).closest('[id^="row-"]')
+        await user.click(within(row).getByRole('button', { name: 'Undo' }))
+        expect(await screen.findByText(/That tick can no longer be taken back/)).toBeInTheDocument()
+    })
+})
+
+// His, 11 October: a list can say its photos are not needed for now.
+describe('a list whose photos are not required', () => {
+    it('lets a task marked for a photo be ticked without one, and still offers one', async () => {
+        setUp({ list: { ...LIST, photos_required: false } })
+        const user = open()
+        const box = await screen.findByLabelText('Mop the floor')
+        expect(box).not.toBeDisabled()
+        expect(screen.queryByText('Needs a photo before it can be ticked.')).toBeNull()
+        expect(screen.getByRole('button', { name: 'Add photo (optional)' })).toBeInTheDocument()
+        expect(screen.getByText(/Photos are not needed on this list for now./)).toBeInTheDocument()
+        await user.click(box)
+        await waitFor(() => expect(sentTicks()).toHaveLength(1))
+        expect(sentTicks()[0][0][0]).toMatchObject({ task_id: 't4', photos: [] })
     })
 })
 

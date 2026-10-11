@@ -1301,6 +1301,7 @@ CREATE TABLE IF NOT EXISTS "public"."checklists" (
     "created_by" "uuid",
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "photos_required" boolean DEFAULT true NOT NULL,
     CONSTRAINT "checklists_has_a_name" CHECK (("btrim"("name") <> ''::"text")),
     CONSTRAINT "checklists_repeats_check" CHECK (("repeats" = ANY (ARRAY['weeks'::"text", 'monthly'::"text", 'once'::"text"]))),
     CONSTRAINT "checklists_every_weeks_check" CHECK (((("repeats" = 'weeks'::"text") = ("every_weeks" IS NOT NULL)) AND (("every_weeks" IS NULL) OR (("every_weeks" >= 1) AND ("every_weeks" <= 12))))),
@@ -1314,6 +1315,7 @@ CREATE INDEX "idx_checklists_restaurant" ON "public"."checklists" USING "btree" 
 COMMENT ON TABLE "public"."checklists" IS 'A list staff work through, like the weekly deep clean. Rounds of it are started by anybody and stay open until everything is ticked.';
 COMMENT ON COLUMN "public"."checklists"."repeats" IS 'weeks (every every_weeks weeks, counted from the week of starts_on), monthly (every calendar month) or once.';
 COMMENT ON COLUMN "public"."checklists"."starts_on" IS 'For a list every so many weeks, the week the count starts from. For a list done once, the day it is first due.';
+COMMENT ON COLUMN "public"."checklists"."photos_required" IS 'Whether a task marked as needing a photo really needs one on this list. Off, it can be ticked without one and a photo is still offered. A manager turns it off when the camera cannot be used, without unmarking every task.';
 COMMENT ON COLUMN "public"."checklists"."finish_by" IS 'A list done once can say when it should be finished by. The weekly report says it is late after that day.';
 
 CREATE TABLE IF NOT EXISTS "public"."checklist_categories" (
@@ -1404,7 +1406,7 @@ ALTER TABLE ONLY "public"."checklist_ticks"
 CREATE INDEX "idx_checklist_ticks_restaurant_done" ON "public"."checklist_ticks" USING "btree" ("restaurant_id", "done_at");
 CREATE INDEX "idx_checklist_ticks_task_done" ON "public"."checklist_ticks" USING "btree" ("task_id", "done_at");
 
-COMMENT ON TABLE "public"."checklist_ticks" IS 'Somebody did one thing on a list. Never changed once saved: no update or delete policy, and a trigger refuses a change to anything but the note that its photos were deleted.';
+COMMENT ON TABLE "public"."checklist_ticks" IS 'Somebody did one thing on a list, saved the moment it is ticked. Never changed once saved: a trigger refuses a change to anything but the note that its photos were deleted. The one who ticked it can take it back within ten minutes while the round is open, for a mis-tap; nobody else ever can.';
 COMMENT ON COLUMN "public"."checklist_ticks"."done_at" IS 'When it was ticked on the phone, which can be a while before Submit saved it. Never before the round started and never after it was saved.';
 COMMENT ON COLUMN "public"."checklist_ticks"."done_by_name" IS 'Who did it, as their account was named at the time. Kept here because an employee cannot read anybody else''s account.';
 COMMENT ON COLUMN "public"."checklist_ticks"."photos" IS 'Where its photos are in checklist-photos. The paths stay after the files are deleted, so it still says a photo was taken.';
@@ -2944,7 +2946,9 @@ begin
     if exists (select 1 from public.checklist_tasks k where k.parent_id = t.id and k.is_active) then
         raise exception '% is ticked through the things under it', t.name;
     end if;
-    if t.needs_photo and cardinality(new.photos) = 0 then
+    -- Unless the list says photos are not needed for now (photos_required).
+    if t.needs_photo and cardinality(new.photos) = 0
+       and coalesce((select l.photos_required from public.checklists l where l.id = r.checklist_id), true) then
         raise exception '% needs a photo before it can be ticked', t.name;
     end if;
 
@@ -4454,6 +4458,8 @@ ALTER TABLE "public"."checklist_ticks" ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "checklist_ticks_select" ON "public"."checklist_ticks" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))));
 
 CREATE POLICY "checklist_ticks_insert" ON "public"."checklist_ticks" FOR INSERT TO "authenticated" WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))));
+
+CREATE POLICY "checklist_ticks_delete" ON "public"."checklist_ticks" FOR DELETE TO "authenticated" USING ((("done_by" = ( SELECT "auth"."uid"() )) AND ("saved_at" > ("now"() - '00:10:00'::interval)) AND (EXISTS ( SELECT 1 FROM "public"."checklist_rounds" "r" WHERE (("r"."id" = "checklist_ticks"."round_id") AND ("r"."ended_at" IS NULL))))));
 
 
 -- -- The roster --------------------------------------------------------

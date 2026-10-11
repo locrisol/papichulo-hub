@@ -421,10 +421,12 @@ function ListForm({ list, onSaved, restaurantId, userId, onError }) {
     const [often, setOften] = useState(list ? oftenOf(list) : 'weeks:1')
     const [startsOn, setStartsOn] = useState(list?.starts_on || todayISO())
     const [finishBy, setFinishBy] = useState(list?.finish_by || '')
+    const [photosRequired, setPhotosRequired] = useState(list?.photos_required !== false)
     const [saving, setSaving] = useState(false)
 
     const changed = !list || name.trim() !== list.name || often !== oftenOf(list)
         || startsOn !== list.starts_on || (finishBy || null) !== (list.finish_by || null)
+        || photosRequired !== (list.photos_required !== false)
     const weeks = often.startsWith('weeks:') ? Number(often.slice(6)) : null
 
     async function save(e) {
@@ -437,6 +439,7 @@ function ListForm({ list, onSaved, restaurantId, userId, onError }) {
             every_weeks: weeks,
             starts_on: startsOn || todayISO(),
             finish_by: often === 'once' && finishBy ? finishBy : null,
+            photos_required: photosRequired,
         }
         const { data, error } = list
             ? await supabase.from('checklists').update(row).eq('id', list.id).select().single()
@@ -485,6 +488,20 @@ function ListForm({ list, onSaved, restaurantId, userId, onError }) {
                     </div>
                 )}
             </div>
+            {/* His, 11 October: a way round the photos for a whole list at
+                once, for a day the camera cannot be used, without unmarking
+                every task. Staff on the list see it on their next refresh. */}
+            <label className={`${checkRow} cursor-pointer`}>
+                <input type="checkbox" className={checkbox} checked={photosRequired} onChange={e => setPhotosRequired(e.target.checked)} />
+                <span>
+                    <span className="text-sm font-medium text-gray-900 block">Photos are required</span>
+                    <span className={hintClass}>
+                        {photosRequired
+                            ? 'A task marked as needing a photo cannot be ticked without one.'
+                            : 'Off for now: tasks marked as needing a photo can be ticked without one. A photo is still offered.'}
+                    </span>
+                </span>
+            </label>
             <div className="flex justify-end">
                 <button type="submit" disabled={saving || !name.trim() || !changed} className={primaryButton()}>
                     {saving ? 'Saving...' : list ? 'Save' : 'Make the list'}
