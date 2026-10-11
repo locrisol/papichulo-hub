@@ -37,7 +37,6 @@ const BY_CODE = {
     'PGRST116': 'That could not be found, or you do not have permission to see it.',
 
     // Supabase Auth, when a password is chosen or a link is used.
-    'weak_password': 'That password is too easy to guess. Use at least 12 characters.',
     'same_password': 'That is your current password. Choose a different one.',
     'current_password_mismatch': 'That is not the password you signed in with.',
     'current_password_required': 'Enter the password you signed in with.',
@@ -88,6 +87,7 @@ export async function functionSaid(failed) {
 export function friendlyError(error) {
     if (!error) return ''
 
+    if (error.code === 'weak_password') return passwordRefused(error)
     if (error.code && BY_CODE[error.code]) return BY_CODE[error.code]
 
     const text = (error.message || String(error)).toLowerCase()
@@ -97,6 +97,23 @@ export function friendlyError(error) {
 
     // Something we have not seen. The raw message is more use than a shrug.
     return error.message || 'Something went wrong. Please try again.'
+}
+
+// Why Supabase would not take a password, in its own words. It said "too easy
+// to guess" for everything, so staff trying PapiChulo_7586 and a long random
+// one could not tell what was wanted (11 October). Supabase sends a sentence
+// saying exactly what is missing, the characters it wants or the length, and
+// that sentence is shown. A password found in a leak elsewhere gets one of
+// ours, since its sentence only says it is weak.
+export function passwordRefused(error) {
+    const reasons = error?.reasons || error?.weak_password?.reasons || []
+    if (reasons.includes('pwned')) {
+        return 'That password has turned up in a leak from another website, so it is not accepted. Choose a different one.'
+    }
+    const said = String(error?.message || '').trim()
+    return said
+        ? `That password was not accepted. ${said.endsWith('.') ? said : `${said}.`}`
+        : 'That password was not accepted. Choose a different one.'
 }
 
 // Whether this was a permission refusal, so a screen can react rather than just

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 
@@ -58,16 +58,33 @@ describe('choosing a password from an emailed link', () => {
         expect(window.location.hash).toBe('')
     })
 
-    it('still checks the email on a second try', async () => {
-        auth.updateUser.mockResolvedValueOnce({ error: { code: 'same_password', message: 'same' } })
+    // His, 11 October: the exact reason, not "too easy to guess" for
+    // everything. Supabase's own sentence says what it wants.
+    it('says exactly why Supabase refused a password', async () => {
+        auth.updateUser.mockResolvedValueOnce({ error: {
+            code: 'weak_password', reasons: ['characters'],
+            message: 'Password should contain at least one character of each: abcdefghijklmnopqrstuvwxyz, 0123456789',
+        } })
         open('#token_hash=abc&type=recovery')
         await userEvent.type(screen.getByLabelText('New password'), GOOD)
         await userEvent.click(screen.getByRole('button', { name: 'Save and continue' }))
-        await screen.findByText('That is your current password. Choose a different one.')
-        await userEvent.clear(screen.getByLabelText('New password'))
-        await userEvent.type(screen.getByLabelText('New password'), 'maria and the long word')
+        expect(await screen.findByText('That password was not accepted. Password should contain at least one character of each: abcdefghijklmnopqrstuvwxyz, 0123456789.')).toBeInTheDocument()
+    })
+
+    it('says so plainly when the password is in a leak elsewhere', async () => {
+        auth.updateUser.mockResolvedValueOnce({ error: { code: 'weak_password', reasons: ['pwned'], message: 'Password is known to be weak' } })
+        open('#token_hash=abc&type=recovery')
+        await userEvent.type(screen.getByLabelText('New password'), GOOD)
         await userEvent.click(screen.getByRole('button', { name: 'Save and continue' }))
-        expect(await screen.findByText('Do not use your email in your password.')).toBeInTheDocument()
+        expect(await screen.findByText(/turned up in a leak from another website/)).toBeInTheDocument()
+    })
+
+    it('ticks what the password needs as it is typed', async () => {
+        open('#token_hash=abc&type=recovery')
+        const rule = within(screen.getByRole('list', { name: 'The password needs' })).getByText(/At least 8 characters/).closest('li')
+        expect(rule).toHaveTextContent('not yet')
+        await userEvent.type(screen.getByLabelText('New password'), 'Papi_123')
+        expect(rule).toHaveTextContent('done')
     })
 
     it('welcomes somebody from an invite', () => {
@@ -75,11 +92,11 @@ describe('choosing a password from an emailed link', () => {
         expect(screen.getByRole('heading', { name: 'Welcome to the Hub' })).toBeInTheDocument()
     })
 
-    it('refuses an easy password before using the link', async () => {
+    it('refuses a short password before using the link', async () => {
         open('#token_hash=abc&type=recovery')
-        await userEvent.type(screen.getByLabelText('New password'), 'password1234')
+        await userEvent.type(screen.getByLabelText('New password'), 'short')
         await userEvent.click(screen.getByRole('button', { name: 'Save and continue' }))
-        expect(await screen.findByText(/too easy to guess/)).toBeInTheDocument()
+        expect(await screen.findByText('The password needs: at least 8 characters.')).toBeInTheDocument()
         expect(auth.verifyOtp).not.toHaveBeenCalled()
     })
 

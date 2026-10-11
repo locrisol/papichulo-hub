@@ -42,8 +42,10 @@ session is over a day old is emailed a link to do it.
    without this staff get nothing.
 2. Templates: the four above.
 3. Sign In / Providers, Email: turn on Secure password change and Require
-   current password when changing password. Minimum password length 12,
-   password requirements none. Leave signups off.
+   current password when changing password. Minimum password length 8,
+   password requirements "No required characters", and leaked password
+   protection off: the Hub asks for 8 characters and nothing else (11
+   October 2026). Leave signups off.
 4. Deploy the invite-user function. Its links open APP_URL, the secret the
    mail functions already have, so an invite sent from the dev server still
    points staff at the real site.

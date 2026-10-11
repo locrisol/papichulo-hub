@@ -1,34 +1,29 @@
 import { describe, it, expect } from 'vitest'
-import { passwordProblem, MIN_LENGTH, linkFrom } from '@/lib/password'
+import { passwordProblem, MIN_LENGTH, PASSWORD_RULES, linkFrom } from '@/lib/password'
 
+// His, 11 October: eight characters and nothing else. The first staff could
+// not choose PapiChulo_7586, @PapiChulo_4598 or #WgagasdASUFHASOIDGA.
 describe('what makes a password good enough', () => {
-    it('takes three or four random words', () => {
-        expect(passwordProblem('kettle orange harbour lamp', 'maria@papichulo.ie')).toBe('')
+    it('takes any eight characters or more', () => {
+        expect(MIN_LENGTH).toBe(8)
+        expect(passwordProblem('PapiChulo_7586')).toBe('')
+        expect(passwordProblem('@PapiChulo_4598')).toBe('')
+        expect(passwordProblem('#WgagasdASUFHASOIDGA')).toBe('')
+        expect(passwordProblem('12345678')).toBe('')
     })
 
     it('asks for one when the box is empty', () => {
         expect(passwordProblem('')).toBe('Enter a password.')
     })
 
-    it('asks for twelve characters', () => {
-        expect(MIN_LENGTH).toBe(12)
-        expect(passwordProblem('short words')).toBe('Use at least 12 characters.')
-        expect(passwordProblem('twelve chars')).toBe('')
+    it('says what is missing when it is too short', () => {
+        expect(passwordProblem('seven77')).toBe('The password needs: at least 8 characters.')
     })
 
-    // The leaked password check is Pro plan only, so the obvious ones are
-    // refused here.
-    it('refuses the obvious ones, whatever the case and spacing', () => {
-        expect(passwordProblem('MyPassword2026!')).toMatch(/too easy to guess/)
-        expect(passwordProblem('Papi Chulo Point Campus')).toMatch(/too easy to guess/)
-        expect(passwordProblem('qwertyuiopasdf')).toMatch(/too easy to guess/)
-        expect(passwordProblem('aaaaaaaaaaaaaa')).toMatch(/too easy to guess/)
-    })
-
-    it('refuses the name part of the email', () => {
-        expect(passwordProblem('georgiana is the best', 'georgiana@papichulo.ie')).toBe('Do not use your email in your password.')
-        // A short name part would refuse half the dictionary.
-        expect(passwordProblem('a long sentence about joe', 'joe@papichulo.ie')).toBe('')
+    it('lists each rule, met or not, for the box to tick as somebody types', () => {
+        expect(PASSWORD_RULES.map(r => r.label)).toEqual(['At least 8 characters'])
+        expect(PASSWORD_RULES[0].met('short')).toBe(false)
+        expect(PASSWORD_RULES[0].met('long enough')).toBe(true)
     })
 })
 
