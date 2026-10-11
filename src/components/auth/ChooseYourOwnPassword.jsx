@@ -58,7 +58,7 @@ export default function ChooseYourOwnPassword() {
     async function save(e) {
         e.preventDefault()
         setError('')
-        const wrong = passwordProblem(password, email)
+        const wrong = passwordProblem(password)
         if (wrong) { setError(wrong); return }
         if (fromPassword && !current) { setError('Enter the password you signed in with.'); return }
 

@@ -32,9 +32,7 @@ export default function SetPasswordPage() {
     const [saving, setSaving] = useState(false)
     // Verified once per visit: a password refused after the link was used
     // must not try to use the link again, which would say it has run out.
-    // The address the link signed in as, kept for a second try, so the check
-    // against the email is not skipped then.
-    const [verified, setVerified] = useState('')
+    const [verified, setVerified] = useState(false)
     const [expired, setExpired] = useState(false)
     const [email, setEmail] = useState('')
     const [sent, setSent] = useState(false)
@@ -50,23 +48,18 @@ export default function SetPasswordPage() {
         if (first) { setError(first); return }
 
         setSaving(true)
-        let signedInAs = verified
         if (!verified) {
-            const { data, error: wrong } = await supabase.auth.verifyOtp({ token_hash: link.token, type: link.type })
+            const { error: wrong } = await supabase.auth.verifyOtp({ token_hash: link.token, type: link.type })
             if (wrong) {
                 setSaving(false)
                 if (wrong.code === 'otp_expired' || /expired|invalid/i.test(wrong.message || '')) setExpired(true)
                 else setError(friendlyError(wrong))
                 return
             }
-            signedInAs = data?.user?.email || ' '
-            setVerified(signedInAs)
+            setVerified(true)
             // Spent now, so a reload must not try it again and say it expired.
             window.history.replaceState(null, '', '/set-password')
         }
-
-        const later = passwordProblem(password, signedInAs.trim())
-        if (later) { setSaving(false); setError(later); return }
 
         const { error: refused } = await supabase.auth.updateUser({ password })
         setSaving(false)
