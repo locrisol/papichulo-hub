@@ -381,6 +381,22 @@ describe('carriedItems', () => {
         expect(kinds).not.toContain('review')
         expect(kinds).not.toContain('comment')
     })
+
+    // Week 40 would not open (12 October): the carried rows are saved
+    // together, an action with comments had a meta and the overheads did not,
+    // so theirs went in as null and the database refused it.
+    it('gives every carried row a meta, so they can be saved together', () => {
+        const withComments = [
+            ...previous,
+            { kind: 'action', label: 'Fix the fan', opened_on: '2026-08-02', meta: { comments: [{ day: '2026-08-10', note: 'Engineer Thursday' }] } },
+            { kind: 'refund', label: 'Just Eat', amount: -4.2, meta: { claim: 'waiting' } },
+        ]
+        const out = carriedItems(withComments, '2026-08-16')
+        expect(out.map(i => i.kind).sort()).toEqual(['action', 'action', 'overhead', 'rating', 'refund_claim'])
+        for (const item of out) expect(item.meta).toBeTypeOf('object')
+        expect(out.find(i => i.label === 'Fix the fan').meta.comments).toHaveLength(1)
+        expect(out.find(i => i.label === 'Extraction quote').meta).toEqual({})
+    })
 })
 
 describe('startsOpen', () => {
@@ -790,7 +806,7 @@ describe('reviews and refunds said for each online platform', () => {
     // A press is for its week. Ratings carry; their meta does not.
     it('does not carry into the next week', () => {
         const [next] = carriedItems([rating({ reviews: true, refunds: true })], '2026-10-04')
-        expect(next.meta).toBeUndefined()
+        expect(next.meta).toEqual({})
     })
 })
 

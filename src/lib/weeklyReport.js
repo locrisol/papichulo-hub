@@ -485,6 +485,11 @@ export function deliveryBlockers({ weekStart, today = todayISO(), rows = [], day
 // Refunds, reviews and comments do not carry. They belong to their week. A
 // refund claimed and not yet answered does, as a claim of its own: see
 // claimState.
+//
+// Every one has a meta, empty when there is nothing in it. They are saved
+// together, and a row missing a column the others have is sent as null for
+// it, which meta refuses: week 40 would not open once week 39's actions had
+// comments and its overheads had no meta (12 October).
 export function carriedItems(previousItems = [], weekStart, previousWeekStart = addDays(weekStart, -7)) {
     const out = []
 
@@ -495,14 +500,14 @@ export function carriedItems(previousItems = [], weekStart, previousWeekStart = 
             out.push({
                 kind: 'overhead', key: item.key, label: item.label,
                 amount: num(item.amount), carried_from: num(item.amount),
-                sort_order: item.sort_order,
+                sort_order: item.sort_order, meta: {},
             })
         } else if (item.kind === 'rating') {
             out.push({
                 kind: 'rating', key: item.key, label: item.label,
                 amount: item.amount == null ? null : num(item.amount),
                 carried_from: item.amount == null ? null : num(item.amount),
-                sort_order: item.sort_order,
+                sort_order: item.sort_order, meta: {},
             })
         } else if (item.kind === 'action' && !item.done_on) {
             out.push({
@@ -510,8 +515,8 @@ export function carriedItems(previousItems = [], weekStart, previousWeekStart = 
                 note: item.note, sort_order: item.sort_order,
                 opened_on: item.opened_on || weekStart,
                 // Its comments go with it, every week's, each with its day.
-                ...(Array.isArray(item.meta?.comments) && item.meta.comments.length
-                    ? { meta: { comments: item.meta.comments } } : {}),
+                meta: Array.isArray(item.meta?.comments) && item.meta.comments.length
+                    ? { comments: item.meta.comments } : {},
             })
         }
     }
@@ -572,7 +577,7 @@ function carriedClaim(item, previousWeekStart) {
         kind: 'refund_claim', key: item.key, label: item.label,
         amount: Math.abs(num(item.amount)), note: item.note,
         opened_on: item.opened_on || previousWeekStart,
-        sort_order: item.sort_order,
+        sort_order: item.sort_order, meta: {},
     }
 }
 
