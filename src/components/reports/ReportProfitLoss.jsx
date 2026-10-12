@@ -267,8 +267,15 @@ function DeliveryLine({ row, statement, waiting, canEdit, onSave }) {
             left={
                 <>
                     <span className="flex-1 min-w-0 text-sm text-gray-800">{platform.name}</span>
+                    {/* What the percentage beside it is worked out against,
+                        the statement's Monday to Sunday. It showed this
+                        week's Sunday to Saturday, which read as if the
+                        percentage were of that (his, 12 October). The week's
+                        own figure is in the sentence underneath. */}
                     <span className="text-xs tabular-nums text-muted whitespace-nowrap">
-                        {fmtMoney(row.weekTaken)} taken
+                        {row.legacy
+                            ? `${fmtMoney(row.weekTaken)} taken`
+                            : `${fmtMoney(row.statementTaken)} taken Mon to Sun`}
                     </span>
                 </>
             }

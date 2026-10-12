@@ -205,16 +205,34 @@ export function overheadsToShow(items) {
     }
 }
 
+// "Mon 28 Sept".
+function shortDay(iso, shift = 0) {
+    const d = new Date(String(iso).slice(0, 10) + 'T00:00:00Z')
+    d.setUTCDate(d.getUTCDate() + shift)
+    return d.toLocaleDateString('en-IE', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })
+        .replace(',', '')
+}
+
 // The days the platform statements covered, short enough for the line under
-// the delivery figure: "Statements Mon 28 Sept to Sun 4 Oct". Nothing on a
-// report frozen before statements were kept.
+// the delivery figure: "Rate from the statements, Mon 28 Sept to Sun 4 Oct".
+// Nothing on a report frozen before statements were kept.
+//
+// It said only "Statements ..." under "of ... online sales", and the two run
+// over different days: the sales are the report's Sunday to Saturday, the
+// rate comes from the statements' Monday to Sunday. Each now says its own
+// (his, 12 October).
 export function statementDays(f) {
     const s = f?.statement
     if (!s?.from || !s?.to) return ''
-    const day = iso => new Date(String(iso).slice(0, 10) + 'T00:00:00Z')
-        .toLocaleDateString('en-IE', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })
-        .replace(',', '')
-    return `Statements ${day(s.from)} to ${day(s.to)}`
+    return `Rate from the statements, ${shortDay(s.from)} to ${shortDay(s.to)}`
+}
+
+// The report's own week, the day before each statement day: "Sun 27 Sept to
+// Sat 3 Oct". The days the online sales on the delivery line were taken.
+export function salesDays(f) {
+    const s = f?.statement
+    if (!s?.from || !s?.to) return ''
+    return `${shortDay(s.from, -1)} to ${shortDay(s.to, -1)}`
 }
 
 // Third party delivery as one figure: what the platforms cost, as a share of
@@ -627,7 +645,7 @@ function profitAndLoss(section, f, charts) {
     const deliveryRow = delivery.length > 0
         ? figures([line({
             label: 'Third party delivery costs'
-                + (d.rate != null ? small(`of ${money(d.taken)} online sales`) : '')
+                + (d.rate != null ? small(`of ${money(d.taken)} online sales${salesDays(f) ? `, ${salesDays(f)}` : ''}`) : '')
                 + (days ? small(escapeHtml(days)) : ''),
             value: d.rate != null ? withShare(d.total, d.rate, costTone(d.rate, t.delivery)) : money(d.total),
             total: true,
@@ -1747,7 +1765,7 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
             if (of(section, 'delivery').length) {
                 const d = deliverySummary(f)
                 out.push(share('Third party delivery costs', d.total, d.rate)
-                    + (d.rate != null ? ` of ${money(d.taken)} online sales` : ''))
+                    + (d.rate != null ? ` of ${money(d.taken)} online sales${salesDays(f) ? `, ${salesDays(f)}` : ''}` : ''))
                 if (statementDays(f)) out.push(`    ${statementDays(f)}`)
             }
             out.push(share('Net earnings', f.earnings, f.earningsPct))
