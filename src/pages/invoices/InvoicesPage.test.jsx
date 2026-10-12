@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { screen, within, waitFor } from '@testing-library/react'
+import { screen, within, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { mockSupabase, renderWithRouter } from '@/test/helpers'
 import { todayISO, weekStartOf, addDays, shortDate } from '@/lib/dates'
@@ -265,3 +265,31 @@ describe('editing a document that was read in', () => {
         expect(within(dialog).getByPlaceholderText('0.00')).toHaveValue('58.2')
     })
 })
+
+// 12 October: one press of Save landed twice, 14 milliseconds apart, and both
+// ran the check for one already entered before either had saved. The same
+// Henderson invoice went in twice with no warning.
+describe('saving an invoice typed in by hand', () => {
+    it('saves it once however fast Save is pressed twice', async () => {
+        const user = userEvent.setup()
+        renderWithRouter(<InvoicesPage />)
+        const save = await screen.findByRole('button', { name: 'Save invoice' })
+        const form = save.closest('form')
+        await user.selectOptions(within(form).getAllByRole('combobox')[0], 's1')
+        await user.click(within(form).getByRole('button', { name: 'Food' }))
+        await user.type(within(form).getByPlaceholderText('0.00'), '280.91')
+        const before = inserted().length
+        fireEvent.submit(form)
+        fireEvent.submit(form)
+        await waitFor(() => expect(inserted().length).toBe(before + 1))
+        await new Promise(r => setTimeout(r, 50))
+        expect(inserted().length).toBe(before + 1)
+        expect(inserted().at(-1)).toMatchObject({ total_amount: 280.91, entry_method: 'manual' })
+    })
+})
+
+function inserted() {
+    return db.from.mock.results
+        .filter((r, i) => db.from.mock.calls[i][0] === 'invoices')
+        .flatMap(r => r.value.insert?.mock?.calls.map(c => c[0]) || [])
+}
