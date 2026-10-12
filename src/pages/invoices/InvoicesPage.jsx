@@ -1,4 +1,4 @@
-import { useState, useEffect, Fragment } from 'react'
+import { useState, useEffect, useRef, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase, everyRow } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
@@ -117,6 +117,12 @@ export default function InvoicesPage() {
     const [invoices, setInvoices] = useState([])
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
+    // Set the moment Save is pressed, before anything is awaited. Two
+    // presses 14 milliseconds apart on 12 October both ran the check for one
+    // already entered before either had saved, so both found nothing and the
+    // same Henderson invoice went in twice. The button only greys out once
+    // saving starts, which was too late for the second press.
+    const busy = useRef(false)
     const [error, setError] = useState("")
     const [success, setSuccess] = useState("")
 
@@ -302,21 +308,28 @@ export default function InvoicesPage() {
 
     async function handleSave(e) {
         e.preventDefault()
+        if (busy.current) return
         setAddProblem(""); setSuccess("")
 
         const problem = validate(form)
         if (problem) { setAddProblem(problem); return }
 
-        if (!await pastDuplicate(form)) return
-
+        busy.current = true
         setSaving(true)
-        const { error: e1 } = await supabase.from('invoices').insert({
-            restaurant_id: restaurantId,
-            ...invoicePayload(form),
-            entry_method: 'manual',
-            created_by: user.id,
-        })
-        setSaving(false)
+        let e1
+        try {
+            if (!await pastDuplicate(form)) return
+            const saved = await supabase.from('invoices').insert({
+                restaurant_id: restaurantId,
+                ...invoicePayload(form),
+                entry_method: 'manual',
+                created_by: user.id,
+            })
+            e1 = saved.error
+        } finally {
+            busy.current = false
+            setSaving(false)
+        }
 
         if (e1) { setAddProblem(friendlyError(e1)); return }
 
@@ -359,14 +372,21 @@ export default function InvoicesPage() {
         // land an invoice exactly on top of another one, and itself does not
         // count, which is what editingId is for. Not for a document read in:
         // its number already keeps it from going in twice.
-        if (!fixed && !await pastDuplicate(editForm, editingId)) return
-
+        if (busy.current) return
+        busy.current = true
         setSaving(true)
-        const { error: e1 } = await supabase
-            .from('invoices')
-            .update(invoicePayload(editForm, { fixed }))
-            .eq('id', editingId)
-        setSaving(false)
+        let e1
+        try {
+            if (!fixed && !await pastDuplicate(editForm, editingId)) return
+            const saved = await supabase
+                .from('invoices')
+                .update(invoicePayload(editForm, { fixed }))
+                .eq('id', editingId)
+            e1 = saved.error
+        } finally {
+            busy.current = false
+            setSaving(false)
+        }
 
         if (e1) { setEditProblem(friendlyError(e1)); return }
 
