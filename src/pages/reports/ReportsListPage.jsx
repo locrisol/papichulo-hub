@@ -432,7 +432,9 @@ export default function ReportsListPage() {
 
         const items = openingItems(sections, previous, weekStart)
         if (items.length > 0) {
-            const { error: iErr } = await supabase.from('report_items').insert(items)
+            // Saved together, so a column one row leaves out takes the
+            // database's default rather than null (see carriedItems).
+            const { error: iErr } = await supabase.from('report_items').insert(items, { defaultToNull: false })
             if (iErr) return giveUp(iErr)
         }
 
