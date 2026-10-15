@@ -480,8 +480,16 @@ export default function ChecklistRoundPage() {
             />
 
             {/* No padding on top of the scroller itself, for the same reason:
-                the category headings stick to its top edge. */}
-            <div className="flex-1 md:overflow-y-auto px-4 md:px-7 pb-32 md:pb-8">
+                the category headings stick to its top edge.
+
+                relative, so what is placed absolutely inside it is placed in
+                here. A saved tick keeps its box for screen readers (sr-only,
+                which is absolute), and with nothing positioned in between it
+                was placed against the app's main area at its spot far down
+                the list, stretching that area: a second scroll bar beside this
+                one and a gap at the end once anything was ticked (his
+                screenshot, 15 October). */}
+            <div className="relative flex-1 md:overflow-y-auto px-4 md:px-7 pb-32 md:pb-8">
                 <div ref={listRef} className="max-w-3xl pt-4">
                     <div className="flex items-start justify-between gap-3">
                         <p className="text-sm text-muted">
