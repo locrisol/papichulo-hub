@@ -39,6 +39,7 @@ import DayNoteDialog from '@/components/roster/DayNoteDialog'
 import Modal from '@/components/ui/Modal'
 import EmployeeForm from '@/components/team/EmployeeForm'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import FoldingList from '@/components/roster/FoldingList'
 import Notice from '@/components/ui/Notice'
 import PageHeader from '@/components/ui/PageHeader'
 import FeedTrouble from '@/components/nearby/FeedTrouble'
@@ -800,21 +801,19 @@ export default function RosterPage() {
 
             {blocks.length > 0 && (
                 <div className="bg-red-50 border border-red-200 text-red-800 text-sm rounded-lg p-3 mb-3">
-                    <p className="font-semibold mb-1">
-                        {blocks.length === 1 ? 'One thing has to be fixed' : `${blocks.length} things have to be fixed`} before this week can be published
-                    </p>
-                    <ul className="list-disc pl-5 space-y-0.5">
-                        {blocks.map((b, i) => <li key={i}>{b.text}</li>)}
-                    </ul>
+                    <FoldingList
+                        title={`${blocks.length === 1 ? 'One thing has to be fixed' : `${blocks.length} things have to be fixed`} before this week can be published`}
+                        items={blocks}
+                    />
                 </div>
             )}
 
             {warnings.length > 0 && (
                 <Notice tone="warn" className="mb-3">
-                    <p className="font-semibold mb-1">Warnings</p>
-                    <ul className="list-disc pl-5 space-y-0.5">
-                        {warnings.map((w, i) => <li key={i}>{w.text}</li>)}
-                    </ul>
+                    <FoldingList
+                        title={warnings.length === 1 ? 'One warning' : `${warnings.length} warnings`}
+                        items={warnings}
+                    />
                 </Notice>
             )}
 
