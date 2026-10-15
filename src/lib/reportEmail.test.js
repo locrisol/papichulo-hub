@@ -1609,7 +1609,7 @@ describe('delivery costed from the Monday to Sunday statement', () => {
     // of 7 October: inside the delivery box, so it is not read as covering
     // the overheads too.
     it('says which days it was calculated over, inside the delivery line', () => {
-        const days = 'Statements Mon 31 Aug to Sun 6 Sept'
+        const days = 'Rate from the statements, Mon 31 Aug to Sun 6 Sept'
         expect(mail.html).toContain(days)
         expect(mail.html.indexOf(days)).toBeGreaterThan(mail.html.indexOf('Third party delivery costs'))
         expect(mail.html.indexOf(days)).toBeLessThan(mail.html.indexOf('Net earnings is net sales minus'))
@@ -1618,13 +1618,19 @@ describe('delivery costed from the Monday to Sunday statement', () => {
     })
 
     it('puts the same figure in the plain text', () => {
-        expect(mail.text).toContain('Third party delivery costs: 20.96% (€1,111.11) of €5,300.00 online sales')
+        expect(mail.text).toContain('Third party delivery costs: 20.96% (€1,111.11) of €5,300.00 online sales, Sun 30 Aug to Sat 5 Sept')
+    })
+
+    // His of 12 October: the sales and the rate run over different days, and
+    // each says its own, so the percentage is not read as of the other.
+    it('says the days the online sales were taken, the week of the report', () => {
+        expect(mail.html).toContain('of €5,300.00 online sales, Sun 30 Aug to Sat 5 Sept')
     })
 
     it('says nothing about a statement on a report frozen before them', () => {
         const old = reportEmail(base)
         expect(old.html).toContain('€1,180.00')
-        expect(old.html).not.toContain('Statements ')
+        expect(old.html).not.toContain('Rate from the statements')
     })
 })
 

@@ -455,9 +455,12 @@ export function deliveryBlockers({ weekStart, today = todayISO(), rows = [], day
     }
 
     if (!statementSundayIn(days, rows.map(r => r.platform), weekStart)) {
+        // A day marked closed already counts (statementSundayIn), so it says
+        // so: his Sunday 11 October was shut, and nothing told him that
+        // marking it closed was the answer (12 October).
         said.push(`${dayWords(to)} has no online platform sales yet. The statements run to that `
             + 'Sunday, so it is needed to work out what share each platform kept. Enter it on '
-            + `Weekly sales, in the week starting ${dayMonth(to)}.`)
+            + `Weekly sales, in the week starting ${dayMonth(to)}, or mark the day Closed there if the restaurant was shut.`)
     }
 
     for (const row of rows) {
