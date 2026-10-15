@@ -91,3 +91,42 @@ describe('checking a pasted list against what is held', () => {
         expect(screen.queryByText('Not in the Hub', { selector: 'span' })).toBeNull()
     })
 })
+
+// His, 15 October: there was a Record the list button, and pasting the list
+// was always meant to be recording it.
+describe('recording the list', () => {
+    const upserts = () => db.from.mock.results
+        .filter((r, i) => db.from.mock.calls[i][0] === 'supplier_documents')
+        .flatMap(r => r.value.upsert?.mock?.calls.map(c => c[0]) || [])
+
+    async function paste(lines) {
+        renderWithRouter(<SupplierDocumentsPage />)
+        await waitFor(() => expect(screen.getByLabelText('Supplier')).toHaveValue('s2'))
+        fireEvent.change(screen.getByLabelText(/paste it here/), { target: { value: lines.join('\n') } })
+    }
+
+    it('records a pasted list by itself, once', async () => {
+        await paste([
+            '9900001\t45448455\t\t2026-08-23\tInvoice\t€163.03\tView',
+            '9900001\t45612214\t\t2026-09-14\tInvoice\t€102.43\tView',
+        ])
+        expect(await screen.findByText('2 documents recorded.')).toBeInTheDocument()
+        expect(upserts()).toHaveLength(1)
+        expect(upserts()[0].map(r => r.document_id)).toEqual(['45448455', '45612214'])
+        expect(screen.queryByRole('button', { name: /Record/ })).toBeNull()
+        await new Promise(r => setTimeout(r, 900))
+        expect(upserts()).toHaveLength(1)
+    })
+
+    it('waits for a press when the paste has more than one account number', async () => {
+        await paste([
+            '9900001\t45448455\t\t2026-08-23\tInvoice\t€163.03\tView',
+            '9900002\t45612214\t\t2026-09-14\tInvoice\t€102.43\tView',
+        ])
+        const anyway = await screen.findByRole('button', { name: 'Record it anyway' })
+        await new Promise(r => setTimeout(r, 900))
+        expect(upserts()).toHaveLength(0)
+        fireEvent.click(anyway)
+        await waitFor(() => expect(upserts()).toHaveLength(1))
+    })
+})

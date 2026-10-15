@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase, everyRow } from '@/lib/supabase'
 import { useRestaurant } from '@/context/restaurant'
@@ -100,8 +100,13 @@ export default function SupplierDocumentsPage() {
 
     const slowest = delays.length ? Math.max(...delays.map(d => d.days)) : null
 
-    async function save() {
+    // The paste and supplier last recorded, so the same list is not saved
+    // again on every draw.
+    const recorded = useRef('')
+
+    const save = useCallback(async () => {
         if (!supplierId || !read.rows.length) return
+        recorded.current = `${supplierId}|${paste}`
         setSaving(true)
         setError('')
         setSaid('')
@@ -126,10 +131,27 @@ export default function SupplierDocumentsPage() {
             .upsert(rows, { onConflict: 'supplier_id,restaurant_id,document_id' })
 
         setSaving(false)
-        if (e1) { setError(friendlyError(e1)); return }
+        if (e1) { recorded.current = ''; setError(friendlyError(e1)); return }
         setSaid(`${rows.length} ${rows.length === 1 ? 'document' : 'documents'} recorded.`)
         setRefresh(n => n + 1)
-    }
+    }, [supplierId, read.rows, paste, restaurantId, against.status])
+
+    // Recorded by itself once the paste settles (his, 15 October): there was a
+    // Record the list button, and the list is only what the Hub checks itself
+    // against, so pasting it was always meant to be recording it. Pasting the
+    // same list again was already safe, and a half paste only adds what it has.
+    //
+    // Not when the paste carries more than one account number: that is two
+    // shops copied together or a page that was not the list, and once recorded
+    // it shows in Still to download. That one still takes a press.
+    const settled = Boolean(supplierId) && read.rows.length > 0 && summary.accounts.length <= 1
+    useEffect(() => {
+        if (!settled) return undefined
+        const timer = setTimeout(() => {
+            if (recorded.current !== `${supplierId}|${paste}`) save()
+        }, 700)
+        return () => clearTimeout(timer)
+    }, [settled, save, supplierId, paste])
 
     return (
         <>
@@ -336,17 +358,22 @@ export default function SupplierDocumentsPage() {
 
                     <div className={`${card} p-4 flex flex-wrap items-center justify-between gap-3`}>
                         <p className="text-sm text-muted">
-                            Recording the list changes no figure anywhere. It is only what the Hub
-                            checks itself against.
+                            {saving
+                                ? 'Recording the list...'
+                                : summary.accounts.length > 1
+                                    ? "Not recorded, because of the account numbers above. Record it only if it really is one restaurant's list."
+                                    : 'The list is recorded as it is pasted. It changes no figure anywhere: it is only what the Hub checks itself against.'}
                         </p>
-                        <button
-                            type="button"
-                            disabled={!supplierId || saving}
-                            onClick={save}
-                            className={primaryButton('md', 'good')}
-                        >
-                            {saving ? 'Recording...' : 'Record the list'}
-                        </button>
+                        {summary.accounts.length > 1 && (
+                            <button
+                                type="button"
+                                disabled={!supplierId || saving}
+                                onClick={save}
+                                className={primaryButton('md', 'good')}
+                            >
+                                Record it anyway
+                            </button>
+                        )}
                     </div>
                 </>
             )}
