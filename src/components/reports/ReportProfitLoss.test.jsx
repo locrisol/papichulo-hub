@@ -38,6 +38,14 @@ describe('a delivery platform on the report page', () => {
         )).toBeInTheDocument()
     })
 
+    // His, 12 October: beside the percentage it showed this week's Sunday to
+    // Saturday, which read as if the percentage were of that.
+    it('shows beside the percentage the Monday to Sunday it was worked out against', () => {
+        draw()
+        expect(screen.getByText('€1,200.00 taken Mon to Sun')).toBeInTheDocument()
+        expect(screen.queryByText('€1,100.00 taken')).toBeNull()
+    })
+
     it('says so far while the Sunday is still to come', () => {
         draw({ waiting: true })
         expect(screen.getByText(/it took Monday 21 to Sunday 27 September so far, the days its statement covers/)).toBeInTheDocument()

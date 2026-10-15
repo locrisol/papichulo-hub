@@ -307,6 +307,14 @@ describe('what staff are given of the diary', () => {
         readOnlyForStaff('staff_diary')
     })
 
+    // His, 15 October: an entry still at Enquiry has not been decided, so the
+    // group's and the restaurant's stay off staff screens until it is. Their
+    // own private ones are theirs whatever they are.
+    it('leaves out an enquiry, except a private entry of their own', () => {
+        const view = viewNamed('staff_diary')
+        expect(view).toContain(`AND ("d"."status" <> 'enquiry'::"text")) OR (("d"."scope" = 'private'::"text")`)
+    })
+
     // Their own private entries stay, and answer only to who wrote them.
     // Nothing else in the table answers to anybody below a manager.
     it('gives an employee no read of the group or site entries in the table', () => {
@@ -417,11 +425,13 @@ describe('what staff are given of what is on near us', () => {
         expect(select).toContain(`= 'employee'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))`)
     })
 
-    it('gives an employee no dismissed listing and none from a place they do not watch', () => {
+    // His, 15 October: staff were seeing listings nobody had decided on yet.
+    // Only kept ones, or ones from a feed trusted as it stands.
+    it('gives an employee only kept or trusted listings, and none from a place they do not watch', () => {
         const policies = policiesOn('events').filter(p => p.includes('FOR SELECT'))
         expect(policies.filter(p => p.includes('IS NOT NULL')), 'a read of every listing for anybody signed in').toEqual([])
         const staff = policies.find(p => p.includes("'employee'")) || ''
-        expect(staff, 'found no read of events for staff').toContain(`"review" <> 'dismissed'::"text"`)
+        expect(staff, 'found no read of events for staff').toContain(`"review" = ANY (ARRAY['trusted'::"text", 'kept'::"text"])`)
         expect(staff).toMatch(/FROM "public"\."restaurant_places" "rp"\s+WHERE \(\("rp"\."place_id" = "events"\."place_id"\) AND \("rp"\."restaurant_id" = \( SELECT "public"\."get_my_restaurant_id"\(\) \)\) AND "rp"\."is_active"\)/)
     })
 })

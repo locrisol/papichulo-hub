@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import ReportPrices from './ReportPrices'
+import ReportPrices, { Spark } from './ReportPrices'
 import { priceWeek } from '@/lib/invoiceReport'
 
 // Prices and suppliers on the weekly report, from a real shape of week: the
@@ -275,5 +275,22 @@ describe('prices and suppliers on the report', () => {
     it('draws nothing when there is no section to draw', () => {
         const { container } = render(<ReportPrices section={null} />)
         expect(container).toBeEmptyDOMElement()
+    })
+})
+
+// His screenshots, 15 October: two deliveries four weeks apart were drawn
+// one step apart like any other two, and the chart was a small mark in a wide
+// column. Points now sit by date across the width.
+describe('the price chart', () => {
+    it('places each delivery by its date, not one step per delivery', () => {
+        const { container } = render(<Spark series={[['2026-09-12', 13.41, 0], ['2026-09-19', 13.41, 0], ['2026-10-10', 9.66, 1]]} down />)
+        const xs = [...container.querySelectorAll('circle')].map(c => Number(c.getAttribute('cx')))
+        // A week is a quarter of the four weeks, not half the width.
+        expect((xs[1] - xs[0]) / (xs[2] - xs[0])).toBeCloseTo(7 / 28, 2)
+    })
+
+    it('fills its column, up to a sensible width', () => {
+        const { container } = render(<Spark series={[['2026-09-12', 13.41, 0], ['2026-10-09', 9.66, 1]]} down />)
+        expect(container.firstChild).toHaveClass('w-full', 'max-w-[360px]')
     })
 })
