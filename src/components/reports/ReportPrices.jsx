@@ -988,15 +988,25 @@ function LedgerGroup({ title, rows }) {
 //
 // A report frozen before the eight weeks has two figures a point and the
 // first one is the delivery before the week.
-function Spark({ series, down }) {
+export function Spark({ series, down }) {
     if (!series?.length) return null
-    const w = 200
-    const h = 30
-    const pad = 4
+    // Wider than it was, and drawn to the width of its column up to this, so
+    // it is not a small mark in a wide gap on a computer or two thirds of the
+    // card on a phone (his screenshots, 15 October). The height follows the
+    // width, so the dots stay round.
+    const w = 360
+    const h = 40
+    const pad = 5
     const points = series.map((p, i) => ({ day: p[0], v: p[1], now: p.length > 2 ? p[2] === 1 : i > 0 }))
     const lo = Math.min(...points.map(p => p.v))
     const hi = Math.max(...points.map(p => p.v))
-    const x = i => pad + (points.length === 1 ? 0 : (i * (w - pad * 2)) / (points.length - 1))
+    // Placed by date, not one step per delivery: two deliveries four weeks
+    // apart and twelve in the same four weeks read as the time they took.
+    const time = points.map(p => new Date(p.day + 'T00:00:00Z').getTime())
+    const span = time[time.length - 1] - time[0]
+    const x = i => (points.length === 1 ? w / 2
+        : span > 0 ? pad + ((time[i] - time[0]) * (w - pad * 2)) / span
+            : pad + (i * (w - pad * 2)) / (points.length - 1))
     const y = v => (hi === lo ? h / 2 : pad + ((hi - v) * (h - pad * 2)) / (hi - lo))
     const step = (from, to) => points.slice(from, to + 1)
         .map((p, k) => (k === 0 ? `M${x(from)},${y(p.v)}` : `H${x(from + k)} V${y(p.v)}`)).join(' ')
@@ -1005,10 +1015,10 @@ function Spark({ series, down }) {
     const last = points.length - 1
 
     return (
-        <div className="max-w-[200px]">
+        <div className="w-full max-w-[360px]">
             <svg
                 viewBox={`0 0 ${w} ${h}`}
-                className={`block w-full h-[30px] ${down ? 'text-green-700' : 'text-red-700'}`}
+                className={`block w-full h-auto ${down ? 'text-green-700' : 'text-red-700'}`}
                 role="img"
                 aria-label={`The price at each delivery from ${shortDate(points[0].day)} to ${shortDate(points[last].day)}`}
             >
@@ -1019,7 +1029,7 @@ function Spark({ series, down }) {
                         key={`${p.day}-${i}`}
                         cx={x(i)}
                         cy={y(p.v)}
-                        r={i === last ? 3.5 : 2}
+                        r={i === last ? 4 : 2.5}
                         fill={p.now ? 'currentColor' : '#9CA3AF'}
                     />
                 ))}
