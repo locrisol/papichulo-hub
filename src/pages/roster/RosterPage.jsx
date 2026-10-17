@@ -16,7 +16,7 @@ import {
 } from '@/lib/team'
 import { fullDayRun, fullDayWords, closedTheNightBefore } from '@/lib/workRun'
 import {
-    hoursForDate, totals, publishState, findOverlaps, fmtHours, shortTime, breakFor, shiftHours,
+    hoursForDate, totals, publishState, findOverlaps, fmtHours, shortTime, breakFor, shiftHours, publishQuestion,
 } from '@/lib/roster'
 import { checkWeek, findingsByEmployee, aboutThisWeek, overlapFindings } from '@/lib/workRules'
 import { openGaps, cannotAnswer } from '@/lib/timeOff'
@@ -132,7 +132,6 @@ export default function RosterPage() {
     const restaurantId = activeRestaurant?.id
     const dates = weekDates(weekStart)
     const date = dates[dayIndex]
-    const weekEnd = dates[6]
 
     // The asks. Nothing about the roster waits on them, so they are fetched on
     // their own and a failure here leaves the week on screen rather than
@@ -688,41 +687,19 @@ export default function RosterPage() {
     // than none, and somebody seeing three of their five shifts will plan
     // around the three.
     async function publish() {
-        // A block is the law about the employer rather than guidance about the
-        // employee, so it holds the week rather than colouring something amber.
-        // It can still be got past, deliberately and by somebody who has read
-        // what they are getting past.
-        if (blocks.length > 0) {
-            // The sentence is the red line under the dialog, never notice.
-            // A notice is one button with no way back.
-            const past = await confirm({
-                title: 'Fix these before publishing',
-                message: blocks.map(b => b.text).join('\n\n'),
-                dangerNote: 'These are legal limits for the business. Only publish if you are sure.',
-                confirmLabel: 'Publish anyway',
-                cancelLabel: 'Go back',
-                tone: 'danger',
-            })
-            if (!past) return
-        }
-
-        const ok = await confirm({
-            title: `Publish ${weekMonthLabel(weekStart)}?`,
-            message: 'Every shift in the week is published together. If you change anything afterwards, the week will show Unpublished changes.',
-            details: [
-                { label: 'Week', value: `${shortDate(weekStart)} to ${shortDate(weekEnd)}` },
-                { label: 'Shifts', value: String(shifts.length) },
-                { label: 'Hours', value: `${fmtHours(week.hours)}` },
-            ],
-            confirmLabel: 'Publish the week',
-            // A double booking turns it red and says so under the details,
-            // with Cancel still there. Without one there is no red line at
-            // all, since the week can still be changed after it goes out.
-            tone: clashes.length > 0 ? 'danger' : 'default',
-            dangerNote: clashes.length > 0
-                ? `${clashes.length} ${clashes.length === 1 ? 'person is' : 'people are'} double booked. Check this before publishing.`
-                : undefined,
-        })
+        // Everything still wrong with the week, in one dialog, with Publish
+        // anyway as the answer to it. A block is the law about the employer
+        // rather than guidance, so it turns the dialog red, but it can still be
+        // got past by somebody who has read what they are getting past.
+        // See publishQuestion.
+        const ok = await confirm(publishQuestion({
+            weekStart,
+            shiftCount: shifts.length,
+            hours: week.hours,
+            blocks,
+            warnings,
+            clashCount: clashes.length,
+        }))
         if (!ok) return
 
         setSaving(true)

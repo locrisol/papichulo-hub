@@ -5,7 +5,7 @@ import { kindColours } from '@/lib/diary'
 import { chipWords } from '@/lib/nearby'
 import { unavailableSpans, dayState, windowsFor, windowsLabel, availabilityOn } from '@/lib/availability'
 import { AlertBadge, AlertStrip } from '@/components/roster/RosterAlerts'
-import { hasWarnings } from '@/lib/workRules'
+import { rowTint } from '@/lib/workRules'
 import { wholeDayOn, partDayOn, kindOf } from '@/lib/absences'
 import { partWords, partDaySpans } from '@/lib/timeOff'
 import { extrasFor, extraLabel, extraLanes, extraKey } from '@/lib/dayExtras'
@@ -577,14 +577,12 @@ export default function RosterDay({
                         // worked. One picture for one meaning.
                         const partSpans = part ? partDaySpans(part, from, to) : []
                         const mineAlerts = alerts?.[employee.id] || []
-                        const canOpen = hasWarnings(mineAlerts)
                         const showing = openAlerts === employee.id
-                        // Whether a strip is actually drawn under this row, which
-                        // is not the same as whether there are alerts now that
-                        // warnings fold away. The strip carries the line between
-                        // rows when it is there, so tying the border to the
-                        // wrong one of these took the lines off the grid.
-                        const stripShowing = showing || mineAlerts.some(f => f.level === 'block')
+                        // Shut until the mark is pressed, blocks as well (his,
+                        // 17 October). The row is tinted instead, in the same
+                        // yellow or red as the strip it opens. The strip
+                        // carries the line between rows while it is there.
+                        const tone = rowTint(mineAlerts)
                         // There for as long as the warning is true. Deleting
                         // the shift that caused it takes it away, which is the
                         // only way to clear one.
@@ -592,10 +590,10 @@ export default function RosterDay({
                         return (
                             <Fragment key={employee.id}>
                             <div
-                                className={`flex ${stripShowing ? '' : 'border-b border-border last:border-b-0'} ${
-                                    dayTone || (dayWash ? '' : (row % 2 ? 'bg-gray-50/40' : ''))
+                                className={`flex ${showing ? '' : 'border-b border-border last:border-b-0'} ${
+                                    tone || dayTone || (dayWash ? '' : (row % 2 ? 'bg-gray-50/40' : ''))
                                 }`}
-                                style={dayWash ? { backgroundColor: dayWash } : undefined}
+                                style={dayWash && !tone ? { backgroundColor: dayWash } : undefined}
                             >
                                 {/* The exact minute lives in the hover rather
                                     than on the row. What matters at a glance is
@@ -663,9 +661,7 @@ export default function RosterDay({
                                     <AlertBadge
                                         findings={mineAlerts}
                                         open={showing}
-                                        onToggle={canOpen
-                                            ? () => setOpenAlerts(showing ? null : employee.id)
-                                            : undefined}
+                                        onToggle={() => setOpenAlerts(showing ? null : employee.id)}
                                     />
                                 </div>
 
@@ -873,9 +869,7 @@ export default function RosterDay({
                                 </div>
                             </div>
 
-                            {stripShowing && (
-                                <AlertStrip findings={mineAlerts} open={showing} className="border-b" />
-                            )}
+                            <AlertStrip findings={mineAlerts} open={showing} className="border-b" />
                             </Fragment>
                         )
                     })}

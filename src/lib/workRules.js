@@ -656,15 +656,18 @@ export function findingsByEmployee(findings) {
 }
 
 // The worse of what a person has, since one mark has to stand for all of it.
-// Whether a row has anything that folds away. Warnings do, blocks never do:
-// a block is what holds the week back, so it is always on screen.
-export function hasWarnings(findings) {
-    return (findings || []).some(f => f.level !== 'block')
-}
-
 export function worstLevel(findings) {
     if (!findings?.length) return null
     return findings.some(f => f.level === 'block') ? 'block' : 'warn'
+}
+
+// The ground for a whole person's row while something is wrong with them (his,
+// 17 October): yellow for a warning, red for something that has to be fixed.
+// Solid rather than see through, because the name cell stays put while the week
+// scrolls on a computer and the shifts would show through it.
+export function rowTint(findings) {
+    if (!findings?.length) return ''
+    return worstLevel(findings) === 'block' ? 'bg-red-100' : 'bg-amber-100'
 }
 
 // Somebody in two places at once, in the same shape as everything else.

@@ -27,32 +27,15 @@ function Triangle({ className = '' }) {
 // The mark beside a name. Nothing at all when there is nothing wrong, so a
 // clean week looks exactly as it did before any of this.
 //
-// A button when there are warnings to put away, and a plain mark when there are
-// only blocks, because a block stays on screen whatever this says and there is
-// nothing left for pressing it to do.
-//
-// They start open now. Closed by default this was a number beside a name that
-// you had to press to find out what it meant, on a screen whose whole job is
-// saying what is wrong with the week before it goes out.
+// Always a button now, blocks included, and everything starts shut (his, 17
+// October). Open by default, a week with a few permission renewals was more
+// strips than shifts. The row itself is tinted instead (see rowTint), so the
+// person is still picked out before anybody presses anything.
 export function AlertBadge({ findings, open, onToggle }) {
     if (!findings?.length) return null
 
-    const tone = worstLevel(findings) === 'block' ? 'text-red-600' : 'text-amber-500'
-    const inside = (
-        <>
-            <Triangle className="w-3.5 h-3.5" />
-            {findings.length > 1 && (
-                <span className="text-[0.625rem] font-bold leading-none">{findings.length}</span>
-            )}
-        </>
-    )
-
-    if (!onToggle) {
-        return (
-            <span className={`inline-flex items-center gap-0.5 flex-shrink-0 ${tone}`}>{inside}</span>
-        )
-    }
-
+    // A shade darker than it was, to stand out on the yellow of its own row.
+    const tone = worstLevel(findings) === 'block' ? 'text-red-600' : 'text-amber-600'
     return (
         <button
             type="button"
@@ -62,25 +45,19 @@ export function AlertBadge({ findings, open, onToggle }) {
             className={`inline-flex items-center gap-0.5 flex-shrink-0 rounded transition-opacity
                 hover:opacity-70 focus:outline-none focus:ring-2 focus:ring-accent ${tone}`}
         >
-            {inside}
+            <Triangle className="w-3.5 h-3.5" />
+            {findings.length > 1 && (
+                <span className="text-[0.625rem] font-bold leading-none">{findings.length}</span>
+            )}
         </button>
     )
 }
 
-
-// The messages themselves, sitting under the row for as long as they are true.
+// The messages themselves, under the row once its mark is pressed.
 //
-// A block is never behind a press. Something you have to open is something you
-// have to know is there, and a block is the thing that holds the week back, so
-// missing it is missing the reason you cannot publish. A strip takes itself
-// away when the shift causing it is fixed, so the only way to clear one is to
-// deal with what it says.
-//
-// Warnings fold behind the mark, which they did not used to. That was right
-// when a warning was a rare thing about a shift somebody had just put in. It
-// stopped being right once every person waiting on a permission renewal carried
-// one every week: seven rows of amber under a grid you came to read is a grid
-// you cannot read, and a warning nobody can see past is not being read either.
+// Blocks fold the same as warnings now (his, 17 October). They still hold the
+// week back: the publish dialog lists every one of them before anything goes
+// out, and the row stays tinted red until it is fixed.
 //
 // Full width under the row rather than floating beside the name. The grid
 // scrolls sideways inside a box that clips anything hanging out of it, so a
@@ -88,7 +65,7 @@ export function AlertBadge({ findings, open, onToggle }) {
 //
 // The ground it sits on says which kind it is before anybody reads a word.
 export function AlertStrip({ findings, open, className = '' }) {
-    const shown = open ? findings : (findings || []).filter(f => f.level === 'block')
+    const shown = open ? (findings || []) : []
 
     // Nothing at all when there is nothing to say, so no caller can leave a
     // bare yellow band behind with no words in it.
@@ -99,7 +76,11 @@ export function AlertStrip({ findings, open, className = '' }) {
         : 'bg-amber-50 border-amber-200'
 
     return (
-        <div className={`px-4 py-2 space-y-1 ${ground} ${className}`}>
+        <div className={`px-4 py-2 ${ground} ${className}`}>
+            {/* As wide as the screen and pinned to its left edge on a phone.
+                The strip is as wide as the whole week, so the sentence ran off
+                the right of the screen once the names stopped staying put. */}
+            <div className="space-y-1 sticky left-4 max-w-[calc(100vw-5rem)] md:static md:max-w-none">
             {shown.map((finding, i) => (
                 <p
                     key={i}
@@ -113,6 +94,7 @@ export function AlertStrip({ findings, open, className = '' }) {
                     {finding.text}
                 </p>
             ))}
+            </div>
         </div>
     )
 }

@@ -4,7 +4,7 @@ import { NO_COLOUR } from '@/lib/team'
 import { fullDate, DAY_NAMES } from '@/lib/dates'
 import { dayState, windowsFor, windowsLabel, availabilityOn } from '@/lib/availability'
 import { AlertBadge, AlertStrip } from '@/components/roster/RosterAlerts'
-import { hasWarnings } from '@/lib/workRules'
+import { rowTint } from '@/lib/workRules'
 import { wholeDayOn, partDayOn, kindOf, holidayHoursInWeek } from '@/lib/absences'
 import { askedOff, partWords } from '@/lib/timeOff'
 import { AWAY } from '@/lib/rosterShare'
@@ -55,23 +55,15 @@ export default function RosterWeek({
     alerts, absences, onOpenShift, onNewShift, onOpenDay, onOpenDiary, onOpenWeekExtras,
     shiftMark, staff = false,
 }) {
-    // Whose warnings have been shut, rather than whose are open.
+    // Whose warnings are open. None to begin with (his, 17 October): the row is
+    // tinted instead, and the mark beside the name opens what it is about.
     //
-    // They start open, all of them. Closed by default they were a number beside
-    // a name that you had to press to find out what it meant, on a screen whose
-    // whole job is telling you what is wrong with the week before you send it
-    // out. Now the week says what is wrong with it and you can put away the
-    // ones you have dealt with.
-    //
-    // Several at once rather than one at a time, for the same reason: reading
-    // two people's warnings meant opening one and losing the other.
-    //
-    // Blocks are never shut by this. AlertStrip draws them whatever this says,
-    // because a block is the reason the week will not publish.
-    const [shutAlerts, setShutAlerts] = useState(() => new Set())
+    // Several at once rather than one at a time: reading two people's warnings
+    // meant opening one and losing the other.
+    const [openAlerts, setOpenAlerts] = useState(() => new Set())
 
-    const alertsOpen = id => !shutAlerts.has(id)
-    const toggleAlerts = id => setShutAlerts(was => {
+    const alertsOpen = id => openAlerts.has(id)
+    const toggleAlerts = id => setOpenAlerts(was => {
         const next = new Set(was)
         if (next.has(id)) next.delete(id)
         else next.add(id)
@@ -176,7 +168,11 @@ export default function RosterWeek({
                 68rem, up from 64. A day column has to hold "08:30 - Closing",
                 which is the widest ordinary thing in the week, and at 64 it did
                 not. The staff column gave up the difference: the longest name
-                in either restaurant still fits in 36. */}
+                in either restaurant still fits in 36.
+
+                The names stay put while the days scroll only from md up. On a
+                phone they took a third of the screen and left room for about
+                two days (his, 17 October), so there the whole table scrolls. */}
             <table className="w-full text-sm min-w-[68rem] table-fixed">
                 <colgroup>
                     <col className="w-36" />
@@ -186,7 +182,7 @@ export default function RosterWeek({
                 </colgroup>
                 <thead>
                     <tr className={tableHeadRow}>
-                        <th className="px-3 py-2 text-left text-xs w-36 sticky left-0 z-10 bg-sidebar z-10">
+                        <th className="px-3 py-2 text-left text-xs w-36 md:sticky md:left-0 z-10 bg-sidebar">
                             Staff
                         </th>
                         {dates.map((d, i) => {
@@ -230,7 +226,7 @@ export default function RosterWeek({
                         on at the Arena, red for anything the manager wants read.
                         Only the people rows are on white. */}
                     <tr className="bg-slate-100 border-b border-slate-200">
-                        <td className="px-3 py-1.5 text-xs font-semibold text-slate-700 border-r border-slate-200 sticky left-0 z-10 bg-slate-100">
+                        <td className="px-3 py-1.5 text-xs font-semibold text-slate-700 border-r border-slate-200 md:sticky md:left-0 z-10 bg-slate-100">
                             Opening hours
                         </td>
                         {dates.map(d => {
@@ -265,7 +261,7 @@ export default function RosterWeek({
                         the first bank holiday would have broken it. */}
                     {bands.map(({ entry, start, span, runsIn, runsOn }, i) => (
                         <tr key={entry.id} className="border-b border-border bg-white">
-                            <td className="px-3 py-1 text-xs font-semibold text-slate-700 border-r border-border sticky left-0 z-10 bg-white">
+                            <td className="px-3 py-1 text-xs font-semibold text-slate-700 border-r border-border md:sticky md:left-0 z-10 bg-white">
                                 {/* Not "What is on", which said nothing and
                                     sat two rows above "Also on" saying almost
                                     the same thing. These are the entries that
@@ -316,7 +312,7 @@ export default function RosterWeek({
                         const look = kindTag(group.kind)
                         return (
                             <tr key={group.place.id} className="border-b border-border bg-white">
-                                <td className={`px-3 py-1.5 text-xs font-semibold border-r border-border sticky left-0 z-10 ${look}`}>
+                                <td className={`px-3 py-1.5 text-xs font-semibold border-r border-border md:sticky md:left-0 z-10 ${look}`}>
                                     {placeName(group.place, { short: true })}
                                 </td>
                                 {dates.map(d => {
@@ -347,7 +343,7 @@ export default function RosterWeek({
                         In the order the day happens, because this row is about
                         the day and not about which table a thing came out of. */}
                     {showExtras && <tr className="bg-slate-50 border-b border-border">
-                            <td className="px-3 py-1.5 text-xs font-semibold text-slate-700 border-r border-border align-middle sticky left-0 z-10 bg-slate-50">
+                            <td className="px-3 py-1.5 text-xs font-semibold text-slate-700 border-r border-border align-middle md:sticky md:left-0 z-10 bg-slate-50">
                                 {/* The label is the way into the whole week at
                                     once, because a delivery schedule arrives as
                                     a week and putting it in a day at a time
@@ -488,6 +484,11 @@ export default function RosterWeek({
                         // Same as the day view: there for as long as it is
                         // true, and gone the moment it is not.
                         const hasAlerts = mineAlerts.length > 0
+                        // The whole of the person, both rows and every cell in
+                        // them, while anything is wrong with them (his, 17
+                        // October). A day they are off keeps its own colour,
+                        // since that is the reason the cell is there.
+                        const tone = rowTint(mineAlerts)
                         return [
                             // Two weights, because a person is one row made of
                             // two. A hairline between somebody's times and
@@ -496,8 +497,8 @@ export default function RosterWeek({
                             // ends and the next begins. They were the same line
                             // before, so the week read as fourteen rows rather
                             // than seven.
-                            <tr key={row.employee.id} className="border-b border-gray-100">
-                                <td className="px-3 py-1.5 border-r border-border align-middle sticky left-0 z-10 bg-white">
+                            <tr key={row.employee.id} className={`border-b border-gray-100 ${tone}`}>
+                                <td className={`px-3 py-1.5 border-r border-border align-middle md:sticky md:left-0 z-10 ${tone || 'bg-white'}`}>
                                     <span className="flex items-center gap-2">
                                         <span
                                             className="w-1 h-6 rounded-full flex-shrink-0"
@@ -514,9 +515,7 @@ export default function RosterWeek({
                                         <AlertBadge
                                             findings={mineAlerts}
                                             open={alertsOpen(row.employee.id)}
-                                            onToggle={hasWarnings(mineAlerts)
-                                                ? () => toggleAlerts(row.employee.id)
-                                                : undefined}
+                                            onToggle={() => toggleAlerts(row.employee.id)}
                                         />
                                     </span>
                                 </td>
@@ -566,7 +565,7 @@ export default function RosterWeek({
                                                 // person: a day they are off
                                                 // still shows the reason in its
                                                 // own colour on top of it.
-                                                ...wash(day.date),
+                                                ...(tone ? {} : wash(day.date)),
                                                 ...(offKind
                                                     ? { backgroundColor: offKind.fill }
                                                     : away === 'none' ? { backgroundImage: awayHatch } : {}),
@@ -719,15 +718,15 @@ export default function RosterWeek({
                                 // The alert strip belongs to the person above
                                 // it, so when there is one the heavy line waits
                                 // and closes under that instead.
-                                className={hasAlerts ? 'border-b border-gray-100' : 'border-b-2 border-border'}
+                                className={`${hasAlerts ? 'border-b border-gray-100' : 'border-b-2 border-border'} ${tone}`}
                             >
-                                <td className="px-3 py-0 pl-6 text-[0.625rem] text-muted border-r border-border sticky left-0 z-10 bg-white leading-tight">
+                                <td className={`px-3 py-0 pl-6 text-[0.625rem] text-muted border-r border-border md:sticky md:left-0 z-10 leading-tight ${tone || 'bg-white'}`}>
                                     Breaks
                                 </td>
                                 {row.days.map(day => (
                                     <td
                                         key={day.date}
-                                        style={wash(day.date)}
+                                        style={tone ? undefined : wash(day.date)}
                                         className="px-2 py-0 border-r border-border last:border-r-0 align-middle text-center text-[0.625rem] text-red-600 leading-tight"
                                     >
                                         {dayBreakLabels(day.shifts).map((words, i) => (
@@ -751,7 +750,7 @@ export default function RosterWeek({
                     {/* Anything the manager wants read, and what each day came
                         to. */}
                     <tr className="bg-red-50 border-b border-red-100">
-                        <td className="px-3 py-1.5 text-xs font-semibold text-red-800 border-r border-red-100 sticky left-0 z-10 bg-red-50">
+                        <td className="px-3 py-1.5 text-xs font-semibold text-red-800 border-r border-red-100 md:sticky md:left-0 z-10 bg-red-50">
                             Notes
                         </td>
                         {dates.map(d => (
@@ -763,7 +762,7 @@ export default function RosterWeek({
                     </tr>
 
                     <tr className="bg-sidebar font-semibold text-white">
-                        <td className="px-3 py-2 text-xs border-r border-white/20 sticky left-0 z-10 bg-sidebar">
+                        <td className="px-3 py-2 text-xs border-r border-white/20 md:sticky md:left-0 z-10 bg-sidebar">
                             Hours on the day
                         </td>
                         {perDay.map(d => (
