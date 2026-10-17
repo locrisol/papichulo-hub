@@ -36,6 +36,8 @@ import ReportPaperwork from '@/components/reports/ReportPaperwork'
 import ReportActions from '@/components/reports/ReportActions'
 import ReportPrices from '@/components/reports/ReportPrices'
 import usePriceWeek from '@/components/reports/usePriceWeek'
+import useWhatWasOn from '@/components/reports/useWhatWasOn'
+import ReportWhatWasOn from '@/components/reports/ReportWhatWasOn'
 import useCleaningWeek from '@/components/reports/useCleaningWeek'
 import ReportCleaning from '@/components/reports/ReportCleaning'
 import { claimActions } from '@/lib/invoiceReport'
@@ -193,6 +195,14 @@ export default function ReportPage() {
     // with everything else when it goes out, the same as the prices.
     const liveCleaning = useCleaningWeek({
         restaurantId: report?.restaurant_id,
+        weekStart: report?.week_start,
+        enabled: report?.status === 'draft',
+    })
+
+    // What was on each day beside what it took, and the show nights. Live on
+    // a draft, frozen when it goes out, the same as the checklists.
+    const liveOn = useWhatWasOn({
+        restaurant: activeRestaurant,
         weekStart: report?.week_start,
         enabled: report?.status === 'draft',
     })
@@ -868,6 +878,9 @@ export default function ReportPage() {
             // The checklists, words and all, with the paths of the week's
             // photos so the page can still show them while they are kept.
             cleaning: liveCleaning.ready ? liveCleaning.data : null,
+            // What was on, words and all. Null when it could not be read, and
+            // the mail then leaves the list out rather than holding the week.
+            whatWasOn: liveOn.ready ? liveOn.data : null,
             paperwork: {
                 // The day here it was checked on, for the sent page. frozen_at
                 // is UTC, a day early for a report sent after midnight.
@@ -893,6 +906,12 @@ export default function ReportPage() {
     // so both have to have finished reading, and be this week's, before
     // anything goes out.
     function stillReading() {
+        // Waited for, but never a reason to hold the week: a list that could
+        // not be read goes out as nothing rather than stopping the report.
+        if (!liveOn.ready && !liveOn.error) {
+            setError('What was on this week is still loading. Wait a moment and try again.')
+            return true
+        }
         if (sections.some(s => s.key === 'cleaning') && !liveCleaning.ready) {
             setError(liveCleaning.error
                 ? `The checklists could not be loaded, so this cannot be sent yet: ${liveCleaning.error}`
@@ -1506,6 +1525,13 @@ export default function ReportPage() {
 
                     <WeekChart rows={history} {...specs.sales} />
                     <figcaption className="text-xs text-muted mt-2">{specs.sales.caption}</figcaption>
+
+                    <h3 className="text-xs font-bold text-muted uppercase tracking-wider mt-6 mb-2">What was on</h3>
+                    <ReportWhatWasOn
+                        data={report.status === 'published' ? figures.whatWasOn : liveOn.data}
+                        error={liveOn.error}
+                        published={report.status === 'published'}
+                    />
 
                     {salesCosts && (
                         <ReportComments

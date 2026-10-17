@@ -609,7 +609,85 @@ function salesAndCosts(section, f, charts) {
         line({ label: 'Cost of sales', value: withShare(f.costOfSales, f.costOfSalesPct), total: true }),
     ])
         + (targetNote ? note(`Current targets: ${targetNote}.`) : '')
+        + whatWasOn(f.whatWasOn)
         + comments(sectionComments(section))
+}
+
+// The edge of each line under a day, by what it is: a show next door, another
+// listing nearby, then the diary's kinds. The Also on line has none.
+const ON_EDGE = {
+    show: '#7C3AED', nearby: '#94A3B8', catering: '#C2410C', promotion: '#DB2777',
+    meeting: '#2563EB', maintenance: '#64748B', other: '#94A3B8',
+}
+
+// A change against the usual day, "+17%" or "−37%", in green or red.
+function changeHtml(change) {
+    if (change == null) return ''
+    const pct = Math.round(change * 100)
+    const colour = pct >= 0 ? GREEN : RED
+    return `<span style="color:${colour};font-weight:700;">${pct > 0 ? '+' : pct < 0 ? '−' : ''}${Math.abs(pct)}%</span>`
+}
+
+// What was on each day of the week, under the sales and costs (his, 17
+// October): the owners want to see how the sales relate to events. A line for
+// each day, its takings against a usual day of that name, and underneath
+// everything that was on. Worked out in the app and frozen with the figures,
+// words and all, so nothing here works anything out.
+//
+// The events go under the figures on lines of their own, never beside the
+// money, so nothing long sits in a row with a figure that cannot wrap.
+//
+// Every cell says its colour, the same as line() does. The first render left
+// it out and the days came out white: a colour set further up the message
+// reaches anything that does not set its own.
+function whatWasOn(w) {
+    if (!w?.days?.length) return ''
+
+    const day = d => {
+        const figure = d.closed
+            ? `<span style="color:${RED};">Closed</span>`
+            : d.net == null ? `<span style="color:${MUTED};font-weight:400;">No sales entered</span>` : money(d.net)
+        const usual = !d.closed && d.net != null
+            ? (d.usual != null
+                ? `<div style="margin-top:1px;font-size:12.5px;color:${MUTED};">Usual ${escapeHtml(d.weekday)} ${money(d.usual)}&nbsp;&middot;&#32;${changeHtml(d.change)}</div>`
+                : `<div style="margin-top:1px;font-size:12.5px;color:${MUTED};">Not enough weeks yet to say what is usual</div>`)
+            : ''
+        const lines = d.on.map(o => (o.tone === 'also'
+            ? `<div style="margin-top:4px;font-size:12.5px;line-height:1.4;color:${MUTED};${BREAKS}">${escapeHtml(o.text)}</div>`
+            : `<div style="margin-top:4px;padding-left:8px;border-left:3px solid ${ON_EDGE[o.tone] || ON_EDGE.other};font-size:12.5px;line-height:1.4;color:${INK};${BREAKS}">${escapeHtml(o.text)}</div>`))
+        // Where the listings would have been, before the diary and Also on.
+        if (d.nothingNearby && !d.closed) {
+            lines.unshift(`<div style="margin-top:4px;font-size:12.5px;color:${MUTED};">Nothing on nearby</div>`)
+        }
+        return `<tr><td style="padding:9px 0;border-bottom:1px solid ${BORDER};">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+                <td width="100%" style="font-size:14px;font-weight:700;color:${INK};">${escapeHtml(shortDay(d.date))}</td>
+                <td width="1%" align="right" style="font-size:14px;font-weight:700;color:${INK};white-space:nowrap;padding-left:12px;">${figure}</td>
+            </tr></table>
+            ${usual}${lines.join('')}
+        </td></tr>`
+    }
+
+    const week = w.week?.usual != null
+        ? `<tr><td style="padding:10px;background:${CREAM};border-top:2px solid ${DARK};">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+                <td width="100%" style="font-size:14px;font-weight:700;color:${INK};">The week</td>
+                <td width="1%" align="right" style="font-size:14px;font-weight:700;color:${INK};white-space:nowrap;padding-left:12px;">${money(w.week.net)}</td>
+            </tr></table>
+            <div style="margin-top:1px;font-size:12.5px;color:${MUTED};">A usual week ${money(w.week.usual)}&nbsp;&middot;&#32;${changeHtml(w.week.comparedNet / w.week.usual - 1)}</div>
+        </td></tr>`
+        : ''
+
+    return `<tr><td style="padding:22px ${SIDE}px 0;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+            <tr><td style="background:${BAND};border-bottom:1px solid ${BORDER};padding:9px 10px;font-size:11.5px;
+                font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:${DARK};">What was on</td></tr>
+            ${w.days.map(day).join('')}
+            ${week}
+        </table>
+    </td></tr>`
+        + note(`Usual is the middle of the same day over the ${w.usualWeeks || 8} weeks before, so one very busy or very quiet day does not move it.`)
+        + (w.showsWords ? note(w.showsWords) : '')
 }
 
 function profitAndLoss(section, f, charts) {

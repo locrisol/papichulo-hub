@@ -28,6 +28,26 @@ const figures = {
         { id: 'p2', name: 'Uber Eats', bucket: 'online_platform', taken: 2100, colour: '#1B6B43', mark: '#248C58' },
         { id: 'p3', name: 'Corporate Ltd', bucket: 'catering', taken: 900 },
     ],
+    // What was on, as lib/whatWasOn freezes it. Long names on purpose: they
+    // have to wrap under the day rather than widen the mail.
+    whatWasOn: {
+        usualWeeks: 8,
+        days: [
+            { date: '2026-10-04', weekday: 'Sunday', closed: true, net: null, usual: null, change: null, nothingNearby: true, on: [] },
+            {
+                date: '2026-10-05', weekday: 'Monday', closed: false, net: 2152.34, usual: 1708.69, change: 0.2597, nothingNearby: false,
+                on: [
+                    { tone: 'show', text: '3Arena, 18:30 · The Pussycat Dolls: PCD FOREVER TOUR, with very special guests from overseas' },
+                    { tone: 'catering', text: 'Catering · Ancestry, 11:30' },
+                    { tone: 'also', text: 'Also on: 11:30 Lunch Team, 12:10 Feedr' },
+                ],
+            },
+            { date: '2026-10-06', weekday: 'Tuesday', closed: false, net: null, usual: 2369.8, change: null, nothingNearby: true, on: [] },
+            { date: '2026-10-07', weekday: 'Wednesday', closed: false, net: 1497.72, usual: null, change: null, nothingNearby: true, on: [] },
+        ],
+        week: { net: 3650.06, usual: 1708.69, comparedNet: 2152.34 },
+        showsWords: 'Over the last 12 weeks, days with a show at the 3Arena took 29% more than usual for that day, and days without one 2% less than usual.',
+    },
     paperwork: {
         food: { total: 8, fine: 8, ok: true, missing: [], expired: [], expiring: [] },
         permits: {
@@ -2241,5 +2261,37 @@ describe('actions done this week in the mail', () => {
     it('are listed, apart from the open ones', () => {
         expect(doneActions(section).map(a => a.label)).toEqual(['Bag stamper'])
         expect(openActions(section, '2026-10-04').map(a => a.label)).toEqual(['Find coloured bowls'])
+    })
+})
+
+// His, 17 October: what was on each day, under the sales and costs.
+describe('what was on', () => {
+    const html = reportEmail(base).html
+
+    it('gives each day its takings against a usual day, and what was on under it', () => {
+        expect(html).toContain('What was on')
+        expect(html).toContain('Usual Monday €1,708.69')
+        expect(html).toMatch(/\+26%/)
+        expect(html).toContain('3Arena, 18:30 · The Pussycat Dolls')
+        expect(html).toContain('Also on: 11:30 Lunch Team, 12:10 Feedr')
+    })
+
+    it('says a closed day, a day with no sales, and a day with no usual yet', () => {
+        expect(html).toContain('>Closed</span>')
+        expect(html).toContain('No sales entered')
+        expect(html).toContain('Not enough weeks yet to say what is usual')
+        expect(html).toContain('Nothing on nearby')
+    })
+
+    it('says what usual means, and how show nights have gone', () => {
+        expect(html).toContain('Usual is the middle of the same day over the 8 weeks before')
+        expect(html).toContain('days with a show at the 3Arena took 29% more')
+        expect(html).toContain('A usual week €1,708.69')
+    })
+
+    it('is left out of a report frozen before it existed', () => {
+        const { whatWasOn, ...older } = base.figures
+        expect(whatWasOn).toBeTruthy()
+        expect(reportEmail({ ...base, figures: older }).html).not.toContain('What was on')
     })
 })
