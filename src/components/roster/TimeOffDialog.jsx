@@ -29,16 +29,36 @@ import { shortTime } from '@/lib/roster'
 // It lists and it edits in the same place, the same as the positions dialog,
 // because a list of somebody's time off with no way to fix a typo in it is a
 // list you end up keeping somewhere else as well.
+//
+// It can also open already filled in (his, 17 October): on a day picked off the
+// roster, or on one piece of time off tapped there. A day picked off the roster
+// starts as a day off, since that is what tapping a single day is usually for.
 const EMPTY = { kind: 'holiday', startsOn: '', endsOn: '', hours: '', note: '', canFrom: '', canTo: '' }
 
+function formFrom(absence) {
+    return {
+        kind: absence.kind,
+        startsOn: absence.starts_on,
+        endsOn: absence.ends_on || '',
+        hours: absence.hours == null ? '' : String(absence.hours),
+        note: absence.note || '',
+        canFrom: absence.can_work_from ? String(absence.can_work_from).slice(0, 5) : '',
+        canTo: absence.can_work_to ? String(absence.can_work_to).slice(0, 5) : '',
+    }
+}
+
 export default function TimeOffDialog({
-    employees, initialEmployeeId, restaurantId, userId, onClose, onChanged,
+    employees, initialEmployeeId, initialDate, initialAbsence, restaurantId, userId, onClose, onChanged,
 }) {
     const confirm = useConfirm()
-    const [employeeId, setEmployeeId] = useState(initialEmployeeId || employees?.[0]?.id || '')
+    const [employeeId, setEmployeeId] = useState(
+        initialAbsence?.employee_id || initialEmployeeId || employees?.[0]?.id || '',
+    )
     const [absences, setAbsences] = useState([])
-    const [form, setForm] = useState(EMPTY)
-    const [editing, setEditing] = useState(null)
+    const [form, setForm] = useState(() => (initialAbsence
+        ? formFrom(initialAbsence)
+        : initialDate ? { ...EMPTY, kind: 'day_off', startsOn: initialDate } : EMPTY))
+    const [editing, setEditing] = useState(initialAbsence || null)
     const formRef = useRef(null)
     const [saving, setSaving] = useState(false)
     // What they are already on for inside the dates being typed. Only for a new
@@ -127,15 +147,7 @@ export default function TimeOffDialog({
         setEditing(absence)
         setEmployeeId(absence.employee_id)
         formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-        setForm({
-            kind: absence.kind,
-            startsOn: absence.starts_on,
-            endsOn: absence.ends_on || '',
-            hours: absence.hours == null ? '' : String(absence.hours),
-            note: absence.note || '',
-            canFrom: absence.can_work_from ? String(absence.can_work_from).slice(0, 5) : '',
-            canTo: absence.can_work_to ? String(absence.can_work_to).slice(0, 5) : '',
-        })
+        setForm(formFrom(absence))
     }
 
     // Part of a day only makes sense on one date, so the fields for it only

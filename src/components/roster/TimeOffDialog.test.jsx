@@ -86,3 +86,25 @@ describe('freeing the days it lands on', () => {
         expect(calls.filter(c => c === 'absences insert')).toHaveLength(1)
     })
 })
+
+// His, 17 October: opened from a day on the roster, or from time off tapped
+// there, the form starts filled in.
+describe('opening already filled in', () => {
+    it('starts as a day off on the day picked, offering to free her shift', async () => {
+        const { container } = render(
+            <TimeOffDialog employees={[ANA]} initialEmployeeId="e1" initialDate={DAY} restaurantId="r1" userId="u1" onClose={() => {}} />,
+        )
+        expect(container.querySelectorAll('input[type="date"]')[0]).toHaveValue(DAY)
+        expect(container.querySelectorAll('select')[1]).toHaveValue('day_off')
+        expect(await screen.findByRole('button', { name: 'Add and remove 1 shift' })).toBeInTheDocument()
+    })
+
+    it('opens one piece of time off to change', () => {
+        const sick = { id: 'a9', employee_id: 'e1', kind: 'sick', starts_on: DAY, ends_on: DAY, status: 'approved' }
+        render(
+            <TimeOffDialog employees={[ANA]} initialAbsence={sick} restaurantId="r1" userId="u1" onClose={() => {}} />,
+        )
+        expect(screen.getByText(/^Change the off sick on/)).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument()
+    })
+})

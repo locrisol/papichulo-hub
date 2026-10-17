@@ -52,7 +52,7 @@ import {
 // oversight: the picture already goes out to the whole group.
 export default function RosterWeek({
     dates, employees, shifts, positions, dayNotes, nearby, nearbyPlaces, diary, openingHours, standingNote, today,
-    alerts, absences, onOpenShift, onNewShift, onOpenDay, onOpenDiary, onOpenWeekExtras,
+    alerts, absences, onOpenShift, onNewShift, onOpenDay, onOpenDiary, onOpenWeekExtras, onOpenTimeOff,
     shiftMark, staff = false,
 }) {
     // Whose warnings are open. None to begin with (his, 17 October): the row is
@@ -582,11 +582,24 @@ export default function RosterWeek({
                                                 Short, because the cell is
                                                 narrow and "can work" is said by
                                                 the hours themselves. */}
-                                            {part && (
+                                            {/* Both labels open the time off
+                                                they come from, to change or
+                                                remove (his, 17 October). Before,
+                                                that meant the Time off button
+                                                and finding the person. */}
+                                            {part && (onOpenTimeOff && !staff ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => onOpenTimeOff(part)}
+                                                    className="block w-full text-[0.5625rem] font-semibold text-amber-700 leading-tight hover:underline"
+                                                >
+                                                    {partWords(part).replace('can work ', '')}
+                                                </button>
+                                            ) : (
                                                 <span className="block text-[0.5625rem] font-semibold text-amber-700 leading-tight">
                                                     {partWords(part).replace('can work ', '')}
                                                 </span>
-                                            )}
+                                            ))}
                                             {day.shifts.length === 0 ? (
                                                 offKind ? (
                                                     // The label rather than a
@@ -596,12 +609,23 @@ export default function RosterWeek({
                                                     // here, and the label is
                                                     // what the week is being
                                                     // read for.
-                                                    <span
-                                                        className="block text-[0.625rem] font-semibold uppercase tracking-wider py-0.5"
-                                                        style={{ color: offKind.colour }}
-                                                    >
-                                                        {offKind.label}
-                                                    </span>
+                                                    onOpenTimeOff && !staff ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => onOpenTimeOff(off)}
+                                                            className="block w-full text-[0.625rem] font-semibold uppercase tracking-wider py-0.5 rounded hover:underline"
+                                                            style={{ color: offKind.colour }}
+                                                        >
+                                                            {offKind.label}
+                                                        </button>
+                                                    ) : (
+                                                        <span
+                                                            className="block text-[0.625rem] font-semibold uppercase tracking-wider py-0.5"
+                                                            style={{ color: offKind.colour }}
+                                                        >
+                                                            {offKind.label}
+                                                        </span>
+                                                    )
                                                 ) : staff ? (
                                                     // Nothing to press, rather
                                                     // than a plus that leads

@@ -70,6 +70,7 @@ export default function RosterDay({
     onOpenShift,
     onNewShift,
     onDragShift,
+    onOpenTimeOff,
     onResizeShift,
     onOpenDiary,
 }) {
@@ -630,6 +631,20 @@ export default function RosterDay({
                                             night" came out as "Closed 21:30 last
                                             ni…" in a column that has the room to
                                             take a second line. */}
+                                        {/* Time off opens what it came from,
+                                            to change or remove (his, 17
+                                            October). */}
+                                        {(offKind || part) && onOpenTimeOff ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => onOpenTimeOff(off || part)}
+                                                className={`block text-left text-[0.625rem] leading-tight underline decoration-dotted hover:decoration-solid ${
+                                                    part ? 'text-amber-700 font-semibold' : 'text-muted'
+                                                }`}
+                                            >
+                                                {offKind ? offKind.label : partWords(part).replace('can work ', 'Can work ')}
+                                            </button>
+                                        ) : (
                                         <span className={`block text-[0.625rem] leading-tight ${
                                             part ? 'text-amber-700 font-semibold'
                                                 : closedLate && !offKind && away !== 'none' ? 'text-slate-600 font-semibold'
@@ -645,6 +660,7 @@ export default function RosterDay({
                                                             ? 'Closed last night'
                                                             : positionOf(employee.position_id)?.name || 'No position'}
                                         </span>
+                                        )}
 
                                         {/* How hard they have been going, under
                                             whatever the line above is saying.

@@ -7,7 +7,9 @@ import {
     shiftMinutes, breakFor, breakLabel, shortTime, fmtHours, shiftEdges, toMinutes,
 } from '@/lib/roster'
 import { canWorkAt, availabilityOn } from '@/lib/availability'
-import { modalFooter, labelClass, fieldClass, primaryButton, secondaryButton, rowButton } from '@/lib/controlStyles'
+import {
+    modalFooter, labelClass, fieldClass, primaryButton, secondaryButton, rowButton, segmentTrack, segmentButton,
+} from '@/lib/controlStyles'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // One shift: making it, changing it, removing it.
@@ -21,6 +23,12 @@ import ErrorBanner from '@/components/ui/ErrorBanner'
 // There is no break on it either. The break comes from the restaurant's rules
 // and nothing else, because a break typed by hand is how somebody ends up owed
 // one. If a rule is wrong, the rule is what should change.
+//
+// Time off starts here too (his, 17 October). Tapping a day on the roster opens
+// this, so a new one asks Shift or Time off at the top, and an existing shift
+// can be turned into a day off. Either way onTimeOff hands over to the time off
+// form with the person and the day filled in; that form lists the shift and
+// offers to take it off, which leaves the hours asking for cover.
 export default function ShiftDialog({
     shift,
     date,
@@ -31,6 +39,7 @@ export default function ShiftDialog({
     onSave,
     onRemove,
     onClose,
+    onTimeOff,
     saving,
 }) {
     const confirm = useConfirm()
@@ -104,6 +113,22 @@ export default function ShiftDialog({
         >
             <form onSubmit={submit}>
                 <div className="px-6 py-4">
+                {onTimeOff && !editing && (
+                    <div className={`${segmentTrack} mb-4`} role="group" aria-label="What to add">
+                        <button type="button" aria-pressed="true" className={segmentButton(true, true)}>
+                            Shift
+                        </button>
+                        <button
+                            type="button"
+                            aria-pressed="false"
+                            onClick={() => onTimeOff(form.employeeId)}
+                            className={segmentButton(false, true)}
+                        >
+                            Time off
+                        </button>
+                    </div>
+                )}
+
                 <div className="mb-3">
                     <label className={labelClass}>Who</label>
                     <select
@@ -179,6 +204,16 @@ export default function ShiftDialog({
 
                 {problem && (
                     <ErrorBanner>{problem}</ErrorBanner>
+                )}
+
+                {onTimeOff && editing && (
+                    <button
+                        type="button"
+                        onClick={() => onTimeOff(form.employeeId)}
+                        className={`${secondaryButton} w-full mt-1`}
+                    >
+                        Give {forWhom?.full_name || 'them'} the day off
+                    </button>
                 )}
                 </div>
 

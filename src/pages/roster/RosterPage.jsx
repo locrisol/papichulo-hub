@@ -125,6 +125,10 @@ export default function RosterPage() {
     // which is to look something up. His call, 20 September.
     const [view, setView] = useState('week')
     const [settingsOpen, setSettingsOpen] = useState(null)
+    // The time off form, and what it opens on: nothing from the button above
+    // the week, a person and a day from the shift form, or one piece of time
+    // off tapped on the roster (his, 17 October).
+    const [timeOff, setTimeOff] = useState(null)
     const [addingPerson, setAddingPerson] = useState(false)
     const [personForm, setPersonForm] = useState(EMPTY_EMPLOYEE)
 
@@ -976,7 +980,7 @@ export default function RosterPage() {
                         finding out somebody is off sick happens while you are
                         looking at the week rather than while you are on the
                         team screen. */}
-                    <button type="button" onClick={() => setSettingsOpen('timeOff')} className={secondaryButton}>
+                    <button type="button" onClick={() => setTimeOff({})} className={secondaryButton}>
                         Time off
                     </button>
                     {configures && (
@@ -1071,6 +1075,7 @@ export default function RosterPage() {
                         setEditingShift({ shift: { employee_id: employeeId } })
                     }}
                     onOpenDay={d => setEditingDay({ date: d, only: 'extras' })}
+                    onOpenTimeOff={absence => setTimeOff({ absence })}
                 />
             ) : (
                 <RosterDay
@@ -1091,6 +1096,7 @@ export default function RosterPage() {
                     diary={diary}
                     onOpenDiary={entry => setViewingDiary(entry)}
                     onDragShift={dragShift}
+                    onOpenTimeOff={absence => setTimeOff({ absence })}
                     onOpenShift={shift => setEditingShift({ shift })}
                     onNewShift={({ employeeId, startsAt, endsAt }) => setEditingShift({
                         shift: { employee_id: employeeId, starts_at: startsAt, ends_at: endsAt },
@@ -1108,6 +1114,10 @@ export default function RosterPage() {
                     onSave={saveShift}
                     onRemove={removeShift}
                     onClose={() => setEditingShift(null)}
+                    onTimeOff={employeeId => {
+                        setTimeOff({ employeeId: employeeId || editingShift.shift?.employee_id, date })
+                        setEditingShift(null)
+                    }}
                     saving={saving}
                 />
             )}
@@ -1132,13 +1142,15 @@ export default function RosterPage() {
                 </Modal>
             )}
 
-            {settingsOpen === 'timeOff' && (
+            {timeOff && (
                 <TimeOffDialog
                     employees={roster}
-                    initialEmployeeId={roster[0]?.id}
+                    initialEmployeeId={timeOff.employeeId || roster[0]?.id}
+                    initialDate={timeOff.date}
+                    initialAbsence={timeOff.absence}
                     restaurantId={restaurantId}
                     userId={user?.id}
-                    onClose={() => setSettingsOpen(null)}
+                    onClose={() => setTimeOff(null)}
                     onChanged={() => load({ quiet: true })}
                 />
             )}
