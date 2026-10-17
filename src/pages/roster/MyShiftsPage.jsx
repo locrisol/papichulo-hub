@@ -565,6 +565,17 @@ export default function MyShiftsPage() {
             <ErrorBanner className="mb-4">{error}</ErrorBanner>
             <ErrorBanner className="mb-4">{nearbyFailed ? NEARBY_FAILED : null}</ErrorBanner>
 
+            {/* Time off, the other thing somebody opens this page to do. At the
+                top (his, 17 October), where asking for a day and seeing the
+                answer are the first things on the screen rather than below a
+                week of shifts. */}
+            <TimeOffCard
+                requests={myTimeOff}
+                onAsk={() => setAskingOff(true)}
+                onWithdraw={withdrawTimeOff}
+                className="mb-4"
+            />
+
             <div className={`${cardEdge} bg-white p-3 mb-4 flex flex-col sm:flex-row sm:items-center gap-3`}>
                 <DateStepper
                     onBack={() => toWeek(addDays(weekStart, -7))}
@@ -747,14 +758,6 @@ export default function MyShiftsPage() {
                     <p className="text-xs text-green-800 mt-1.5">Ask a manager if you want one of them.</p>
                 </Notice>
             )}
-
-            {/* Time off, under the week. It is the other thing somebody opens
-                this page to do, and it has to live somewhere. */}
-            <TimeOffCard
-                requests={myTimeOff}
-                onAsk={() => setAskingOff(true)}
-                onWithdraw={withdrawTimeOff}
-            />
 
             {askingOff && (
                 <TimeOffRequestDialog

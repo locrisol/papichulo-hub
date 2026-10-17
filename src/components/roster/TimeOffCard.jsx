@@ -1,15 +1,19 @@
+import { useState } from 'react'
 import { useConfirm } from '@/context/confirm'
 import { card, badge, primaryButton } from '@/lib/controlStyles'
 import { absenceRange } from '@/lib/absences'
 import { requestLabel, partWords } from '@/lib/timeOff'
-import { dayLabel } from '@/lib/dates'
+import { dayLabel, todayISO } from '@/lib/dates'
 
 // Your own time off, on your own page.
 //
 // It has to live somewhere, and this is the only page staff have. Waiting ones
 // first, because the one you are wondering about is the one nobody has answered
-// yet. Everything else after it, newest first, so last summer's holiday is
-// still there without being in the way.
+// yet. Everything else after it, newest first.
+//
+// At the top of My shifts (his, 17 October), so what has already happened folds
+// away behind one line: thirty past requests above the week would push the week
+// off the screen. Last summer's holiday is still there, one tap away.
 
 const LOOK = {
     requested: { text: 'Waiting for approval', tone: 'bg-amber-100 text-amber-800' },
@@ -17,7 +21,8 @@ const LOOK = {
     declined: { text: 'Not approved', tone: 'bg-gray-200 text-gray-700' },
 }
 
-export default function TimeOffCard({ requests, onAsk, onWithdraw }) {
+export default function TimeOffCard({ requests, onAsk, onWithdraw, className = '' }) {
+    const [showPast, setShowPast] = useState(false)
 
     const confirm = useConfirm()
 
@@ -45,9 +50,15 @@ export default function TimeOffCard({ requests, onAsk, onWithdraw }) {
         if (waiting !== 0) return waiting
         return String(b.starts_on).localeCompare(String(a.starts_on))
     })
+    // Over and answered. A waiting one stays in view whatever its dates, since
+    // it is still a question.
+    const today = todayISO()
+    const isPast = row => row.status !== 'requested' && String(row.ends_on) < today
+    const past = rows.filter(isPast)
+    const shown = showPast ? rows : rows.filter(row => !isPast(row))
 
     return (
-        <div className={`${card} p-4 mt-4`}>
+        <div className={`${card} p-4 ${className}`}>
             <div className="flex items-center justify-between gap-3 mb-3">
                 <h2 className="font-serif text-base font-bold text-gray-900">Time off</h2>
                 <button
@@ -65,7 +76,10 @@ export default function TimeOffCard({ requests, onAsk, onWithdraw }) {
                 </p>
             ) : (
                 <div className="space-y-2">
-                    {rows.map(row => {
+                    {shown.length === 0 && (
+                        <p className="text-sm text-muted">Nothing coming up.</p>
+                    )}
+                    {shown.map(row => {
                         const look = LOOK[row.status] || LOOK.requested
                         const hours = partWords(row)
                         return (
@@ -99,6 +113,16 @@ export default function TimeOffCard({ requests, onAsk, onWithdraw }) {
                             </div>
                         )
                     })}
+                    {past.length > 0 && (
+                        <button
+                            type="button"
+                            onClick={() => setShowPast(was => !was)}
+                            aria-expanded={showPast}
+                            className="text-xs font-semibold text-gray-600 underline"
+                        >
+                            {showPast ? 'Hide past time off' : `Show past time off (${past.length})`}
+                        </button>
+                    )}
                 </div>
             )}
         </div>

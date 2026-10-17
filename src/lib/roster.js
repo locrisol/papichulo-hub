@@ -5,7 +5,7 @@
 // worth, what break it earns, and what a week costs.
 
 import { isBankHoliday } from '@/lib/bankHolidays'
-import { weekStartOf, addDays } from '@/lib/dates'
+import { weekStartOf, addDays, shortDate, weekMonthLabel } from '@/lib/dates'
 
 // How far My shifts steps either way from this week. Eight weeks back is
 // four pay periods, for checking hours against a payslip. Eight ahead is past
@@ -430,4 +430,40 @@ export function tint(hex, weight = 0.16) {
         return Math.round(channel * weight + 255 * (1 - weight))
     }
     return '#' + pad(mix(0)) + pad(mix(2)) + pad(mix(4))
+}
+
+// The question asked before a week goes out.
+//
+// One dialog, listing whatever is still wrong with the week (his, 17 October).
+// The warnings fold away above the roster now, so this is the one place they
+// are all read before the staff see the week, and Publish anyway is the
+// answer to them. A block, or somebody double booked, turns it red: those are
+// legal limits or a mistake, not advice.
+export function publishQuestion({ weekStart, shiftCount, hours, blocks = [], warnings = [], clashCount = 0 }) {
+    const problems = blocks.length + warnings.length > 0
+    const list = items => items.map(f => `• ${f.text}`).join('\n')
+    const parts = []
+    if (blocks.length > 0) parts.push(`Has to be fixed:\n${list(blocks)}`)
+    if (warnings.length > 0) parts.push(`${warnings.length === 1 ? 'Warning' : 'Warnings'}:\n${list(warnings)}`)
+    parts.push('Every shift in the week is published together. If you change anything afterwards, the week will show Unpublished changes.')
+
+    const notes = []
+    if (blocks.length > 0) notes.push('Some of these are legal limits for the business. Only publish if you are sure.')
+    if (clashCount > 0) {
+        notes.push(`${clashCount} ${clashCount === 1 ? 'person is' : 'people are'} double booked. Check this before publishing.`)
+    }
+
+    return {
+        title: `Publish ${weekMonthLabel(weekStart)}?`,
+        message: parts.join('\n\n'),
+        details: [
+            { label: 'Week', value: `${shortDate(weekStart)} to ${shortDate(addDays(weekStart, 6))}` },
+            { label: 'Shifts', value: String(shiftCount) },
+            { label: 'Hours', value: fmtHours(hours) },
+        ],
+        confirmLabel: problems ? 'Publish anyway' : 'Publish the week',
+        cancelLabel: problems ? 'Go back' : 'Cancel',
+        tone: notes.length > 0 ? 'danger' : 'default',
+        dangerNote: notes.length > 0 ? notes.join(' ') : undefined,
+    }
 }
