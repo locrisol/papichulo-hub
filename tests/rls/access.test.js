@@ -74,6 +74,27 @@ async function productRefusal(client) {
     return error?.code ?? null
 }
 
+// A picture of a version that cannot exist, so no row is ever made.
+async function pictureRefusal(client) {
+    const { error } = await client.from('version_pictures').insert({
+        version_id: NOBODY,
+        path: `${NOBODY}/rls-test.jpg`,
+    })
+    return error?.code ?? null
+}
+
+// A version the store manager's restaurant has a price for. The price is
+// what makes trying to remove it safe: a version with a price cannot go,
+// guard or no guard.
+async function pricedVersion(client, restaurantId) {
+    const { data: prices } = await client.from('product_supplier_prices')
+        .select('version_id').eq('restaurant_id', restaurantId).limit(1)
+    if (!prices?.length) return null
+    const { data } = await client.from('product_versions')
+        .select('id, is_recommended, is_active').eq('id', prices[0].version_id).single()
+    return data
+}
+
 // Saying a code is not stock, for a supplier that cannot exist.
 async function notStockRefusal(client, restaurantId) {
     const { error } = await client.from('supplier_codes').insert({
@@ -548,10 +569,16 @@ maybe('what each role can see and do', () => {
         // page reads the public_ views, which leave all of that out.
         it('cannot read the menu, what goes into each dish or the allergen tables', async () => {
             for (const table of ['menu_items', 'menu_item_components', 'product_allergens', 'menu_categories',
-                'product_versions', 'version_allergens']) {
+                'product_versions', 'version_allergens', 'version_pictures', 'version_codes']) {
                 const { count } = await countVisible(employee, table)
                 expect(count, `an employee can read ${table}`).toBe(0)
             }
+        })
+
+        // Staff screens show no pictures, so staff are given none of them.
+        it('is given none of the pictures of each version', async () => {
+            const { data } = await employee.storage.from('version-pictures').list()
+            expect(data || []).toEqual([])
         })
 
         // The stock take lists a product where the versions bought there are
@@ -823,6 +850,47 @@ maybe('what each role can see and do', () => {
             expect(await productRefusal(manager)).toBe(GUARDED)
         })
 
+        // The Recommended list of 19 October 2026 is the owners'. Each change
+        // goes with a blank code, which the database refuses anyway, so
+        // nothing on live changes whether or not the guard holds: the guard
+        // answers first, and without it the blank code would.
+        it('cannot change anything on the Recommended list', async ({ skip }) => {
+            const version = await pricedVersion(manager, ownRestaurantId)
+            skip(!version, 'this restaurant has no prices, so there is no version to try')
+            for (const change of [
+                { is_recommended: !version.is_recommended },
+                { fallback_rank: 1 },
+                { notes: 'RLS test, should never be saved' },
+                { description: 'RLS test, should never be saved' },
+                { name: 'RLS test, should never be saved' },
+                { is_active: !version.is_active },
+            ]) {
+                const { error } = await manager.from('product_versions')
+                    .update({ ...change, supplier_code: ' ' }).eq('id', version.id)
+                expect(error?.code, `a store manager changed ${Object.keys(change)[0]}`).toBe(GUARDED)
+            }
+        })
+
+        it('cannot remove a version', async ({ skip }) => {
+            const version = await pricedVersion(manager, ownRestaurantId)
+            skip(!version, 'this restaurant has no prices, so there is no version to try')
+            const { error } = await manager.from('product_versions').delete().eq('id', version.id)
+            expect(error?.code, 'a store manager removed a version').toBe(GUARDED)
+        })
+
+        it('reads the pictures and other codes of each version, and cannot add a picture', async () => {
+            for (const table of ['version_pictures', 'version_codes']) {
+                const { error } = await countVisible(manager, table)
+                expect(error, `a manager cannot read ${table}`).toBeNull()
+            }
+            expect(await pictureRefusal(manager)).toBe(REFUSED_BY_THE_RULES)
+            const path = `${NOBODY}/rls-test.jpg`
+            const { error } = await manager.storage.from('version-pictures')
+                .upload(path, new Blob(['x'], { type: 'image/jpeg' }), { contentType: 'image/jpeg' })
+            if (!error) await superadmin.storage.from('version-pictures').remove([path])
+            expect(error, 'a store manager put a picture in the bucket').not.toBeNull()
+        })
+
         it('cannot say a code is not stock, or set a line aside', async () => {
             expect(await notStockRefusal(manager, ownRestaurantId)).toBe(GUARDED)
             const { error } = await manager.from('invoice_lines').insert({
@@ -907,6 +975,18 @@ maybe('what each role can see and do', () => {
         it('gets past the guard on adding a product and saying a code is not stock', async () => {
             expect(await productRefusal(owner)).toBe(BAD_SECTION)
             expect(await notStockRefusal(owner, ownRestaurantId)).toBe(PAST_THE_RULES)
+        })
+
+        // The same blank code as the store manager's test: the owner gets past
+        // the guard and is stopped by the code instead, so nothing is saved.
+        it('gets past the guard on the Recommended list', async ({ skip }) => {
+            const { data: versions } = await owner.from('product_versions').select('id').limit(1)
+            skip(!versions?.length, 'there are no versions to try')
+            const { error } = await owner.from('product_versions')
+                .update({ notes: 'RLS test, should never be saved', supplier_code: ' ' }).eq('id', versions[0].id)
+            expect(error, 'an owner saved a blank code').not.toBeNull()
+            expect(error.code).not.toBe(GUARDED)
+            expect(await pictureRefusal(owner)).toBe(PAST_THE_RULES)
         })
 
         it('reads who reviews', async () => {
@@ -1229,11 +1309,18 @@ maybe('what each role can see and do', () => {
                 'restaurants', 'products', 'menu_items', 'menu_categories',
                 'menu_item_components', 'mix_recipes', 'product_allergens',
                 'product_versions', 'version_allergens', 'product_supplier_prices',
-                'product_requests', 'brand_settings', 'restaurant_kept_in',
+                'product_requests', 'brand_settings', 'restaurant_kept_in', 'version_pictures', 'version_codes',
             ]) {
                 const { count } = await countVisible(anon, table)
                 expect(count, `${table} is still readable by anybody`).toBe(0)
             }
+        })
+
+        it('cannot call the functions that change the Recommended list', async () => {
+            const recommends = await anon.rpc('set_recommends', { product: NOBODY, mode: 'any' })
+            const fallbacks = await anon.rpc('set_fallbacks', { product: NOBODY, versions: [] })
+            expect(recommends.error, 'anybody can call set_recommends').not.toBeNull()
+            expect(fallbacks.error, 'anybody can call set_fallbacks').not.toBeNull()
         })
 
         // What the views hand over, stated as columns rather than as a
