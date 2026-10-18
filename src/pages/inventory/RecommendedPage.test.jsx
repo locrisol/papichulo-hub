@@ -33,6 +33,8 @@ let lines
 let written
 let rpcs
 let ask
+let refused
+let removed
 const db = {
     from: vi.fn(table => {
         // The deliveries are filtered through the invoice they are on, which
@@ -43,6 +45,10 @@ const db = {
             step.eq = vi.fn((column, value) => { written.push({ table, patch, [column]: value }); return step })
             return step
         })
+        q.insert = vi.fn(row => {
+            written.push({ table, inserted: row })
+            return makeQuery({ data: null, error: refused === table ? { message: 'new row violates row-level security policy' } : null })
+        })
         return q
     }),
     rpc: vi.fn((name, args) => { rpcs.push({ name, args }); return Promise.resolve({ data: null, error: null }) }),
@@ -50,7 +56,7 @@ const db = {
         from: vi.fn(() => ({
             createSignedUrls: vi.fn(() => Promise.resolve({ data: [] })),
             upload: vi.fn(() => Promise.resolve({ data: {}, error: null })),
-            remove: vi.fn(() => Promise.resolve({ data: [], error: null })),
+            remove: vi.fn(paths => { removed.push(...paths); return Promise.resolve({ data: [], error: null }) }),
         })),
     },
 }
@@ -65,6 +71,11 @@ vi.mock('@/context/restaurant', () => {
     return { useRestaurant: () => ({ activeRestaurant: point }) }
 })
 vi.mock('@/context/confirm', () => ({ useConfirm: () => options => ask(options) }))
+// jsdom has no canvas, so the shrinking is taken as done.
+vi.mock('@/lib/photo', async importOriginal => ({
+    ...(await importOriginal()),
+    shrinkPhoto: () => Promise.resolve(new Blob(['x'], { type: 'image/jpeg' })),
+}))
 
 const { default: RecommendedPage } = await import('./RecommendedPage')
 
@@ -72,6 +83,8 @@ beforeEach(() => {
     me = { id: 'u1', role: 'owner', restaurant_id: 'r1' }
     written = []
     rpcs = []
+    refused = null
+    removed = []
     ask = vi.fn(async () => true)
     tables = {
         products: [PEPPERS, FRIES, SALSA, SPONGE],
@@ -172,11 +185,33 @@ describe('the Recommended list', () => {
         expect(screen.getByRole('heading', { name: 'Fries' })).toBeInTheDocument()
     })
 
+    // His ask of 18 October 2026: the empty box takes a picture straight
+    // away, without opening Edit.
+    it('lets an owner add a picture from the empty box', async () => {
+        await open()
+        const box = productRow('Fries').getByRole('button', { name: 'Add a picture of Mccain Thin Chips 10mm' })
+        await userEvent.upload(box.parentElement.querySelector('input[type=file]'), new File(['x'], 'chips.webp', { type: 'image/webp' }))
+        await waitFor(() => expect(written).toHaveLength(1))
+        expect(written[0]).toMatchObject({ table: 'version_pictures', inserted: { version_id: 'f', sort_order: 0, added_by: 'u1' } })
+        expect(written[0].inserted.path).toMatch(/^f\/.+\.jpg$/)
+    })
+
+    it('takes the file back out and says why when the picture cannot be saved', async () => {
+        refused = 'version_pictures'
+        await open()
+        const box = productRow('Fries').getByRole('button', { name: 'Add a picture of Mccain Thin Chips 10mm' })
+        await userEvent.upload(box.parentElement.querySelector('input[type=file]'), new File(['x'], 'chips.jpg', { type: 'image/jpeg' }))
+        expect(await productRow('Fries').findByRole('alert')).toHaveTextContent(/.+/)
+        expect(removed).toEqual([written[0].inserted.path])
+    })
+
     it('tells a store manager only the owners change it, and offers no Edit', async () => {
         me = { id: 'u2', role: 'store_manager', restaurant_id: 'r1' }
         await open()
         expect(screen.getByText(/Only the owners change this list/)).toBeInTheDocument()
         expect(screen.queryByRole('button', { name: /^Edit/ })).toBeNull()
+        expect(screen.queryByRole('button', { name: /^Add a picture/ })).toBeNull()
+        expect(productRow('Fries').getByText('No picture yet')).toBeInTheDocument()
     })
 })
 

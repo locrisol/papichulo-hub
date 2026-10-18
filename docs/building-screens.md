@@ -57,6 +57,9 @@ its own order, not by what was written last. Checked.
 | Asking before doing something | `useConfirm` from `src/context/confirm` |
 | Stopping a form saving twice | `useSaveOnce` |
 | Searching a list, picking a product, a time, a clock time | `SearchBox`, `ProductSelect`, `TimeField`, `ClockField` |
+| Taking or choosing a photo, shrunk before it goes up | `PhotoButton`, or `usePhotoPicker` to open it from your own control |
+| Showing photos small, large when pressed | `PhotoStrip`, with `useSignedUrls` for a private bucket |
+| Who a version is bought from | `SupplierBadge` |
 
 A page that breaks while it is drawn shows a message in place of the page and
 keeps the menu, through `ErrorBoundary` in the layout. Nothing needs adding to

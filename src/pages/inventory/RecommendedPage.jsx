@@ -72,6 +72,22 @@ export default function RecommendedPage() {
         setList(was => ({ ...was, ...brand }))
     }, [])
 
+    // A picture added from its empty box on the list, without opening Edit.
+    // The file is up by now; if its row cannot be saved the file goes again
+    // rather than sitting in the bucket with nothing pointing at it. Says what
+    // went wrong, or nothing.
+    const addPicture = useCallback(async (versionId, path, place) => {
+        const { error: failed } = await supabase.from('version_pictures').insert({
+            version_id: versionId, path, sort_order: place, added_by: user?.id,
+        })
+        if (failed) {
+            await supabase.storage.from(VERSION_PICTURES).remove([path])
+            return friendlyError(failed)
+        }
+        await reloadList()
+        return ''
+    }, [user?.id, reloadList])
+
     useEffect(() => {
         // Reading sets the list when it arrives, and a change of restaurant
         // has to read that restaurant's prices again.
@@ -169,6 +185,7 @@ export default function RecommendedPage() {
                                         list={list}
                                         supplierName={supplierName}
                                         firstUrls={firstUrls}
+                                        onAddPicture={keepsTheList ? addPicture : null}
                                         onEdit={keepsTheList ? () => setEditing(product.id) : null}
                                     />
                                 ))}
@@ -261,7 +278,7 @@ async function readHere(restaurantId) {
 
 // One product on the list: its recommended versions, its fallbacks, and a
 // line each for what else is bought here and what is switched off.
-function ProductOnList({ product, list, supplierName, firstUrls, onEdit }) {
+function ProductOnList({ product, list, supplierName, firstUrls, onAddPicture, onEdit }) {
     const groups = groupsOf(product, list.versions)
     const also = alsoBought(product, list.versions, list.prices)
     const tile = version => (
@@ -272,6 +289,7 @@ function ProductOnList({ product, list, supplierName, firstUrls, onEdit }) {
             list={list}
             supplierName={supplierName}
             firstUrl={firstUrls[(list.pictures.get(version.id) || [])[0]]}
+            onAddPicture={onAddPicture}
         />
     )
 
@@ -334,8 +352,9 @@ function ProductOnList({ product, list, supplierName, firstUrls, onEdit }) {
 
 // A version as the list shows it: its picture, its name, who sells it under
 // which code, what it costs here and when it was last delivered, and what
-// the owners wrote about it.
-function VersionTile({ version, product, list, supplierName, firstUrl }) {
+// the owners wrote about it. The picture is above the words on a phone and
+// beside them on a computer (VersionPicture).
+function VersionTile({ version, product, list, supplierName, firstUrl, onAddPicture }) {
     const name = version.name || product.name
     const standing = standingOf(version, product, list.versions)
     const price = ownPrice(version.id, list.prices)
@@ -343,8 +362,15 @@ function VersionTile({ version, product, list, supplierName, firstUrl }) {
     const unanswered = declaresAllergens(product) && !list.answered.has(version.id)
 
     return (
-        <li className="flex gap-3 py-3">
-            <VersionPicture paths={list.pictures.get(version.id) || []} url={firstUrl} name={name} />
+        <li className="flex flex-col sm:flex-row gap-3 sm:gap-4 py-3">
+            <VersionPicture
+                paths={list.pictures.get(version.id) || []}
+                url={firstUrl}
+                name={name}
+                canAdd={!!onAddPicture}
+                versionId={version.id}
+                onAdded={(path, place) => onAddPicture(version.id, path, place)}
+            />
             <div className="min-w-0 flex-1">
                 {standing?.tone === 'fallback' && (
                     <span className={`${badge} bg-blue-50 text-blue-800 mb-1`}>{standing.label}</span>
