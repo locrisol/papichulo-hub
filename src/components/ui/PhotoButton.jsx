@@ -1,64 +1,32 @@
-import { useRef, useState } from 'react'
-import { supabase } from '@/lib/supabase'
 import { secondaryButton } from '@/lib/controlStyles'
-import { PHOTO_BUCKET, photoPath, shrinkPhoto } from '@/lib/photo'
-import { friendlyError } from '@/lib/errors'
+import { photoPath } from '@/lib/photo'
+import usePhotoPicker from '@/components/ui/usePhotoPicker'
 
-// Taking a photo, or choosing one already taken.
-//
-// accept="image/*" with no capture attribute, on purpose. capture sends the
-// phone straight to the camera and hides the gallery, and he asked for both:
-// somebody may have taken the picture before they got their hands free.
-// Without it, Android and the iPhone both ask which.
-//
-// The photo is shrunk on the phone first and only the small copy goes up. See
-// lib/photo.js for the size and the reason.
+// A button that takes a photo or chooses one already taken, shrinks it and
+// puts it in a bucket. The picking and the upload are usePhotoPicker's; see
+// there for why the gallery is offered beside the camera.
 //
 // Written for the checklists, and used for the pictures on the Recommended
 // list too: `bucket` and `makePath` say where a picture goes when it is not a
 // checklist photo.
 export default function PhotoButton({
     restaurantId, kind = 'round', folder, room = 1, onAdded, onError, children = 'Add photo', className = '',
-    bucket = PHOTO_BUCKET, makePath,
+    bucket, makePath,
 }) {
-    const input = useRef(null)
-    const [busy, setBusy] = useState(false)
-
-    async function picked(e) {
-        const files = [...(e.target.files || [])].slice(0, room)
-        e.target.value = ''
-        if (!files.length) return
-        setBusy(true)
-        try {
-            for (const file of files) {
-                const blob = await shrinkPhoto(file)
-                const path = makePath ? makePath() : photoPath(restaurantId, kind, folder)
-                const { error } = await supabase.storage.from(bucket)
-                    .upload(path, blob, { contentType: 'image/jpeg', upsert: false })
-                if (error) throw error
-                await onAdded(path)
-            }
-        } catch (err) {
-            onError?.(err?.message?.startsWith('The photo') ? err.message : friendlyError(err))
-        } finally {
-            setBusy(false)
-        }
-    }
+    const { busy, choose, inputProps } = usePhotoPicker({
+        bucket,
+        room,
+        onAdded,
+        onError,
+        makePath: makePath || (() => photoPath(restaurantId, kind, folder)),
+    })
 
     return (
         <>
-            <input
-                ref={input}
-                type="file"
-                accept="image/*"
-                multiple={room > 1}
-                className="hidden"
-                onChange={picked}
-                data-testid="photo-input"
-            />
+            <input {...inputProps} />
             <button
                 type="button"
-                onClick={() => input.current?.click()}
+                onClick={choose}
                 disabled={busy || room < 1}
                 className={`${secondaryButton} inline-flex items-center gap-1.5 ${className}`}
             >

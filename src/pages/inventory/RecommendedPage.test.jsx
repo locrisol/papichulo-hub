@@ -33,6 +33,8 @@ let lines
 let written
 let rpcs
 let ask
+let refused
+let removed
 const db = {
     from: vi.fn(table => {
         // The deliveries are filtered through the invoice they are on, which
@@ -43,6 +45,10 @@ const db = {
             step.eq = vi.fn((column, value) => { written.push({ table, patch, [column]: value }); return step })
             return step
         })
+        q.insert = vi.fn(row => {
+            written.push({ table, inserted: row })
+            return makeQuery({ data: null, error: refused === table ? { message: 'new row violates row-level security policy' } : null })
+        })
         return q
     }),
     rpc: vi.fn((name, args) => { rpcs.push({ name, args }); return Promise.resolve({ data: null, error: null }) }),
@@ -50,7 +56,7 @@ const db = {
         from: vi.fn(() => ({
             createSignedUrls: vi.fn(() => Promise.resolve({ data: [] })),
             upload: vi.fn(() => Promise.resolve({ data: {}, error: null })),
-            remove: vi.fn(() => Promise.resolve({ data: [], error: null })),
+            remove: vi.fn(paths => { removed.push(...paths); return Promise.resolve({ data: [], error: null }) }),
         })),
     },
 }
@@ -65,6 +71,11 @@ vi.mock('@/context/restaurant', () => {
     return { useRestaurant: () => ({ activeRestaurant: point }) }
 })
 vi.mock('@/context/confirm', () => ({ useConfirm: () => options => ask(options) }))
+// jsdom has no canvas, so the shrinking is taken as done.
+vi.mock('@/lib/photo', async importOriginal => ({
+    ...(await importOriginal()),
+    shrinkPhoto: () => Promise.resolve(new Blob(['x'], { type: 'image/jpeg' })),
+}))
 
 const { default: RecommendedPage } = await import('./RecommendedPage')
 
@@ -72,6 +83,8 @@ beforeEach(() => {
     me = { id: 'u1', role: 'owner', restaurant_id: 'r1' }
     written = []
     rpcs = []
+    refused = null
+    removed = []
     ask = vi.fn(async () => true)
     tables = {
         products: [PEPPERS, FRIES, SALSA, SPONGE],
@@ -93,17 +106,43 @@ beforeEach(() => {
 })
 
 const productRow = name => within(screen.getByRole('heading', { name }).closest('li'))
+const sectionBar = name => screen.getByRole('button', { name: new RegExp(`^${name}`) })
+// The page with every section opened, which they are not to start with.
 const open = async () => {
     renderWithRouter(<RecommendedPage />)
+    await screen.findByRole('button', { name: /^Cold Room/ })
+    for (const name of ['Freezer', 'Cold Room', 'Cleaning']) await userEvent.click(sectionBar(name))
     await screen.findByRole('heading', { name: 'Green Peppers' })
 }
 
 describe('the Recommended list', () => {
     it('lists what is bought by section, leaving out what is made here', async () => {
         await open()
-        expect(screen.getAllByRole('heading', { level: 2 }).map(h => h.textContent))
-            .toEqual(expect.arrayContaining(['Freezer', 'Cold Room', 'Cleaning']))
+        expect(sectionBar('Freezer')).toHaveTextContent('1 product')
+        expect(sectionBar('Cold Room')).toHaveTextContent('1 product')
+        expect(sectionBar('Cleaning')).toHaveTextContent('1 product')
         expect(screen.queryByText('House Salsa')).toBeNull()
+    })
+
+    // His ask of 18 October 2026: folded until a section is opened.
+    it('starts with every section folded, and opens one on a tap', async () => {
+        renderWithRouter(<RecommendedPage />)
+        await screen.findByRole('button', { name: /^Cold Room/ })
+        expect(sectionBar('Cold Room')).toHaveAttribute('aria-expanded', 'false')
+        expect(screen.queryByRole('heading', { name: 'Green Peppers' })).toBeNull()
+        await userEvent.click(sectionBar('Cold Room'))
+        expect(sectionBar('Cold Room')).toHaveAttribute('aria-expanded', 'true')
+        expect(screen.getByRole('heading', { name: 'Green Peppers' })).toBeInTheDocument()
+        expect(screen.queryByRole('heading', { name: 'Fries' })).toBeNull()
+        await userEvent.click(sectionBar('Cold Room'))
+        expect(screen.queryByRole('heading', { name: 'Green Peppers' })).toBeNull()
+    })
+
+    it('opens every section a search finds something in', async () => {
+        renderWithRouter(<RecommendedPage />)
+        await screen.findByRole('button', { name: /^Cold Room/ })
+        await userEvent.type(screen.getByRole('searchbox'), 'peppers')
+        expect(screen.getByRole('heading', { name: 'Green Peppers' })).toBeInTheDocument()
     })
 
     it('shows the versions that are all fine, the fallbacks, and what else is bought here', async () => {
@@ -121,7 +160,7 @@ describe('the Recommended list', () => {
     it('says what each costs here and when it was last delivered, or that it is not bought here', async () => {
         await open()
         const peppers = productRow('Green Peppers')
-        expect(peppers.getByText(/€13\.35 a case of 5 · €2\.6700 a kg/)).toBeInTheDocument()
+        expect(peppers.getByText(/€13\.35 a case of 5 kg · €2\.6700 a kg/)).toBeInTheDocument()
         expect(peppers.getByText(/last on an invoice 11 Oct/)).toBeInTheDocument()
         expect(peppers.getByText('Not bought here yet.')).toBeInTheDocument()
         expect(peppers.getAllByText('Sysco Ireland').length).toBeGreaterThan(0)
@@ -146,11 +185,33 @@ describe('the Recommended list', () => {
         expect(screen.getByRole('heading', { name: 'Fries' })).toBeInTheDocument()
     })
 
+    // His ask of 18 October 2026: the empty box takes a picture straight
+    // away, without opening Edit.
+    it('lets an owner add a picture from the empty box', async () => {
+        await open()
+        const box = productRow('Fries').getByRole('button', { name: 'Add a picture of Mccain Thin Chips 10mm' })
+        await userEvent.upload(box.parentElement.querySelector('input[type=file]'), new File(['x'], 'chips.webp', { type: 'image/webp' }))
+        await waitFor(() => expect(written).toHaveLength(1))
+        expect(written[0]).toMatchObject({ table: 'version_pictures', inserted: { version_id: 'f', sort_order: 0, added_by: 'u1' } })
+        expect(written[0].inserted.path).toMatch(/^f\/.+\.jpg$/)
+    })
+
+    it('takes the file back out and says why when the picture cannot be saved', async () => {
+        refused = 'version_pictures'
+        await open()
+        const box = productRow('Fries').getByRole('button', { name: 'Add a picture of Mccain Thin Chips 10mm' })
+        await userEvent.upload(box.parentElement.querySelector('input[type=file]'), new File(['x'], 'chips.jpg', { type: 'image/jpeg' }))
+        expect(await productRow('Fries').findByRole('alert')).toHaveTextContent(/.+/)
+        expect(removed).toEqual([written[0].inserted.path])
+    })
+
     it('tells a store manager only the owners change it, and offers no Edit', async () => {
         me = { id: 'u2', role: 'store_manager', restaurant_id: 'r1' }
         await open()
         expect(screen.getByText(/Only the owners change this list/)).toBeInTheDocument()
         expect(screen.queryByRole('button', { name: /^Edit/ })).toBeNull()
+        expect(screen.queryByRole('button', { name: /^Add a picture/ })).toBeNull()
+        expect(productRow('Fries').getByText('No picture yet')).toBeInTheDocument()
     })
 })
 
@@ -227,7 +288,7 @@ describe('changing a product on the list', () => {
     it('opens nothing for a store manager sent the same way', async () => {
         me = { id: 'u2', role: 'store_manager', restaurant_id: 'r1' }
         renderWithRouter(<RecommendedPage />, { route: '/catalogue/recommended?product=p1' })
-        await screen.findByRole('heading', { name: 'Green Peppers' })
+        await screen.findByRole('button', { name: /^Cold Room/ })
         expect(screen.queryByRole('dialog')).toBeNull()
     })
 })

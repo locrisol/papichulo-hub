@@ -405,6 +405,10 @@ export const badge =
 export const mixBadge = `${badge} bg-amber-100 text-amber-800`
 export const inactiveBadge = `${badge} bg-red-200 text-red-800`
 
+// A drink, the sky the Products list has always used for it. Here since the
+// Recommended list says it too.
+export const drinkBadge = `${badge} bg-sky-100 text-sky-800`
+
 // Who a version is bought from, wherever a screen names the supplier of one:
 // the Recommended list, the versions of a product, its prices, its allergens
 // and Review. His decision of 19 October 2026: one look for every supplier,
