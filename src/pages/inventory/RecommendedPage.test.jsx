@@ -93,17 +93,43 @@ beforeEach(() => {
 })
 
 const productRow = name => within(screen.getByRole('heading', { name }).closest('li'))
+const sectionBar = name => screen.getByRole('button', { name: new RegExp(`^${name}`) })
+// The page with every section opened, which they are not to start with.
 const open = async () => {
     renderWithRouter(<RecommendedPage />)
+    await screen.findByRole('button', { name: /^Cold Room/ })
+    for (const name of ['Freezer', 'Cold Room', 'Cleaning']) await userEvent.click(sectionBar(name))
     await screen.findByRole('heading', { name: 'Green Peppers' })
 }
 
 describe('the Recommended list', () => {
     it('lists what is bought by section, leaving out what is made here', async () => {
         await open()
-        expect(screen.getAllByRole('heading', { level: 2 }).map(h => h.textContent))
-            .toEqual(expect.arrayContaining(['Freezer', 'Cold Room', 'Cleaning']))
+        expect(sectionBar('Freezer')).toHaveTextContent('1 product')
+        expect(sectionBar('Cold Room')).toHaveTextContent('1 product')
+        expect(sectionBar('Cleaning')).toHaveTextContent('1 product')
         expect(screen.queryByText('House Salsa')).toBeNull()
+    })
+
+    // His ask of 18 October 2026: folded until a section is opened.
+    it('starts with every section folded, and opens one on a tap', async () => {
+        renderWithRouter(<RecommendedPage />)
+        await screen.findByRole('button', { name: /^Cold Room/ })
+        expect(sectionBar('Cold Room')).toHaveAttribute('aria-expanded', 'false')
+        expect(screen.queryByRole('heading', { name: 'Green Peppers' })).toBeNull()
+        await userEvent.click(sectionBar('Cold Room'))
+        expect(sectionBar('Cold Room')).toHaveAttribute('aria-expanded', 'true')
+        expect(screen.getByRole('heading', { name: 'Green Peppers' })).toBeInTheDocument()
+        expect(screen.queryByRole('heading', { name: 'Fries' })).toBeNull()
+        await userEvent.click(sectionBar('Cold Room'))
+        expect(screen.queryByRole('heading', { name: 'Green Peppers' })).toBeNull()
+    })
+
+    it('opens every section a search finds something in', async () => {
+        renderWithRouter(<RecommendedPage />)
+        await screen.findByRole('button', { name: /^Cold Room/ })
+        await userEvent.type(screen.getByRole('searchbox'), 'peppers')
+        expect(screen.getByRole('heading', { name: 'Green Peppers' })).toBeInTheDocument()
     })
 
     it('shows the versions that are all fine, the fallbacks, and what else is bought here', async () => {
@@ -121,7 +147,7 @@ describe('the Recommended list', () => {
     it('says what each costs here and when it was last delivered, or that it is not bought here', async () => {
         await open()
         const peppers = productRow('Green Peppers')
-        expect(peppers.getByText(/€13\.35 a case of 5 · €2\.6700 a kg/)).toBeInTheDocument()
+        expect(peppers.getByText(/€13\.35 a case of 5 kg · €2\.6700 a kg/)).toBeInTheDocument()
         expect(peppers.getByText(/last on an invoice 11 Oct/)).toBeInTheDocument()
         expect(peppers.getByText('Not bought here yet.')).toBeInTheDocument()
         expect(peppers.getAllByText('Sysco Ireland').length).toBeGreaterThan(0)
@@ -227,7 +253,7 @@ describe('changing a product on the list', () => {
     it('opens nothing for a store manager sent the same way', async () => {
         me = { id: 'u2', role: 'store_manager', restaurant_id: 'r1' }
         renderWithRouter(<RecommendedPage />, { route: '/catalogue/recommended?product=p1' })
-        await screen.findByRole('heading', { name: 'Green Peppers' })
+        await screen.findByRole('button', { name: /^Cold Room/ })
         expect(screen.queryByRole('dialog')).toBeNull()
     })
 })

@@ -17,6 +17,8 @@
 import { PLACES, versionLabel } from '@/lib/brandVersions'
 import { unitWord } from '@/lib/invoiceReport'
 import { fmtMoney, fmtQty, fmtUnitCost } from '@/lib/format'
+import { unitWords } from '@/lib/countUnits'
+import { compareForCount } from '@/lib/products'
 
 export function groupsOf(product, versions = []) {
     const mine = (versions || []).filter(v => v.product_id === product?.id)
@@ -54,9 +56,12 @@ export function setHeading(set) {
 // The products the list shows, by where the brand keeps them, in the order
 // the store is walked: active ones that are bought, so not a MIX, which is
 // made here. A section with nothing in it is left out.
+//
+// Inside a section, the order the stock take and Products use (his ask of 18
+// October 2026): drinks together at the end, stock held for somebody else
+// after them, the rest by name.
 export function bySection(products = []) {
-    const live = (products || []).filter(p => p.is_active !== false && !p.is_mix)
-        .sort((a, b) => a.name.localeCompare(b.name))
+    const live = (products || []).filter(p => p.is_active !== false && !p.is_mix).sort(compareForCount)
     const known = PLACES.map(section => ({ section, products: live.filter(p => p.section === section) }))
     const rest = live.filter(p => !PLACES.includes(p.section))
     return [...known, ...(rest.length ? [{ section: 'Other', products: rest }] : [])]
@@ -89,14 +94,18 @@ export function ownPrice(versionId, prices = []) {
 }
 
 // A price the way the list says it: what a case costs and how much is in it,
-// then what one unit costs. "€18.50 a case of 9.08 · €2.0374 a kg".
+// then what one unit costs. "€18.50 a case of 9.08 kg · €2.0374 a kg". The
+// unit is said after the amount, since "a case of 2.5" left him asking 2.5
+// of what (18 October 2026).
 export function priceWords(price, unit) {
     if (!price) return ''
     const perUnit = price.price_per_unit != null && price.price_per_unit !== ''
         ? `${fmtUnitCost(Number(price.price_per_unit))} ${unitWord(unit)}`
         : ''
     const pack = price.purchase_type === 'case' && price.price_per_case != null && price.price_per_case !== ''
-        ? `${fmtMoney(Number(price.price_per_case))} a case${price.units_per_case ? ` of ${fmtQty(price.units_per_case)}` : ''}`
+        ? `${fmtMoney(Number(price.price_per_case))} a case${price.units_per_case
+            ? ` of ${fmtQty(price.units_per_case)} ${unitWords(unit, price.units_per_case)}`
+            : ''}`
         : ''
     return [pack, perUnit].filter(Boolean).join(' · ')
 }

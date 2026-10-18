@@ -75,6 +75,16 @@ describe('the products the list shows', () => {
         expect(groups[1].products.map(p => p.name)).toEqual(['Avocado', 'Rice'])
     })
 
+    it('puts the drinks of a section together at the end, as the stock take and Products do', () => {
+        const groups = bySection([
+            { id: '1', name: 'Water', section: 'Dry', category: 'drink' },
+            { id: '2', name: 'Rice', section: 'Dry', category: 'ingredient' },
+            { id: '3', name: 'Apple juice', section: 'Dry', category: 'drink' },
+            { id: '4', name: 'Beans', section: 'Dry', category: 'ingredient' },
+        ])
+        expect(groups[0].products.map(p => p.name)).toEqual(['Beans', 'Rice', 'Apple juice', 'Water'])
+    })
+
     it('finds a product by its name, a version, a code, another code or the supplier', () => {
         const supplier = id => ({ s1: 'Sysco Ireland', s2: 'Local' })[id]
         const withCodes = [...ALL.filter(v => v.id !== 'b'), { ...B, codes: ['999999'] }]
@@ -102,10 +112,12 @@ describe('what a version costs here, and how often it was bought', () => {
     })
 
     it('says a case price with what is in it, then the unit price', () => {
-        expect(priceWords(prices[0], 'KG')).toBe('€13.35 a case of 5 · €2.6700 a kg')
+        expect(priceWords(prices[0], 'KG')).toBe('€13.35 a case of 5 kg · €2.6700 a kg')
         expect(priceWords(prices[1], 'KG')).toBe('€2.9000 a kg')
         expect(priceWords({ purchase_type: 'case', price_per_case: 41.12, units_per_case: 180, price_per_unit: 0.2284 }, 'Units'))
-            .toBe('€41.12 a case of 180 · €0.2284 each')
+            .toBe('€41.12 a case of 180 units · €0.2284 each')
+        expect(priceWords({ purchase_type: 'case', price_per_case: 9.5, units_per_case: 1, price_per_unit: 9.5 }, 'Litre'))
+            .toBe('€9.50 a case of 1 litre · €9.5000 a litre')
         expect(priceWords(null, 'KG')).toBe('')
     })
 

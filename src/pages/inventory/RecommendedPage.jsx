@@ -8,7 +8,8 @@ import { friendlyError } from '@/lib/errors'
 import { shortDate } from '@/lib/dates'
 import { declaresAllergens } from '@/lib/products'
 import { VERSION_PICTURES } from '@/lib/photo'
-import { badge, captionClass, card, cardHeader, rowButton } from '@/lib/controlStyles'
+import { badge, captionClass, drinkBadge, rowButton } from '@/lib/controlStyles'
+import { productInk, sectionColour } from '@/lib/sections'
 import {
     alsoBought, bySection, countedIn, groupsOf, matchesSearch, namedWithCode, ownPrice, priceWords,
     purchasesByVersion, setHeading, standingOf,
@@ -41,6 +42,17 @@ export default function RecommendedPage() {
     const [error, setError] = useState('')
     const [search, setSearch] = useState('')
     const [editing, setEditing] = useState(null)
+    // Which sections are open. All folded to start with (his ask of 18
+    // October 2026): a hundred and eighty products open at once is a page
+    // you scroll past rather than read.
+    const [opened, setOpened] = useState(() => new Set())
+    const searching = search.trim() !== ''
+    const toggle = section => setOpened(was => {
+        const next = new Set(was)
+        if (next.has(section)) next.delete(section)
+        else next.add(section)
+        return next
+    })
 
     const load = useCallback(async () => {
         const [brand, here] = await Promise.all([readBrand(), readHere(activeRestaurant?.id)])
@@ -117,23 +129,54 @@ export default function RecommendedPage() {
                 <p className="text-sm text-muted">{search ? 'Nothing on the list matches that.' : 'There are no products yet.'}</p>
             )}
 
-            {shown.map(group => (
-                <section key={group.section} className={`${card} overflow-hidden mb-5`}>
-                    <h2 className={cardHeader}>{group.section}</h2>
-                    <ul className="divide-y divide-border">
-                        {group.products.map(product => (
-                            <ProductOnList
-                                key={product.id}
-                                product={product}
-                                list={list}
-                                supplierName={supplierName}
-                                firstUrls={firstUrls}
-                                onEdit={keepsTheList ? () => setEditing(product.id) : null}
-                            />
-                        ))}
-                    </ul>
-                </section>
-            ))}
+            {/* Each section in its own colour, the bar the stock take uses.
+                A search opens every section it finds something in, or the
+                answer would be hidden under a folded bar. */}
+            {shown.map(group => {
+                const colour = sectionColour(group.section)
+                const open = searching || opened.has(group.section)
+                return (
+                    <section key={group.section} className="mb-4">
+                        <h2>
+                            <button
+                                type="button"
+                                onClick={() => toggle(group.section)}
+                                aria-expanded={open}
+                                className={`w-full ${colour.solid} ${open ? 'rounded-t-xl' : 'rounded-xl'} px-4 py-3 shadow-md `
+                                    + 'flex items-center justify-between gap-3 text-left '
+                                    + 'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-accent'}
+                            >
+                                <span className="font-serif text-base font-bold text-white">{group.section}</span>
+                                <span className="flex items-center gap-2">
+                                    <span className={`${badge} text-white bg-white/20`}>
+                                        {group.products.length === 1 ? '1 product' : `${group.products.length} products`}
+                                    </span>
+                                    <svg
+                                        className={`w-4 h-4 text-white transition-transform ${open ? 'rotate-180' : ''}`}
+                                        fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5" aria-hidden="true"
+                                    >
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                </span>
+                            </button>
+                        </h2>
+                        {open && (
+                            <ul className={`bg-white border ${colour.border} border-t-0 rounded-b-xl overflow-hidden divide-y divide-border`}>
+                                {group.products.map(product => (
+                                    <ProductOnList
+                                        key={product.id}
+                                        product={product}
+                                        list={list}
+                                        supplierName={supplierName}
+                                        firstUrls={firstUrls}
+                                        onEdit={keepsTheList ? () => setEditing(product.id) : null}
+                                    />
+                                ))}
+                            </ul>
+                        )}
+                    </section>
+                )
+            })}
 
             {editingProduct && (
                 <RecommendedEditor
@@ -154,7 +197,7 @@ export default function RecommendedPage() {
 async function readBrand() {
     const [products, versions, suppliers, pictures, codes] = await Promise.all([
         everyRow(() => supabase.from('products')
-            .select('id, name, section, unit, category, is_mix, is_active, recommends')
+            .select('id, name, section, unit, category, is_mix, is_active, recommends, held_for')
             .order('id')),
         everyRow(() => supabase.from('product_versions')
             .select('id, product_id, supplier_id, supplier_code, name, is_recommended, is_active, fallback_rank, notes, description')
@@ -233,10 +276,15 @@ function ProductOnList({ product, list, supplierName, firstUrls, onEdit }) {
     )
 
     return (
-        <li className="p-4 sm:px-5">
+        // The line down the side in the colour of where it is kept, as on
+        // Products.
+        <li className="p-4 sm:px-5" style={{ borderLeftWidth: '6px', borderLeftColor: productInk(product) }}>
             <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                    <h3 className="text-base font-bold text-gray-900 break-words">{product.name}</h3>
+                    <h3 className="text-base font-bold text-gray-900 break-words">
+                        {product.name}
+                        {product.category === 'drink' && <span className={`${drinkBadge} ml-2 align-middle`}>Drink</span>}
+                    </h3>
                     <p className="text-xs text-muted">{countedIn(product.unit)}</p>
                 </div>
                 {onEdit && (

@@ -28,7 +28,7 @@ import { claimCode } from '@/lib/invoiceReview'
 import { matches } from '@/lib/search'
 import { orderFormats, packsToSave } from '@/lib/countUnits'
 import {
-  tableHeadRow, tableHeadCell, badge, mixBadge, inactiveBadge, card, cardEdge, cardHeader, rowButton, chip,
+  tableHeadRow, tableHeadCell, badge, mixBadge, inactiveBadge, drinkBadge, card, cardEdge, cardHeader, rowButton, chip,
   primaryButton, secondaryButton, urgentNote,
 } from '@/lib/controlStyles'
 import { readStored, writeStored } from '@/lib/browserStore'
@@ -142,7 +142,7 @@ const STICK_TOP = 'top-[-1.75rem]'
 function typeBadge(p) {
   if (!p.is_active) return { label: p.is_mix ? 'MIX' : 'Purchased', cls: `${badge} bg-gray-100 text-muted` }
   if (p.is_mix) return { label: 'MIX', cls: mixBadge }
-  if (p.category === 'drink') return { label: 'Drink', cls: `${badge} bg-sky-100 text-sky-800` }
+  if (p.category === 'drink') return { label: 'Drink', cls: drinkBadge }
   return { label: 'Purchased', cls: `${badge} bg-green-100 text-green-800` }
 }
 
