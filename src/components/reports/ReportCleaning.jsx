@@ -1,4 +1,4 @@
-import PhotoStrip from '@/components/checklists/PhotoStrip'
+import PhotoStrip from '@/components/ui/PhotoStrip'
 import { weekdayName } from '@/lib/checklists'
 
 // The Cleaning section of the weekly report: each checklist as it stood on

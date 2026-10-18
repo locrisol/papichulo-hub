@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import Modal from '@/components/ui/Modal'
 import { removeButton } from '@/lib/controlStyles'
-import useSignedUrls from '@/components/checklists/useSignedUrls'
+import useSignedUrls from '@/components/ui/useSignedUrls'
+import { PHOTO_BUCKET } from '@/lib/photo'
 
 // The photos on a tick, small, and large when one is pressed.
 //
@@ -12,8 +13,8 @@ import useSignedUrls from '@/components/checklists/useSignedUrls'
 // When the job has deleted them the tick still says photos were taken, since
 // the paths stay on it. Saying nothing would read as a tick that never had a
 // photo, which on a task that needs one is the opposite of what happened.
-export default function PhotoStrip({ paths, gone = false, onRemove, label = 'Photo' }) {
-    const urls = useSignedUrls(gone ? [] : paths)
+export default function PhotoStrip({ paths, gone = false, onRemove, label = 'Photo', bucket = PHOTO_BUCKET }) {
+    const urls = useSignedUrls(gone ? [] : paths, bucket)
     const [big, setBig] = useState(null)
 
     if (!paths.length) return null

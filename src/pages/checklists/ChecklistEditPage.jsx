@@ -18,8 +18,8 @@ import AddButton from '@/components/ui/AddButton'
 import ArrangeList from '@/components/ui/ArrangeList'
 import AutoTextarea from '@/components/ui/AutoTextarea'
 import Modal from '@/components/ui/Modal'
-import PhotoButton from '@/components/checklists/PhotoButton'
-import PhotoStrip from '@/components/checklists/PhotoStrip'
+import PhotoButton from '@/components/ui/PhotoButton'
+import PhotoStrip from '@/components/ui/PhotoStrip'
 import PrintListButton from '@/components/checklists/PrintListButton'
 
 // Making a list, and changing one. Managers and above.
