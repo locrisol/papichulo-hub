@@ -12,6 +12,8 @@ import {
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import PageHeader from '@/components/ui/PageHeader'
 import CategoryBadges from '@/components/invoices/CategoryBadges'
+import ShowInvoiceModal from '@/components/invoices/ShowInvoiceModal'
+import { hasLines } from '@/lib/invoiceLines'
 
 // Invoice history. The entry screen only shows the week you are working on,
 // which is what you want while typing them in, but not when you are looking for
@@ -39,6 +41,10 @@ export default function InvoiceHistoryPage() {
     const [supplierId, setSupplierId] = useState('')
     const [category, setCategory] = useState('')
     const [sortDesc, setSortDesc] = useState(true)
+    // The document Show invoice has open, looked up from the list so it is
+    // always the row as last read.
+    const [showingId, setShowingId] = useState(null)
+    const showing = invoices.find(i => i.id === showingId) || null
 
     const restaurantId = activeRestaurant?.id
 
@@ -211,6 +217,13 @@ export default function InvoiceHistoryPage() {
                                         <CategoryBadges invoice={inv} />
                                     </div>
                                     {inv.notes && <p className="text-xs text-muted mt-1">{inv.notes}</p>}
+                                    {hasLines(inv) && (
+                                        <div className="flex flex-wrap gap-3 mt-2 pt-2 border-t border-border">
+                                            <button type="button" onClick={() => setShowingId(inv.id)} className={rowButton()}>
+                                                Show invoice
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             )
                         })}
@@ -234,6 +247,7 @@ export default function InvoiceHistoryPage() {
                                 <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider">Supplier</th>
                                 <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider w-28">Category</th>
                                 <th className="text-right px-3 py-2 text-xs font-semibold uppercase tracking-wider w-28">Total</th>
+                                <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider w-32">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -252,6 +266,15 @@ export default function InvoiceHistoryPage() {
                                         <CategoryBadges invoice={inv} />
                                     </td>
                                     <td className="px-3 py-2 text-right text-gray-900 font-medium whitespace-nowrap">{fmtMoney(inv.total_amount)}</td>
+                                    <td className="px-3 py-2">
+                                        {/* Only for a document with lines to show. A
+                                            total typed off the paper is all on the row. */}
+                                        {hasLines(inv) && (
+                                            <button type="button" onClick={() => setShowingId(inv.id)} className={rowButton()}>
+                                                Show invoice
+                                            </button>
+                                        )}
+                                    </td>
                                 </tr>
                                 )
                             })}
@@ -262,6 +285,7 @@ export default function InvoiceHistoryPage() {
                 )}
                 </div>
             </div>
+            {showing && <ShowInvoiceModal invoice={showing} onClose={() => setShowingId(null)} />}
         </>
     )
 }
