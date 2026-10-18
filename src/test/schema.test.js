@@ -509,11 +509,89 @@ describe('the change log', () => {
     it('does not log a sync that only says when it ran and how many it found', () => {
         for (const text of [schema]) {
             const ignored = ignoredIn(text)
-            for (const column of ['updated_at', 'last_seen_at', 'feed_synced_at', 'feed_count', 'last_read_at', 'last_read_count']) {
+            for (const column of ['updated_at', 'last_seen_at', 'feed_synced_at', 'feed_count', 'last_read_at', 'last_read_count', 'priced_at']) {
                 expect(ignored).toContain(column)
             }
             expect(ignored).not.toContain('feed_problem')
             expect(ignored).not.toContain('read_problem')
         }
+    })
+})
+
+// The Recommended list, 19 October 2026: owners and the super admin keep it,
+// store managers read it, and nothing about it reaches staff.
+describe('the Recommended list', () => {
+    const policy = name => schema.match(new RegExp(String.raw`create policy ${name} on [^;]*;`))?.[0] || ''
+    const fn = name => {
+        const start = schema.indexOf(`create or replace function public.${name}(`)
+        expect(start, `${name} is not in schema.sql`).toBeGreaterThan(-1)
+        return schema.slice(start, schema.indexOf('end $$;', start))
+    }
+    const table = name => {
+        const start = schema.indexOf(`create table if not exists public.${name} (`)
+        expect(start, `${name} is not in schema.sql`).toBeGreaterThan(-1)
+        return schema.slice(start, schema.indexOf(');', start))
+    }
+
+    it('never makes a version recommended and a fallback at once, and never two fallbacks one place', () => {
+        expect(table('product_versions')).toContain('check (not (is_recommended and fallback_rank is not null))')
+        expect(schema).toMatch(/product_versions_one_per_fallback_rank\s+on public\.product_versions \(product_id, fallback_rank\) where fallback_rank is not null/)
+    })
+
+    it('keeps the list to owners and the super admin, removing a version as well', () => {
+        const guard = fn('brand_choice_guard')
+        for (const column of ['fallback_rank', 'notes', 'description', 'is_active', 'name', 'is_recommended']) {
+            expect(guard, `a store manager can change ${column}`).toContain(`new.${column} is distinct from old.${column}`)
+        }
+        expect(guard).toMatch(/tg_op = 'DELETE' then\s+raise exception 'Only an owner can remove a version'/)
+        expect(schema).toMatch(/"product_versions_brand_choice" BEFORE INSERT OR UPDATE OR DELETE ON "public"\."product_versions"/)
+    })
+
+    it('shows a version\'s pictures to managers, and lets only owners add or take them away', () => {
+        expect(policy('version_pictures_select')).toContain("'store_manager'")
+        for (const name of ['version_pictures_write', 'version_picture_files_add', 'version_picture_files_remove']) {
+            expect(policy(name), `${name} is missing`).toContain("'owner'")
+            expect(policy(name), `a store manager can ${name}`).not.toContain('store_manager')
+        }
+        expect(policy('version_picture_files_read')).toContain("bucket_id = 'version-pictures'")
+        expect(policy('version_picture_files_read')).not.toContain('employee')
+    })
+
+    it('lets nobody write a version\'s other codes yet', () => {
+        const onCodes = schema.match(/create policy \w+ on public\.version_codes[^;]*;/g) || []
+        expect(onCodes).toHaveLength(1)
+        expect(onCodes[0]).toContain('for select')
+        expect(schema).toContain('grant select on table public.version_codes to authenticated;')
+    })
+
+    it('lets only people signed in call the functions that change it', () => {
+        for (const signature of ['set_recommends(product uuid, mode text)', 'set_fallbacks(product uuid, versions uuid[])']) {
+            expect(schema).toContain(`revoke all on function public.${signature} from public, anon, authenticated, service_role;`)
+            expect(schema).toContain(`grant execute on function public.${signature} to authenticated;`)
+        }
+    })
+
+    it('runs those functions as whoever calls them, so the guard decides', () => {
+        for (const name of ['set_recommends', 'set_fallbacks']) {
+            expect(fn(name), `${name} goes round the rules`).not.toMatch(/security definer/i)
+        }
+    })
+
+    it('starts cleaning, packaging and drinks with any version, only as they are added', () => {
+        expect(schema).toMatch(/"products_default_recommends" BEFORE INSERT ON "public"\."products"/)
+        expect(fn('product_default_recommends')).toContain("new.section in ('Cleaning', 'Packaging') or new.category = 'drink'")
+    })
+
+    it('stamps when a price changed only when what it costs changes', () => {
+        const body = fn('price_priced_at')
+        expect(body).toContain('(new.price_per_case, new.price_per_unit, new.units_per_case)')
+        expect(body).not.toMatch(/is_preferred|allow_loose_count|supplier_code/)
+    })
+
+    // A store manager renumbering a shared price copies the version, and the
+    // copy must not arrive with nothing the owners wrote on it.
+    it('keeps the description and buying notes on a renumbered copy', () => {
+        expect(fn('price_version')).toMatch(/v\.notes, v\.description/)
+        expect(fn('brand_choice_guard')).toMatch(/new\.notes is not null or new\.description is not null\)\s+and pg_trigger_depth\(\) < 2/)
     })
 })

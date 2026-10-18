@@ -33,3 +33,11 @@ describe('the seed sets up what is on nearby the way live does', () => {
         expect(code).not.toMatch(/forecasting_venue_id|forecasting_enabled/)
     })
 })
+
+// The pictures on the Recommended list (19 October 2026). The same row is in
+// the migration that made the bucket, because seed.sql never runs on live.
+describe('the seed makes the bucket for the pictures of each version', () => {
+    it('private, JPEG only, 3MB', () => {
+        expect(code).toMatch(/values \('version-pictures', 'version-pictures', false, 3145728, array\['image\/jpeg'\]\)/)
+    })
+})

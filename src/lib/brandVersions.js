@@ -53,6 +53,7 @@ export function versionLabel(version, product, supplierName = '') {
 //   any        the brand recommends nothing in particular
 //   none       the brand has not recommended a version yet
 //   good       it buys a recommended version
+//   fallback   it buys one of the fallbacks, numbered by where it comes
 //   not        it buys another; `instead` is what the brand recommends
 export function recommendationAt(product, versions = [], price = null) {
     if (!product || product.is_mix || !price) return null
@@ -62,5 +63,11 @@ export function recommendationAt(product, versions = [], price = null) {
     if (!recommended.length) return { tone: 'none', label: 'None recommended' }
     const bought = mine.find(v => v.id === price.version_id)
     if (bought?.is_recommended) return { tone: 'good', label: 'Recommended' }
+    if (bought?.fallback_rank != null) {
+        const place = mine.filter(v => !v.is_recommended && v.fallback_rank != null)
+            .sort((a, b) => a.fallback_rank - b.fallback_rank)
+            .findIndex(v => v.id === bought.id)
+        return { tone: 'fallback', label: `Fallback ${place + 1}`, instead: recommended }
+    }
     return { tone: 'not', label: 'Not recommended', instead: recommended }
 }

@@ -128,7 +128,9 @@ describe('a product with versions', () => {
     it('lists each version with where it comes from, and which one has no answer', async () => {
         showTortilla()
         expect(await screen.findByText('Santa Maria wrap 12"')).toBeInTheDocument()
-        expect(screen.getByText('Sysco Ireland, code 5013972')).toBeInTheDocument()
+        // The supplier is a badge of its own, beside the code.
+        expect(screen.getAllByText('Sysco Ireland').length).toBeGreaterThan(0)
+        expect(screen.getByText('code 5013972')).toBeInTheDocument()
         expect(screen.getAllByText('Bought at Point Campus')).toHaveLength(2)
         expect(screen.getByText('Recommended')).toBeInTheDocument()
         expect(screen.getByText('Not answered')).toBeInTheDocument()

@@ -45,6 +45,10 @@ export const navItems = [
 
     // { path: '/catalogue', label: 'Products', icon: 'cat', section: 'Inventory' },
     { path: '/catalogue/products', label: 'Products', icon: 'cat', section: 'Catalogue', roles: MANAGERS },
+    // The brand's list of what to buy for each product. Store managers read
+    // it; owners and the super admin change it, which the page and the
+    // database both hold to (BRAND_CHOICES, brand_choice_guard).
+    { path: '/catalogue/recommended', label: 'Recommended', icon: 'star', section: 'Catalogue', roles: MANAGERS },
     { path: '/catalogue/menu-items', label: 'Menu items', icon: 'book', section: 'Catalogue', roles: MANAGERS },
     // Employees can see suppliers on purpose: if a delivery is wrong they need
     // the rep's number. Nothing here is commercially sensitive.

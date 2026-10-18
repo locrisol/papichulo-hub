@@ -41,7 +41,9 @@ import SentForReview from '@/components/inventory/SentForReview'
 import ReviewersModal from '@/components/inventory/ReviewersModal'
 import SendForReviewModal from '@/components/inventory/SendForReviewModal'
 import VersionsModal from '@/components/inventory/VersionsModal'
-import { placesFor, recommendationAt, versionLabel } from '@/lib/brandVersions'
+import { placesFor, recommendationAt } from '@/lib/brandVersions'
+import { startsWithoutRecommendation } from '@/lib/recommended'
+import SupplierBadge from '@/components/ui/SupplierBadge'
 import { can, BRAND_CHOICES } from '@/lib/access'
 import { requestForProduct } from '@/lib/productRequests'
 import { emailTheReview } from '@/lib/rosterMail'
@@ -449,7 +451,7 @@ export default function ProductsPage() {
     // less, rather than something wrong.
     const [versionsRead, keptRead] = await Promise.all([
       everyRow(() => supabase.from('product_versions')
-        .select('id, product_id, supplier_id, supplier_code, name, is_recommended, is_active, section, also_in')
+        .select('id, product_id, supplier_id, supplier_code, name, is_recommended, is_active, fallback_rank, section, also_in')
         .order('id')),
       everyRow(() => supabase.from('restaurant_kept_in')
         .select('*')
@@ -783,6 +785,24 @@ export default function ProductsPage() {
       }
     }
 
+    // Cleaning, packaging and drinks start with no recommendation (his
+    // decision of 18 October 2026), which the database gives a product as it
+    // is added. One moved into them later keeps its list unless an owner says
+    // otherwise, so it is asked here. Either answer still saves the product.
+    let clearList = false
+    if (editingProduct && keepsTheList && editingProduct.recommends !== 'any'
+        && startsWithoutRecommendation(formData) && !startsWithoutRecommendation(editingProduct)) {
+      setAsking(true)
+      clearList = await confirm({
+        title: 'Any version?',
+        message: `Cleaning, packaging and drinks start with no recommendation. Should ${formData.name} have none too? `
+          + 'Its recommended versions and fallbacks would come off the Recommended list.',
+        confirmLabel: 'Any version',
+        cancelLabel: 'Keep the list',
+      })
+      setAsking(false)
+    }
+
     const payload = {
       ...formData,
       weight_loss_pct: parseFloat(formData.weight_loss_pct),
@@ -898,6 +918,21 @@ export default function ProductsPage() {
           await fetchPrices()
           fetchProducts()
           // The product row itself was saved, so the count may have moved.
+          allergensChanged()
+          return
+        }
+      }
+
+      // Last, so that failing here leaves everything above saved and says so.
+      if (clearList) {
+        const { error: listError } = await supabase.rpc('set_recommends', { product: editingProduct.id, mode: 'any' })
+        if (listError) {
+          setFormProblem(savedButNot(formData.name, [{
+            what: 'change to any version', error: listError,
+            next: 'Choose Any version for it on the Recommended list instead.',
+          }]))
+          await fetchPrices()
+          fetchProducts()
           allergensChanged()
           return
         }
@@ -1255,6 +1290,7 @@ export default function ProductsPage() {
     if (!said) return null
     const look = {
       good: 'bg-green-100 text-green-800',
+      fallback: 'bg-blue-50 text-blue-800',
       not: 'bg-amber-100 text-amber-800',
       any: 'bg-gray-100 text-gray-700',
       none: 'bg-white text-gray-600 border border-gray-300',
@@ -1263,8 +1299,14 @@ export default function ProductsPage() {
       <span className="block mt-1">
         <span className={`${badge} ${look}`}>{said.label}</span>
         {said.instead && (
-          <span className="block text-xs text-muted mt-0.5">
-            Brand: {said.instead.map(v => versionLabel(v, p, getSupplierName(v.supplier_id))).join(', ')}
+          <span className="flex flex-wrap items-center gap-1 text-xs text-muted mt-1">
+            <span>Brand:</span>
+            {said.instead.map(v => (
+              <span key={v.id} className="inline-flex flex-wrap items-center gap-1">
+                <span>{v.name || p.name}</span>
+                <SupplierBadge name={getSupplierName(v.supplier_id)} />
+              </span>
+            ))}
           </span>
         )}
       </span>
@@ -1499,12 +1541,10 @@ export default function ProductsPage() {
           versions={versions}
           suppliers={suppliers}
           boughtHere={boughtHere}
-          canRecommend={keepsTheList}
+          keepsTheList={keepsTheList}
           onClose={() => setVersionsOf(null)}
           onAddPrice={() => navigate(`/catalogue/products/${versionsOf}/prices`)}
-          // A recommendation can change which version a restaurant's
-          // allergen sheet reads, so the sidebar counts them again.
-          onChanged={async () => { allergensChanged(); await Promise.all([fetchProducts(), fetchPrices()]) }}
+          onChanged={() => fetchPrices()}
         />
       )}
       {requesting && (

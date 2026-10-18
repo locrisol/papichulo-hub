@@ -15,6 +15,7 @@ import ErrorBanner from '@/components/ui/ErrorBanner'
 import Notice from '@/components/ui/Notice'
 import MatchLineModal from '@/components/invoices/MatchLineModal'
 import AddFromRequestModal from '@/components/inventory/AddFromRequestModal'
+import SupplierBadge from '@/components/ui/SupplierBadge'
 
 // What store managers sent for review, on top of Products, for the owners and
 // the super admin to answer.
@@ -138,7 +139,7 @@ export default function SentForReview({ onChanged }) {
                             <dd className="text-gray-900">{dayLabel(stampDay(request.sent_at))}</dd>
                             {request.suppliers?.name && <>
                                 <dt className="text-xs text-muted pt-0.5">Supplier</dt>
-                                <dd className="text-gray-900">{request.suppliers.name}</dd>
+                                <dd><SupplierBadge name={request.suppliers.name} /></dd>
                             </>}
                             {request.supplier_code && <>
                                 <dt className="text-xs text-muted pt-0.5">Code</dt>

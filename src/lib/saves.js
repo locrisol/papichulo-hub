@@ -10,7 +10,7 @@
 // The database functions that change something. Every other function the app
 // calls only reads, my_badges among them, which must not set off a recount of
 // itself.
-const WRITING_FUNCTIONS = ['allergen_sheet_printed', 'set_my_landing_page']
+const WRITING_FUNCTIONS = ['allergen_sheet_printed', 'set_my_landing_page', 'set_recommends', 'set_fallbacks']
 
 // Whether a request to the database API changed anything: a write to a table,
 // or a call to a function that writes. Reads, sign in and files do not.

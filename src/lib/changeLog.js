@@ -40,6 +40,8 @@ const TABLES = {
     product_allergens: 'Allergen',
     product_versions: 'Product version',
     version_allergens: 'Version allergens',
+    version_pictures: 'Version picture',
+    version_codes: 'Version code',
     product_requests: 'Sent for review',
     brand_settings: 'Brand settings',
     mix_recipes: 'Recipe',

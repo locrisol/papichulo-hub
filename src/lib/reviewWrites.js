@@ -562,7 +562,7 @@ async function stillWaiting(request) {
 // Nothing is added for a request somebody already answered, nor under a
 // name the list already has, which is the same product twice on every
 // stock take.
-export async function addFromRequest(request, { name, section, alsoIn = [], unit, unitsPerCase, recommend, userId }) {
+export async function addFromRequest(request, { name, section, category = 'ingredient', alsoIn = [], unit, unitsPerCase, recommend, userId }) {
     const nothing = error => ({ error, productId: null, answered: false, said: '' })
     const waiting = await stillWaiting(request)
     if (waiting.error) return nothing(waiting.error)
@@ -573,8 +573,8 @@ export async function addFromRequest(request, { name, section, alsoIn = [], unit
     if (taken) return nothing(`${taken.name} is already on the list. Answer with A version of one we have instead.`)
 
     const { data: made, error: e1 } = await supabase.from('products')
-        .insert({ name: String(name || '').trim(), section, also_in: alsoIn, unit })
-        .select('id').single()
+        .insert({ name: String(name || '').trim(), section, category, also_in: alsoIn, unit })
+        .select('id, recommends').single()
     if (e1) return nothing(friendlyError(e1))
 
     const { error, said } = await settleRequest(request, {
@@ -583,7 +583,10 @@ export async function addFromRequest(request, { name, section, alsoIn = [], unit
     if (error) return { error, productId: made.id, answered: false, said }
 
     // The price made its version (price_version). Only that one exists yet.
-    if (recommend && request.supplier_code) {
+    // Not for a product that starts with no recommendation, cleaning,
+    // packaging and drinks (product_default_recommends), where a star would
+    // mean nothing.
+    if (recommend && request.supplier_code && made.recommends !== 'any') {
         const { error: e2 } = await supabase.from('product_versions')
             .update({ is_recommended: true }).eq('product_id', made.id)
         if (e2) return { error: friendlyError(e2), productId: made.id, answered: true, said }

@@ -20,6 +20,7 @@ import ErrorBanner from '@/components/ui/ErrorBanner'
 import PageHeader from '@/components/ui/PageHeader'
 import ProductPriceHistory from '@/components/inventory/ProductPriceHistory'
 import { useSaveOnce } from '@/components/ui/useSaveOnce'
+import SupplierBadge from '@/components/ui/SupplierBadge'
 
 // Every price we can buy one product at, for the restaurant you are working in.
 //
@@ -459,9 +460,7 @@ export default function ProductPricesPage() {
                                 : 'border-border bg-white'}`}
                         >
                             <div className="flex items-baseline justify-between gap-3">
-                                <span className="text-sm font-semibold text-gray-900">
-                                    {getSupplierName(p.supplier_id)}
-                                </span>
+                                <SupplierBadge name={getSupplierName(p.supplier_id)} />
                                 <span className="text-base font-semibold text-gray-900 whitespace-nowrap tabular-nums">
                                     {fmtUnitCost(parseFloat(p.price_per_unit))}
                                 </span>
@@ -530,7 +529,7 @@ export default function ProductPricesPage() {
                                                 : 'bg-gray-50'
                                             }`}
                                     >
-                                        <td className="px-4 py-3 font-medium text-gray-900">{getSupplierName(p.supplier_id)}</td>
+                                        <td className="px-4 py-3"><SupplierBadge name={getSupplierName(p.supplier_id)} /></td>
                                         <td className="px-4 py-3">
                                             <span className={`${badge} ${p.purchase_type === 'case'
                                                 ? 'bg-purple-50 text-purple-700'

@@ -22,6 +22,8 @@ describe('what counts as a save', () => {
         expect(isWrite(`${API}/rpc/my_badges`, 'POST')).toBe(false)
         expect(isWrite(`${API}/rpc/allergens_changed_at`, 'POST')).toBe(false)
         expect(isWrite(`${API}/rpc/allergen_sheet_printed`, 'POST')).toBe(true)
+        expect(isWrite(`${API}/rpc/set_recommends`, 'POST')).toBe(true)
+        expect(isWrite(`${API}/rpc/set_fallbacks`, 'POST')).toBe(true)
     })
 
     it('is nothing outside the database API: sign in, files, mail', () => {
