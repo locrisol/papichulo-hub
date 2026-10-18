@@ -13,6 +13,7 @@ import BackButton from '@/components/ui/BackButton'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import Notice from '@/components/ui/Notice'
 import PageHeader from '@/components/ui/PageHeader'
+import SupplierBadge from '@/components/ui/SupplierBadge'
 
 // Tagging the 14 allergens on one product.
 //
@@ -269,8 +270,9 @@ export default function AllergenPage() {
                       : 'hover:bg-gray-50'}`}
                   >
                     <span className="block text-sm font-semibold text-gray-900">{v.name || product?.name}</span>
-                    <span className="block text-xs text-muted mt-0.5">
-                      {v.suppliers?.name || 'Supplier'}{v.supplier_code ? `, code ${v.supplier_code}` : ', no code'}
+                    <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted mt-1">
+                      <SupplierBadge name={v.suppliers?.name} />
+                      <span>{v.supplier_code ? `code ${v.supplier_code}` : 'no code'}</span>
                     </span>
                     <span className="flex flex-wrap gap-1.5 mt-2">
                       {v.here && <span className={`${badge} bg-sky-100 text-sky-900`}>Bought at {activeRestaurant?.name}</span>}

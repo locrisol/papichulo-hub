@@ -41,6 +41,7 @@ const RestaurantPage = lazy(() => import('@/pages/settings/RestaurantPage'))
 const YourAccountPage = lazy(() => import('@/pages/settings/YourAccountPage'))
 const SuppliersPage = lazy(() => import('@/pages/inventory/SuppliersPage'))
 const ProductsPage = lazy(() => import('@/pages/inventory/ProductsPage'))
+const RecommendedPage = lazy(() => import('@/pages/inventory/RecommendedPage'))
 const ProductPricesPage = lazy(() => import('@/pages/inventory/ProductPricesPage'))
 const RecipePage = lazy(() => import('@/pages/inventory/RecipePage'))
 const AllergenPage = lazy(() => import('@/pages/inventory/AllergenPage'))
@@ -158,6 +159,9 @@ export default function App() {
                 <Route path="/catalogue/products/:id/prices" element={<RequireRole allowed={MANAGERS}><ProductPricesPage /></RequireRole>} />
                 <Route path="/catalogue/products/:id/recipe" element={<RequireRole allowed={MANAGERS}><RecipePage /></RequireRole>} />
                 <Route path="/catalogue/products/:id/allergens" element={<RequireRole allowed={MANAGERS}><AllergenPage /></RequireRole>} />
+                {/* Read by every manager, changed only by owners and the
+                    super admin, which the page asks of lib/access itself. */}
+                <Route path="/catalogue/recommended" element={<RequireRole allowed={MANAGERS}><RecommendedPage /></RequireRole>} />
                 <Route path="/catalogue/menu-items" element={<RequireRole allowed={MANAGERS}><MenuItemsPage /></RequireRole>} />
                 <Route path="/catalogue/menu-items/:id" element={<RequireRole allowed={MANAGERS}><MenuItemPage /></RequireRole>} />
 

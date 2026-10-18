@@ -93,6 +93,15 @@ describe('what somebody can be offered as a landing page', () => {
 
     // Offering somebody a page their role refuses is offering to send them to
     // the refused screen every morning.
+    // The Recommended list of 19 October 2026: every manager reads it, and
+    // only owners and the super admin change it, which the page decides.
+    it('offers the Recommended list to every manager and no employee', () => {
+        for (const role of ['store_manager', 'owner', 'super_admin']) {
+            expect(landingChoices(person(role)).map(n => n.path)).toContain('/catalogue/recommended')
+        }
+        expect(navItems.filter(n => can(person('employee'), n.roles)).map(n => n.path)).not.toContain('/catalogue/recommended')
+    })
+
     it('never offers a page the role cannot open', () => {
         for (const role of ['store_manager', 'owner']) {
             const offered = landingChoices(person(role))

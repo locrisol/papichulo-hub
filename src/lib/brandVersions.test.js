@@ -66,6 +66,15 @@ describe('whether what a restaurant buys is recommended', () => {
             .toEqual({ tone: 'not', label: 'Not recommended', instead: [santa] })
     })
 
+    // The Recommended list of 19 October 2026: bought only when the
+    // recommended ones are out, numbered by where it comes.
+    it('says which fallback it buys, with what the brand recommends', () => {
+        const first = { ...plain, id: 'v3', fallback_rank: 2 }
+        const second = { ...plain, fallback_rank: 5 }
+        expect(recommendationAt(TORTILLA, [santa, first, second], { version_id: 'v2' }))
+            .toEqual({ tone: 'fallback', label: 'Fallback 2', instead: [santa] })
+    })
+
     it('leaves out a version switched off', () => {
         const off = { ...santa, is_active: false }
         expect(recommendationAt(TORTILLA, [off, plain], { version_id: 'v2' })).toEqual({ tone: 'none', label: 'None recommended' })

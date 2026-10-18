@@ -55,6 +55,10 @@ const db = {
         })
         return q
     }),
+    rpc: vi.fn((name, args) => {
+        written.push({ table: name, how: 'rpc', row: args })
+        return Promise.resolve({ data: null, error: null })
+    }),
 }
 
 // The real everyRow, paging through the mock the way it pages through the API.
@@ -1068,7 +1072,18 @@ describe('the brand\'s versions on a row', () => {
         tables.product_versions = versions('v2')
         renderWithRouter(<ProductsPage />)
         expect((await screen.findAllByText('Not recommended')).length).toBeGreaterThan(0)
-        expect(screen.getAllByText('Brand: Green peppers 5 kg').length).toBeGreaterThan(0)
+        expect(screen.getAllByText('Brand:').length).toBeGreaterThan(0)
+        expect(screen.getAllByText('Green peppers 5 kg').length).toBeGreaterThan(0)
+    })
+
+    // The Recommended list of 19 October 2026: bought only when the
+    // recommended ones are out, which is not the same as not recommended.
+    it('says when what it buys is a fallback, numbered by where it comes', async () => {
+        tables.product_supplier_prices = [{ ...SYSCO, version_id: 'v1' }]
+        tables.product_versions = versions('v2').map(v => (v.id === 'v1' ? { ...v, fallback_rank: 3 } : v))
+        renderWithRouter(<ProductsPage />)
+        expect((await screen.findAllByText('Fallback 1')).length).toBeGreaterThan(0)
+        expect(screen.queryAllByText('Not recommended')).toHaveLength(0)
     })
 
     it('shows the places each version it buys is kept in', async () => {
@@ -1078,5 +1093,57 @@ describe('the brand\'s versions on a row', () => {
         ]
         renderWithRouter(<ProductsPage />)
         expect((await screen.findAllByText('Freezer', { selector: 'span' })).length).toBeGreaterThan(0)
+    })
+})
+
+// Cleaning, packaging and drinks start with no recommendation (his decision
+// of 18 October 2026). The database gives a new one that; a product moved
+// into them later is asked about here, by an owner only.
+describe('moving a product into Cleaning', () => {
+    async function moveToCleaning(clicker) {
+        renderWithRouter(<ProductsPage />)
+        await clicker.click((await screen.findAllByRole('button', { name: 'Edit' }))[0])
+        const dialog = within(screen.getByRole('dialog'))
+        await clicker.selectOptions(dialog.getByText('Section').parentElement.querySelector('select'), 'Cleaning')
+        await clicker.click(dialog.getByRole('button', { name: 'Save changes' }))
+    }
+    const listCleared = () => written.filter(w => w.how === 'rpc' && w.table === 'set_recommends')
+
+    it('asks an owner whether it should have no recommendation, and clears it on yes', async () => {
+        tables.products = [{ ...PEPPERS, recommends: 'versions' }]
+        const asked = []
+        ask = async options => { asked.push(options); return true }
+        await moveToCleaning(userEvent.setup())
+        await waitFor(() => expect(listCleared()).toEqual([{ table: 'set_recommends', how: 'rpc', row: { product: 'p1', mode: 'any' } }]))
+        expect(asked.map(a => a.title)).toContain('Any version?')
+        expect(written.some(w => w.table === 'products' && w.row.section === 'Cleaning')).toBe(true)
+    })
+
+    // Cleared last, so a failure leaves the price, packs and allergens saved
+    // and says the product was.
+    it('says the product was saved when clearing its list fails', async () => {
+        tables.products = [{ ...PEPPERS, recommends: 'versions' }]
+        db.rpc.mockImplementationOnce(() => Promise.resolve({ data: null, error: WEAK_SIGNAL }))
+        await moveToCleaning(userEvent.setup())
+        expect(await screen.findByText(/Green Peppers was saved, but its change to any version was not/)).toBeInTheDocument()
+    })
+
+    it('keeps the list and still saves when the owner says no', async () => {
+        tables.products = [{ ...PEPPERS, recommends: 'versions' }]
+        ask = async options => options.title !== 'Any version?'
+        await moveToCleaning(userEvent.setup())
+        await waitFor(() => expect(written.some(w => w.table === 'products' && w.row.section === 'Cleaning')).toBe(true))
+        expect(listCleared()).toEqual([])
+    })
+
+    it('asks a store manager nothing, who cannot change what the brand recommends', async () => {
+        me = { id: 'u1', role: 'store_manager' }
+        tables.products = [{ ...PEPPERS, recommends: 'versions' }]
+        const asked = []
+        ask = async options => { asked.push(options); return true }
+        await moveToCleaning(userEvent.setup())
+        await waitFor(() => expect(written.some(w => w.table === 'products' && w.row.section === 'Cleaning')).toBe(true))
+        expect(asked.map(a => a.title)).not.toContain('Any version?')
+        expect(listCleared()).toEqual([])
     })
 })
