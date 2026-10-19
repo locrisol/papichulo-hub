@@ -41,7 +41,7 @@ import ReportWhatWasOn from '@/components/reports/ReportWhatWasOn'
 import useCleaningWeek from '@/components/reports/useCleaningWeek'
 import ReportCleaning from '@/components/reports/ReportCleaning'
 import { claimActions } from '@/lib/invoiceReport'
-import { costFromPaid, movePreferred, renumberPlan, alternatePlan, newGroupId } from '@/lib/priceEvents'
+import { costFromPaid, movePreferred, canJoinCodes, canBuyBoth } from '@/lib/priceEvents'
 import { claimKind } from '@/lib/invoiceClaims'
 import { readToDecide } from '@/lib/invoiceReview'
 import ReportSectionHead from '@/components/reports/ReportSectionHead'
@@ -1257,72 +1257,41 @@ export default function ReportPage() {
         }, `${item.name} is costed from ${item.bought} now.`)
     }
 
+    // One call, code_update, the same one Review makes: the usual version
+    // takes the code at both restaurants and keeps its star, allergens and
+    // pictures, and a price the code had of its own here is folded in, its
+    // lines with it. All of it or none.
     function renumber(item, key) {
-        const plan = renumberPlan(item)
         return decidePrice(key, {
             title: 'Is this a code update?',
             message: `${item.bought} (code ${item.code}) and the ${item.name} usually bought`
-                + `${item.usualCode ? ` (code ${item.usualCode})` : ''} become one, with one price and one price `
-                + 'history. What recipes cost it at does not change here: if the price moved, it shows as a price '
-                + 'change from now on.',
+                + `${item.usualCode ? ` (code ${item.usualCode})` : ''} become one version, with one price and one price `
+                + 'history, at every restaurant. It keeps its place on the Recommended list and its allergens. What '
+                + 'recipes cost it at does not change here: if the price moved, it shows as a price change from now on.',
             confirmLabel: 'They are the same',
         }, async () => {
-            if (!plan) return 'The Hub cannot join these two. Match the code in the review instead.'
-            if (plan.moveLines) {
-                const { error: e1 } = await supabase.from('invoice_lines')
-                    .update({ price_id: plan.moveLines.to }).eq('price_id', plan.moveLines.from)
-                if (e1) return friendlyError(e1)
-            }
-            if (plan.release) {
-                const { error: e2 } = await supabase.from('supplier_codes')
-                    .update({ price_id: null }).eq('id', plan.release)
-                if (e2) return friendlyError(e2)
-            }
-            // Asked to say what it removed, because a removal the database
-            // quietly declines comes back with no error and nothing gone, and
-            // the green peppers were left with a price nobody pointed at.
-            if (plan.drop) {
-                const { data: gone, error: e3 } = await supabase.from('product_supplier_prices')
-                    .delete().eq('id', plan.drop).select('id')
-                if (e3) return friendlyError(e3)
-                if (!gone?.length) {
-                    return "The code was joined, but its old price could not be removed. It is on the product's "
-                        + 'prices page and nothing uses it: delete it there.'
-                }
-            }
-            const { error: e4 } = await supabase.from('supplier_codes').update(plan.point.patch).eq('id', plan.point.id)
-            if (e4) return friendlyError(e4)
-            if (plan.rowCode) {
-                const { error: e5 } = await supabase.from('product_supplier_prices')
-                    .update({ supplier_code: plan.rowCode.supplier_code }).eq('id', plan.rowCode.id)
-                if (e5) return friendlyError(e5)
-            }
-            return null
+            if (!canJoinCodes(item)) return 'The Hub cannot join these two. Match the code in the review instead.'
+            const { error } = await supabase.rpc('code_update', {
+                keep_price: item.usualPriceId, new_code: item.code, make_main: item.newer !== false,
+            })
+            return error ? friendlyError(error) : null
         }, `${item.bought} and the usual ${item.name} are one version now.`)
     }
 
-    // The same thing bought either way. Nothing is moved or removed: the two
-    // codes go in one group and each keeps its own price.
+    // The same thing bought either way: each keeps its own price, and both
+    // are recommended when either was, at every restaurant (buy_both).
     function buyBoth(item, key) {
-        const plan = alternatePlan(item, newGroupId())
         return decidePrice(key, {
             title: 'Same thing, you usually buy both?',
             message: `${item.bought} (code ${item.code}) and ${item.usualName}`
-                + `${item.usualCode ? ` (code ${item.usualCode})` : ''} become one product bought either way. `
-                + 'Each keeps its own price, neither is listed as bought instead of the other again, and recipes are '
-                + 'checked against what they cost on average.',
+                + `${item.usualCode ? ` (code ${item.usualCode})` : ''} become one product bought either way, at every `
+                + 'restaurant. Each keeps its own price, neither is listed as bought instead of the other again, and '
+                + 'when one is recommended, both are.',
             confirmLabel: 'We buy both',
         }, async () => {
-            if (!plan) return 'The Hub cannot group these two. The usual price has no code on it.'
-            const { error: e1 } = await supabase.from('supplier_codes')
-                .update({ alternate_group: plan.group }).in('id', plan.rows)
-            if (e1) return friendlyError(e1)
-            if (plan.fold) {
-                const { error: e2 } = await supabase.from('supplier_codes')
-                    .update({ alternate_group: plan.group }).eq('alternate_group', plan.fold)
-                if (e2) return friendlyError(e2)
-            }
-            return null
+            if (!canBuyBoth(item)) return 'The Hub cannot group these two. Match the code in the review first.'
+            const { error } = await supabase.rpc('buy_both', { keep_price: item.usualPriceId, other_price: item.ownPriceId })
+            return error ? friendlyError(error) : null
         }, `${item.name} is bought either way now.`)
     }
 

@@ -14,7 +14,7 @@ import {
     matchLines, storedLine, lineCategory, samePrice, unitsForPack, packReadings, unitsPatch,
 } from '@/lib/invoiceImport'
 import { storedTotals, mainCategory } from '@/lib/invoiceCategories'
-import { acceptPrice, movePreferred, codeRow, ignoreCode, ownedByAnother, newGroupId } from '@/lib/priceEvents'
+import { acceptPrice, movePreferred, codeRow, ignoreCode, ownedByAnother } from '@/lib/priceEvents'
 import { readToDecide } from '@/lib/invoiceReview'
 import { linesFor } from '@/lib/productRequests'
 import { sameName } from '@/lib/products'
@@ -230,56 +230,40 @@ export function reviewWriter({ restaurantId, userId, data, rows, onSaid = () => 
         return e2 ? friendlyError(e2) : null
     }
 
-    // The supplier renumbered something. The old code's price row is the one
-    // this belongs to, and saying so keeps the product's line on the graph in
-    // one piece across the change.
+    // The supplier renumbered something: the old code's version under a new
+    // number. One call, code_update, the same one the report makes: the
+    // version takes the code at every restaurant and keeps its star,
+    // allergens and pictures, both codes mean the old price here, and the
+    // lines under the new code point at it. The new code's row is written
+    // first with what the document said about it, which code_update leaves.
     async function sameProduct(row) {
         const successor = row.successor
         const price = data.prices.find(p => p.id === successor.price_id)
         if (!price) return 'That code points at a price the Hub no longer has.'
-
-        // The old code lets go of the price row first, because a price row
-        // belongs to one code, and it stops being offered: the thing it named
-        // is bought under the new number now.
-        const { error: e0 } = await supabase.from('supplier_codes')
-            .update({ price_id: null })
-            .eq('supplier_id', row.supplierId)
-            .eq('restaurant_id', restaurantId)
-            .eq('supplier_code', successor.supplier_code)
-        if (e0) return friendlyError(e0)
 
         const { error: e1 } = await supabase.from('supplier_codes')
             .upsert({
                 supplier_id: row.supplierId,
                 restaurant_id: restaurantId,
                 supplier_code: row.line.code,
-                price_id: price.id,
                 last_description: row.line.description,
                 pack_size: row.line.pack_size,
                 first_seen_on: row.stored.invoices.invoice_date,
                 last_seen_on: row.stored.invoices.invoice_date,
-                replaces_code: successor.supplier_code,
                 ignored: false,
             }, { onConflict: 'supplier_id,restaurant_id,supplier_code' })
         if (e1) return friendlyError(e1)
 
-        // The row carries the code it is for, and that is the new one now. The
-        // report follows the old number's deliveries through replaces_code, so
-        // the price history stays in one piece.
-        const { error: e3 } = await supabase.from('product_supplier_prices')
-            .update({ supplier_code: row.line.code })
-            .eq('id', price.id)
-        if (e3) return friendlyError(e3)
-
-        const { error: e2 } = await supabase.from('invoice_lines')
-            .update({
-                price_id: price.id,
-                product_id: price.product_id,
-                category: lineCategory(price.products, row.supplier),
-            })
-            .in('id', sameCode(row).map(r => r.stored.id))
+        const lines = sameCode(row)
+        const { error: e2 } = await supabase.rpc('code_update', {
+            keep_price: price.id,
+            new_code: row.line.code,
+            make_main: true,
+            line_ids: lines.map(r => r.stored.id),
+            line_category: lineCategory(price.products, row.supplier),
+        })
         if (e2) return friendlyError(e2)
-        await refreshCategories(sameCode(row).map(r => r.stored.invoice_id))
+        await refreshCategories(lines.map(r => r.stored.invoice_id))
 
         // Deliberately undecided. If the price also moved, the line belongs in
         // the pile that asks about that, and it will be there when this reloads.
@@ -288,9 +272,9 @@ export function reviewWriter({ restaurantId, userId, data, rows, onSaid = () => 
 
     // Sysco sends either code depending on what it has: the green peppers as
     // 483508 or 5018758. The new code gets a price of its own, the same way as
-    // matching it to something we already have, and the two codes go in one
-    // group, the old one's if it is in one already, so a third code joins the
-    // same group.
+    // matching it to something we already have, and then the two are bought
+    // either way (buy_both): both recommended when the usual one is, at every
+    // restaurant, otherwise grouped here as before.
     async function buyBoth(row) {
         const successor = row.successor
         const price = data.prices.find(p => p.id === successor.price_id)
@@ -301,12 +285,18 @@ export function reviewWriter({ restaurantId, userId, data, rows, onSaid = () => 
         const failed = await matchTo(row, { productId: price.product_id, unitsPerCase: units })
         if (failed) return failed
 
-        const { error: e1 } = await supabase.from('supplier_codes')
-            .update({ alternate_group: successor.alternate_group || newGroupId() })
+        // The price the new code was matched to, which matchTo has just said.
+        const { data: matched, error: e1 } = await supabase.from('supplier_codes')
+            .select('price_id')
             .eq('supplier_id', row.supplierId)
             .eq('restaurant_id', restaurantId)
-            .in('supplier_code', [row.line.code, successor.supplier_code])
-        return e1 ? friendlyError(e1) : null
+            .eq('supplier_code', row.line.code)
+            .maybeSingle()
+        if (e1) return friendlyError(e1)
+        if (!matched?.price_id || matched.price_id === price.id) return null
+
+        const { error: e2 } = await supabase.rpc('buy_both', { keep_price: price.id, other_price: matched.price_id })
+        return e2 ? friendlyError(e2) : null
     }
 
     async function matchTo(row, { productId, unitsPerCase }) {

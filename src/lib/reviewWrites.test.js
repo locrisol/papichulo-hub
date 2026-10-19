@@ -20,13 +20,17 @@ const db = {
         }
         return q
     }),
+    rpc: vi.fn((name, args) => {
+        writes.push({ table: name, op: 'rpc', payload: args })
+        return Promise.resolve({ data: null, error: tables[`${name}:error`] || null })
+    }),
 }
 vi.mock('@/lib/supabase', async () => ({
     ...(await vi.importActual('@/lib/supabase')),
     supabase: new Proxy({}, { get: (_, k) => db[k] }),
 }))
 
-const { settleRequest, addFromRequest } = await import('./reviewWrites')
+const { settleRequest, addFromRequest, reviewWriter } = await import('./reviewWrites')
 
 const INVOICE = {
     id: 'i1', invoice_number: '81774412', invoice_date: '2026-10-01', supplier_id: 's1',
@@ -166,5 +170,58 @@ describe('adding it as a new product', () => {
     it('recommends nothing when it was not ticked', async () => {
         await addFromRequest(request(), { name: 'Corn', section: 'Dry', unit: 'Units', unitsPerCase: 360, recommend: false, userId: 'u9' })
         expect(wrote('product_versions', 'update')).toEqual([])
+    })
+})
+
+// The same thing under a new code, and two codes bought either way, from
+// Review: one database call each, the same ones the report makes (19
+// October 2026). Invented codes and prices.
+describe('a code that is one we already buy', () => {
+    const SYSCO = { id: 's1', name: 'Sysco Ireland', category: 'food' }
+    const USUAL = {
+        id: 'pr1', product_id: 'p1', supplier_id: 's1', restaurant_id: 'r2', supplier_code: '483508',
+        purchase_type: 'case', units_per_case: 5, price_per_case: 13.35, price_per_unit: 2.67,
+        products: { id: 'p1', name: 'Green Peppers', section: 'Cold Room', unit: 'KG' },
+    }
+    const row = id => ({
+        line: { code: '5018758', description: 'GREEN PEPPERS 1X5 KG', pack_size: '1X5 KG', price_per_case: 12.97 },
+        supplierId: 's1',
+        supplier: SYSCO,
+        successor: { supplier_code: '483508', price_id: 'pr1' },
+        stored: { id, invoice_id: 'i1', invoices: INVOICE },
+    })
+    const writer = () => {
+        const rows = [row('l1'), row('l2')]
+        return reviewWriter({
+            restaurantId: 'r2', userId: 'u9', rows,
+            data: { prices: [USUAL], codes: [], products: [USUAL.products], suppliers: [SYSCO] },
+        })
+    }
+
+    it('says the new code is the usual version, with every line under it', async () => {
+        const failed = await writer().sameProduct(row('l1'))
+        expect(failed).toBeNull()
+        expect(wrote('supplier_codes', 'upsert')[0].payload).toMatchObject({ supplier_code: '5018758', restaurant_id: 'r2' })
+        expect(wrote('supplier_codes', 'upsert')[0].payload).not.toHaveProperty('price_id')
+        expect(wrote('code_update', 'rpc')).toEqual([{
+            table: 'code_update', op: 'rpc', q: undefined,
+            payload: { keep_price: 'pr1', new_code: '5018758', make_main: true, line_ids: ['l1', 'l2'], line_category: 'food' },
+        }])
+        // Nothing moved by hand: the database does it in one go.
+        expect(wrote('product_supplier_prices', 'update')).toEqual([])
+        expect(wrote('invoice_lines', 'update')).toEqual([])
+    })
+
+    it('says what the database said when it refuses', async () => {
+        tables['code_update:error'] = { message: 'Code 5018758 is Mango in the Hub, so it cannot be this as well' }
+        expect(await writer().sameProduct(row('l1'))).toMatch(/Mango/)
+    })
+
+    it('buys both: the new code gets a price of its own, then both are bought either way', async () => {
+        tables.supplier_codes = { price_id: 'pr2' }
+        const failed = await writer().buyBoth(row('l1'))
+        expect(failed).toBeNull()
+        expect(wrote('buy_both', 'rpc')[0].payload).toEqual({ keep_price: 'pr1', other_price: 'pr2' })
+        expect(wrote('supplier_codes', 'update').some(w => 'alternate_group' in w.payload)).toBe(false)
     })
 })

@@ -937,6 +937,20 @@ describe('the helpers', () => {
         expect(lineage('s1|C')).toEqual(['s1|C', 's1|B', 's1|A'])
     })
 
+    // Every code of one version means its price here (19 October 2026): a
+    // number joined at the other restaurant and first met here has no
+    // replaces_code, and is still the same thing.
+    it('counts codes that mean the same price as one family', () => {
+        const lineage = lineageOf([
+            code({ supplier_code: 'A', price_id: 'pr1' }),
+            code({ supplier_code: 'B', price_id: 'pr1' }),
+            code({ supplier_code: 'C', price_id: 'pr2' }),
+            code({ supplier_code: 'D', price_id: 'pr1', ignored: true }),
+        ])
+        expect(lineage('s1|B')).toEqual(['s1|B', 's1|A'])
+        expect(lineage('s1|C')).toEqual(['s1|C'])
+    })
+
     it('does not go round in circles', () => {
         const lineage = lineageOf([
             code({ supplier_code: 'A', replaces_code: 'B' }),

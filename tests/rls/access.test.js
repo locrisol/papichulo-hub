@@ -95,6 +95,17 @@ async function keptRefusal(client, restaurantId) {
     return error?.code ?? null
 }
 
+// Saying a code is the same thing as a price that cannot exist, or that two
+// such prices are bought either way, so nothing is ever joined: refused for
+// who is asking, or let through to fail on the missing price.
+const NOT_IN_THE_HUB = 'That price is not in the Hub any more'
+async function joinRefusal(client) {
+    const join = await client.rpc('code_update', { keep_price: NOBODY, new_code: 'RLS-TEST' })
+    const both = await client.rpc('buy_both', { keep_price: NOBODY, other_price: NOBODY })
+    const said = error => (error?.message === NOT_IN_THE_HUB ? 'past' : error?.code ?? null)
+    return [said(join.error), said(both.error)]
+}
+
 // A change to a version that the rules hide from a store manager, so it
 // reaches no row at all, or that the guard refuses. Either way nothing is
 // saved, which is what is being proved.
@@ -603,6 +614,10 @@ maybe('what each role can see and do', () => {
         // The stock take lists a product where the restaurant keeps it, and
         // staff count it, so they read that, for their own restaurant only,
         // and change none of it.
+        it('cannot join two codes or say two are bought either way', async () => {
+            expect(await joinRefusal(employee)).toEqual([REFUSED_BY_THE_RULES, REFUSED_BY_THE_RULES])
+        })
+
         it('reads where things are kept at their own restaurant only, and changes none of it', async () => {
             const { data, error } = await employee.from('restaurant_kept_in').select('restaurant_id, product_id, section, also_in')
             expect(error).toBeNull()
@@ -898,6 +913,18 @@ maybe('what each role can see and do', () => {
             const answer = await manager.from('product_versions')
                 .update({ section: 'Freezer', supplier_code: ' ' }).eq('id', version.id).select('id')
             expect(versionUntouched(answer), 'a store manager changed a version').toBe(true)
+        })
+
+        // As today (his decision 6 of 18 October 2026): a store manager says
+        // a code is the same thing, or that two are bought either way.
+        it('may join two codes and say two are bought either way', async () => {
+            expect(await joinRefusal(manager)).toEqual(['past', 'past'])
+        })
+
+        // Only from inside code_update, after it has checked who is asking.
+        it('cannot join two versions directly', async () => {
+            const { error } = await manager.rpc('join_versions', { keep: NOBODY, fold: NOBODY })
+            expect(error?.code, 'a store manager joined two versions directly').toBe(REFUSED_BY_THE_RULES)
         })
 
         // Each restaurant's own (his decision of 18 October 2026), the same
@@ -1367,6 +1394,11 @@ maybe('what each role can see and do', () => {
             const fallbacks = await anon.rpc('set_fallbacks', { product: NOBODY, versions: [] })
             expect(recommends.error, 'anybody can call set_recommends').not.toBeNull()
             expect(fallbacks.error, 'anybody can call set_fallbacks').not.toBeNull()
+            const [join, both] = await joinRefusal(anon)
+            expect(join, 'anybody can join two codes').not.toBe('past')
+            expect(both, 'anybody can say two codes are bought either way').not.toBe('past')
+            const { error } = await anon.rpc('join_versions', { keep: NOBODY, fold: NOBODY })
+            expect(error, 'anybody can join two versions').not.toBeNull()
         })
 
         // What the views hand over, stated as columns rather than as a

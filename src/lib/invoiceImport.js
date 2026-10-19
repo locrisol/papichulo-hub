@@ -427,7 +427,12 @@ function lineQuantity(line, units) {
 // `codes` is the authority once it has anything in it. The supplier_code column
 // on a price row seeds it on the first import and is the fallback after that,
 // so the fact ends up living in one place rather than two.
-export function matchLines({ lines = [], codes = [], prices = [], supplier = null, date = null }) {
+//
+// `versions` is every code each of this supplier's versions goes by, across
+// the brand (lib/versionCodes). The last place a code is looked for: one this
+// restaurant never met that belongs to a version it prices means that price,
+// a number joined at the other restaurant or an older one turning up again.
+export function matchLines({ lines = [], codes = [], prices = [], versions = [], supplier = null, date = null }) {
     const onThisDocument = lines.map(l => l.code)
     const byCode = new Map((codes || []).map(c => [c.supplier_code, c]))
     const byId = new Map((prices || []).map(p => [p.id, p]))
@@ -453,10 +458,18 @@ export function matchLines({ lines = [], codes = [], prices = [], supplier = nul
         const replacedBy = codeRow && !codeRow.price_id
             ? (codes || []).find(c => c.replaces_code === line.code && c.price_id && byId.get(c.price_id))
             : null
-        const price = (codeRow?.price_id && byId.get(codeRow.price_id))
+        const known = (codeRow?.price_id && byId.get(codeRow.price_id))
             || (replacedBy && byId.get(replacedBy.price_id))
             || (!codeRow && prices.find(p => p.supplier_code === line.code))
             || null
+        const wanted = String(line.code ?? '').trim().toLowerCase()
+        const version = known || !wanted ? null : (versions || []).find(v => (
+            String(v.code ?? '').trim().toLowerCase() === wanted && v.is_active !== false
+        )) || null
+        const price = known || (version && (
+            prices.find(p => p.version_id === version.version_id && p.is_preferred)
+            || prices.find(p => p.version_id === version.version_id)
+        )) || null
         const product = price?.products || price?.product || null
 
         if (!price) {
@@ -503,6 +516,7 @@ export function matchLines({ lines = [], codes = [], prices = [], supplier = nul
             line,
             codeRow,
             replacedBy,
+            byVersion: !known,
             price,
             product,
             was,

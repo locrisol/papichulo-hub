@@ -244,7 +244,7 @@ describe('prices and suppliers on the report', () => {
         const handlers = draw({ section: withCodes })
         fireEvent.click(screen.getByRole('button', { name: 'Same thing, we usually buy both' }))
         expect(handlers.onBuyBoth).toHaveBeenCalledWith(
-            expect.objectContaining({ codeRowId: 'c-plain', usualCodeRowId: 'c-santa' }), 'switch:tor:5013972:both',
+            expect.objectContaining({ ownPriceId: 'plain', usualPriceId: 'santa' }), 'switch:tor:5013972:both',
         )
     })
 

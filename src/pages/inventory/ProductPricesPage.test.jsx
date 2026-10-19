@@ -32,6 +32,8 @@ const supplierBox = () => screen.getAllByRole('combobox')
 
 const db = {
     from: vi.fn(table => {
+        // How many invoice lines a price has, which is all the page asks them.
+        if (table === 'invoice_lines') return makeQuery({ data: null, error: null, count: tables.invoiceLines || 0 })
         const q = tableOf(tables[table] || [])
         q.insert = vi.fn(row => {
             written.push({ table, how: 'insert', row })
@@ -52,6 +54,10 @@ const db = {
             return q
         })
         return q
+    }),
+    rpc: vi.fn((name, args) => {
+        written.push({ table: name, how: 'rpc', row: args })
+        return Promise.resolve({ data: null, error: null })
     }),
 }
 
@@ -172,6 +178,63 @@ describe('typing a price', () => {
         const price = written.find(w => w.table === 'product_supplier_prices')
         expect(written.find(w => w.table === 'supplier_codes'))
             .toMatchObject({ how: 'update', row: { price_id: `new${written.indexOf(price) + 1}` } })
+    })
+})
+
+// One thing under two codes is one version (19 October 2026). A new code on a
+// price the invoices already have is the same thing renumbered, joined by
+// code_update without losing the star or the allergens, or it is refused.
+describe('a new code on a price the invoices have', () => {
+    async function retype(clicker, to) {
+        tables.product_supplier_prices = [SYSCO]
+        tables.invoiceLines = 3
+        open()
+        await clicker.click((await screen.findAllByRole('button', { name: 'Edit' }))[0])
+        const dialog = within(screen.getByRole('dialog'))
+        await clicker.clear(box(dialog, 'Supplier code'))
+        await clicker.type(box(dialog, 'Supplier code'), to)
+        await clicker.click(dialog.getByRole('button', { name: 'Save changes' }))
+    }
+
+    it('asks whether it is the same thing, and joins the codes when it is', async () => {
+        await retype(userEvent.setup(), '5018758')
+        await waitFor(() => expect(written.some(w => w.how === 'rpc')).toBe(true))
+        expect(asked[0].title).toBe('Is this the same thing under a new code?')
+        expect(written.find(w => w.how === 'rpc')).toEqual({
+            table: 'code_update', how: 'rpc', row: { keep_price: 'pr1', new_code: '5018758', make_main: true },
+        })
+        // The rest of the price is saved, and its code is left to code_update.
+        await waitFor(() => expect(written.some(w => w.how === 'update')).toBe(true))
+        expect(written.find(w => w.how === 'update').row).not.toHaveProperty('supplier_code')
+    })
+
+    it('keeps the code and says why when it is not', async () => {
+        answer = false
+        await retype(userEvent.setup(), '5018758')
+        expect(await screen.findByText(/Invoices have this price under code 483508, so its code stays/)).toBeInTheDocument()
+        expect(written).toEqual([])
+    })
+
+    it('asks nothing for a price no invoice has, where the code is only a typing mistake', async () => {
+        const clicker = userEvent.setup()
+        tables.product_supplier_prices = [SYSCO]
+        open()
+        await clicker.click((await screen.findAllByRole('button', { name: 'Edit' }))[0])
+        const dialog = within(screen.getByRole('dialog'))
+        await clicker.clear(box(dialog, 'Supplier code'))
+        await clicker.type(box(dialog, 'Supplier code'), '483509')
+        await clicker.click(dialog.getByRole('button', { name: 'Save changes' }))
+        await waitFor(() => expect(written.some(w => w.how === 'update')).toBe(true))
+        expect(asked).toEqual([])
+        expect(written.find(w => w.how === 'update').row).toMatchObject({ supplier_code: '483509' })
+    })
+
+    // A code means one thing across the brand.
+    it('refuses a code another product goes by at either restaurant', async () => {
+        tables.product_versions = [{ product_id: 'p-mango', supplier_id: 's1', supplier_code: '33385' }]
+        await retype(userEvent.setup(), '33385')
+        expect(await screen.findByText('Another product already has this code with this supplier.')).toBeInTheDocument()
+        expect(written).toEqual([])
     })
 })
 
