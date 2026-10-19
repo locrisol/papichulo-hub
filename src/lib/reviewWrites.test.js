@@ -55,6 +55,35 @@ beforeEach(() => {
     }
 })
 
+// The brand's versions come with what Review reads, for the suggestions in
+// One of our products.
+describe('what Review reads', () => {
+    it('has the versions switched on, with their other codes, pictures and supplier', async () => {
+        const { readReview } = await import('./reviewWrites')
+        tables.product_versions = [{
+            id: 'v1', product_id: 'p1', supplier_id: 's1', supplier_code: '5019120', name: null, description: null,
+            is_recommended: true, suppliers: { name: 'Sysco Ireland' },
+        }]
+        tables.version_codes = [{ version_id: 'v1', supplier_id: 's1', code: '5019121' }]
+        tables.version_pictures = [{ version_id: 'v1', path: 'v1/box.jpg', sort_order: 0 }]
+        const from = db.from.mock.calls.length
+
+        const { data, error } = await readReview('r2')
+        expect(error).toBe(null)
+        expect(data.versions).toEqual([expect.objectContaining({
+            id: 'v1', supplierName: 'Sysco Ireland', otherCodes: [{ supplier_id: 's1', code: '5019121' }], pictures: ['v1/box.jpg'],
+        })])
+
+        const read = table => db.from.mock.calls.slice(from)
+            .map((call, i) => (call[0] === table ? db.from.mock.results[from + i].value : null))
+            .find(Boolean)
+        expect(read('product_versions').eq).toHaveBeenCalledWith('is_active', true)
+        for (const table of ['product_versions', 'version_codes', 'version_pictures']) {
+            expect(read(table).select.mock.calls[0][0]).not.toContain('*')
+        }
+    })
+})
+
 describe('settling a request', () => {
     it('matches every line with its code to the product chosen, at the restaurant that sent it', async () => {
         const { error } = await settleRequest(request(), { answer: 'version', userId: 'u9', productId: 'p1', unitsPerCase: 360 })

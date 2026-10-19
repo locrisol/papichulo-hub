@@ -173,6 +173,22 @@ export function similarWords(a, b) {
     return shared / Math.min(one.size, two.size)
 }
 
+// The pack, which is not what a thing is: 1X5 KG, 24X330 ML, 6X850 GM,
+// 4X2.5KG, 750ML. Two lines in the same pack share those words whatever is
+// in the box, so mango in a 1X1 KG bag read as half way to green peppers in
+// one, and strawberries in a 400 g punnet as the Tajin seasoning in its 400 g
+// tub. A size that tells two things apart stays: 9X9MM fries, a 12" wrap.
+const UNIT = '(?:KGS?|GRMS?|GMS?|GR|G|MLS?|CL|LTRS?|LT|L|EA|PCS?|PK)'
+const PACK = new RegExp(
+    String.raw`\b\d+(?:[.,]\d+)?\s*X\s*\d+(?:[.,]\d+)?(?:\s*${UNIT})?\b`
+    + String.raw`|\b\d+(?:[.,]\d+)?\s*${UNIT}\b`,
+    'gi',
+)
+
+export function withoutPack(text) {
+    return String(text ?? '').replace(PACK, ' ').replace(/\s+/g, ' ').trim()
+}
+
 // How much two descriptions are the same words, measured against the longer
 // of the two, so a name with an extra word in it is not the same thing:
 // SANTA MARIA TORTILLA against SANTA MARIA TORTILLA WHOLEMEAL is 0.8 here and 1
@@ -214,7 +230,8 @@ const tidyPack = p => String(p || '').toUpperCase().replace(/\s+/g, '')
 export function sameThing(line, code) {
     if (!line?.pack_size || !code?.pack_size) return false
     if (tidyPack(line.pack_size) !== tidyPack(code.pack_size)) return false
-    return sameWords(line.description, code.last_description) >= SAME_WORDS
+    // The pack is checked once, above, and not again as words.
+    return sameWords(withoutPack(line.description), withoutPack(code.last_description)) >= SAME_WORDS
 }
 
 // A code that stopped appearing, that this new one looks like it replaced.
@@ -243,7 +260,10 @@ export function codeSuccessor(line, codes, { onThisDocument = [], date = null } 
     const scored = gone
         .map(c => ({
             code: c,
-            score: similarWords(line.description, c.last_description)
+            // The words without the pack: STRAWBERRIES 1X400 GM read as two
+            // thirds of the Tajin seasoning in its 1X400 GM tub, and the same
+            // pack on top made it a question on 21 Oct 2026.
+            score: similarWords(withoutPack(line.description), withoutPack(c.last_description))
                 // A pack size that matches is worth something on its own, and a
                 // pack size that does not is worth a warning rather than a
                 // refusal: a supplier changing the pack is exactly when the code

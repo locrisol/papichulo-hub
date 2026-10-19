@@ -19,15 +19,17 @@ import { readToDecide } from '@/lib/invoiceReview'
 import { linesFor } from '@/lib/productRequests'
 import { sameName } from '@/lib/products'
 import { todayISO } from '@/lib/dates'
+import { versionsWith } from '@/lib/suggestProducts'
 
 // Everything Review works from at one restaurant: the lines waiting, every
-// price and code it has, the suppliers, and anything we buy. `sent` is what
-// is waiting on a review there. `withSent` keeps those lines, for answering.
+// price and code it has, the suppliers, anything we buy, and the brand's
+// versions for suggesting which of them a new code is. `sent` is what is
+// waiting on a review there. `withSent` keeps those lines, for answering.
 export async function readReview(restaurantId, { withSent = false } = {}) {
     // Every price and code the restaurant has, a page at a time. Read in one
     // go, whatever sat past the thousandth row was unknown here, and a code
     // bought every week went back to Never bought before.
-    const [waiting, prices, codes, suppliers, products] = await Promise.all([
+    const [waiting, prices, codes, suppliers, products, versions] = await Promise.all([
         readToDecide(restaurantId, { withSent }),
         everyRow(() => supabase.from('product_supplier_prices')
             .select('*, products(id, name, section, unit, piece_weight)')
@@ -39,14 +41,15 @@ export async function readReview(restaurantId, { withSent = false } = {}) {
         // no supplier, so offering one as the thing a code means would be
         // offering to price something that is priced by its recipe.
         everyRow(() => supabase.from('products')
-            .select('id, name, section, unit, is_mix, category, is_active, piece_weight')
+            .select('id, name, section, unit, is_mix, category, is_active, piece_weight, recommends')
             .eq('is_active', true)
             .eq('is_mix', false)
             .order('name')
             .order('id')),
+        readVersions(),
     ])
 
-    const failed = [waiting, prices, codes, suppliers, products].map(r => r.error).find(Boolean)
+    const failed = [waiting, prices, codes, suppliers, products, versions].map(r => r.error).find(Boolean)
     if (failed) return { data: null, sent: null, error: friendlyError(failed) }
 
     return {
@@ -56,10 +59,29 @@ export async function readReview(restaurantId, { withSent = false } = {}) {
             codes: codes.data || [],
             suppliers: suppliers.data || [],
             products: products.data || [],
+            versions: versions.data,
         },
         sent: waiting.sent,
         error: null,
     }
+}
+
+// The brand's versions still switched on, with the other codes they go by
+// and their pictures, for suggestProducts. The same for every restaurant:
+// nothing here is one restaurant's, so a manager at either sees the same
+// suggestions. Returns { data, error }, the error as the database gave it.
+export async function readVersions() {
+    const [versions, codes, pictures] = await Promise.all([
+        everyRow(() => supabase.from('product_versions')
+            .select('id, product_id, supplier_id, supplier_code, name, description, is_recommended, suppliers(name)')
+            .eq('is_active', true)
+            .order('id')),
+        everyRow(() => supabase.from('version_codes').select('version_id, supplier_id, code').order('id')),
+        everyRow(() => supabase.from('version_pictures').select('version_id, path, sort_order').order('id')),
+    ])
+    const error = [versions, codes, pictures].map(r => r.error).find(Boolean) || null
+    if (error) return { data: null, error }
+    return { data: versionsWith(versions.data, codes.data, pictures.data), error: null }
 }
 
 // The same matching the import ran, over the rows as they were stored.
