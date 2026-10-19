@@ -266,6 +266,48 @@ describe('editing a document that was read in', () => {
     })
 })
 
+// Show invoice, on a document with lines to show. A total typed off the paper
+// has nothing more than its row, so it has no button.
+describe('show invoice', () => {
+    afterEach(() => { delete tables.invoice_lines })
+
+    // The computer's table row for a document.
+    const rowOf = async text => (await screen.findAllByText(text))[1].closest('tr')
+
+    it('is on a document read in line by line, and on nothing typed in as a total', async () => {
+        renderWithRouter(<InvoicesPage />)
+        for (const text of ['Invoice 45690932', 'Credit note C45699999']) {
+            expect(within(await rowOf(text)).getByRole('button', { name: 'Show invoice' })).toBeInTheDocument()
+        }
+        for (const text of ['Invoice 45448455', 'Credit note C45620001', 'Hand Typed Ltd']) {
+            expect(within(await rowOf(text)).queryByRole('button', { name: 'Show invoice' })).toBeNull()
+        }
+        // The two with lines, once on the phone card and once in the table.
+        expect(screen.getAllByRole('button', { name: 'Show invoice' })).toHaveLength(4)
+    })
+
+    it('opens what was read off that document, read when it opens', async () => {
+        tables.invoice_lines = {
+            data: [{
+                id: 'l1', line_no: 1, supplier_code: '300003', raw_description: 'FOIL CONTAINERS 9X50',
+                pack_size: '1X500', cases: 1, units: 0, price_per_case: 34.52, line_total: 34.52, vat_amount: 7.94,
+                deposit_amount: 0, category: 'packaging', decision: 'matched',
+                products: { name: 'Foil Containers' }, product_supplier_prices: null,
+            }],
+            error: null,
+        }
+        renderWithRouter(<InvoicesPage />)
+        const row = await rowOf('Invoice 45690932')
+        expect(db.from.mock.calls.map(([name]) => name)).not.toContain('invoice_lines')
+
+        await userEvent.click(within(row).getByRole('button', { name: 'Show invoice' }))
+        const dialog = screen.getByRole('dialog', { name: 'Invoice 45690932' })
+        expect(await within(dialog).findAllByText('FOIL CONTAINERS 9X50')).toHaveLength(2)
+        const read = db.from.mock.results.find((_, i) => db.from.mock.calls[i][0] === 'invoice_lines').value
+        expect(read.eq).toHaveBeenCalledWith('invoice_id', 'i4')
+    })
+})
+
 // 12 October: one press of Save landed twice, 14 milliseconds apart, and both
 // ran the check for one already entered before either had saved. The same
 // Henderson invoice went in twice with no warning.
