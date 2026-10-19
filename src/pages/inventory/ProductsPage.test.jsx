@@ -53,6 +53,10 @@ const db = {
             written.push({ table, how: 'delete' })
             return makeQuery({ data: null, error: null })
         })
+        q.upsert = vi.fn(row => {
+            written.push({ table, how: 'upsert', row })
+            return makeQuery({ data: null, error: null })
+        })
         return q
     }),
     rpc: vi.fn((name, args) => {
@@ -1086,10 +1090,9 @@ describe('the brand\'s versions on a row', () => {
         expect(screen.queryAllByText('Not recommended')).toHaveLength(0)
     })
 
-    it('shows the places each version it buys is kept in', async () => {
+    it('shows every place this restaurant keeps it in', async () => {
         tables.restaurant_kept_in = [
-            { restaurant_id: 'r1', product_id: 'p1', section: 'Cold Room', also_in: [] },
-            { restaurant_id: 'r1', product_id: 'p1', section: 'Freezer', also_in: [] },
+            { id: 'k1', restaurant_id: 'r1', product_id: 'p1', section: 'Cold Room', also_in: ['Freezer'] },
         ]
         renderWithRouter(<ProductsPage />)
         expect((await screen.findAllByText('Freezer', { selector: 'span' })).length).toBeGreaterThan(0)
@@ -1145,5 +1148,43 @@ describe('moving a product into Cleaning', () => {
         await waitFor(() => expect(written.some(w => w.table === 'products' && w.row.section === 'Cleaning')).toBe(true))
         expect(asked.map(a => a.title)).not.toContain('Any version?')
         expect(listCleared()).toEqual([])
+    })
+})
+
+// Where Point Campus keeps it is its own (his decision of 18 October 2026),
+// so the form saves it for Point Campus and leaves the product's Also in.
+describe('where it is kept here', () => {
+    async function editAndSave(clicker, change) {
+        renderWithRouter(<ProductsPage />)
+        await clicker.click((await screen.findAllByRole('button', { name: 'Edit' }))[0])
+        const dialog = within(screen.getByRole('dialog'))
+        await change?.(dialog)
+        await clicker.click(dialog.getByRole('button', { name: 'Save changes' }))
+        await waitFor(() => expect(written.some(w => w.table === 'products' && w.how === 'update')).toBe(true))
+    }
+    const kept = () => written.filter(w => w.table === 'restaurant_kept_in')
+
+    it("saves Point Campus's own places, and not on the product", async () => {
+        const clicker = userEvent.setup()
+        await editAndSave(clicker, dialog => clicker.click(dialog.getByRole('button', { name: 'Freezer' })))
+        await waitFor(() => expect(kept()).toHaveLength(1))
+        expect(kept()[0]).toEqual({
+            table: 'restaurant_kept_in', how: 'upsert',
+            row: { restaurant_id: 'r1', product_id: 'p1', section: 'Cold Room', also_in: ['Freezer'] },
+        })
+        expect(written.find(w => w.table === 'products').row).not.toHaveProperty('also_in')
+    })
+
+    it('says nothing about where it is kept when nobody touched it', async () => {
+        await editAndSave(userEvent.setup())
+        expect(kept()).toEqual([])
+    })
+
+    it('shows where Point Campus keeps it when it has said', async () => {
+        tables.restaurant_kept_in = [{ id: 'k1', restaurant_id: 'r1', product_id: 'p1', section: 'Freezer', also_in: [] }]
+        const clicker = userEvent.setup()
+        renderWithRouter(<ProductsPage />)
+        await clicker.click((await screen.findAllByRole('button', { name: 'Edit' }))[0])
+        expect(within(screen.getByRole('dialog')).getByLabelText('Kept at Point Campus in')).toHaveValue('Freezer')
     })
 })

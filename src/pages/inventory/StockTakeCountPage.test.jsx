@@ -194,18 +194,14 @@ describe('the products on a count', () => {
     })
 })
 
-// His answer of 4 October: where a product is kept is said by the versions a
-// restaurant buys, so frozen and ambient versions put it under both headings.
+// Each restaurant says where it keeps a product (his decision of 18
+// October), so one kept frozen and in the cold room is under both headings.
 describe('where each product is counted', () => {
-    it('is under the place of every version this restaurant buys', async () => {
+    it('is under every place this restaurant keeps it', async () => {
         user = { id: 'u2', role: 'employee', full_name: 'Maria' }
         setUp({
             prices: [AT_POINT_CAMPUS],
-            kept: [
-                { restaurant_id: 'r1', product_id: 'p1', section: 'Cold Room', also_in: [] },
-                { restaurant_id: 'r1', product_id: 'p1', section: 'Freezer', also_in: [] },
-                { restaurant_id: 'r2', product_id: 'p1', section: 'Dry', also_in: [] },
-            ],
+            kept: [{ restaurant_id: 'r1', product_id: 'p1', section: 'Cold Room', also_in: ['Freezer'] }],
         })
         open()
         await waitFor(() => expect(screen.getAllByText('Cheddar')).toHaveLength(2))
@@ -213,8 +209,8 @@ describe('where each product is counted', () => {
         expect(asked.eq).toHaveBeenCalledWith('restaurant_id', 'r1')
     })
 
-    // A version moved while the count is open: what was counted where it
-    // used to be stays on the count.
+    // Moved while the count is open: what was counted where it used to be
+    // stays on the count.
     it('keeps a place it was already counted in', async () => {
         user = { id: 'u2', role: 'employee', full_name: 'Maria' }
         setUp({ prices: [AT_POINT_CAMPUS], kept: [{ restaurant_id: 'r1', product_id: 'p1', section: 'Freezer', also_in: [] }] })
@@ -223,7 +219,7 @@ describe('where each product is counted', () => {
         await waitFor(() => expect(screen.getAllByText('Cheddar')).toHaveLength(2))
     })
 
-    it('is where the product says when this restaurant buys no version of it', async () => {
+    it('is where the product says when this restaurant has not said otherwise', async () => {
         user = { id: 'u2', role: 'employee', full_name: 'Maria' }
         setUp({ prices: [AT_POINT_CAMPUS] })
         open()

@@ -1,30 +1,25 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
-import { friendlyError } from '@/lib/errors'
-import { PLACES, versionLabel } from '@/lib/brandVersions'
+import { versionLabel } from '@/lib/brandVersions'
 import { groupsOf, standingOf } from '@/lib/recommended'
-import { modalFooter, secondaryButton, labelClass, fieldClass, rowButton, badge, chip } from '@/lib/controlStyles'
+import { modalFooter, secondaryButton, rowButton, badge } from '@/lib/controlStyles'
 import Modal from '@/components/ui/Modal'
-import ErrorBanner from '@/components/ui/ErrorBanner'
 import SupplierBadge from '@/components/ui/SupplierBadge'
 
 // The versions of one product: what can be bought for it, from whom, under
-// which codes, where each stands on the Recommended list, and where each is
-// kept.
+// which codes, and where each stands on the Recommended list.
 //
 // What the brand recommends is changed on the Recommended list now, by owners
 // and the super admin (his decisions of 18 and 19 October 2026), so here it
-// is only said. Anybody who manages a restaurant still says where a version
-// is kept, which is where the stock take lists it.
+// is only said. Where a restaurant keeps the product is its own, set on the
+// product form or its Prices page, and nothing to do with versions.
 //
 // A version starts when a restaurant prices a supplier's code this product has
 // not had, so Add a price is how a store manager adds one.
 export default function VersionsModal({
-    product, versions, suppliers, boughtHere, keepsTheList, onClose, onChanged, onAddPrice,
+    product, versions, suppliers, boughtHere, keepsTheList, onClose, onAddPrice,
 }) {
-    const [error, setError] = useState('')
-    const [busy, setBusy] = useState('')
     const [codes, setCodes] = useState({})
     const groups = groupsOf(product, versions)
     const mine = [...groups.set, ...groups.fallbacks, ...groups.others, ...groups.off]
@@ -45,21 +40,9 @@ export default function VersionsModal({
         return () => { live = false }
     }, [ids])
 
-    // Busy until the page has read the versions again, so a second tap works
-    // from what the first one saved rather than from what was there before.
-    async function keep(key, patch, id) {
-        setBusy(key)
-        setError('')
-        const { error: e1 } = await supabase.from('product_versions').update(patch).eq('id', id)
-        if (e1) { setBusy(''); setError(friendlyError(e1)); return }
-        await onChanged?.()
-        setBusy('')
-    }
-
     return (
         <Modal title={`Versions of ${product.name}`} onClose={onClose} width="max-w-2xl">
             <div className="px-6 py-4 space-y-4">
-                <ErrorBanner>{error}</ErrorBanner>
 
                 <div className="rounded-lg bg-app-bg border border-border p-3 text-sm text-gray-700">
                     <p>
@@ -80,7 +63,7 @@ export default function VersionsModal({
                 <div className="rounded-lg bg-app-bg border border-border p-3 text-sm text-gray-700">
                     <p>
                         A version is added when a price is saved with a supplier and code this product has
-                        not had. Each version is kept in the same place at every restaurant that buys it.
+                        not had.
                     </p>
                     <div className="flex flex-wrap gap-2 mt-2">
                         <button type="button" onClick={onAddPrice} className={rowButton('edit')}>
@@ -97,8 +80,6 @@ export default function VersionsModal({
 
                 <ul className="space-y-3">
                     {mine.map(v => {
-                        const section = v.section || product.section
-                        const alsoIn = v.also_in ?? product.also_in ?? []
                         const standing = standingOf(v, product, versions)
                         const everyCode = [v.supplier_code, ...(codes[v.id] || [])].filter(Boolean)
                         return (
@@ -129,46 +110,6 @@ export default function VersionsModal({
                                     </div>
                                 </div>
 
-                                <div className="grid gap-3 sm:grid-cols-[12rem_minmax(0,1fr)] mt-3">
-                                    <div>
-                                        <label className={labelClass} htmlFor={`kept-${v.id}`}>Kept in</label>
-                                        <select
-                                            id={`kept-${v.id}`}
-                                            value={section}
-                                            disabled={!!busy}
-                                            onChange={e => keep(`section-${v.id}`, {
-                                                section: e.target.value,
-                                                also_in: alsoIn.filter(place => place !== e.target.value),
-                                            }, v.id)}
-                                            className={fieldClass}
-                                        >
-                                            {PLACES.map(place => <option key={place} value={place}>{place}</option>)}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <p className={labelClass}>Also kept in</p>
-                                        <div className="flex flex-wrap gap-1.5">
-                                            {PLACES.filter(place => place !== section).map(place => {
-                                                const on = alsoIn.includes(place)
-                                                return (
-                                                    <button
-                                                        key={place}
-                                                        type="button"
-                                                        aria-pressed={on}
-                                                        disabled={!!busy}
-                                                        onClick={() => keep(`also-${v.id}`, {
-                                                            section,
-                                                            also_in: on ? alsoIn.filter(x => x !== place) : [...alsoIn, place],
-                                                        }, v.id)}
-                                                        className={chip(on)}
-                                                    >
-                                                        {place}
-                                                    </button>
-                                                )
-                                            })}
-                                        </div>
-                                    </div>
-                                </div>
                             </li>
                         )
                     })}

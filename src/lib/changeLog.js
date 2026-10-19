@@ -42,6 +42,7 @@ const TABLES = {
     version_allergens: 'Version allergens',
     version_pictures: 'Version picture',
     version_codes: 'Version code',
+    restaurant_kept_in: 'Kept here',
     product_requests: 'Sent for review',
     brand_settings: 'Brand settings',
     mix_recipes: 'Recipe',

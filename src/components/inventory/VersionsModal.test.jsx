@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, within, waitFor } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { makeQuery } from '@/test/helpers'
@@ -48,7 +48,7 @@ const SUPPLIERS = [
     { id: 's2', name: 'Local', is_active: true, works_without_codes: true },
 ]
 
-function open({ keepsTheList = true, product = TORTILLA, onChanged = vi.fn(), onAddPrice = vi.fn() } = {}) {
+function open({ keepsTheList = true, product = TORTILLA, onAddPrice = vi.fn() } = {}) {
     render(
         <MemoryRouter>
             <VersionsModal
@@ -58,12 +58,10 @@ function open({ keepsTheList = true, product = TORTILLA, onChanged = vi.fn(), on
                 boughtHere={new Set(['v2'])}
                 keepsTheList={keepsTheList}
                 onClose={() => {}}
-                onChanged={onChanged}
                 onAddPrice={onAddPrice}
             />
         </MemoryRouter>,
     )
-    return onChanged
 }
 
 const row = name => within(screen.getByText(name, { exact: false }).closest('li'))
@@ -112,19 +110,14 @@ describe('the versions of a product', () => {
         expect(screen.queryByText(/Fallback/)).toBeNull()
     })
 
-    // A store manager still says where things are kept.
-    it('lets a store manager say where a version is kept', async () => {
-        const changed = open({ keepsTheList: false })
-        await userEvent.selectOptions(row('Flour plain wraps').getByLabelText('Kept in'), 'Freezer')
-        expect(written).toEqual([{ table: 'product_versions', patch: { section: 'Freezer', also_in: [] }, id: 'v2' }])
-        await waitFor(() => expect(changed).toHaveBeenCalled())
-    })
-
-    it('keeps a version where the product is until it says otherwise, and adds other places', async () => {
+    // Each restaurant says where it keeps the product now, on the product
+    // form or its Prices page, and a version has no place of its own.
+    it('says nothing about where a version is kept', () => {
         open({ keepsTheList: false })
-        expect(row('Flour plain wraps').getByLabelText('Kept in')).toHaveValue('Dry')
-        await userEvent.click(row('Flour plain wraps').getByRole('button', { name: 'Cold Room' }))
-        expect(written).toEqual([{ table: 'product_versions', patch: { section: 'Dry', also_in: ['Cold Room'] }, id: 'v2' }])
+        expect(screen.queryByLabelText('Kept in')).toBeNull()
+        expect(screen.queryByText('Also kept in')).toBeNull()
+        expect(screen.queryByText(/kept in the same place/)).toBeNull()
+        expect(written).toEqual([])
     })
 })
 

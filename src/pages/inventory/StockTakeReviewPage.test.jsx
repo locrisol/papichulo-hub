@@ -87,6 +87,31 @@ describe('a super admin counting the last product before closing', () => {
     })
 })
 
+// Where Point Campus keeps it is its own. A line added here used to go under
+// the product's section, so cheese kept in the freezer here went into the
+// Cold Room and was then flagged as counted in one place only.
+describe('a product kept somewhere else here', () => {
+    it("is listed and counted under Point Campus's own place", async () => {
+        tables.restaurant_kept_in = [{ restaurant_id: 'r1', product_id: 'p1', section: 'Freezer', also_in: [] }]
+        const clicker = open()
+        expect(await screen.findByText(/Freezer · KG/)).toBeInTheDocument()
+        await clicker.click(screen.getByText('Cheddar'))
+        await clicker.type(screen.getByPlaceholderText('0'), '2')
+        await clicker.click(screen.getByRole('button', { name: 'Add' }))
+        await waitFor(() => expect(saved).toHaveLength(1))
+        expect(saved[0]).toMatchObject({ product_id: 'p1', section: 'Freezer' })
+    })
+
+    it('is under its own section when Point Campus has not said', async () => {
+        const clicker = open()
+        await clicker.click(await screen.findByText('Cheddar'))
+        await clicker.type(screen.getByPlaceholderText('0'), '2')
+        await clicker.click(screen.getByRole('button', { name: 'Add' }))
+        await waitFor(() => expect(saved).toHaveLength(1))
+        expect(saved[0]).toMatchObject({ section: 'Cold Room' })
+    })
+})
+
 // Staff can still be counting while a manager sits on this screen, so the
 // lines it read when it opened are not the lines there are at Close.
 describe('closing while somebody is still counting', () => {

@@ -594,4 +594,36 @@ describe('the Recommended list', () => {
         expect(fn('price_version')).toMatch(/v\.notes, v\.description/)
         expect(fn('brand_choice_guard')).toMatch(/new\.notes is not null or new\.description is not null\)\s+and pg_trigger_depth\(\) < 2/)
     })
+    // Where a version was kept was the last thing a store manager wrote on
+    // one; they still add versions by buying them, through price_version.
+    it('lets only owners and the super admin write versions directly', () => {
+        expect(policy('product_versions_write')).toContain("'owner'")
+        expect(policy('product_versions_write')).not.toContain('store_manager')
+        expect(fn('price_version')).toMatch(/language plpgsql security definer/)
+    })
+})
+
+// Where each restaurant keeps a product (his decision of 18 October 2026).
+describe('where a restaurant keeps a product', () => {
+    const policy = name => schema.match(new RegExp(String.raw`create policy ${name} on [^;]*;`))?.[0] || ''
+    const start = schema.indexOf('create table if not exists public.restaurant_kept_in (')
+    const table = start === -1 ? '' : schema.slice(start, schema.indexOf(');', start))
+
+    it('is a table of one row per restaurant and product, in the five places only', () => {
+        expect(table, 'restaurant_kept_in is not a table in schema.sql').not.toBe('')
+        expect(schema).not.toMatch(/create or replace view public\.restaurant_kept_in/)
+        expect(table).toContain('unique (restaurant_id, product_id)')
+        expect(table).toContain("check (section in ('Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning'))")
+        expect(table).toContain('check (not (section = any (also_in)))')
+    })
+
+    it('is read by everybody who counts at their own restaurant, and changed by its managers', () => {
+        expect(policy('restaurant_kept_in_select')).toContain("'employee'")
+        expect(policy('restaurant_kept_in_select')).toContain('restaurant_id = (select public.get_my_restaurant_id())')
+        const write = policy('restaurant_kept_in_write')
+        expect(write).toContain("array['owner', 'store_manager']")
+        expect(write, 'an employee can change where things are kept').not.toContain('employee')
+        expect(write).toContain('restaurant_id = (select public.get_my_restaurant_id())')
+        expect(schema).toContain('grant select, insert, update, delete on table public.restaurant_kept_in to authenticated;')
+    })
 })

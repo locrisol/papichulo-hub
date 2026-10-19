@@ -514,6 +514,32 @@ create unique index if not exists version_codes_one_per_code
     on public.version_codes (supplier_id, lower(btrim(code)));
 create index if not exists idx_version_codes_version on public.version_codes (version_id);
 
+-- Where a restaurant keeps a product (his decision of 18 October 2026, built
+-- 19 October): each restaurant's own business, so Point Campus moving the
+-- tortillas to the freezer does not move them at Dun Laoghaire. One row only
+-- where the places are not the product's own section and Also in; with no
+-- row the product's own, and it goes on following its section. The section
+-- itself stays what the product is, read by the costing and the reports.
+create table if not exists public.restaurant_kept_in (
+    id uuid default gen_random_uuid() not null primary key,
+    restaurant_id uuid not null references public.restaurants(id) on delete cascade,
+    product_id uuid not null references public.products(id) on delete cascade,
+    section text not null,
+    also_in text[] default '{}' not null,
+    constraint restaurant_kept_in_one_per_product unique (restaurant_id, product_id),
+    constraint restaurant_kept_in_section_known
+        check (section in ('Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning')),
+    constraint restaurant_kept_in_also_in_known
+        check (also_in <@ array['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']),
+    constraint restaurant_kept_in_also_in_not_section check (not (section = any (also_in)))
+);
+
+comment on table public.restaurant_kept_in is 'Where a restaurant keeps a product, when that is not simply the product''s own section and Also in: the main place first on the stock take, and the other places it is also counted in. One row per restaurant and product, changed only by that restaurant''s managers. No row means the product''s own. It carries no supplier, code or price, because staff read it to count.';
+comment on column public.restaurant_kept_in.section is 'Where this restaurant mainly keeps it, which is where the stock take lists it first.';
+comment on column public.restaurant_kept_in.also_in is 'The other places this restaurant keeps it in, each counted on the stock take as well.';
+
+create index if not exists idx_restaurant_kept_in_product on public.restaurant_kept_in (product_id);
+
 
 -- -- The menu ----------------------------------------------------------
 --
@@ -4339,16 +4365,17 @@ CREATE POLICY "product_allergens_select" ON "public"."product_allergens" FOR SEL
 CREATE POLICY "product_allergens_write" ON "public"."product_allergens" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
 -- The same for versions and their allergens. A store manager adds versions
--- by buying them and answers their allergens; what is recommended is kept to
--- owners by brand_choice_guard.
+-- by buying them, through price_version, and answers their allergens; the
+-- versions themselves are written by owners and the super admin, and what is
+-- recommended is kept to them by brand_choice_guard as well.
 alter table public.product_versions enable row level security;
 alter table public.version_allergens enable row level security;
 
 create policy product_versions_select on public.product_versions for select to authenticated
     using ((select public.get_my_role()) = any (array['super_admin', 'owner', 'store_manager']));
 create policy product_versions_write on public.product_versions to authenticated
-    using ((select public.get_my_role()) = any (array['super_admin', 'owner', 'store_manager']))
-    with check ((select public.get_my_role()) = any (array['super_admin', 'owner', 'store_manager']));
+    using ((select public.get_my_role()) = any (array['super_admin', 'owner']))
+    with check ((select public.get_my_role()) = any (array['super_admin', 'owner']));
 
 create policy version_allergens_select on public.version_allergens for select to authenticated
     using ((select public.get_my_role()) = any (array['super_admin', 'owner', 'store_manager']));
@@ -4375,6 +4402,26 @@ revoke all on table public.version_pictures from anon, authenticated, public;
 grant select, insert, update, delete on table public.version_pictures to authenticated;
 revoke all on table public.version_codes from anon, authenticated, public;
 grant select on table public.version_codes to authenticated;
+
+-- Where things are kept: everybody who counts reads their own restaurant's,
+-- the super admin every one. The managers of a restaurant change its own,
+-- the same limit its prices have.
+alter table public.restaurant_kept_in enable row level security;
+
+create policy restaurant_kept_in_select on public.restaurant_kept_in for select to authenticated
+    using ((select public.get_my_role()) = 'super_admin'
+           or ((select public.get_my_role()) = any (array['owner', 'store_manager', 'employee'])
+               and restaurant_id = (select public.get_my_restaurant_id())));
+create policy restaurant_kept_in_write on public.restaurant_kept_in to authenticated
+    using ((select public.get_my_role()) = 'super_admin'
+           or ((select public.get_my_role()) = any (array['owner', 'store_manager'])
+               and restaurant_id = (select public.get_my_restaurant_id())))
+    with check ((select public.get_my_role()) = 'super_admin'
+                or ((select public.get_my_role()) = any (array['owner', 'store_manager'])
+                    and restaurant_id = (select public.get_my_restaurant_id())));
+
+revoke all on table public.restaurant_kept_in from anon, authenticated, public;
+grant select, insert, update, delete on table public.restaurant_kept_in to authenticated;
 
 -- What was sent for review, and who reviews. The brand's settings are the
 -- owners' and the super admin's.
@@ -5268,25 +5315,6 @@ create or replace view public.public_restaurant_versions as
 
 comment on view public.public_product_versions is 'Each version of each product, for the customer allergen page: which product it is of, whether the brand recommends it and whether it is in use. Not the supplier, the code or the price.';
 comment on view public.public_version_allergens is 'Each version''s allergens, for the customer allergen page.';
--- What the stock take reads, for everybody who counts: at each restaurant,
--- where each product it buys is kept, version by version. Nothing about
--- suppliers, codes or prices. A product with no price at a restaurant has no
--- row, and is counted where the product says. A version switched off says
--- nothing about where anything is kept. Their own restaurant only, or
--- every one for the super admin.
-create or replace view public.restaurant_kept_in as
- select distinct p.restaurant_id, v.product_id,
-        coalesce(v.section, pr.section::text) as section,
-        coalesce(v.also_in, pr.also_in) as also_in
-   from public.product_supplier_prices p
-   join public.product_versions v on v.id = p.version_id
-   join public.products pr on pr.id = v.product_id
-  where v.is_active
-    and ((select public.get_my_role()) = 'super_admin'
-         or p.restaurant_id = (select public.get_my_restaurant_id()));
-
-comment on view public.restaurant_kept_in is 'Where each product a restaurant buys is kept there, one row for each place its versions say. For the stock take, which staff count, so it carries no supplier, code or price.';
-
 comment on view public.public_restaurant_versions is 'Which versions each restaurant has a price for, which is which versions its allergen sheet is built from. Not the price.';
 
 COMMENT ON VIEW "public"."roster_published" IS 'The week as it went out to staff, at your restaurant: every published shift as it stands, and a shift changed since the week went out as it was then, from published_as. Changing a shift takes it back to a draft so the roster can say so, and without this it vanished from somebody''s week and phone until the week was published again. The note is there only for the person the shift is on and for the managers. Only shifts from nine weeks before today to nine after, by the day as it went out: the weeks My shifts opens and one more. My shifts reads this rather than roster_shifts.';
@@ -5358,7 +5386,6 @@ revoke all on public.public_restaurants          from anon, authenticated, publi
 revoke all on public.public_product_versions     from anon, authenticated, public;
 revoke all on public.public_version_allergens    from anon, authenticated, public;
 revoke all on public.public_restaurant_versions  from anon, authenticated, public;
-revoke all on public.restaurant_kept_in from anon, authenticated, public;
 grant select on public.public_menu_categories      to anon, authenticated;
 grant select on public.public_menu_item_components to anon, authenticated;
 grant select on public.public_menu_items           to anon, authenticated;
@@ -5369,7 +5396,6 @@ grant select on public.public_restaurants          to anon, authenticated;
 grant select on public.public_product_versions     to anon, authenticated;
 grant select on public.public_version_allergens    to anon, authenticated;
 grant select on public.public_restaurant_versions  to anon, authenticated;
-grant select on public.restaurant_kept_in to authenticated;
 
 
 -- ======================================================================

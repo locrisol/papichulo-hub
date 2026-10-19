@@ -25,6 +25,11 @@ const MUSGRAVE = {
 
 let tables
 let written
+// The price form's supplier box, told apart from the Kept here box by what
+// it offers.
+const supplierBox = () => screen.getAllByRole('combobox')
+    .find(box => [...box.options].some(option => option.value === 's1'))
+
 const db = {
     from: vi.fn(table => {
         const q = tableOf(tables[table] || [])
@@ -37,6 +42,14 @@ const db = {
         q.update = vi.fn(row => {
             written.push({ table, how: 'update', row })
             return makeQuery({ data: { ...(tables[table] || [])[0], ...row }, error: null })
+        })
+        q.upsert = vi.fn((row, options) => {
+            written.push({ table, how: 'upsert', row, options })
+            return makeQuery({ data: null, error: null })
+        })
+        q.delete = vi.fn(() => {
+            written.push({ table, how: 'delete' })
+            return q
         })
         return q
     }),
@@ -131,7 +144,7 @@ describe('typing a price', () => {
         const clicker = open()
         await clicker.click(await screen.findByRole('button', { name: '+ Add price' }))
 
-        await clicker.selectOptions(screen.getByRole('combobox'), 's1')
+        await clicker.selectOptions(supplierBox(), 's1')
         await clicker.type(box(screen, 'Supplier code'), '483508')
         await clicker.type(box(screen, 'Price per case (€)'), '11.5')
         await clicker.type(box(screen, 'Units per case (KG)'), '5')
@@ -149,7 +162,7 @@ describe('typing a price', () => {
         const clicker = open()
         await clicker.click(await screen.findByRole('button', { name: '+ Add price' }))
 
-        await clicker.selectOptions(screen.getByRole('combobox'), 's1')
+        await clicker.selectOptions(supplierBox(), 's1')
         await clicker.type(box(screen, 'Supplier code'), '483508')
         await clicker.type(box(screen, 'Price per case (€)'), '11.5')
         await clicker.type(box(screen, 'Units per case (KG)'), '5')
@@ -171,7 +184,7 @@ describe('adding a price to a product that already has one', () => {
 
     async function addMusgrave(clicker) {
         await clicker.click(await screen.findByRole('button', { name: '+ Add price' }))
-        await clicker.selectOptions(screen.getByRole('combobox'), 's2')
+        await clicker.selectOptions(supplierBox(), 's2')
         await clicker.type(field('Supplier code'), 'M-9000')
         await clicker.type(field('Price per case (€)'), '9')
         await clicker.type(field('Units per case (KG)'), '5')
@@ -212,5 +225,40 @@ describe('adding a price to a product that already has one', () => {
         await waitFor(() => expect(written.some(w => w.table === 'product_supplier_prices')).toBe(true))
         expect(asked).toEqual([])
         expect(written.find(w => w.table === 'product_supplier_prices').row.is_preferred).toBe(true)
+    })
+})
+
+// Where Point Campus keeps it, its own and nobody else's (his decision of 18
+// October 2026). It used to be said on each version, the same at both.
+describe('where it is kept here', () => {
+    const keptBox = () => screen.findByLabelText('Kept at Point Campus in')
+
+    it("is the product's own section until Point Campus says otherwise", async () => {
+        open()
+        expect(await keptBox()).toHaveValue('Cold Room')
+    })
+
+    it("saves Point Campus's own as soon as it is changed", async () => {
+        const clicker = userEvent.setup()
+        open()
+        await clicker.selectOptions(await keptBox(), 'Freezer')
+        await clicker.click(screen.getByRole('button', { name: 'Dry' }))
+        await waitFor(() => expect(written.filter(w => w.how === 'upsert')).toHaveLength(2))
+        expect(written.at(-1)).toEqual({
+            table: 'restaurant_kept_in', how: 'upsert',
+            row: { restaurant_id: 'r1', product_id: 'p1', section: 'Freezer', also_in: ['Dry'] },
+            options: { onConflict: 'restaurant_id,product_id' },
+        })
+        expect(await screen.findByText(/Saved at/)).toBeInTheDocument()
+    })
+
+    // So it follows the product's section again if that changes.
+    it("forgets Point Campus's own once it is back to the product's", async () => {
+        tables.restaurant_kept_in = [{ restaurant_id: 'r1', product_id: 'p1', section: 'Freezer', also_in: [] }]
+        const clicker = userEvent.setup()
+        open()
+        await waitFor(async () => expect(await keptBox()).toHaveValue('Freezer'))
+        await clicker.selectOptions(await keptBox(), 'Cold Room')
+        await waitFor(() => expect(written).toContainEqual({ table: 'restaurant_kept_in', how: 'delete' }))
     })
 })

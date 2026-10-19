@@ -125,7 +125,8 @@ describe('adding it as a new product', () => {
             name: ' Corn Tortilla ', section: 'Dry', unit: 'Units', unitsPerCase: 360, recommend: true, userId: 'u9',
         })
         expect(out).toMatchObject({ error: null, productId: 'products-new' })
-        expect(wrote('products', 'insert')[0].payload).toEqual({ name: 'Corn Tortilla', section: 'Dry', category: 'ingredient', also_in: [], unit: 'Units' })
+        expect(wrote('products', 'insert')[0].payload).toEqual({ name: 'Corn Tortilla', section: 'Dry', category: 'ingredient', unit: 'Units' })
+        expect(wrote('restaurant_kept_in', 'upsert')).toEqual([])
         expect(wrote('product_supplier_prices', 'insert')[0].payload).toMatchObject({ product_id: 'products-new', restaurant_id: 'r2' })
         const [recommended] = wrote('product_versions', 'update')
         expect(recommended.payload).toEqual({ is_recommended: true })
@@ -150,6 +151,16 @@ describe('adding it as a new product', () => {
         })
         expect(out.error).toMatch(/already answered/)
         expect(writes).toEqual([])
+    })
+
+    // Where else it is kept belongs to the restaurant that sent it.
+    it('keeps it anywhere else it was said to be, at the restaurant that sent it', async () => {
+        await addFromRequest(request(), {
+            name: 'Corn', section: 'Dry', alsoIn: ['Freezer'], unit: 'Units', unitsPerCase: 360, recommend: false, userId: 'u9',
+        })
+        expect(wrote('products', 'insert')[0].payload).not.toHaveProperty('also_in')
+        expect(wrote('restaurant_kept_in', 'upsert')[0].payload)
+            .toEqual({ restaurant_id: 'r2', product_id: 'products-new', section: 'Dry', also_in: ['Freezer'] })
     })
 
     it('recommends nothing when it was not ticked', async () => {

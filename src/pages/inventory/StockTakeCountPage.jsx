@@ -39,12 +39,11 @@ const REFRESH_EVERY = 60 * 1000
 // in it, so adding it again counted it twice.
 const withLine = line => prev => (prev.some(l => l.id === line.id) ? prev : [...prev, line])
 
-// Every place a product is kept at this restaurant: the places of each
-// version it buys there, or the product's own section and Also in when it
-// buys none (lib/brandVersions). Frozen and ambient tortillas are two
-// versions in two places, so the product is counted under both. And every
-// place this count already has a line for it in, so a place changed during
-// the count never hides what was counted.
+// Every place a product is kept at this restaurant: where the restaurant
+// said, or the product's own section and Also in when it has not
+// (lib/brandVersions, lib/keptHere). Tortillas kept frozen and ambient are
+// counted under both. And every place this count already has a line for it
+// in, so a place changed during the count never hides what was counted.
 function placesOf(product, kept, lines) {
     const counted = (lines || []).filter(l => l.product_id === product.id).map(l => l.section || 'Other')
     return placesFor(product, kept, counted)
@@ -171,11 +170,11 @@ export default function StockTakeCountPage() {
         if (pricesErr) { setError(friendlyError(pricesErr)); setLoading(false); return }
         setPreferredPrices(pricesData || [])
 
-        // Where each product is kept there, from the versions it buys. The
-        // view carries nothing about suppliers or prices, so staff read it.
+        // Where each product is kept there, when that restaurant has said.
+        // It carries nothing about suppliers or prices, so staff read it.
         const { data: keptData, error: keptErr } = await supabase
             .from('restaurant_kept_in')
-            .select('*')
+            .select('product_id, section, also_in')
             .eq('restaurant_id', sessionData.restaurant_id)
         if (keptErr) { setError(friendlyError(keptErr)); setLoading(false); return }
         setKept(keptData || [])

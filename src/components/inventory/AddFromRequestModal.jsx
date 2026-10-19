@@ -16,8 +16,8 @@ const UNITS = ['KG', 'Units', 'Litre']
 // Adding something sent for review to the brand's list.
 //
 // Only what the brand's list needs, and what the invoice line cannot say:
-// the name, where it is kept, what it is counted in and how many of those
-// are in a case. The price comes off the line. Allergens come next, on the
+// the name, its section, what it is counted in and how many of those are in
+// a case, and anywhere else the restaurant that sent it keeps it. The price comes off the line. Allergens come next, on the
 // Allergens page, because a dish with it in says Ask a member of staff
 // until they are set.
 export default function AddFromRequestModal({ request, onClose, onAdd }) {
@@ -82,7 +82,7 @@ export default function AddFromRequestModal({ request, onClose, onAdd }) {
 
                 <div className="grid gap-4 sm:grid-cols-2">
                     <div>
-                        <label className={labelClass} htmlFor="add-section">Kept in</label>
+                        <label className={labelClass} htmlFor="add-section">Section</label>
                         <select id="add-section" value={section} onChange={e => setSection(e.target.value)} className={fieldClass}>
                             {SECTIONS.map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
@@ -118,6 +118,7 @@ export default function AddFromRequestModal({ request, onClose, onAdd }) {
                             )
                         })}
                     </div>
+                    <p className={hintClass}>Only at the restaurant that sent it. Each restaurant sets its own.</p>
                 </div>
 
                 {onLine && (
