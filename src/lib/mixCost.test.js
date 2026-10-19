@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { calculateMixCost, resolveUnitCost, menuItemCost, costInside, deactivatedIn, missingIn, menuMargin, marginTone, MARGIN_GREEN, MARGIN_AMBER } from '@/lib/mixCost'
+import { calculateMixCost, resolveUnitCost, menuItemCost, costInside, deactivatedIn, missingIn, menuMargin, marginTone, MARGIN_GREEN, MARGIN_AMBER, dishRises } from '@/lib/mixCost'
 
 // --- Test fixtures shaped like real rows ---------------------------------
 
@@ -392,5 +392,44 @@ describe('marginTone', () => {
   it('is muted when there is no margin', () => {
     expect(marginTone(null)).toBe('text-muted')
     expect(marginTone(undefined)).toBe('text-muted')
+  })
+})
+
+// What buying something off the Recommended list did to the menu (his
+// decision 5 of 18 October 2026). Invented dishes and prices.
+describe('the dishes a price paid pushes over', () => {
+  const peppers = { id: 'peppers', is_mix: false, is_active: true }
+  const rice = { id: 'rice', is_mix: false, is_active: true }
+  const salsa = { id: 'salsa', is_mix: true, batch_yield: 2, is_active: true }
+  const products = [peppers, rice, salsa]
+  const recipeLines = [{ mix_product_id: 'salsa', ingredient_product_id: 'peppers', quantity: 1 }]
+  const costPrices = [{ product_id: 'peppers', price_per_unit: 2 }, { product_id: 'rice', price_per_unit: 1 }]
+  const menuItems = [
+    { id: 'bowl', name: 'Bowl', is_active: true, category_id: 'mains' },
+    { id: 'plain', name: 'Plain rice', is_active: true, category_id: 'mains' },
+    { id: 'old', name: 'Old bowl', is_active: false, category_id: 'mains' },
+    { id: 'hidden', name: 'Hidden bowl', is_active: true, category_id: 'gone' },
+  ]
+  const categories = [{ id: 'mains', is_active: true }, { id: 'gone', is_active: false }]
+  // Bowl: 1 kg of rice and 1 of salsa (half a kg of peppers): 1 + 1 = 2.
+  const components = ['bowl', 'old', 'hidden'].flatMap(id => [
+    { menu_item_id: id, product_id: 'rice', quantity: 1 },
+    { menu_item_id: id, product_id: 'salsa', quantity: 1 },
+  ]).concat([{ menu_item_id: 'plain', product_id: 'rice', quantity: 1 }])
+  const data = { menuItems, categories, components, products, recipeLines, costPrices, threshold: 5 }
+
+  it('names a dish on sale whose total cost rises past the limit, inside a recipe too', () => {
+    // Peppers at 3 a kg: salsa 1.5, bowl 2.5, a quarter more.
+    expect(dishRises('peppers', 3, data)).toEqual([{ id: 'bowl', name: 'Bowl', was: 2, now: 2.5, rise: 25 }])
+  })
+
+  it('leaves out a dish under the limit, one switched off, one in a category switched off, and one without it', () => {
+    expect(dishRises('peppers', 2.1, data)).toEqual([])
+    expect(dishRises('peppers', 3, { ...data, threshold: 30 })).toEqual([])
+  })
+
+  it('says nothing without a product or a price paid', () => {
+    expect(dishRises(null, 3, data)).toEqual([])
+    expect(dishRises('peppers', 0, data)).toEqual([])
   })
 })

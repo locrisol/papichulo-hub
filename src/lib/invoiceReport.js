@@ -13,9 +13,13 @@
 //   Same product, new price     the same code, against its own last delivery,
 //                               dated by the invoice. The only thing ever
 //                               called a price rise or a price drop.
-//   Bought as something else    a code that is not the one usually bought,
-//                               against the usual one, per unit. Never a
-//                               price rise, and never moves a recipe.
+//   Not what we should be       what was bought instead of the Recommended
+//   buying                      list, against what recipes cost it at from
+//                               the list, with the dishes it pushed over the
+//                               restaurant's limit (19 October 2026). It
+//                               replaced "Bought as something else" and "Not
+//                               as the brand recommends"; a report sent
+//                               before it keeps those two.
 //   Recipes not costing what    the usual version's last price against what
 //   you pay                     recipes cost the product at. On every report
 //                               until the two are within the restaurant's
@@ -28,8 +32,8 @@
 //                               whose report had already gone out.
 //
 // The usual version is the one recipes cost from: the code on the preferred
-// price. After three deliveries in a row of something else, the report asks
-// whether that is the usual one now.
+// price. For a product with no recommendation, after three deliveries in a
+// row of something else, the report asks whether that is the usual one now.
 //
 // **What is worked out here is frozen onto the report when it is published**,
 // so it is plain figures and words, nothing the mail would have to work out
@@ -38,6 +42,7 @@
 import { num, fmtMoney, fmtQty, namesList, round2, round4 } from '@/lib/format'
 import { canJoinCodes } from '@/lib/priceEvents'
 import { pricesAsAt } from '@/lib/pricesAsAt'
+import { dishRises } from '@/lib/mixCost'
 import { addDays, dayMonth, stampDay } from '@/lib/dates'
 import { samePrice, sameWords, similarWords, SAME_WORDS, byPieceWeight } from '@/lib/invoiceImport'
 import { readPackSize, mend } from '@/lib/invoiceSysco'
@@ -1050,60 +1055,93 @@ export function readFrom(documents = []) {
 // The brand's recommendations
 // ---------------------------------------------------------------------------
 
-// What was bought this week that the brand does not recommend, each product
-// once: what was bought beside what the brand recommends, each at its price
-// per unit here, so 1 kg bags and a 5 kg case are both a price a kg (layout
-// D, his pick of 4 October).
+// What was bought this week instead of what the Recommended list says, one
+// entry a product: the card "Not what we should be buying" (his decision 5 of
+// 18 October 2026), which takes the place of "Bought as something else" and
+// "Not as the brand recommends" on reports from now on.
 //
-// Only lines read off an invoice can say which version was bought. Not a
-// product the brand leaves free (recommends any), nor one with nothing
-// recommended yet, which would have nothing to set beside it. `versions` are
-// the brand's versions of the products bought; `prices` this restaurant's,
-// which say which version each line was bought as.
+//   bought       each version bought that is not one of the recommended set,
+//                with its supplier, code, how much, what it came to and its
+//                price a unit; a fallback says its place on the list
+//   recommended  the set, and what recipes cost the product at from it
+//                (cost_prices), which is the other restaurant's price when
+//                this one never bought it
+//   extra        what the week paid over that, a unit for a unit
+//   dishes       the dishes on sale whose total cost rises by more than the
+//                restaurant's limit at the dearest price paid (dishRises)
+//   quiet        only fallbacks were bought and no dish went over: one quiet
+//                line, which is what a fallback is there for
 //
-// A line waiting on a review is said under that, not here as well.
-export function notAsRecommended(all, { weekStart, weekEnd, prices = [], versions = [], requests = [] }) {
+// A product with no recommendation is never listed, nor a line waiting on a
+// review, which has a card of its own.
+export function offTheList(all, {
+    weekStart, weekEnd, prices = [], versions = [], costPrices = [], requests = [], menu = {}, threshold = DEFAULT_RECIPE_GAP,
+}) {
     const priceById = new Map((prices || []).map(p => [p.id, p]))
     const waiting = new Set((requests || []).filter(r => r.supplier_code && !r.answer)
         .map(r => versionKey(r.supplier_id, r.supplier_code)))
-    const out = new Map()
+    const byProduct = new Map()
     for (const d of all) {
         if (d.date < weekStart || d.date > weekEnd || !d.productId || !d.priceId) continue
-        if (waiting.has(d.key)) continue
-        if (d.product?.recommends === 'any') continue
+        if (waiting.has(d.key) || d.product?.recommends === 'any') continue
         const bought = (versions || []).find(v => v.id === priceById.get(d.priceId)?.version_id)
-        if (!bought || bought.is_recommended) continue
-        const recommended = (versions || [])
-            .filter(v => v.product_id === d.productId && v.is_recommended && v.is_active !== false)
-        if (!recommended.length) continue
+        if (!bought || (bought.is_recommended && bought.is_active !== false)) continue
+        const set = (versions || []).filter(v => v.product_id === d.productId && v.is_recommended && v.is_active !== false)
+        if (!set.length) continue
+        if (!byProduct.has(d.productId)) byProduct.set(d.productId, { first: d, set, lines: [] })
+        byProduct.get(d.productId).lines.push({ d, bought })
+    }
 
-        const seen = out.get(d.productId)
-        if (seen) {
-            seen.cases += d.cases
-            seen.money = round2(seen.money + d.cost)
-            continue
-        }
-        // The recommended version this restaurant has a price for, when one
-        // does, so its price can stand beside what was paid.
-        const priced = recommended
-            .map(v => ({ v, price: (prices || []).find(p => p.version_id === v.id) }))
-        const best = priced.find(x => x.price) || priced[0]
-        const name = d.product?.name || nameOf(d)
-        out.set(d.productId, {
-            name,
-            unit: unitOf(d),
+    const out = []
+    for (const [productId, { first, set, lines }] of byProduct) {
+        const name = first.product?.name || nameOf(first)
+        const cost = (costPrices || []).find(c => c.product_id === productId)
+        const costed = num(cost?.price_per_unit) > 0 ? num(cost.price_per_unit) : null
+        const byVersion = new Map()
+        let extra = 0
+        let dearest = null
+        for (const { d, bought } of lines) {
             // Not a per piece price shown as a price a kg.
-            bought: { name: bought.name || nameOf({ description: d.description }), per: cannotCompare(d) ? null : d.perUnit },
-            recommended: {
-                name: best.v.name || name,
-                per: best.price && num(best.price.price_per_unit) > 0 ? num(best.price.price_per_unit) : null,
-            },
-            others: recommended.length - 1,
-            cases: d.cases,
-            money: round2(d.cost),
+            const per = cannotCompare(d) ? null : d.perUnit
+            if (per != null && costed != null) extra += d.cost * (1 - costed / per)
+            if (per != null && (dearest == null || per > dearest)) dearest = per
+            const seen = byVersion.get(bought.id)
+            if (seen) {
+                seen.cases += d.cases
+                seen.loose += d.loose
+                seen.money = round2(seen.money + d.cost)
+                if (per != null) seen.per = per
+                continue
+            }
+            byVersion.set(bought.id, {
+                name: bought.name || nameOf({ description: d.description }),
+                supplier: bought.suppliers?.name || '',
+                code: d.code || bought.supplier_code || null,
+                cases: d.cases,
+                loose: d.loose,
+                money: round2(d.cost),
+                per,
+                fallback: bought.fallback_rank ?? null,
+            })
+        }
+        const bought = [...byVersion.values()]
+        const dishes = dearest == null ? [] : dishRises(productId, dearest, { ...menu, costPrices, threshold })
+        out.push({
+            productId,
+            name,
+            unit: unitOf(first),
+            bought,
+            recommended: set.map(v => ({ name: v.name || name, supplier: v.suppliers?.name || '', code: v.supplier_code || null })),
+            costed: costed == null ? null : round4(costed),
+            borrowed: !!cost?.borrowed,
+            change: dearest != null && costed != null ? pctOf(dearest, costed) : null,
+            extra: round2(extra),
+            money: round2(bought.reduce((t, b) => t + b.money, 0)),
+            dishes,
+            quiet: bought.every(b => b.fallback != null) && !dishes.length,
         })
     }
-    return [...out.values()].sort((a, b) => b.money - a.money || a.name.localeCompare(b.name))
+    return out.sort((a, b) => Number(a.quiet) - Number(b.quiet) || b.extra - a.extra || a.name.localeCompare(b.name))
 }
 
 // What was bought this week that is waiting on a review: the lines carrying a
@@ -1147,6 +1185,7 @@ export function notChecked(read) {
 export function priceWeek({
     weekStart, weekEnd, lines = [], credits = [], invoices = [], prices = [], codes = [], claims = [],
     documents = [], versions = [], requests = [], events = null, threshold = DEFAULT_RECIPE_GAP, today = null,
+    costPrices = [], menu = {},
 }) {
     const all = deliveriesFrom(lines, credits)
     const then = events ? pricesAsAt(prices, events, weekEnd) : prices
@@ -1155,7 +1194,10 @@ export function priceWeek({
     const everyMove = priceMoves(all, scope)
     const moves = everyMove.filter(m => !m.doubtful)
     const doubtful = everyMove.filter(m => m.doubtful)
-    const switches = withSince(switchesIn(all, { ...scope, versions }), 'switch', prices, codes)
+    // Codes that read as the usual one under a new number, still asked about
+    // ("They are the same"). The card that listed every switch is gone from
+    // new reports: what was bought against the Recommended list is offList.
+    const codeUpdates = withSince(switchesIn(all, { ...scope, versions }).filter(s => s.renumbered), 'switch', prices, codes)
     // One fixed since, so recipes cost now what the week paid, is not said
     // at all (his, 7 October): only a costing still out of line is news.
     const recipes = withSince(recipeGaps(all, scope), 'recipe', prices, codes)
@@ -1168,7 +1210,8 @@ export function priceWeek({
     const earlier = fromEarlierWeeks(claims, invoices, weekStart)
     const fresh = newCodes(all, scope)
     const read = readFrom(documents)
-    const brand = notAsRecommended(all, { weekStart, weekEnd, prices: then, versions, requests })
+    const offList = offTheList(all, { weekStart, weekEnd, prices: then, versions, costPrices, requests, menu, threshold })
+    const named = offList.filter(x => !x.quiet)
     const waiting = waitingOnReview(all, requests, { weekStart, weekEnd })
     const unchecked = notChecked(read)
 
@@ -1179,12 +1222,16 @@ export function priceWeek({
         checkedOn: events && today && today > weekEnd ? weekEnd : today,
         threshold: num(threshold),
         readFrom: read,
-        notRecommended: brand,
+        // Kept empty so a reader of either shape finds a list; a report
+        // without offList was sent before it and draws the two old cards.
+        notRecommended: [],
+        offList,
+        codeUpdates,
         waiting,
         notChecked: unchecked,
         moves,
         doubtful,
-        switches,
+        switches: [],
         recipes,
         suggestions,
         back,
@@ -1196,7 +1243,10 @@ export function priceWeek({
             moves: round2(moves.reduce((t, m) => t + m.effect, 0)),
             movesUp: moves.filter(m => m.up).length,
             movesDown: moves.filter(m => !m.up).length,
-            switches: round2(switches.reduce((t, s) => t + s.effect, 0)),
+            switches: 0,
+            offList: round2(named.reduce((t, x) => t + x.extra, 0)),
+            offListCount: named.length,
+            offListDishes: new Set(named.flatMap(x => x.dishes.map(d => d.id))).size,
             recipes: recipes.filter(r => r.state !== 'cannot').length,
             cannot: recipes.filter(r => r.state === 'cannot').length,
             back: round2(back.reduce((t, b) => t + b.money, 0)),
@@ -1205,7 +1255,7 @@ export function priceWeek({
             earlier: round2(earlier.reduce((t, e) => t + e.money, 0)),
             earlierCount: earlier.length,
             newCodes: fresh.length,
-            notRecommended: brand.length,
+            notRecommended: 0,
             waiting: round2(waiting.reduce((t, w) => t + w.money, 0)),
             notChecked: round2(unchecked.reduce((t, u) => t + u.money, 0)),
         },
@@ -1300,7 +1350,7 @@ export function decisionsFrom(section) {
         ...suggestions.map(s => ({ kind: 'usual', ...s })),
         // A switch that reads like the usual one under a new number, and that
         // is not already being asked about as three in a row.
-        ...(section.switches || [])
+        ...(section.codeUpdates || section.switches || [])
             .filter(s => s.renumbered && !s.since && canJoinCodes(s)
                 && !suggestions.some(g => g.productId === s.productId && g.code === s.code))
             .map(s => ({ kind: 'renumbered', ...s })),
@@ -1339,6 +1389,7 @@ export function priceWords(section) {
     const out = []
     const {
         moves = [], doubtful = [], switches = [], recipes = [], back = [], owed = [], earlier = [], totals = {},
+        offList = [],
     } = section || {}
 
     if (moves.length) {
@@ -1353,6 +1404,15 @@ export function priceWords(section) {
 
     if (doubtful.length) {
         out.push(`Left out: ${listed(doubtful.map(m => m.name))}, more likely a pack read wrong than a real price.`)
+    }
+
+    const named = offList.filter(x => !x.quiet)
+    if (named.length) {
+        const dishes = totals.offListDishes || 0
+        out.push(`Not what we should be buying: ${listed(named.map(x => x.name))}`
+            + (Math.abs(num(totals.offList)) >= 0.005 ? `, ${moneyWay(totals.offList, 'the recommended ones')}` : '')
+            + (dishes ? `, ${plural(dishes, 'dish', 'dishes')} over ${section.threshold}%` : '')
+            + '.')
     }
 
     if (switches.length) {

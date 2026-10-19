@@ -83,3 +83,23 @@ describe('the price section for a week still being written', () => {
         expect(await screen.findByText('Avocado at 0.9167, 1.1 now')).toBeInTheDocument()
     })
 })
+
+// What was bought off the Recommended list is measured against what recipes
+// cost it at here, and against the menu (19 October 2026), so those are read
+// with the rest: the restaurant's own costs, and the whole menu.
+describe('what the card about the Recommended list needs', () => {
+    it("reads this restaurant's costs and the menu", async () => {
+        function Off() {
+            const { data } = usePriceWeek({ restaurantId: 'r1', weekStart: WEEK, threshold: 5 })
+            return <p>{data ? `${data.offList.length} off the list` : 'Reading'}</p>
+        }
+        render(<Off />)
+        expect(await screen.findByText('0 off the list')).toBeInTheDocument()
+        const read = db.from.mock.calls.map(c => c[0])
+        for (const table of ['cost_prices', 'menu_items', 'menu_categories', 'menu_item_components', 'mix_recipes', 'products']) {
+            expect(read, `${table} is not read`).toContain(table)
+        }
+        const costs = db.from.mock.results[read.indexOf('cost_prices')].value
+        expect(costs.eq).toHaveBeenCalledWith('restaurant_id', 'r1')
+    })
+})

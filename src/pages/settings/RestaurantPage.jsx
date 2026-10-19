@@ -281,7 +281,9 @@ export default function RestaurantPage() {
                     </div>
 
                     {/* How far recipes can drift from what we pay before the
-                        weekly report lists them. Beside the targets because it
+                        weekly report lists them, and since 19 October how far a
+                        dish's total cost may rise at a price paid off the
+                        Recommended list before the report names it. Beside the targets because it
                         is the same kind of line: a figure somebody chose that
                         decides what gets called out. Saved straight onto the
                         restaurant and read by the next report written, which is
@@ -312,7 +314,8 @@ export default function RestaurantPage() {
                         </div>
                         <p className={hintClass}>
                             Higher or lower. The product stays on every weekly report until the gap is back
-                            within this.
+                            within this. The same figure says when something bought off the Recommended list
+                            puts a dish&apos;s whole cost up by too much.
                         </p>
                     </div>
 

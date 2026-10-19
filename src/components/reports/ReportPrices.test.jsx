@@ -68,10 +68,8 @@ describe('prices and suppliers on the report', () => {
     // Read as at the end of the week, and today's prices moved on since.
     it('says what recipes cost now and offers nothing to press for it', () => {
         const recipes = section.recipes.map(r => ({ ...r, since: { per: 1.2939, usual: true } }))
-        const switches = section.switches.map(s => ({ ...s, since: { per: 0.3303, usual: true } }))
-        draw({ section: { ...section, recipes, switches } })
+        draw({ section: { ...section, recipes } })
         expect(screen.getByText('Since this week, recipes cost it at €1.29 each.')).toBeInTheDocument()
-        expect(screen.getByText('It is the usual one now.')).toBeInTheDocument()
         expect(screen.queryByRole('button', { name: /Cost from/ })).not.toBeInTheDocument()
         expect(screen.queryByRole('button', { name: /usually buy both/ })).not.toBeInTheDocument()
     })
@@ -79,7 +77,7 @@ describe('prices and suppliers on the report', () => {
     it('opens with the four figures', () => {
         draw()
         expect(screen.getAllByText('Same product, new price').length).toBeGreaterThan(0)
-        expect(screen.getAllByText('Bought as something else').length).toBeGreaterThan(0)
+        expect(screen.getAllByText('Not what we should be buying').length).toBeGreaterThan(0)
         expect(screen.getByText('Recipes out of line')).toBeInTheDocument()
         expect(screen.getAllByText('Came back').length).toBeGreaterThan(0)
     })
@@ -89,7 +87,7 @@ describe('prices and suppliers on the report', () => {
     it('sums the week up one row a kind, a chip a product', () => {
         draw()
         expect(screen.getByText('Cheaper, same code')).toBeInTheDocument()
-        expect(screen.getByText('Bought instead')).toBeInTheDocument()
+        expect(screen.getByText('Not on the list')).toBeInTheDocument()
         expect(screen.getByText('Recipes off')).toBeInTheDocument()
         const tomatoes = screen.getAllByText(/^Tomatoes/).find(el => el.textContent.includes('%'))
         expect(tomatoes).toHaveTextContent('Tomatoes -27%')
@@ -109,10 +107,12 @@ describe('prices and suppliers on the report', () => {
 
     // Layout D: each product with what was bought beside what the brand
     // recommends, and what is waiting on a review under it.
+    // A report sent before "Not what we should be buying" keeps this card.
     it('sets what was bought beside what the brand recommends', () => {
         draw({
             section: {
                 ...section,
+                offList: undefined,
                 notRecommended: [{
                     name: 'Flour Tortilla (Burritos)', unit: 'each', cases: 3, money: 99.09, others: 1,
                     bought: { name: 'Plain wraps 12"', per: 0.3303 },
@@ -132,7 +132,7 @@ describe('prices and suppliers on the report', () => {
     })
 
     it('says when everything bought was what the brand recommends', () => {
-        draw({ section: { ...section, notRecommended: [] } })
+        draw({ section: { ...section, offList: undefined, notRecommended: [] } })
         expect(screen.getByText('Everything bought was what the brand recommends.')).toBeInTheDocument()
     })
 
@@ -223,29 +223,23 @@ describe('prices and suppliers on the report', () => {
         expect(options).not.toContain('something_else')
     })
 
-    // Any row bought instead can be the same thing bought either way, not only
-    // the ones whose words match.
-    it('offers to group a code bought instead with the usual one', () => {
-        const withCodes = priceWeek({
-            weekStart: '2026-09-13', weekEnd: '2026-09-19',
-            lines: [
-                line('497870', TORTILLA, '2026-09-14', 30.3, 100, { priceId: 'santa' }),
-                line('5013972', TORTILLA, '2026-09-18', 33.03, 100, { priceId: 'plain', description: 'FLOUR PLAIN WRAPS' }),
-            ],
-            prices: [
-                { id: 'santa', product_id: 'tor', supplier_id: 's1', supplier_code: '497870', price_per_case: 30.3, units_per_case: 100, price_per_unit: 0.303, is_preferred: true },
-                { id: 'plain', product_id: 'tor', supplier_id: 's1', supplier_code: '5013972', price_per_case: 33.03, units_per_case: 100, price_per_unit: 0.3303, is_preferred: false },
-            ],
-            codes: [
-                { id: 'c-santa', supplier_id: 's1', supplier_code: '497870', price_id: 'santa', ignored: false },
-                { id: 'c-plain', supplier_id: 's1', supplier_code: '5013972', price_id: 'plain', ignored: false },
-            ],
-        })
-        const handlers = draw({ section: withCodes })
-        fireEvent.click(screen.getByRole('button', { name: 'Same thing, we usually buy both' }))
-        expect(handlers.onBuyBoth).toHaveBeenCalledWith(
-            expect.objectContaining({ ownPriceId: 'plain', usualPriceId: 'santa' }), 'switch:tor:5013972:both',
-        )
+    // A report sent before "Not what we should be buying" (19 October 2026)
+    // still draws its switches, and a sent report decides nothing.
+    it("draws a sent report's switches, with nothing to press", () => {
+        const sent = {
+            ...section,
+            offList: undefined,
+            switches: [{
+                productId: 'tor', name: 'Flour Tortilla (Burritos)', code: '5013972', bought: 'Flour Plain Wraps',
+                on: '2026-09-18', invoice: 'N2026-09-18', deliveries: 1, usualPer: 0.303, per: 0.3303, unit: 'each',
+                usualFrom: 'delivery', change: 9, effect: 2.73, cannot: false, ownPriceId: 'plain', usualPriceId: 'santa',
+            }],
+            totals: { ...section.totals, switches: 2.73 },
+        }
+        draw({ section: sent })
+        expect(screen.getAllByText('Bought as something else').length).toBeGreaterThan(0)
+        expect(screen.queryByText('Not what we should be buying')).toBeNull()
+        expect(screen.queryByRole('button', { name: 'Same thing, we usually buy both' })).toBeNull()
     })
 
     it('does not offer it on a report that has gone out', () => {
@@ -292,5 +286,58 @@ describe('the price chart', () => {
     it('fills its column, up to a sensible width', () => {
         const { container } = render(<Spark series={[['2026-09-12', 13.41, 0], ['2026-10-09', 9.66, 1]]} down />)
         expect(container.firstChild).toHaveClass('w-full', 'max-w-[360px]')
+    })
+})
+
+// The card that took the place of the two about switching (his decision 5 of
+// 18 October 2026): what was bought instead of the Recommended list.
+describe('not what we should be buying', () => {
+    const offSection = priceWeek({
+        weekStart: '2026-09-13',
+        weekEnd: '2026-09-19',
+        lines: [
+            line('497870', TORTILLA, '2026-09-14', 30.3, 100, { priceId: 'santa' }),
+            line('5013972', TORTILLA, '2026-09-18', 33.03, 100, { priceId: 'plain', description: 'FLOUR PLAIN WRAPS' }),
+        ],
+        prices: [
+            { id: 'santa', product_id: 'tor', supplier_id: 's1', supplier_code: '497870', price_per_case: 30.3, units_per_case: 100, price_per_unit: 0.303, is_preferred: true, version_id: 'v-santa' },
+            { id: 'plain', product_id: 'tor', supplier_id: 's1', supplier_code: '5013972', price_per_case: 33.03, units_per_case: 100, price_per_unit: 0.3303, is_preferred: false, version_id: 'v-plain' },
+        ],
+        codes: [],
+        versions: [
+            { id: 'v-santa', product_id: 'tor', name: 'Santa Maria wrap 12"', supplier_code: '497870', is_recommended: true, is_active: true, suppliers: { name: 'Sysco Ireland' } },
+            { id: 'v-plain', product_id: 'tor', name: 'Plain wraps 12"', supplier_code: '5013972', is_recommended: false, is_active: true, suppliers: { name: 'Sysco Ireland' } },
+        ],
+        costPrices: [{ product_id: 'tor', price_per_unit: 0.303, borrowed: true }],
+        menu: {
+            menuItems: [{ id: 'burrito', name: 'Chicken Burrito', is_active: true, category_id: 'mains' }],
+            categories: [{ id: 'mains', is_active: true }],
+            components: [{ menu_item_id: 'burrito', product_id: 'tor', quantity: 1 }],
+            products: [{ id: 'tor', is_mix: false, is_active: true }],
+        },
+        threshold: 5,
+        today: '2026-09-25',
+    })
+
+    it('says on top what it came to, how many products and how many dishes went over', () => {
+        draw({ section: offSection })
+        expect(screen.getAllByText('Not what we should be buying').length).toBeGreaterThan(0)
+        expect(screen.getByText('1 product, 1 dish over 5%')).toBeInTheDocument()
+        expect(screen.queryByText('Bought as something else')).toBeNull()
+    })
+
+    it('sets what was bought beside the recommended ones, with the dishes it pushed over', () => {
+        draw({ section: offSection })
+        expect(screen.getByText('Plain wraps 12"')).toBeInTheDocument()
+        expect(screen.getByText('Santa Maria wrap 12"')).toBeInTheDocument()
+        expect(screen.getByText(/Recipes cost it at €0\.30 each, the other restaurant's price/)).toBeInTheDocument()
+        expect(screen.getByText(/Chicken Burrito: €0\.30 to €0\.33/)).toBeInTheDocument()
+    })
+
+    // Not what the switches card offered: a product on the list is not
+    // grouped by hand, the owners say on the Recommended list.
+    it('offers nothing to press on it', () => {
+        draw({ section: offSection })
+        expect(screen.queryByRole('button', { name: 'Same thing, we usually buy both' })).toBeNull()
     })
 })
