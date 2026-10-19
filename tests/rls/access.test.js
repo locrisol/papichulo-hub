@@ -651,8 +651,17 @@ maybe('what each role can see and do', () => {
                 'public_product_versions', 'public_version_allergens', 'public_restaurant_versions']) {
                 const { count, error } = await countVisible(employee, view)
                 expect(error).toBeNull()
+                // Since 19 October 2026 which versions a restaurant buys goes
+                // by the last 56 days, which a quiet stretch can leave empty.
+                if (view === 'public_restaurant_versions') continue
                 expect(count, `an employee cannot read ${view}`).toBeGreaterThan(0)
             }
+        })
+
+        // What each print said is the managers' business.
+        it('cannot read what the allergen sheets printed said', async () => {
+            const { count } = await countVisible(employee, 'allergen_sheet_prints')
+            expect(count, 'an employee can read the printed allergen sheets').toBe(0)
         })
 
         it('is refused when writing a MIX recipe', async () => {
@@ -1404,7 +1413,7 @@ maybe('what each role can see and do', () => {
                 'menu_item_components', 'mix_recipes', 'product_allergens',
                 'product_versions', 'version_allergens', 'product_supplier_prices',
                 'product_requests', 'brand_settings', 'restaurant_kept_in', 'version_pictures', 'version_codes',
-                'cost_prices', 'staff_cost_prices', 'cost_choice',
+                'cost_prices', 'staff_cost_prices', 'cost_choice', 'allergen_sheet_prints',
             ]) {
                 const { count } = await countVisible(anon, table)
                 expect(count, `${table} is still readable by anybody`).toBe(0)
@@ -1498,6 +1507,22 @@ maybe('what each role can see and do', () => {
         it('cannot say the allergen sheet was printed', async () => {
             const { error } = await anon.rpc('allergen_sheet_printed', { restaurant: NOBODY })
             expect(error, 'anybody can stamp the allergen sheet as printed').not.toBeNull()
+            const kept = await anon.rpc('allergen_sheet_printed', { restaurant: NOBODY, sheet: [] })
+            expect(kept.error, 'anybody can leave a printed allergen sheet').not.toBeNull()
+        })
+
+        // Since 19 October 2026: the customer page's Last updated is the last
+        // print's lines and the day they last changed, and nothing else of it.
+        it('can ask for the last printed sheet, and is given its lines and its date only', async () => {
+            const { data: places } = await anon.from('public_restaurants').select('id')
+            for (const place of places || []) {
+                const { data, error } = await anon.rpc('public_allergen_sheet', { restaurant: place.id })
+                expect(error, 'the allergen page cannot read the last print').toBeNull()
+                if (data) expect(Object.keys(data).sort()).toEqual(['changed_at', 'rows'])
+            }
+            const { data, error } = await anon.rpc('public_allergen_sheet', { restaurant: NOBODY })
+            expect(error).toBeNull()
+            expect(data).toBeNull()
         })
 
         it('cannot read what anything costs', async () => {
@@ -1611,6 +1636,9 @@ maybe('what each role can see and do', () => {
             expect(data).toHaveProperty('claims_late')
             expect(data).toHaveProperty('timesheet')
             expect(data).toHaveProperty('permits')
+            // Since 19 October 2026 whether the last print kept its lines; the
+            // app works out whether they have changed.
+            expect(Object.keys(data.sheet).sort()).toEqual(['every_months', 'kept', 'printed_at'])
         })
 
         // What was sent for review is counted for whoever answers it.

@@ -23,6 +23,12 @@ vi.mock('@/lib/supabase', async importOriginal => ({
     everyRow: (await importOriginal()).everyRow,
     supabase: new Proxy({}, { get: (_, k) => db[k] }),
 }))
+// The allergen sheet against the last print, which the badges build for a
+// manager: its own reads would count among the ones these tests count.
+vi.mock('@/lib/sheetAt', async importOriginal => ({
+    ...(await importOriginal()),
+    compareSheet: async () => ({ data: { changes: [] }, error: null }),
+}))
 vi.mock('@/context/auth', () => ({ useAuth: () => ({ user }) }))
 vi.mock('@/context/restaurant', () => ({
     useRestaurant: () => ({ restaurants: [A_RESTAURANT], activeRestaurant: A_RESTAURANT, switchRestaurant: vi.fn() }),

@@ -1,6 +1,6 @@
 import {
-    deriveMenuItemAllergens, deriveProductAllergens, emptyAllergens, neverEntered, neverEnteredInDish,
-    summariseAllergens,
+    ALLERGEN_KEYS, ALLERGEN_LABELS, deriveMenuItemAllergens, deriveProductAllergens, emptyAllergens, neverEntered,
+    neverEnteredInDish, summariseAllergens,
 } from '@/lib/allergens'
 import { offerable } from '@/lib/menuChoices'
 import { toISODate, todayISO, dayMonth, addMonths } from '@/lib/dates'
@@ -227,6 +227,148 @@ export function sheetRows(menuItems, allComponents, products, recipeLines, aller
         (a.order - b.order) || a.name.localeCompare(b.name))
 }
 
+// The whole sheet, category by category: every category on it that has a
+// row, with its rows. One loop for the customer page, the printed sheet and
+// the comparison with the last print, which each had their own copy until
+// 19 October 2026, so the three cannot come out different.
+//
+// A category can be kept off the sheet: cans and bottled water carry none of
+// the fourteen and fill it with rows saying so. No answer means shown, so
+// nothing recorded before that switch existed disappears. Which products
+// already have a row of their own is asked once of the whole sheet, the
+// rule productsWithARow explains.
+export function sheetGroups({ categories, menuItems, components, products, recipeLines, allergens } = {}) {
+    const onSheet = (categories || []).filter(c => c.on_allergen_sheet !== false)
+    const items = menuItems || []
+    const withARow = productsWithARow(
+        items.filter(i => onSheet.some(c => c.id === i.category_id)),
+        components, products,
+    )
+    return onSheet
+        .map(category => ({
+            category,
+            rows: sheetRows(items.filter(i => i.category_id === category.id),
+                components, products, recipeLines, allergens, withARow),
+        }))
+        .filter(group => group.rows.length > 0)
+}
+
+// The sheet as it is kept with each print: one entry a line, with what the
+// paper says on it and nothing about where it came from, so a new rice with
+// the same allergens is the same line. A line that says to ask staff carries
+// no allergens, because the paper shows none for it. In the order of the
+// category and the name, which is only for reading it: two sheets are
+// compared without regard to order.
+export function sheetSnapshot(groups) {
+    const lines = []
+    for (const { category, rows } of groups || []) {
+        for (const row of rows) {
+            const said = row.complete ? row.allergens || {} : {}
+            lines.push({
+                category: category.name,
+                name: row.name,
+                complete: Boolean(row.complete),
+                contains: ALLERGEN_KEYS.filter(key => said[key] === 'contains'),
+                may_contain: ALLERGEN_KEYS.filter(key => said[key] === 'may_contain'),
+            })
+        }
+    }
+    return lines.sort(byLine)
+}
+
+const byLine = (a, b) => (a.category || '').localeCompare(b.category || '') || (a.name || '').localeCompare(b.name || '')
+
+// A line is its category and its name, without regard to capitals or stray
+// spaces, the same way sheetRows merges dishes.
+const lineKey = line => `${(line.category || '').trim().toLowerCase()}|${(line.name || '').trim().toLowerCase()}`
+
+function byKey(lines) {
+    const out = new Map()
+    for (const line of lines || []) {
+        const key = lineKey(line)
+        if (!out.has(key)) out.set(key, [])
+        out.get(key).push(line)
+    }
+    return out
+}
+
+const named = keys => {
+    const labels = keys.map(key => ALLERGEN_LABELS[key] || key)
+    return labels.length > 1 ? `${labels.slice(0, -1).join(', ')} and ${labels.at(-1)}` : labels[0]
+}
+
+const stateOf = line => Object.fromEntries(ALLERGEN_KEYS.map(key => [
+    key,
+    (line.contains || []).includes(key) ? 'contains' : (line.may_contain || []).includes(key) ? 'may_contain' : 'none',
+]))
+
+// What changed on one line, in words, or null when the paper would say the
+// same.
+function lineChange(before, now) {
+    if (!now.complete) return before.complete ? 'Now says to ask a member of staff' : null
+    const is = stateOf(now)
+    if (!before.complete) {
+        const contains = ALLERGEN_KEYS.filter(key => is[key] === 'contains')
+        const may = ALLERGEN_KEYS.filter(key => is[key] === 'may_contain')
+        const says = [contains.length && `contains ${named(contains)}`, may.length && `may contain ${named(may)}`]
+            .filter(Boolean)
+        return `Answered now: ${says.length ? says.join(', ') : 'no declared allergens'}`
+    }
+    const was = stateOf(before)
+    const moved = { contains: [], may_contain: [], gone: [] }
+    for (const key of ALLERGEN_KEYS) {
+        if (was[key] === is[key]) continue
+        moved[is[key] === 'none' ? 'gone' : is[key]].push(key)
+    }
+    const parts = [
+        moved.contains.length && `now contains ${named(moved.contains)}`,
+        moved.may_contain.length && `now may contain ${named(moved.may_contain)}`,
+        moved.gone.length && `no longer has ${named(moved.gone)}`,
+    ].filter(Boolean)
+    if (!parts.length) return null
+    const said = parts.join(', ')
+    return said.charAt(0).toUpperCase() + said.slice(1)
+}
+
+// The lines of the sheet as it stands that differ from the sheet printed,
+// each with its category, its name and what changed: new on the sheet, no
+// longer on it, now says to ask staff, answered now, or an allergen that
+// came, went or changed. Order is ignored, so moving a dish up the list asks
+// for nothing; so is everything the paper does not show.
+export function sheetChanges(printed, now) {
+    const before = byKey(printed)
+    const after = byKey(now)
+    const out = []
+    for (const [key, lines] of after) {
+        const was = before.get(key) || []
+        lines.forEach((line, i) => {
+            const what = was[i] ? lineChange(was[i], line) : 'New on the sheet'
+            if (what) out.push({ category: line.category, name: line.name, what })
+        })
+    }
+    for (const [key, was] of before) {
+        const left = (after.get(key) || []).length
+        for (const line of was.slice(left)) {
+            out.push({ category: line.category, name: line.name, what: 'No longer on the sheet' })
+        }
+    }
+    return out.sort(byLine)
+}
+
+// Whether two kept sheets would print the same.
+export function sameSheet(a, b) {
+    return Array.isArray(a) && Array.isArray(b) && sheetChanges(a, b).length === 0
+}
+
+// One changed line, as the page, the report and the mail say it.
+export function changeWords(change) {
+    return `${change.name} (${change.category}): ${change.what}`
+}
+
+// How many changed lines a report keeps, and the page shows before "and so
+// many more".
+export const CHANGES_SHOWN = 8
+
 // How often the sheet is printed again when nothing has changed, unless the
 // restaurant says otherwise. The same default the database gives the column.
 export const REPRINT_EVERY_MONTHS = 3
@@ -238,11 +380,18 @@ export const REPRINT_EVERY_MONTHS = 3
 // Never printed from the Hub is due straight away, because there is no saying
 // what the paper on the wall says.
 //
-// printedAt is restaurants.allergen_sheet_printed_at, changedAt is what
-// allergens_changed_at() answers, and today is a plain date. Null when it is
-// not due. Otherwise why, and the sentence to show, so the Public Allergens
-// page and the weekly report cannot word it two different ways.
-export function reprintDue({ printedAt, everyMonths, changedAt, today = todayISO() } = {}) {
+// Since 19 October 2026 "changed" means the lines differ from the copy kept
+// with the last print (his decision 8 of 18 October): a new rice with the
+// same allergens asks nothing. A print from before the Hub kept a copy asks
+// once more, quietly, so there is something to compare with.
+//
+// printedAt is restaurants.allergen_sheet_printed_at; kept is whether the
+// last print kept its lines; changes is sheetChanges against them, or null
+// when the sheet could not be compared; today is a plain date. Null when it
+// is not due. Otherwise why, the sentence to show and, when it changed, the
+// lines, so the Public Allergens page, the sidebar and the weekly report
+// cannot word it differently.
+export function reprintDue({ printedAt, everyMonths, kept = true, changes = null, today = todayISO() } = {}) {
     const printed = printedAt ? new Date(printedAt) : null
     if (!printed || isNaN(printed)) {
         return {
@@ -258,11 +407,20 @@ export function reprintDue({ printedAt, everyMonths, changedAt, today = todayISO
 
     // The change first. It is the one that makes the paper wrong rather than
     // only old.
-    const changed = changedAt ? new Date(changedAt) : null
-    if (changed && changed > printed) {
+    if (kept && changes?.length) {
+        const lines = changes.length === 1 ? '1 line on it has' : `${changes.length} lines on it have`
         return {
             reason: 'changed',
-            words: `Last printed ${when}. The allergen information has changed since then. Print a new sheet.`,
+            words: `Last printed ${when}. ${lines} changed since then. Print a new sheet.`,
+            changes,
+        }
+    }
+
+    if (!kept) {
+        return {
+            reason: 'unkept',
+            words: `Last printed ${when}, before the Hub kept a copy of what is on it. `
+                + 'Print it once more so the Hub can tell you when a line changes.',
         }
     }
 
@@ -278,4 +436,15 @@ export function reprintDue({ printedAt, everyMonths, changedAt, today = todayISO
     }
 
     return null
+}
+
+// reprintDue's answer as a report keeps it: the first few changed lines and
+// how many more, so a sheet where everything changed does not fill the mail.
+export function dueToKeep(due) {
+    if (!due?.changes) return due ?? null
+    return {
+        ...due,
+        changes: due.changes.slice(0, CHANGES_SHOWN),
+        more: Math.max(0, due.changes.length - CHANGES_SHOWN),
+    }
 }

@@ -1041,8 +1041,16 @@ function paperwork(state, title) {
 //
 // The same card as the paperwork above it. What sits in the header is short
 // and cannot wrap; the sentence goes underneath, where it can.
+//
+// Since 19 October 2026 (FIGURES_VERSION 6) the lines that changed go under
+// the sentence, one to a line and free to wrap, worded as changeWords in
+// allergenSheet.js words them. A report frozen before has the sentence alone.
+const sheetChange = c => `${c.name} (${c.category}): ${c.what}`
+
 function allergenSheet(due) {
     if (!due?.words) return ''
+    const changes = (due.changes || []).map(c => `<div style="margin-top:4px;${BREAKS}">&bull; ${escapeHtml(sheetChange(c))}</div>`)
+    if (due.more > 0) changes.push(`<div style="margin-top:4px;color:${MUTED};">and ${due.more} more</div>`)
 
     return `<tr><td style="padding:14px ${SIDE}px 0;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
@@ -1056,7 +1064,8 @@ function allergenSheet(due) {
                     </tr>
                 </table>
             </td></tr>
-            <tr><td style="padding:12px 14px 14px;font-size:14px;line-height:1.55;color:${INK};">${escapeHtml(due.words)}</td></tr>
+            <tr><td style="padding:12px 14px 14px;font-size:14px;line-height:1.55;color:${INK};${BREAKS}">${escapeHtml(due.words)}${changes.length
+                ? `<div style="margin-top:6px;font-size:13px;line-height:1.5;">${changes.join('')}</div>` : ''}</td></tr>
         </table>
     </td></tr>`
 }
@@ -2010,8 +2019,11 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
                 group('Nothing on file:', state.missing, false)
             }
             if (f.paperwork?.allergenSheet?.words) {
+                const sheet = f.paperwork.allergenSheet
                 out.push('  Allergen sheet')
-                out.push(`  ${f.paperwork.allergenSheet.words}`)
+                out.push(`  ${sheet.words}`)
+                for (const c of sheet.changes || []) out.push(`    - ${sheetChange(c)}`)
+                if (sheet.more > 0) out.push(`    and ${sheet.more} more`)
             }
         } else if (section.key === 'cleaning') {
             const c = f.cleaning

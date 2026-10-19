@@ -19,17 +19,18 @@ describe('which versions a restaurant sheet is built from', () => {
         expect(versionsUsed([SANTA, PLAIN], new Set())).toEqual([SANTA])
     })
 
-    it('is every one in use where none is recommended, and every one after that', () => {
+    it('is every one in use where none is recommended, and none when all are switched off', () => {
         const a = { ...SANTA, is_recommended: false }
         expect(versionsUsed([a, PLAIN], new Set())).toEqual([a, PLAIN])
         const off = { ...PLAIN, is_active: false }
-        expect(versionsUsed([{ ...a, is_active: false }, off], new Set())).toHaveLength(2)
+        expect(versionsUsed([{ ...a, is_active: false }, off], new Set())).toEqual([])
     })
 
-    // A price on it means it may be on the shelf, switched off or not.
-    it('counts a version bought there even when it is switched off', () => {
+    // Since 19 October 2026 a switched off version is on no sheet, bought
+    // or not.
+    it('leaves out a version switched off, even one bought there', () => {
         const off = { ...PLAIN, is_active: false }
-        expect(versionsUsed([SANTA, off], new Set(['v2']))).toEqual([off])
+        expect(versionsUsed([SANTA, off], new Set(['v2']))).toEqual([SANTA])
     })
 })
 
@@ -53,6 +54,12 @@ describe('a product allergens at a restaurant', () => {
 
     // No row is how every screen already says not answered: the dish says
     // Ask a member of staff.
+    // Not fourteen nones nobody gave: the dish says Ask a member of staff.
+    it('is no row at all when every version is switched off', () => {
+        const off = [{ ...SANTA, is_active: false }, { ...PLAIN, is_active: false }]
+        expect(allergensAt({ versions: off, versionAllergens, bought: [{ version_id: 'v1' }] })).toEqual([])
+    })
+
     it('is no row at all when a version used has no answer', () => {
         expect(allergensAt({ versions, versionAllergens: [answer('v1')], bought: [{ version_id: 'v2' }] })).toEqual([])
     })

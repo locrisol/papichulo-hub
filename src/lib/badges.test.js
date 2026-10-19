@@ -106,7 +106,7 @@ describe('the badges', () => {
 
     const manager = {
         role: 'store_manager', me: null, today: WED, swaps: 0, absences: [], shifts: [], reports: [],
-        sheet: { printed_at: '2026-10-01T10:00:00Z', every_months: 3, changed_at: '2026-09-01T10:00:00Z' },
+        sheet: { printed_at: '2026-10-01T10:00:00Z', every_months: 3, kept: true },
         empty_dishes: 0, stock_open: 0, claims_late: 0, unlinked: 0,
     }
 
@@ -114,10 +114,21 @@ describe('the badges', () => {
         expect(badgesFrom(manager)).toEqual({})
     })
 
-    // The paper on the wall is wrong: red.
-    it('marks the allergen sheet red once something on it has changed since it was printed', () => {
-        const badges = badgesFrom({ ...manager, sheet: { ...manager.sheet, changed_at: '2026-10-02T10:00:00Z' } })
-        expect(badges['/inventory/public-allergens']).toEqual({ dot: true, tone: 'urgent', words: 'A new allergen sheet needs printing' })
+    // The paper on the wall is wrong: red. Since 19 October 2026 only when
+    // its lines differ from the copy kept with the print.
+    it('marks the allergen sheet red once a line on it has changed since it was printed', () => {
+        const changes = [{ category: 'Desserts', name: 'Churros', what: 'Now contains Milk' }]
+        expect(badgesFrom(manager, { sheet: changes })['/inventory/public-allergens']).toEqual({
+            dot: true, tone: 'urgent', words: 'The allergen sheet on the wall is out of date: 1 line changed',
+        })
+        expect(badgesFrom(manager, { sheet: [] })['/inventory/public-allergens']).toBeUndefined()
+    })
+
+    // The first time after the release: no copy to compare with yet.
+    it('asks quietly for one more print when the last kept no copy', () => {
+        const changes = [{ category: 'Desserts', name: 'Churros', what: 'Now contains Milk' }]
+        expect(badgesFrom({ ...manager, sheet: { ...manager.sheet, kept: false } }, { sheet: changes })['/inventory/public-allergens'])
+            .toEqual({ dot: true, tone: 'waiting', words: 'A new allergen sheet needs printing' })
     })
 
     // His design of 4 October: whoever answers what store managers sent for

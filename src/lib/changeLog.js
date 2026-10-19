@@ -43,6 +43,7 @@ const TABLES = {
     version_pictures: 'Version picture',
     version_codes: 'Version code',
     restaurant_kept_in: 'Kept here',
+    allergen_sheet_prints: 'Allergen sheet printed',
     product_requests: 'Sent for review',
     brand_settings: 'Brand settings',
     mix_recipes: 'Recipe',

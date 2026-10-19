@@ -22,7 +22,8 @@ import {
 } from '@/lib/weeklyReport'
 import { keyedPlatforms, platformsToShow } from '@/lib/salesTenders'
 import { paperworkFor } from '@/lib/reportPeople'
-import { reprintDue } from '@/lib/allergenSheet'
+import { reprintDue, dueToKeep } from '@/lib/allergenSheet'
+import { compareSheet } from '@/lib/sheetAt'
 import { weeksBack, byWeek } from '@/lib/reportChart'
 import { FOOD, PACKAGING } from '@/lib/invoiceCategories'
 import { chartSpecs, deliveryRates, accountColour } from '@/lib/reportCharts'
@@ -450,7 +451,7 @@ export default function ReportPage() {
                 setToDecide(waiting.lines.length)
             }
 
-            const [ownerRows, place, changedRes] = await Promise.all([
+            const [ownerRows, place, sheetRes] = await Promise.all([
                 supabase.from('users')
                     .select('id, full_name')
                     .eq('restaurant_id', head.restaurant_id)
@@ -463,9 +464,10 @@ export default function ReportPage() {
                 supabase.from('restaurants')
                     .select('report_recipients')
                     .eq('id', head.restaurant_id).maybeSingle(),
-                // When anything on the allergen sheet last changed, for the
-                // line in the paperwork saying a new one is due.
-                supabase.rpc('allergens_changed_at'),
+                // The allergen sheet as it stands against the copy kept with
+                // the last print, for the line in the paperwork saying a new
+                // one is due. A sent report says what it was sent with.
+                head.status === 'published' ? Promise.resolve(null) : compareSheet(head.restaurant_id),
             ])
             setExtrasRead(!place.error)
             if (ownerRows.error || place.error) return stop(ownerRows.error || place.error)
@@ -481,18 +483,21 @@ export default function ReportPage() {
             // failed that read and the card showed nobody, and adding one
             // person back would have saved a list of one over the whole list.
             //
-            // Left unanswered when the date would not come back, rather than
-            // null, which is what a sheet that is not due gets. A reminder
-            // worked out from half of what it needs would be a guess.
+            // Left unanswered when the sheet would not read, rather than null,
+            // which is what a sheet that is not due gets. A reminder worked
+            // out from half of what it needs would be a guess. Kept as the
+            // report freezes it, the first few changed lines and how many
+            // more, so the draft shows what will be sent.
             // A sent report says what it was sent with, the same as the rest
             // of its paperwork.
             const sentPaper = head.status === 'published' ? head.figures?.paperwork : null
             if (sentPaper) setAllergenSheet(sentPaper.allergenSheet)
-            else setAllergenSheet(changedRes.error || !activeRestaurant ? undefined : reprintDue({
+            else setAllergenSheet(!sheetRes || sheetRes.error || !activeRestaurant ? undefined : dueToKeep(reprintDue({
                 printedAt: activeRestaurant.allergen_sheet_printed_at,
                 everyMonths: activeRestaurant.allergen_sheet_every_months,
-                changedAt: changedRes.data,
-            }))
+                kept: sheetRes.data.kept,
+                changes: sheetRes.data.changes,
+            })))
 
             // Our week only. The days read above run a day past it.
             const totals = {}
@@ -893,10 +898,11 @@ export default function ReportPage() {
                 // on next week's roster and somebody who is waiting on the post.
                 permits,
                 // Only while a new allergen sheet is due, in the words the
-                // Public Allergens page uses. Null says it was checked and
-                // was not. Undefined, when it could not be checked, is left
-                // out of the stored copy, the same as a report frozen before
-                // version 3.
+                // Public Allergens page uses, with the first few lines that
+                // changed when that is why (version 6). Null says it was
+                // checked and was not. Undefined, when it could not be
+                // checked, is left out of the stored copy, the same as a
+                // report frozen before version 3.
                 allergenSheet,
             },
         })

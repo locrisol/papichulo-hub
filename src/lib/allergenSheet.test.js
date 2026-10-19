@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { sheetRows, sheetName, everyReadArrived, reprintDue, productsWithARow, optionsWithoutARow } from '@/lib/allergenSheet'
+import {
+    sheetRows, sheetName, everyReadArrived, reprintDue, productsWithARow, optionsWithoutARow, sheetGroups, sheetSnapshot,
+    sheetChanges, sameSheet, changeWords, dueToKeep, CHANGES_SHOWN,
+} from '@/lib/allergenSheet'
 import { emptyAllergens } from '@/lib/allergens'
 
 // The churros case, which is what this was built for.
@@ -401,39 +404,159 @@ describe('productsWithARow', () => {
     })
 })
 
+// The whole sheet, one loop for the customer page, the paper and the copy
+// kept with each print.
+describe('sheetGroups', () => {
+    const products = [
+        { id: 'rice', name: 'Rice', is_mix: false },
+        { id: 'cola', name: 'Cola', is_mix: false },
+    ]
+    const allergens = [{ product_id: 'rice', gluten: 'contains' }, { product_id: 'cola' }]
+    const menu = {
+        categories: [
+            { id: 'sides', name: 'Sides', sort_order: 0 },
+            { id: 'cans', name: 'Cans', sort_order: 1, on_allergen_sheet: false },
+            { id: 'empty', name: 'Specials', sort_order: 2 },
+        ],
+        menuItems: [
+            { id: 'm1', name: 'Rice', category_id: 'sides' },
+            { id: 'm2', name: 'Cola', category_id: 'cans' },
+        ],
+        components: [
+            { id: 'k1', menu_item_id: 'm1', product_id: 'rice' },
+            { id: 'k2', menu_item_id: 'm2', product_id: 'cola' },
+        ],
+        products,
+        recipeLines: [],
+        allergens,
+    }
+
+    it('is every category on the sheet that has a row, with its rows', () => {
+        const groups = sheetGroups(menu)
+        expect(groups.map(g => g.category.name)).toEqual(['Sides'])
+        expect(groups[0].rows.map(r => r.name)).toEqual(['Rice'])
+        expect(groups[0].rows[0].allergens.gluten).toBe('contains')
+    })
+
+    it('is nothing when nothing arrived', () => {
+        expect(sheetGroups({})).toEqual([])
+    })
+})
+
+describe('the copy kept with a print', () => {
+    const groups = [{
+        category: { name: 'Sides' },
+        rows: [
+            { name: 'Rice', complete: true, allergens: { ...emptyAllergens(), gluten: 'contains', sesame: 'may_contain' } },
+            { name: 'Beans', complete: false, allergens: { ...emptyAllergens(), milk: 'contains' } },
+        ],
+    }]
+
+    it('says what the paper says on each line, in the order of the name', () => {
+        expect(sheetSnapshot(groups)).toEqual([
+            { category: 'Sides', name: 'Beans', complete: false, contains: [], may_contain: [] },
+            { category: 'Sides', name: 'Rice', complete: true, contains: ['gluten'], may_contain: ['sesame'] },
+        ])
+    })
+})
+
+// His decision 8 of 18 October 2026: a reprint only when the sheet would
+// really differ, naming the lines that changed.
+describe('sheetChanges', () => {
+    const line = (name, extra = {}) => ({ category: 'Sides', name, complete: true, contains: [], may_contain: [], ...extra })
+    const printed = [line('Rice', { contains: ['gluten'] }), line('Beans'), line('Chips', { may_contain: ['sesame'] })]
+
+    // A new rice from another supplier with the same allergens.
+    it('finds nothing when the lines say the same, in any order', () => {
+        expect(sheetChanges(printed, [...printed].reverse())).toEqual([])
+        expect(sameSheet(printed, [...printed].reverse())).toBe(true)
+    })
+
+    it('names a line new on the sheet and one no longer on it', () => {
+        const now = [printed[0], printed[2], line('Corn')]
+        expect(sheetChanges(printed, now)).toEqual([
+            { category: 'Sides', name: 'Beans', what: 'No longer on the sheet' },
+            { category: 'Sides', name: 'Corn', what: 'New on the sheet' },
+        ])
+    })
+
+    it('says an allergen that came, went or changed', () => {
+        const now = [
+            line('Rice', { contains: ['milk'], may_contain: ['gluten'] }),
+            line('Beans', { contains: ['celery', 'mustard'] }),
+            line('Chips'),
+        ]
+        expect(sheetChanges(printed, now).map(changeWords)).toEqual([
+            'Beans (Sides): Now contains Celery and Mustard',
+            'Chips (Sides): No longer has Sesame',
+            'Rice (Sides): Now contains Milk, now may contain Gluten',
+        ])
+    })
+
+    it('says a line that now sends people to staff, and one answered now', () => {
+        const before = [line('Rice', { contains: ['gluten'] }), line('Beans', { complete: false })]
+        const now = [line('Rice', { complete: false }), line('Beans')]
+        expect(sheetChanges(before, now).map(c => c.what)).toEqual([
+            'Answered now: no declared allergens',
+            'Now says to ask a member of staff',
+        ])
+    })
+
+    it('matches a line without regard to capitals or stray spaces', () => {
+        expect(sheetChanges(printed, [line(' rice ', { contains: ['gluten'] }), printed[1], printed[2]])).toEqual([])
+    })
+
+    it('is not the same sheet when there is nothing to compare with', () => {
+        expect(sameSheet(null, printed)).toBe(false)
+    })
+})
+
 // When the paper on the wall wants printing again. His rule, 29 September
 // 2026: every so many months whatever happens, and as soon as anything on it
-// has changed since it was printed.
+// has changed since it was printed. Since 19 October 2026 a change is a line
+// that differs from the copy kept with the print.
 describe('reprintDue', () => {
     // Midday, so no time zone can move any of these onto another day.
     const JUNE_12 = '2026-06-12T12:00:00Z'
+    const CHANGES = [
+        { category: 'Sides', name: 'Rice', what: 'Now contains Milk' },
+        { category: 'Sides', name: 'Corn', what: 'New on the sheet' },
+    ]
 
     it('is due when it has never been printed from the Hub', () => {
-        const due = reprintDue({ printedAt: null, everyMonths: 3, changedAt: null, today: '2026-09-30' })
+        const due = reprintDue({ printedAt: null, everyMonths: 3, today: '2026-09-30' })
         expect(due.reason).toBe('never')
         expect(due.words).toBe('The allergen sheet has not been printed from the Hub yet. Print one now.')
     })
 
-    it('is not due when nothing has changed and the months have not passed', () => {
-        expect(reprintDue({ printedAt: JUNE_12, everyMonths: 3, changedAt: '2026-06-01T12:00:00Z', today: '2026-09-11' }))
-            .toBeNull()
+    it('is not due when no line has changed and the months have not passed', () => {
+        expect(reprintDue({ printedAt: JUNE_12, everyMonths: 3, changes: [], today: '2026-09-11' })).toBeNull()
     })
 
-    it('is due as soon as something on it changes', () => {
-        const due = reprintDue({ printedAt: JUNE_12, everyMonths: 3, changedAt: '2026-06-13T09:00:00Z', today: '2026-06-13' })
+    it('is due as soon as a line on it changes, and names the lines', () => {
+        const due = reprintDue({ printedAt: JUNE_12, everyMonths: 3, changes: CHANGES, today: '2026-06-13' })
         expect(due.reason).toBe('changed')
-        expect(due.words).toBe('Last printed 12 June. The allergen information has changed since then. Print a new sheet.')
+        expect(due.words).toBe('Last printed 12 June. 2 lines on it have changed since then. Print a new sheet.')
+        expect(due.changes).toBe(CHANGES)
+        expect(reprintDue({ printedAt: JUNE_12, changes: CHANGES.slice(0, 1), today: '2026-06-13' }).words)
+            .toContain('1 line on it has changed')
     })
 
-    it('does not count a change made before it was printed', () => {
-        expect(reprintDue({ printedAt: JUNE_12, everyMonths: 3, changedAt: '2026-06-12T11:59:59Z', today: '2026-06-20' }))
-            .toBeNull()
-        expect(reprintDue({ printedAt: JUNE_12, everyMonths: 3, changedAt: JUNE_12, today: '2026-06-20' }))
-            .toBeNull()
+    // The first time after the release: the last print kept no copy.
+    it('asks for one more print when the last kept no copy of its lines', () => {
+        const due = reprintDue({ printedAt: JUNE_12, everyMonths: 3, kept: false, today: '2026-06-20' })
+        expect(due.reason).toBe('unkept')
+        expect(due.words).toBe('Last printed 12 June, before the Hub kept a copy of what is on it. '
+            + 'Print it once more so the Hub can tell you when a line changes.')
+    })
+
+    // A sheet that would not read is not a sheet that has changed.
+    it('goes by the months alone when the sheet could not be compared', () => {
+        expect(reprintDue({ printedAt: JUNE_12, everyMonths: 3, changes: null, today: '2026-06-20' })).toBeNull()
     })
 
     it('is due on the day the months run out, and not the day before', () => {
-        const args = { printedAt: JUNE_12, everyMonths: 3, changedAt: null }
+        const args = { printedAt: JUNE_12, everyMonths: 3, changes: [] }
         expect(reprintDue({ ...args, today: '2026-09-11' })).toBeNull()
         const due = reprintDue({ ...args, today: '2026-09-12' })
         expect(due.reason).toBe('every')
@@ -441,31 +564,45 @@ describe('reprintDue', () => {
     })
 
     it('says every month rather than every 1 months', () => {
-        expect(reprintDue({ printedAt: JUNE_12, everyMonths: 1, changedAt: null, today: '2026-07-12' }).words)
+        expect(reprintDue({ printedAt: JUNE_12, everyMonths: 1, today: '2026-07-12' }).words)
             .toContain('A new sheet is due every month.')
     })
 
     // 30 November and three months is the end of February, not 2 March.
     it('lands on the last day of a shorter month', () => {
-        const args = { printedAt: '2026-11-30T12:00:00Z', everyMonths: 3, changedAt: null }
+        const args = { printedAt: '2026-11-30T12:00:00Z', everyMonths: 3 }
         expect(reprintDue({ ...args, today: '2027-02-27' })).toBeNull()
         expect(reprintDue({ ...args, today: '2027-02-28' }).reason).toBe('every')
     })
 
     it('says the year when it was printed in another one', () => {
-        const due = reprintDue({ printedAt: '2025-12-01T12:00:00Z', everyMonths: 24, changedAt: '2026-01-05T12:00:00Z', today: '2026-01-06' })
-        expect(due.words).toBe('Last printed 1 December 2025. The allergen information has changed since then. Print a new sheet.')
+        const due = reprintDue({ printedAt: '2025-12-01T12:00:00Z', everyMonths: 24, changes: CHANGES, today: '2026-01-06' })
+        expect(due.words).toBe('Last printed 1 December 2025. 2 lines on it have changed since then. Print a new sheet.')
     })
 
     it('goes by three months when the restaurant has not said', () => {
-        const args = { printedAt: JUNE_12, changedAt: null }
+        const args = { printedAt: JUNE_12 }
         expect(reprintDue({ ...args, today: '2026-09-11' })).toBeNull()
         expect(reprintDue({ ...args, today: '2026-09-12' }).reason).toBe('every')
     })
 
     // The change is the one that makes the paper wrong, so it is the one said.
     it('says a change before it says the months', () => {
-        const due = reprintDue({ printedAt: JUNE_12, everyMonths: 1, changedAt: '2026-08-01T12:00:00Z', today: '2026-08-02' })
+        const due = reprintDue({ printedAt: JUNE_12, everyMonths: 1, changes: CHANGES, today: '2026-08-02' })
         expect(due.reason).toBe('changed')
+    })
+})
+
+describe('dueToKeep', () => {
+    it('keeps the first few changed lines and how many more', () => {
+        const changes = Array.from({ length: CHANGES_SHOWN + 3 }, (_, i) => ({ category: 'Sides', name: `Dish ${i}`, what: 'New on the sheet' }))
+        const kept = dueToKeep({ reason: 'changed', words: 'w', changes })
+        expect(kept.changes).toHaveLength(CHANGES_SHOWN)
+        expect(kept.more).toBe(3)
+    })
+
+    it('leaves an answer with no lines as it is', () => {
+        expect(dueToKeep({ reason: 'every', words: 'w' })).toEqual({ reason: 'every', words: 'w' })
+        expect(dueToKeep(null)).toBeNull()
     })
 })

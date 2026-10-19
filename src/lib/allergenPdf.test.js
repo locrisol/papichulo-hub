@@ -39,6 +39,7 @@ class NoPicture {
 }
 
 const { qrCardPdf, allergenListPdf } = await import('@/lib/allergenPdf')
+const { sheetGroups } = await import('@/lib/allergenSheet')
 
 beforeEach(() => {
     made.length = 0
@@ -71,7 +72,6 @@ describe('the QR card', () => {
 
 describe('the allergen record form', () => {
     const MENU = {
-        changedAt: '2026-09-01T10:00:00+00:00',
         categories: [{ id: 'c1', name: 'Sides', sort_order: 0 }],
         menuItems: [
             { id: 'm1', name: 'Plain Rice', category_id: 'c1' },
@@ -97,9 +97,12 @@ describe('the allergen record form', () => {
             { product_id: 'p3', nuts: 'may_contain' },
         ],
     }
+    // The rows the page hands it, the very ones it keeps a copy of, and the
+    // day they last changed.
+    const SHEET = { groups: sheetGroups(MENU), date: '2026-09-01T10:00:00+00:00' }
 
     it('prints every dish, an X for contains and a ~ for may contain', async () => {
-        const pdf = await allergenListPdf({ menuData: MENU, slug: 'point-campus', userName: 'A Manager' })
+        const pdf = await allergenListPdf({ ...SHEET, slug: 'point-campus', userName: 'A Manager' })
 
         expect(pdf.options).toMatchObject({ format: 'a4', orientation: 'landscape' })
         expect(pdf.written).toEqual(expect.arrayContaining(['Sides', 'Plain Rice', 'Cheesy Rice', 'Nutty Rice']))
@@ -108,8 +111,8 @@ describe('the allergen record form', () => {
         expect(pdf.written).toContain('X = Contains      ~ = May contain')
     })
 
-    it('dates the form by the last change and says who printed it', async () => {
-        const pdf = await allergenListPdf({ menuData: MENU, slug: 'point-campus', userName: 'A Manager' })
+    it('dates the form by the day its lines last changed and says who printed it', async () => {
+        const pdf = await allergenListPdf({ ...SHEET, slug: 'point-campus', userName: 'A Manager' })
 
         expect(pdf.written).toContain('01/09/2026')
         expect(pdf.written).toContain('A Manager')
@@ -117,15 +120,21 @@ describe('the allergen record form', () => {
 
     // Without the logo there is still a heading, rather than none at all.
     it('writes the name when the logo will not load', async () => {
-        const pdf = await allergenListPdf({ menuData: MENU, slug: 'point-campus', userName: 'A Manager' })
+        const pdf = await allergenListPdf({ ...SHEET, slug: 'point-campus', userName: 'A Manager' })
 
         expect(pdf.images).toHaveLength(0)
         expect(pdf.written).toContain('Papi Chulo')
     })
 
     it('is saved under the restaurant and the day it was printed', async () => {
-        const pdf = await allergenListPdf({ menuData: MENU, slug: 'point-campus', userName: 'A Manager' })
+        const pdf = await allergenListPdf({ ...SHEET, slug: 'point-campus', userName: 'A Manager' })
 
         expect(pdf.savedAs).toBe('papi-chulo-allergens-point-campus-30-09-2026.pdf')
+    })
+
+    it('dates it today when it is given no day', async () => {
+        const pdf = await allergenListPdf({ groups: SHEET.groups, slug: 'point-campus', userName: 'A Manager' })
+
+        expect(pdf.written).toContain('30/09/2026')
     })
 })

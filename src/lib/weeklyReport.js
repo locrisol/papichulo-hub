@@ -746,7 +746,12 @@ export function publishCheck(sections = [], figures = null, held = []) {
 // report without offList was sent before it, and the page and the mail draw
 // the two old cards for it. Readers check for the key itself, because
 // prices can be null.
-export const FIGURES_VERSION = 5
+// 6, 19 October 2026: paperwork.allergenSheet says changed only when the
+// sheet's lines differ from the copy kept with the last print, and then
+// carries the first few of them as changes ({ category, name, what }) and
+// how many more. Before 6 there is no list, and changed meant anything the
+// sheet is made from had been touched.
+export const FIGURES_VERSION = 6
 
 export function figuresToStore(figures, at = new Date()) {
     return { ...figures, version: FIGURES_VERSION, frozen_at: at.toISOString() }
