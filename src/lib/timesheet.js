@@ -98,6 +98,8 @@ function hoursOf(entry) {
 
 // One day for one person: everything a cell needs to draw itself, worked out
 // once so no component has to.
+const byStart = (a, b) => String(a.starts_at).localeCompare(String(b.starts_at))
+
 export function dayCell({
     person, date, entries = [], absences = [], shifts = [], imported = false, asking = true,
 }) {
@@ -111,7 +113,11 @@ export function dayCell({
     // day the timesheet still has to be typed into, and he does not want the
     // restriction repeated on this screen: the roster already says it.
     const absence = wholeDayOn(absences, person.id, date)
-    const rostered = shifts.filter(s => s.shift_date === date)
+    // In the order they start. A shift is paired with its plan by position
+    // (planDrift, the grey times behind the boxes), and the database hands
+    // rows back in no promised order: a split shift came out with the morning
+    // compared against the evening, "in -513 min" (21 October 2026).
+    const rostered = shifts.filter(s => s.shift_date === date).sort(byStart)
     const holiday = bankHolidayOn(date)
 
     // An absence that carries hours is a holiday, and its hours are held apart
@@ -527,18 +533,95 @@ export function planDrift(plan, startedAt, ranFor) {
 
     const planStart = toMinutes(plan.starts_at)
     const planRan = shiftMinutes(plan.starts_at, plan.ends_at)
+    return worstOf(startedAt - planStart, (startedAt + ranFor) - (planStart + planRan), ranFor - planRan)
+}
 
-    // 'in' first, so a shift that simply moved names the end somebody would
-    // look at first rather than the one that happens to sort earlier.
-    const ways = [
-        { where: 'in', minutes: startedAt - planStart },
-        { where: 'out', minutes: (startedAt + ranFor) - (planStart + planRan) },
-        { where: 'ran', minutes: ranFor - planRan },
-    ]
+// 'in' first, so a shift that simply moved names the end somebody would look
+// at first rather than the one that happens to sort earlier.
+function worstOf(lateIn, lateOut, longer) {
+    return [
+        { where: 'in', minutes: lateIn },
+        { where: 'out', minutes: lateOut },
+        { where: 'ran', minutes: longer },
+    ].reduce((worst, one) => (Math.abs(one.minutes) > Math.abs(worst.minutes) ? one : worst))
+}
 
-    return ways.reduce((worst, one) => (
-        Math.abs(one.minutes) > Math.abs(worst.minutes) ? one : worst
-    ))
+// What each span the clock registered is set against, by the plans it
+// overlaps rather than by position (21 October 2026). Position paired a split
+// shift's morning with its evening whenever the rows came back in the other
+// order, and one clock time worked straight through a split shift was set
+// against the morning half alone: "ran +542 min".
+//
+// Spans and the plans they overlap are taken together. One clock time across
+// both halves of a split shift is set against the whole of it: in against its
+// first start, out against its last finish, and the length against the hours
+// actually rostered, because the gap between the halves is not rostered work
+// (his call). Two clock times inside one plan are set against it together,
+// and the difference is written on the later one. A span that overlaps no
+// plan takes the nearest plan nothing overlaps, and with none left it was not
+// rostered.
+//
+// spans are { id, start, ran } in minutes, so a block being dragged is asked
+// with where it is now. Answers by id: planned, the drift to write on that
+// block (null on all but the last of a group), and the group's drift, which
+// colours every block in it.
+export function driftsFor(spans, rostered) {
+    const plans = (rostered || []).map(r => ({ start: toMinutes(r.starts_at), ran: shiftMinutes(r.starts_at, r.ends_at) }))
+    const items = (spans || []).filter(s => s && s.id != null)
+    const overlaps = (a, b) => a.start < b.start + b.ran && b.start < a.start + a.ran
+
+    // Which spans and plans hang together, through any chain of overlaps.
+    const parent = new Map()
+    const find = key => {
+        while (parent.get(key) !== key) key = parent.get(key)
+        return key
+    }
+    items.forEach((_, i) => parent.set(`s${i}`, `s${i}`))
+    plans.forEach((_, j) => parent.set(`p${j}`, `p${j}`))
+    items.forEach((span, i) => plans.forEach((plan, j) => {
+        if (overlaps(span, plan)) parent.set(find(`s${i}`), find(`p${j}`))
+    }))
+    const groups = new Map()
+    const add = (key, list, value) => {
+        const root = find(key)
+        if (!groups.has(root)) groups.set(root, { spans: [], plans: [] })
+        groups.get(root)[list].push(value)
+    }
+    items.forEach((span, i) => add(`s${i}`, 'spans', span))
+    plans.forEach((plan, j) => add(`p${j}`, 'plans', plan))
+
+    const out = new Map()
+    const unplanned = []
+    const unused = []
+    const total = list => list.reduce((sum, x) => sum + x.ran, 0)
+    for (const { spans: these, plans: theirs } of groups.values()) {
+        if (these.length && theirs.length) {
+            const sorted = [...these].sort((a, b) => a.start - b.start)
+            const group = worstOf(
+                sorted[0].start - Math.min(...theirs.map(p => p.start)),
+                Math.max(...sorted.map(x => x.start + x.ran)) - Math.max(...theirs.map(p => p.start + p.ran)),
+                total(sorted) - total(theirs),
+            )
+            sorted.forEach((span, k) => out.set(span.id, {
+                planned: true, drift: k === sorted.length - 1 ? group : null, group,
+            }))
+        } else if (these.length) unplanned.push(...these)
+        else unused.push(...theirs)
+    }
+
+    for (const span of unplanned.sort((a, b) => a.start - b.start)) {
+        if (!unused.length) {
+            out.set(span.id, { planned: false, drift: null, group: null })
+            continue
+        }
+        const nearest = unused.reduce((best, plan, j) => (
+            Math.abs(plan.start - span.start) < Math.abs(unused[best].start - span.start) ? j : best
+        ), 0)
+        const [plan] = unused.splice(nearest, 1)
+        const drift = worstOf(span.start - plan.start, (span.start + span.ran) - (plan.start + plan.ran), span.ran - plan.ran)
+        out.set(span.id, { planned: true, drift, group: drift })
+    }
+    return out
 }
 
 // **An hour.** It was fifteen minutes, and before that five. Five made nearly

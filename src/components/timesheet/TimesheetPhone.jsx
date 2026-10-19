@@ -1,4 +1,4 @@
-import { DAY_NAMES } from '@/lib/dates'
+import { dayName, dayNumber, fullDayLabel } from '@/lib/dates'
 import { fmtMoney } from '@/lib/format'
 import { weekTotals, cellColour } from '@/lib/timesheet'
 import { kindLabel as absenceLabel } from '@/lib/absences'
@@ -26,10 +26,17 @@ export default function TimesheetPhone({ rows, dates, onOpenDay }) {
                 </span>
             </div>
 
-            <div className="flex gap-1 px-3 pt-2 pb-1 justify-end" aria-hidden="true">
+            {/* Over each person's seven boxes, from the same left edge with the
+                same widths and gaps, so a day sits over its own column. It
+                was pushed to the right edge of the card, which put every day
+                one box along and the last one over the totals. Two letters,
+                because S and S and T and T were two guesses, and the date
+                under them. */}
+            <div className="flex gap-1 px-3 pt-2 pb-1" aria-hidden="true">
                 {dates.map(date => (
-                    <span key={date} className="w-8 text-center text-[0.55rem] font-bold tracking-wide text-muted">
-                        {DAY_NAMES[new Date(`${date}T00:00:00`).getDay()].slice(0, 1)}
+                    <span key={date} className="w-8 text-center text-[0.6rem] leading-tight text-muted">
+                        <span className="block font-bold">{dayName(date).slice(0, 2)}</span>
+                        <span className="block tabular-nums">{dayNumber(date)}</span>
                     </span>
                 ))}
             </div>
@@ -70,7 +77,7 @@ function DayChip({ cell, onOpen }) {
         <button
             type="button"
             onClick={onOpen}
-            aria-label={`${cell.date}${cell.absence ? `, ${absenceLabel(cell.absence.kind)}` : ''}${worked ? `, ${cell.hours.toFixed(2)} hours` : ''}`}
+            aria-label={`${fullDayLabel(cell.date)}${cell.absence ? `, ${absenceLabel(cell.absence.kind)}` : ''}${worked ? `, ${cell.hours.toFixed(2)} hours` : ''}`}
             className={`w-8 h-9 rounded text-[0.58rem] font-bold tabular-nums flex items-center justify-center
                 border transition-colors focus:outline-none focus:ring-2 focus:ring-accent
                 ${cell.unanswered || cell.open ? 'border-accent border-dashed' : 'border-transparent'}

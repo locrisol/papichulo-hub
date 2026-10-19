@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { toISODate, todayISO, weekStartOf, weekDates, shortDate, dayLabel, dayList, addDays, monthStart, addMonths, monthLabel, monthName, fullDate, weekMonthLabel, weekNumber, weekRange , stampDate, stampDateTime, monthYearOf, clockTime, stampDay, WEEKDAY_NAMES, daysBetween } from '@/lib/dates'
+import { toISODate, todayISO, weekStartOf, weekDates, shortDate, dayLabel, dayList, fullDayLabel, dayNumber, addDays, monthStart, addMonths, monthLabel, monthName, fullDate, weekMonthLabel, weekNumber, weekRange , stampDate, stampDateTime, monthYearOf, clockTime, stampDay, WEEKDAY_NAMES, daysBetween } from '@/lib/dates'
 
 describe('toISODate', () => {
     it('formats a date as YYYY-MM-DD', () => {
@@ -119,6 +119,18 @@ describe('dayLabel and dayList', () => {
         expect(dayList(['2026-09-07', '2026-09-08'])).toBe('Mon 7 Sept and Tue 8 Sept')
         expect(dayList(['2026-09-07', '2026-09-08', '2026-09-09']))
             .toBe('Mon 7 Sept, Tue 8 Sept and Wed 9 Sept')
+    })
+})
+
+describe('fullDayLabel and dayNumber', () => {
+    it('heads a day with its whole name', () => {
+        expect(fullDayLabel('2026-10-11')).toBe('Sunday 11 October')
+        expect(fullDayLabel('2026-10-17')).toBe('Saturday 17 October')
+    })
+
+    it('gives the day of the month on its own', () => {
+        expect(dayNumber('2026-10-11')).toBe(11)
+        expect(dayNumber('2026-11-01')).toBe(1)
     })
 })
 

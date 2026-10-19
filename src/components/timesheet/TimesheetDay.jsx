@@ -1,14 +1,14 @@
-import { useRef, useState } from 'react'
-import { fullDate } from '@/lib/dates'
+import { useLayoutEffect, useRef, useState } from 'react'
+import { fullDayLabel } from '@/lib/dates'
 import { fmtMoney } from '@/lib/format'
 import {
     toMinutes, toTime, shiftMinutes, shortTime, fmtHours, timelineRange, tint, hourLabelStep,
 } from '@/lib/roster'
 import { shortClock } from '@/lib/clock'
-import { BANK_HOLIDAY_INK } from '@/lib/bankHolidays'
+import { BANK_HOLIDAY_INK, BANK_HOLIDAY_ON_DARK } from '@/lib/bankHolidays'
 import { tableHeadRow } from '@/lib/controlStyles'
 import { kindOf as absenceKind } from '@/lib/absences'
-import { planDrift, NOTICEABLE_MINUTES, ROW_BANDS, kindOf } from '@/lib/timesheet'
+import { driftsFor, NOTICEABLE_MINUTES, ROW_BANDS, kindOf } from '@/lib/timesheet'
 
 // One day, drawn the way the roster draws one.
 //
@@ -50,7 +50,35 @@ const NOT_AS_PLANNED = '#BC552B'
 // pressing the block opens.
 const SNAP = 5
 
-export default function TimesheetDay({ rows, date, canEdit = true, onOpenDay, onCorrect }) {
+// How tall a row and its two blocks are: the Day view's, and the shorter one
+// All days stacks seven of. The two blocks sit close together with room above
+// and below them, so a shift reads as one pair and is clear of the line to the
+// next person. The registered block was 4px off the bottom of a short row,
+// which on a day's last person put it against the edge of the card (his, 20
+// October 2026).
+const SIZES = {
+    full: { track: 'h-24', plan: 'top-3 h-7', planLine: 'leading-6', clock: 'bottom-3 h-10' },
+    compact: { track: 'h-20', plan: 'top-2.5 h-5', planLine: 'leading-4', clock: 'bottom-2.5 h-9' },
+}
+
+// On a computer the roster's three columns: the name, the hours across, the
+// day's hours. On a phone there is no room for a name column beside a day, so
+// the name and the hours go on a line of their own and the bar takes the
+// whole width under them. It used to be the computer's layout wider than the
+// phone, read by scrolling sideways, with the end of every shift off the edge.
+const COLUMNS = 'grid grid-cols-[1fr_auto] md:grid-cols-[10rem_1fr_5rem]'
+
+// range is the hours across the top, for All days, which gives every day the
+// same so 09:00 sits in the same place on each; left out, the day works out
+// its own. compact is All days' shorter row, with only the people who were
+// rostered, clocked in or off that day. heading 'band' puts the day's name in
+// the green band over the hours, larger, which is how All days tells seven
+// days apart (his pick of 20 October 2026); the Day view keeps its line.
+export default function TimesheetDay({
+    rows, date, canEdit = true, onOpenDay, onCorrect, range = null, compact = false, legend = true,
+    heading = 'plain',
+}) {
+    const size = compact ? SIZES.compact : SIZES.full
     // The ends being dragged, and the guard that stops letting go of one from
     // reading as a press on the block underneath. Both of these are the
     // roster's day view exactly: a click lands on the nearest ancestor of where
@@ -61,8 +89,37 @@ export default function TimesheetDay({ rows, date, canEdit = true, onOpenDay, on
     const liveRef = useRef(null)
     const justDragged = useRef(false)
 
+    // Which bars are too narrow for their words, by what is drawn rather than
+    // by a guess at how wide words are: each bar's words are measured where
+    // they sit, again whenever the day changes size or the font arrives. The
+    // words of one that does not fit are kept in place but hidden, so the next
+    // measure still sees how wide they are, and written out under the bars.
+    const boxRef = useRef(null)
+    const [cut, setCut] = useState(() => new Set())
+    useLayoutEffect(() => {
+        const box = boxRef.current
+        if (!box || typeof ResizeObserver === 'undefined') return
+        let current = true
+        const measure = () => {
+            if (!current) return
+            const next = new Set()
+            for (const bar of box.querySelectorAll('[data-label]')) {
+                if ([...bar.children].some(words => words.scrollWidth > words.clientWidth + 1)) next.add(bar.dataset.label)
+            }
+            setCut(was => (was.size === next.size && [...next].every(label => was.has(label)) ? was : next))
+        }
+        const watch = new ResizeObserver(measure)
+        watch.observe(box)
+        document.fonts?.ready?.then(measure)
+        return () => {
+            current = false
+            watch.disconnect()
+        }
+    }, [rows, date, range])
+
     const mine = rows.map(row => ({ row, cell: row.days.find(d => d.date === date) }))
         .filter(({ cell }) => cell)
+        .filter(({ cell }) => !compact || cell.rostered.length > 0 || cell.entries.length > 0 || cell.absence)
 
     // The same helper the roster uses, given both what was planned and what
     // actually happened, so a shift that started before opening or ran past
@@ -71,7 +128,7 @@ export default function TimesheetDay({ rows, date, canEdit = true, onOpenDay, on
         ...cell.rostered.map(s => ({ starts_at: s.starts_at, ends_at: s.ends_at })),
         ...cell.entries.filter(e => e.starts_at && e.ends_at).map(e => ({ starts_at: e.starts_at, ends_at: e.ends_at })),
     ])
-    const { from, to } = timelineRange(null, spans, { before: 1, after: 1 })
+    const { from, to } = range || timelineRange(null, spans, { before: 1, after: 1 })
     const span = Math.max(to - from, 60)
     const pct = minutes => ((minutes - from) / span) * 100
 
@@ -149,27 +206,47 @@ export default function TimesheetDay({ rows, date, canEdit = true, onOpenDay, on
     }
 
     return (
-        <div>
-            <div className="flex flex-wrap items-baseline justify-between gap-2 px-4 py-2.5 border-b border-border">
-                <span className="text-sm font-bold text-gray-900">
-                    {fullDate(date)}
-                    {bankHoliday && (
-                        <span className="ml-2" style={{ color: BANK_HOLIDAY_INK }}>{bankHoliday.name}</span>
-                    )}
-                </span>
-                <span className="text-sm font-bold text-gray-900 tabular-nums">
-                    {fmtHours(worked)} h &middot; {fmtMoney(cost)}
-                </span>
-            </div>
+        <div ref={boxRef}>
+            {heading === 'plain' && (
+                <div className="flex flex-wrap items-baseline justify-between gap-2 px-4 py-2.5 border-b border-border">
+                    <span className="text-sm font-bold text-gray-900">
+                        {fullDayLabel(date)}
+                        {bankHoliday && (
+                            <span className="ml-2" style={{ color: BANK_HOLIDAY_INK }}>{bankHoliday.name}</span>
+                        )}
+                    </span>
+                    <span className="text-sm font-bold text-gray-900 tabular-nums">
+                        {fmtHours(worked)} h &middot; {fmtMoney(cost)}
+                    </span>
+                </div>
+            )}
 
-            <div className="overflow-x-auto">
-                <div className="min-w-[46rem]">
-                    {/* The hours across the top, the same as the roster's. */}
-                    <div className={`flex border-b border-border ${tableHeadRow}`}>
-                        <div className="w-40 flex-shrink-0 px-3 py-2 text-xs font-semibold uppercase tracking-wider">
+            <div className="md:overflow-x-auto">
+                <div className="md:min-w-[46rem]">
+                    {/* The hours across the top, the same as the roster's.
+                        White on the green: the shared heading style turns a
+                        table's headings white, and these are not a table's,
+                        so Staff and Hours were dark on dark. */}
+                    <div className={`grid grid-cols-1 md:grid-cols-[10rem_1fr_5rem] border-b border-border text-white ${tableHeadRow}`}>
+                        {heading === 'band' && (
+                            <div className="col-span-full flex flex-wrap items-baseline justify-between gap-2 px-4 pt-3 pb-1">
+                                <span className="font-serif text-lg font-bold">
+                                    {fullDayLabel(date)}
+                                    {bankHoliday && (
+                                        <span className="ml-2 font-sans text-sm" style={{ color: BANK_HOLIDAY_ON_DARK }}>
+                                            {bankHoliday.name}
+                                        </span>
+                                    )}
+                                </span>
+                                <span className="text-sm font-semibold tabular-nums text-white/80">
+                                    {fmtHours(worked)} h &middot; {fmtMoney(cost)}
+                                </span>
+                            </div>
+                        )}
+                        <div className="hidden md:block px-3 py-2 text-xs font-semibold uppercase tracking-wider">
                             Staff
                         </div>
-                        <div className="flex-1 relative h-11">
+                        <div className="relative h-11 mx-4 md:mx-0">
                             {hourMarks.map((m, i) => (
                                 <span key={m}>
                                     <span
@@ -187,18 +264,77 @@ export default function TimesheetDay({ rows, date, canEdit = true, onOpenDay, on
                                 </span>
                             ))}
                         </div>
-                        <div className="w-20 flex-shrink-0 px-2 py-2 text-xs font-semibold uppercase tracking-wider text-center">
+                        <div className="hidden md:block px-2 py-2 text-xs font-semibold uppercase tracking-wider text-center">
                             Hours
                         </div>
                     </div>
 
                     {mine.length === 0 ? (
-                        <p className="p-8 text-center text-sm text-muted italic">Nobody on the team list yet.</p>
+                        <p className={`${compact ? 'p-4' : 'p-8'} text-center text-sm text-muted italic`}>
+                            {compact ? 'Nobody was rostered or clocked in.' : 'Nobody on the team list yet.'}
+                        </p>
                     ) : mine.map(({ row, cell }, n) => {
                         const off = cell.absence ? absenceKind(cell.absence.kind) : null
-                        const registered = cell.entries.filter(e => e.starts_at && e.ends_at)
                         // A day somebody wrote a comment on instead of times.
                         const said = cell.entries.find(e => !e.starts_at && e.note)
+                        // No shift to draw: not rostered and no clock time.
+                        // A whole day off, a comment, or nothing at all. The
+                        // row is as tall as what it says rather than as tall
+                        // as a shift (his, 21 October 2026). On a computer
+                        // that is one line of the track; on a phone it is the
+                        // name line alone, with the day off or the comment on
+                        // it, because a band under the name was a second line
+                        // for three words.
+                        const brief = !cell.rostered.length && !cell.entries.some(e => e.starts_at)
+
+                        // What the clock registered, where it is now: a block
+                        // being dragged is asked about where it has got to.
+                        const spans = cell.entries.filter(e => e.starts_at && e.ends_at)
+                            .sort((a, b) => String(a.starts_at).localeCompare(String(b.starts_at)))
+                            .map(entry => {
+                                const held = live?.id === entry.id ? live : null
+                                return {
+                                    id: entry.id,
+                                    entry,
+                                    held,
+                                    start: held ? held.from : toMinutes(entry.starts_at),
+                                    ran: held ? held.to - held.from : shiftMinutes(entry.starts_at, entry.ends_at),
+                                }
+                            })
+                        // Each set against the plans it overlaps (driftsFor).
+                        const drifts = driftsFor(spans, cell.rostered)
+                        const blocks = spans.map(span => {
+                            const { planned, drift, group } = drifts.get(span.id) || {}
+                            const adrift = Boolean(group) && Math.abs(group.minutes) > NOTICEABLE_MINUTES
+                            // A day that is not an ordinary worked one says so
+                            // here, in the colour the week grid gives it. The
+                            // day view used to show nothing at all about it,
+                            // so a trial looked exactly like a shift somebody
+                            // forgot to roster.
+                            const kind = span.entry.kind && span.entry.kind !== 'worked' ? kindOf(span.entry.kind) : null
+                            // **A trial is never rostered.** So having no plan
+                            // is what a trial looks like when it is right, not
+                            // a thing to warn about. Being far off a plan still
+                            // counts, on a trial as on anything else.
+                            const trial = span.entry.kind === 'trial'
+                            return {
+                                ...span,
+                                planned: Boolean(planned),
+                                drift,
+                                adrift,
+                                kind,
+                                trial,
+                                label: `entry:${span.id}`,
+                                colour: adrift || (!planned && !trial) ? NOT_AS_PLANNED : kind ? kind.colour : AS_PLANNED,
+                            }
+                        })
+                        const planLabel = shift => `plan:${row.person.id}:${shift.id || shift.starts_at}`
+
+                        // The words of a bar too narrow for them, written out
+                        // under the bars instead (his pick of 21 October 2026).
+                        // Only that person's row grows, and only by those.
+                        const cutPlans = cell.rostered.filter(shift => cut.has(planLabel(shift)))
+                        const cutBlocks = blocks.filter(block => cut.has(block.label))
 
                         return (
                             /* A row is a person, and on a wide screen the
@@ -209,13 +345,15 @@ export default function TimesheetDay({ rows, date, canEdit = true, onOpenDay, on
                                floating beside the track. A hairline alone was
                                not enough across that distance: the eye has
                                nothing to follow between the name and the
-                               block, and picks up the wrong row. */
+                               block, and picks up the wrong row. The line
+                               between two people is a shade stronger than the
+                               page's hairline for the same reason. */
                             <div
                                 key={row.person.id}
-                                className="flex border-b border-border last:border-b-0"
+                                className={`${COLUMNS} border-b border-gray-300 last:border-b-0`}
                                 style={{ backgroundColor: ROW_BANDS[n % 2] }}
                             >
-                                <div className="w-40 flex-shrink-0 px-3 py-2 flex flex-col justify-center border-r border-border">
+                                <div className={`min-w-0 px-3 pt-2 ${brief ? 'pb-2' : ''} md:py-2 flex flex-wrap md:flex-col md:flex-nowrap items-baseline md:items-start md:justify-center gap-x-2 md:border-r border-border`}>
                                     <span className="text-sm font-semibold text-gray-900 truncate">
                                         {row.person.full_name}
                                     </span>
@@ -242,169 +380,157 @@ export default function TimesheetDay({ rows, date, canEdit = true, onOpenDay, on
                                             no clock out
                                         </span>
                                     )}
+                                    {brief && off && (
+                                        <span className="md:hidden text-[0.625rem] font-bold uppercase tracking-wider" style={{ color: off.colour }}>
+                                            {off.label}
+                                            {cell.holidayHours > 0 && ` · ${fmtHours(cell.holidayHours)}h`}
+                                        </span>
+                                    )}
+                                    {brief && said && !off && (
+                                        <span className="md:hidden basis-full text-[0.6875rem] italic text-muted">“{said.note}”</span>
+                                    )}
                                 </div>
 
-                                <div className="flex-1 relative h-24" data-track>
-                                    {hourMarks.map(m => (
-                                        <span
-                                            key={m}
-                                            className="absolute top-0 bottom-0 w-px bg-gray-100"
-                                            style={{ left: `${pct(m)}%` }}
-                                        />
-                                    ))}
-
-                                    {/* A whole day off, across the row and under
-                                        everything, exactly as the roster draws
-                                        it and in the same colour. */}
-                                    {off && (
-                                        <span
-                                            className="absolute inset-0 pointer-events-none flex items-center justify-center"
-                                            style={{ backgroundColor: tint(off.colour, 0.22) }}
-                                        >
+                                <div className="min-w-0 col-span-2 md:col-span-1 order-last md:order-none mx-4 md:mx-0">
+                                    <div
+                                        className={`relative ${brief ? 'min-h-9 items-center hidden md:flex' : size.track}`}
+                                        data-track
+                                    >
+                                        {hourMarks.map(m => (
                                             <span
-                                                className="text-[0.6875rem] font-bold uppercase tracking-wider"
-                                                style={{ color: off.colour }}
+                                                key={m}
+                                                className="absolute top-0 bottom-0 w-px bg-gray-100"
+                                                style={{ left: `${pct(m)}%` }}
+                                            />
+                                        ))}
+
+                                        {/* A whole day off, across the row and under
+                                            everything, exactly as the roster draws
+                                            it and in the same colour. */}
+                                        {off && (
+                                            <span
+                                                className="absolute inset-0 pointer-events-none flex items-center justify-center"
+                                                style={{ backgroundColor: tint(off.colour, 0.22) }}
                                             >
-                                                {off.label}
-                                                {cell.holidayHours > 0 && ` · ${fmtHours(cell.holidayHours)}h`}
-                                            </span>
-                                        </span>
-                                    )}
-
-                                    {said && !off && (
-                                        <span className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                            <span className="text-[0.6875rem] italic text-muted px-3 text-center">
-                                                “{said.note}”
-                                            </span>
-                                        </span>
-                                    )}
-
-                                    {/* What they were rostered for: hollow, and
-                                        along the top. It is the thing being
-                                        compared against, not the answer. */}
-                                    {cell.rostered.map(shift => (
-                                        <button
-                                            type="button"
-                                            key={shift.id || shift.starts_at}
-                                            onClick={() => open(row.person, cell)}
-                                            title={`Rostered ${shortTime(shift.starts_at)} to ${shortTime(shift.ends_at)}`}
-                                            className="absolute top-2 h-7 rounded-lg border-2 border-dashed border-gray-400 bg-gray-50/70 px-1.5 overflow-hidden text-left hover:border-gray-500"
-                                            style={{
-                                                left: `${pct(toMinutes(shift.starts_at))}%`,
-                                                width: `${(shiftMinutes(shift.starts_at, shift.ends_at) / span) * 100}%`,
-                                            }}
-                                        >
-                                            <span className="block text-[0.625rem] text-gray-500 whitespace-nowrap leading-6">
-                                                {shortTime(shift.starts_at)} to {shortTime(shift.ends_at)}
-                                            </span>
-                                        </button>
-                                    ))}
-
-                                    {/* What the clock registered: solid, along
-                                        the bottom with a gap between the two, so
-                                        a block that ran long reads as one bar
-                                        past another rather than as one shape. */}
-                                    {registered.map((entry, i) => {
-                                        const held = live?.id === entry.id ? live : null
-                                        const start = held ? held.from : toMinutes(entry.starts_at)
-                                        const ran = held
-                                            ? held.to - held.from
-                                            : shiftMinutes(entry.starts_at, entry.ends_at)
-
-                                        const plan = cell.rostered[i]
-                                        const drift = planDrift(plan, start, ran)
-                                        const adrift = drift && Math.abs(drift.minutes) > NOTICEABLE_MINUTES
-
-                                        // A day that is not an ordinary worked
-                                        // one says so here, in the colour the
-                                        // week grid gives it. The day view used
-                                        // to show nothing at all about it, so a
-                                        // trial looked exactly like a shift
-                                        // somebody forgot to roster.
-                                        const kind = entry.kind && entry.kind !== 'worked'
-                                            ? kindOf(entry.kind)
-                                            : null
-                                        // **A trial is never rostered.** So
-                                        // having no plan is what a trial looks
-                                        // like when it is right, not a thing to
-                                        // warn about. Being far off a plan
-                                        // still counts, on a trial as on
-                                        // anything else.
-                                        const trial = entry.kind === 'trial'
-                                        const colour = adrift || (!plan && !trial)
-                                            ? NOT_AS_PLANNED
-                                            : kind ? kind.colour : AS_PLANNED
-
-                                        return (
-                                            <span key={entry.id}>
-                                                {canEdit && (
-                                                    <>
-                                                        <span
-                                                            onPointerDown={e => beginDrag(row.person, cell, entry, 'start', e)}
-                                                            style={{ left: `${pct(start)}%` }}
-                                                            className="absolute bottom-2 h-10 w-2 z-10 cursor-ew-resize rounded-l-md hover:bg-black/10"
-                                                            aria-hidden="true"
-                                                        />
-                                                        <span
-                                                            onPointerDown={e => beginDrag(row.person, cell, entry, 'end', e)}
-                                                            style={{ left: `calc(${pct(start + ran)}% - 0.5rem)` }}
-                                                            className="absolute bottom-2 h-10 w-2 z-10 cursor-ew-resize rounded-r-md hover:bg-black/10"
-                                                            aria-hidden="true"
-                                                        />
-                                                    </>
-                                                )}
-                                                <button
-                                                    type="button"
-                                                    onClick={() => open(row.person, cell)}
-                                                    title={held
-                                                        ? `${toTime(held.from)} to ${toTime(held.to)}`
-                                                        : `${entry.starts_at} to ${entry.ends_at}. Press to type it exactly.`}
-                                                    className="absolute bottom-2 h-10 rounded-lg border-2 px-1.5 overflow-hidden text-left"
-                                                    style={{
-                                                        left: `${pct(start)}%`,
-                                                        width: `${(ran / span) * 100}%`,
-                                                        backgroundColor: tint(colour),
-                                                        borderColor: colour,
-                                                    }}
+                                                <span
+                                                    className="text-[0.6875rem] font-bold uppercase tracking-wider"
+                                                    style={{ color: off.colour }}
                                                 >
-                                                    <span className="block text-[0.6875rem] font-bold text-gray-900 whitespace-nowrap leading-tight">
-                                                        {held
-                                                            ? `${toTime(held.from)} to ${toTime(held.to)}`
-                                                            : `${shortClock(entry.starts_at)} to ${shortClock(entry.ends_at)}`}
-                                                    </span>
-                                                    {/* The hours and, beside
-                                                        them, how far off the
-                                                        plan it is: signed, so
-                                                        the colour says there is
-                                                        something to look at and
-                                                        the figure says what.
-                                                        One line rather than two,
-                                                        because the second one
-                                                        was being cut off. */}
-                                                    <span className="block text-[0.625rem] text-gray-600 whitespace-nowrap leading-tight">
-                                                        {fmtHours(ran / 60)}h
-                                                        {kind && (
-                                                            <span className="font-semibold" style={{ color: kind.colour }}>
-                                                                {' '}· {kind.label.toLowerCase()}
-                                                            </span>
-                                                        )}
-                                                        {!plan && !trial && <span className="font-semibold text-accent-ink"> · not rostered</span>}
-                                                        {drift && drift.minutes !== 0 && (
-                                                            <span
-                                                                className="font-semibold"
-                                                                style={{ color: adrift ? NOT_AS_PLANNED : '#4B5563' }}
-                                                            >
-                                                                {' '}· {drift.where} {drift.minutes > 0 ? '+' : '−'}{Math.abs(drift.minutes)} min
-                                                            </span>
-                                                        )}
-                                                    </span>
-                                                </button>
+                                                    {off.label}
+                                                    {cell.holidayHours > 0 && ` · ${fmtHours(cell.holidayHours)}h`}
+                                                </span>
                                             </span>
-                                        )
-                                    })}
+                                        )}
+
+                                        {/* In the row's own flow when there is no shift beside
+                                            it, so a long comment makes the row taller rather than
+                                            running over the next one. */}
+                                        {said && !off && (
+                                            <span className={`${brief ? 'relative w-full py-1.5' : 'absolute inset-0'} flex items-center justify-center pointer-events-none`}>
+                                                <span className="text-[0.6875rem] italic text-muted px-3 text-center">
+                                                    “{said.note}”
+                                                </span>
+                                            </span>
+                                        )}
+
+                                        {/* What they were rostered for: hollow, and
+                                            along the top. It is the thing being
+                                            compared against, not the answer. */}
+                                        {cell.rostered.map(shift => (
+                                            <button
+                                                type="button"
+                                                key={shift.id || shift.starts_at}
+                                                onClick={() => open(row.person, cell)}
+                                                title={`Rostered ${shortTime(shift.starts_at)} to ${shortTime(shift.ends_at)}`}
+                                                data-label={planLabel(shift)}
+                                                className={`absolute ${size.plan} rounded-lg border-2 border-dashed border-gray-400 bg-gray-50/70 px-1.5 overflow-hidden text-left hover:border-gray-500`}
+                                                style={{
+                                                    left: `${pct(toMinutes(shift.starts_at))}%`,
+                                                    width: `${(shiftMinutes(shift.starts_at, shift.ends_at) / span) * 100}%`,
+                                                }}
+                                            >
+                                                <span className={`block text-[0.625rem] text-gray-500 whitespace-nowrap ${size.planLine} ${cut.has(planLabel(shift)) ? 'invisible' : ''}`}>
+                                                    {shortTime(shift.starts_at)} to {shortTime(shift.ends_at)}
+                                                </span>
+                                            </button>
+                                        ))}
+
+                                        {/* What the clock registered: solid, along
+                                            the bottom with a gap between the two, so
+                                            a block that ran long reads as one bar
+                                            past another rather than as one shape. */}
+                                        {blocks.map(block => {
+                                            const hidden = cut.has(block.label) ? 'invisible' : ''
+                                            return (
+                                                <span key={block.id}>
+                                                    {canEdit && (
+                                                        <>
+                                                            <span
+                                                                onPointerDown={e => beginDrag(row.person, cell, block.entry, 'start', e)}
+                                                                style={{ left: `${pct(block.start)}%` }}
+                                                                className={`absolute ${size.clock} w-2 z-10 cursor-ew-resize rounded-l-md hover:bg-black/10`}
+                                                                aria-hidden="true"
+                                                            />
+                                                            <span
+                                                                onPointerDown={e => beginDrag(row.person, cell, block.entry, 'end', e)}
+                                                                style={{ left: `calc(${pct(block.start + block.ran)}% - 0.5rem)` }}
+                                                                className={`absolute ${size.clock} w-2 z-10 cursor-ew-resize rounded-r-md hover:bg-black/10`}
+                                                                aria-hidden="true"
+                                                            />
+                                                        </>
+                                                    )}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => open(row.person, cell)}
+                                                        title={block.held
+                                                            ? `${toTime(block.held.from)} to ${toTime(block.held.to)}`
+                                                            : `${block.entry.starts_at} to ${block.entry.ends_at}. Press to type it exactly.`}
+                                                        data-label={block.label}
+                                                        className={`absolute ${size.clock} rounded-lg border-2 px-1.5 overflow-hidden text-left`}
+                                                        style={{
+                                                            left: `${pct(block.start)}%`,
+                                                            width: `${(block.ran / span) * 100}%`,
+                                                            backgroundColor: tint(block.colour),
+                                                            borderColor: block.colour,
+                                                        }}
+                                                    >
+                                                        <span className={`block text-[0.6875rem] font-bold text-gray-900 whitespace-nowrap leading-tight ${hidden}`}>
+                                                            {blockTimes(block)}
+                                                        </span>
+                                                        {/* The hours and, beside
+                                                            them, how far off the
+                                                            plan it is: signed, so
+                                                            the colour says there is
+                                                            something to look at and
+                                                            the figure says what. */}
+                                                        <span className={`block text-[0.625rem] text-gray-600 whitespace-nowrap leading-tight ${hidden}`}>
+                                                            <BlockDetails block={block} />
+                                                        </span>
+                                                    </button>
+                                                </span>
+                                            )
+                                        })}
+                                    </div>
+
+                                    {(cutPlans.length > 0 || cutBlocks.length > 0) && (
+                                        <div className="pb-2 md:px-2 text-[0.6875rem] leading-snug text-gray-600">
+                                            {cutPlans.map(shift => (
+                                                <span key={shift.id || shift.starts_at} className="block">
+                                                    Rostered {shortTime(shift.starts_at)} to {shortTime(shift.ends_at)}
+                                                </span>
+                                            ))}
+                                            {cutBlocks.map(block => (
+                                                <span key={block.id} className="block">
+                                                    <b className="text-gray-900">{blockTimes(block)}</b>
+                                                    {' · '}
+                                                    <BlockDetails block={block} />
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
 
-                                <div className="w-20 flex-shrink-0 px-2 flex items-center justify-center border-l border-border">
+                                <div className={`px-3 pt-2 ${brief ? 'pb-2' : ''} md:p-2 flex items-baseline md:items-center justify-end md:justify-center md:border-l border-border`}>
                                     <span className={`text-sm font-semibold ${cell.hours ? 'text-gray-900' : 'text-muted'}`}>
                                         {cell.hours
                                             ? fmtHours(cell.hours)
@@ -419,17 +545,55 @@ export default function TimesheetDay({ rows, date, canEdit = true, onOpenDay, on
                 </div>
             </div>
 
-            <div className="flex flex-wrap gap-4 px-4 py-2.5 text-xs text-muted border-t border-border">
-                <Chip dashed>what they were rostered for</Chip>
-                <Chip colour={AS_PLANNED}>within {NOTICEABLE_MINUTES} minutes of the roster</Chip>
-                <Chip colour={NOT_AS_PLANNED}>
-                    started, finished or ran more than {NOTICEABLE_MINUTES} minutes off the roster,
-                    or not rostered
-                </Chip>
-                {canEdit && (
-                    <span className="ml-auto">Drag either end of a shift to change it, or press the shift to type the times.</span>
-                )}
-            </div>
+            {legend && <TimesheetLegend canEdit={canEdit} />}
+        </div>
+    )
+}
+
+// A registered block's times: where it has been dragged to while it is
+// being dragged, otherwise what the clock said.
+function blockTimes(block) {
+    return block.held
+        ? `${toTime(block.held.from)} to ${toTime(block.held.to)}`
+        : `${shortClock(block.entry.starts_at)} to ${shortClock(block.entry.ends_at)}`
+}
+
+// Its hours, what kind of day it was, and how far off the plan, in the bar or
+// under it when the bar is too narrow.
+function BlockDetails({ block }) {
+    const { drift } = block
+    return (
+        <>
+            {fmtHours(block.ran / 60)}h
+            {block.kind && (
+                <span className="font-semibold" style={{ color: block.kind.colour }}>
+                    {' '}· {block.kind.label.toLowerCase()}
+                </span>
+            )}
+            {!block.planned && !block.trial && <span className="font-semibold text-accent-ink"> · not rostered</span>}
+            {drift && drift.minutes !== 0 && (
+                <span className="font-semibold" style={{ color: block.adrift ? NOT_AS_PLANNED : '#4B5563' }}>
+                    {' '}· {drift.where} {drift.minutes > 0 ? '+' : '−'}{Math.abs(drift.minutes)} min
+                </span>
+            )}
+        </>
+    )
+}
+
+// What the blocks and colours mean, under the Day view and once under All
+// days rather than under each of its seven.
+export function TimesheetLegend({ canEdit = true }) {
+    return (
+        <div className="flex flex-wrap gap-4 px-4 py-2.5 text-xs text-muted border-t border-border">
+            <Chip dashed>what they were rostered for</Chip>
+            <Chip colour={AS_PLANNED}>within {NOTICEABLE_MINUTES} minutes of the roster</Chip>
+            <Chip colour={NOT_AS_PLANNED}>
+                started, finished or ran more than {NOTICEABLE_MINUTES} minutes off the roster,
+                or not rostered
+            </Chip>
+            {canEdit && (
+                <span className="ml-auto">Drag either end of a shift to change it, or press the shift to type the times.</span>
+            )}
         </div>
     )
 }

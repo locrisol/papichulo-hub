@@ -27,6 +27,8 @@ import SaveState from '@/components/ui/SaveState'
 import TimesheetWeek from '@/components/timesheet/TimesheetWeek'
 import TimesheetPhone from '@/components/timesheet/TimesheetPhone'
 import TimesheetDay from '@/components/timesheet/TimesheetDay'
+import TimesheetDays from '@/components/timesheet/TimesheetDays'
+import DayStrip from '@/components/timesheet/DayStrip'
 import TouchBar from '@/components/timesheet/TouchBar'
 import DayEditModal from '@/components/timesheet/DayEditModal'
 import ImportDialog from '@/components/timesheet/ImportDialog'
@@ -39,15 +41,22 @@ import SendDialog from '@/components/timesheet/SendDialog'
 // still read, frozen, for the eight months before this existed: see the
 // labour_by_day view. Nothing writes to it any more.
 //
-// Three views of the same week, the way the roster has Day and Week. The wide
+// Two views of the same week, the way the roster has Day and Week. The wide
 // grid is his spreadsheet and it is what a computer and a big tablet get. The
 // phone gets hours with a day opening to be typed, because fourteen clock times
-// will not go across four hundred pixels. The day view is the reading, where a
-// shift that ran long is a bar sticking out rather than a subtraction.
+// will not go across four hundred pixels.
+//
+// The second view is the reading, where a shift that ran long is a bar
+// sticking out rather than a subtraction. On a computer it is the Day view, a
+// day at a time with the whole team on it. On a phone it is All days, every
+// day of the week at once with only the people who were in, because picking
+// a day and reading it a screen at a time was the slow way round on a phone
+// (his call of 20 October 2026). Both are drawn and the width decides which
+// shows, the same as the week, so a rotation does not reload anything.
 
 const VIEWS = [
     { id: 'week', label: 'Week' },
-    { id: 'day', label: 'Day' },
+    { id: 'day', label: 'Day', phoneLabel: 'All days' },
 ]
 
 // Where this screen lives. Not this week: a timesheet is filled in once the
@@ -776,9 +785,14 @@ export default function TimesheetPage() {
                             key={v.id}
                             type="button"
                             onClick={() => setView(v.id)}
-                            className={segmentButton(view === v.id)}
+                            className={segmentButton(view === v.id, true)}
                         >
-                            {v.label}
+                            {v.phoneLabel ? (
+                                <>
+                                    <span className="md:hidden">{v.phoneLabel}</span>
+                                    <span className="hidden md:inline">{v.label}</span>
+                                </>
+                            ) : v.label}
                         </button>
                     ))}
                 </div>
@@ -922,22 +936,19 @@ export default function TimesheetPage() {
             {loading ? (
                 <p className="text-sm text-muted">Loading...</p>
             ) : view === 'day' ? (
-                <div className={`${card} overflow-hidden`}>
-                    <div className="flex flex-wrap gap-1 p-2 border-b border-border">
-                        {dates.map(date => (
-                            <button
-                                key={date}
-                                type="button"
-                                onClick={() => setOpenDay(date)}
-                                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
-                                    openDay === date
-                                        ? 'bg-accent-light border-accent text-accent-ink'
-                                        : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-                                }`}
-                            >
-                                {shortDate(date)}
-                            </button>
-                        ))}
+                <>
+                {/* All days on a phone, a card each; the Day view from md. */}
+                <div className="md:hidden">
+                    <TimesheetDays
+                        rows={rows}
+                        dates={dates}
+                        onOpenDay={(person, cell) => setEditing({ personId: person.id, date: cell.date })}
+                        onCorrect={correct}
+                    />
+                </div>
+                <div className={`hidden md:block ${card} overflow-hidden`}>
+                    <div className="p-2 border-b border-border">
+                        <DayStrip dates={dates} picked={openDay} onPick={setOpenDay} />
                     </div>
                     {/* Pressing a block opens the same dialog the grid opens,
                         where a time can be typed to the second. Dragging an end
@@ -950,6 +961,7 @@ export default function TimesheetPage() {
                         onCorrect={correct}
                     />
                 </div>
+                </>
             ) : (
                 <div className={`${card} overflow-hidden`} ref={grid}>
                     {/* The wide grid on anything that can hold it, the hours
