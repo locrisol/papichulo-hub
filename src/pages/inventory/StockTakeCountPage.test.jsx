@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Route, Routes } from 'react-router-dom'
-import { heldQuery, makeQuery, renderWithRouter, tableOf } from '@/test/helpers'
+import { heldQuery, makeQuery, renderWithRouter, tableOf, COST_VIEWS, costRowsOf } from '@/test/helpers'
 
 // Counting a Point Campus stock take. Invented products and prices.
 
@@ -49,7 +49,7 @@ function setUp({ products = [CHEDDAR], prices, recipes = [], kept = [], failing 
     db = {
         from: vi.fn(table => {
             if (table === failing) return makeQuery({ data: null, error: { message: 'Failed to fetch' } })
-            const q = tableOf(tables[table] || [])
+            const q = tableOf((COST_VIEWS.includes(table) ? costRowsOf(tables.product_supplier_prices) : tables[table]) || [])
             q.insert = vi.fn(row => {
                 saved.push(row)
                 const answer = { data: { id: `l${saved.length}`, ...row }, error: null }
@@ -63,7 +63,10 @@ function setUp({ products = [CHEDDAR], prices, recipes = [], kept = [], failing 
     }
 }
 
-vi.mock('@/lib/supabase', () => ({ supabase: new Proxy({}, { get: (_, k) => db[k] }) }))
+vi.mock('@/lib/supabase', async importOriginal => ({
+    ...(await importOriginal()),
+    supabase: new Proxy({}, { get: (_, k) => db[k] }),
+}))
 vi.mock('@/context/auth', () => ({ useAuth: () => ({ user }) }))
 vi.mock('@/context/confirm', () => ({ useConfirm: () => vi.fn(async () => true) }))
 
@@ -286,7 +289,7 @@ describe('a read that fails', () => {
         user = { id: 'u0', role: 'store_manager', full_name: 'Leandro' }
     })
 
-    it.each(['stock_take_lines', 'product_supplier_prices', 'price_count_units', 'staff_mix_recipes'])(
+    it.each(['stock_take_lines', 'product_supplier_prices', 'staff_cost_prices', 'price_count_units', 'staff_mix_recipes'])(
         'says so when %s cannot be read, rather than counting on without it',
         async table => {
             setUp({ prices: [AT_POINT_CAMPUS], failing: table })

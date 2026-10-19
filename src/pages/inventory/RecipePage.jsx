@@ -1,6 +1,7 @@
 import { useState, useEffect, Fragment, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
+import { readCostPrices } from '@/lib/costPrices'
 import { useRestaurant } from '@/context/restaurant'
 import { calculateMixCost, costInside, deactivatedIn } from '@/lib/mixCost'
 import RecipeIngredientForm from '@/components/inventory/RecipeIngredientForm'
@@ -145,12 +146,9 @@ export default function RecipePage() {
     fetchRecipeLines()
   }, [fetchProduct, fetchProducts, fetchRecipeLines])
 
+  // What recipes cost each ingredient at here (lib/costPrices).
   const fetchPrices = useCallback(async () => {
-    const { data } = await supabase
-      .from('product_supplier_prices')
-      .select('*')
-      .eq('restaurant_id', activeRestaurant.id)
-      .eq('is_preferred', true)
+    const { data } = await readCostPrices(activeRestaurant.id)
 
     if (data) setPrices(data)
     }, [activeRestaurant])
@@ -170,10 +168,10 @@ export default function RecipePage() {
   }
 
   function getIngredientUnitCost(ingredientProduct) {
-    // Uses the recursive helper. For raw ingredients it returns the preferred
-    // price. For MIX ingredients it recursively computes the per-unit cost
-    // from the nested recipe. A deactivated one has none, the same as in the
-    // total below.
+    // Uses the recursive helper. For raw ingredients it returns what recipes
+    // cost it at here (lib/costPrices). For MIX ingredients it recursively
+    // computes the per-unit cost from the nested recipe. A deactivated one has
+    // none, the same as in the total below.
     return costInside(ingredientProduct, products, recipeLines, prices)
   }
 
@@ -605,7 +603,7 @@ export default function RecipePage() {
               )}
               {summary.status === 'missing_price' && (summary.deactivated.length === 0 || summary.stillUnset) && (
                 <p className="text-xs text-amber-700 mt-3">
-                  Some ingredients have no preferred price at {activeRestaurant?.name}, or are a MIX whose cost cannot be worked out yet. The cost will show once they all have one.
+                  Some ingredients have no price at {activeRestaurant?.name} or the other restaurant, or are a MIX whose cost cannot be worked out yet. The cost will show once they all have one.
                 </p>
               )}
               {summary.status === 'no_batch_yield' && (

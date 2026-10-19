@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { makeQuery, renderWithRouter, tableOf } from '@/test/helpers'
+import { makeQuery, renderWithRouter, tableOf, COST_VIEWS, costRowsOf } from '@/test/helpers'
 import { emptyAllergens } from '@/lib/allergens'
 
 let db
@@ -145,7 +145,7 @@ function tablesFor(overrides = {}) {
 }
 
 function useTables(tables) {
-    db = { from: vi.fn(table => tableOf(tables[table] || [])) }
+    db = { from: vi.fn(table => tableOf((COST_VIEWS.includes(table) ? costRowsOf(tables.product_supplier_prices) : tables[table]) || [])) }
 }
 
 // jsdom has no scrolling, and the product picker keeps its highlighted row in
@@ -323,10 +323,10 @@ describe('a read that fails', () => {
 
     // Not as a dish with no prices set, which is what it used to say.
     it('says the prices could not be read when they fail', async () => {
-        failing('product_supplier_prices', { menu_item_components: [BURRITO[0]] })
+        failing('cost_prices', { menu_item_components: [BURRITO[0]] })
         showPage()
         expect(await screen.findByText(/prices could not be read/)).toBeInTheDocument()
-        expect(screen.queryByText(/Some components have no preferred price at/)).toBeNull()
+        expect(screen.queryByText(/Some components have no price at/)).toBeNull()
     })
 
     // Switching restaurant reads the prices again. A failed read kept the
@@ -343,7 +343,7 @@ describe('a read that fails', () => {
         await screen.findByRole('heading', { name: 'Allergens' })
         expect(screen.getByText('Cost').parentElement.textContent).toContain('€0.30')
 
-        failing('product_supplier_prices', { menu_item_components: [BURRITO[0]] })
+        failing('cost_prices', { menu_item_components: [BURRITO[0]] })
         restaurant = { id: 'r2', name: 'Dun Laoghaire' }
         showAgain(rerender)
         expect(await screen.findByText(/prices could not be read/)).toBeInTheDocument()
@@ -397,7 +397,7 @@ describe('the cost of a dish with a deactivated product in it', () => {
         }))
         showPage()
         const note = await screen.findByText(/Old Beans is deactivated/)
-        expect(note.textContent).toMatch(/Some components have no preferred price at/)
+        expect(note.textContent).toMatch(/Some components have no price at/)
         expect(note.textContent).not.toMatch(/to see the cost/)
     })
 

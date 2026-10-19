@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Route, Routes } from 'react-router-dom'
-import { makeQuery, renderWithRouter, tableOf } from '@/test/helpers'
+import { makeQuery, renderWithRouter, tableOf, COST_VIEWS, costRowsOf } from '@/test/helpers'
 
 // Closing a Point Campus stock take, with one product still to count.
 // Invented products and prices.
@@ -27,7 +27,10 @@ let tables
 let failing
 const user = { id: 'u0', role: 'super_admin', full_name: 'Leandro' }
 
-vi.mock('@/lib/supabase', () => ({ supabase: new Proxy({}, { get: (_, k) => db[k] }) }))
+vi.mock('@/lib/supabase', async importOriginal => ({
+    ...(await importOriginal()),
+    supabase: new Proxy({}, { get: (_, k) => db[k] }),
+}))
 vi.mock('@/context/auth', () => ({ useAuth: () => ({ user }) }))
 
 const { default: StockTakeReviewPage } = await import('./StockTakeReviewPage')
@@ -48,7 +51,7 @@ beforeEach(() => {
             // A read that comes back with an error, the way it does on a weak
             // signal.
             if (table === failing) return makeQuery({ data: null, error: { message: 'Failed to fetch' } })
-            const q = tableOf(tables[table] || [])
+            const q = tableOf((COST_VIEWS.includes(table) ? costRowsOf(tables.product_supplier_prices) : tables[table]) || [])
             q.insert = vi.fn(row => {
                 saved.push(row)
                 return makeQuery({ data: { id: `l${saved.length}`, ...row }, error: null })
@@ -179,7 +182,7 @@ describe('something counted with no price', () => {
 })
 
 describe('a read that fails when the page opens', () => {
-    it.each(['products', 'stock_take_lines', 'product_supplier_prices', 'mix_recipes'])(
+    it.each(['products', 'stock_take_lines', 'staff_cost_prices', 'mix_recipes'])(
         'says so when %s cannot be read, rather than showing everything uncounted',
         async table => {
             failing = table

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, Fragment, useCallback } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
+import { readCostPrices } from '@/lib/costPrices'
 import { readAllergensAt } from '@/lib/allergensAt'
 import { useRestaurant } from '@/context/restaurant'
 import {
@@ -33,8 +34,8 @@ import PageHeader from '@/components/ui/PageHeader'
 // bought or made in house, with a quantity.
 //
 // The three numbers on this page all come from somewhere else and none of them
-// are stored. The cost is added up from the components using this restaurant's
-// preferred prices, the margin comes off that against the net selling price, and
+// are stored. The cost is added up from the components at what recipes cost
+// them at here (lib/costPrices), the margin comes off that against the net selling price, and
 // the allergens are derived by following each component down through its recipe.
 // Nothing here is typed in twice, so nothing can disagree with itself.
 //
@@ -220,11 +221,7 @@ export default function MenuItemPage() {
   // A failed read is said as one. Left empty, it read as a dish with no
   // prices set, and the note under the cost blamed the components.
   const fetchPrices = useCallback(async () => {
-    const { data, error: priceError } = await supabase
-      .from('product_supplier_prices')
-      .select('*')
-      .eq('restaurant_id', activeRestaurant.id)
-      .eq('is_preferred', true)
+    const { data, error: priceError } = await readCostPrices(activeRestaurant.id)
     if (priceError || !data) {
       setPricesFailed(`The prices could not be read, so the cost and margin are not shown. ${friendlyError(priceError)}`.trim())
       // Not the last restaurant's either. Kept, they went on costing this
@@ -977,7 +974,7 @@ export default function MenuItemPage() {
                 + `Replace ${deactivated.length === 1 ? 'it' : 'them'} on this dish, or in the recipe that uses `
                 + `${deactivated.length === 1 ? 'it' : 'them'}${stillUnset ? '. ' : ', to see the cost and margin.'}`}
             {(deactivated.length === 0 || stillUnset)
-              && `Some components have no preferred price at ${activeRestaurant?.name}, or are a MIX whose recipe cannot be costed yet. The cost and margin will show once they all have a cost.`}
+              && `Some components have no price at ${activeRestaurant?.name} or the other restaurant, or are a MIX whose recipe cannot be costed yet. The cost and margin will show once they all have a cost.`}
           </p>
         )}
       </div>

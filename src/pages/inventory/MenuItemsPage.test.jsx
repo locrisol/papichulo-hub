@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
-import { makeQuery, renderWithRouter, tableOf } from '@/test/helpers'
+import { makeQuery, renderWithRouter, tableOf, COST_VIEWS, costRowsOf } from '@/test/helpers'
 import { emptyAllergens } from '@/lib/allergens'
 
 // The menu items list, and what its Allergens column says about each dish.
@@ -53,7 +53,7 @@ function tablesFor(overrides = {}) {
 }
 
 function useTables(tables) {
-    db = { from: vi.fn(table => tableOf(tables[table] || [])) }
+    db = { from: vi.fn(table => tableOf((COST_VIEWS.includes(table) ? costRowsOf(tables.product_supplier_prices) : tables[table]) || [])) }
 }
 
 beforeEach(() => { restaurant = POINT_CAMPUS })
@@ -104,7 +104,7 @@ describe('the Allergens column', () => {
     it('says the prices could not be read when they fail', async () => {
         const tables = tablesFor()
         db = {
-            from: vi.fn(name => (name === 'product_supplier_prices'
+            from: vi.fn(name => (name === 'cost_prices'
                 ? makeQuery({ data: null, error: { message: 'Failed to fetch' } })
                 : tableOf(tables[name] || []))),
         }
@@ -127,7 +127,7 @@ describe('the Allergens column', () => {
 
         const tables = tablesFor()
         db = {
-            from: vi.fn(name => (name === 'product_supplier_prices'
+            from: vi.fn(name => (name === 'cost_prices'
                 ? makeQuery({ data: null, error: { message: 'Failed to fetch' } })
                 : tableOf(tables[name] || []))),
         }

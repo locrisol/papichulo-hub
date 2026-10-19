@@ -618,6 +618,19 @@ maybe('what each role can see and do', () => {
             expect(await joinRefusal(employee)).toEqual([REFUSED_BY_THE_RULES, REFUSED_BY_THE_RULES])
         })
 
+        // What a product costs, for the stock take and waste, at their own
+        // restaurant only, and nothing about whose price it is (step 5).
+        it('reads what things cost at their own restaurant only, and only the cost', async () => {
+            const { data, error } = await employee.from('staff_cost_prices').select('*')
+            expect(error).toBeNull()
+            expect((data || []).filter(c => c.restaurant_id !== ownRestaurantId)).toEqual([])
+            for (const row of data || []) expect(Object.keys(row).sort()).toEqual(['price_per_unit', 'product_id', 'restaurant_id'])
+            for (const view of ['cost_prices', 'cost_choice']) {
+                const { count } = await countVisible(employee, view)
+                expect(count, `an employee can read ${view}`).toBe(0)
+            }
+        })
+
         it('reads where things are kept at their own restaurant only, and changes none of it', async () => {
             const { data, error } = await employee.from('restaurant_kept_in').select('restaurant_id, product_id, section, also_in')
             expect(error).toBeNull()
@@ -919,6 +932,14 @@ maybe('what each role can see and do', () => {
         // a code is the same thing, or that two are bought either way.
         it('may join two codes and say two are bought either way', async () => {
             expect(await joinRefusal(manager)).toEqual(['past', 'past'])
+        })
+
+        it('reads what recipes cost at their own restaurant only', async () => {
+            const { data, error } = await manager.from('cost_prices').select('restaurant_id, product_id, borrowed')
+            expect(error).toBeNull()
+            expect((data || []).filter(c => c.restaurant_id !== ownRestaurantId)).toEqual([])
+            const { count } = await countVisible(manager, 'cost_choice')
+            expect(count, 'a manager can read every restaurant through cost_choice').toBe(0)
         })
 
         // Only from inside code_update, after it has checked who is asking.
@@ -1383,6 +1404,7 @@ maybe('what each role can see and do', () => {
                 'menu_item_components', 'mix_recipes', 'product_allergens',
                 'product_versions', 'version_allergens', 'product_supplier_prices',
                 'product_requests', 'brand_settings', 'restaurant_kept_in', 'version_pictures', 'version_codes',
+                'cost_prices', 'staff_cost_prices', 'cost_choice',
             ]) {
                 const { count } = await countVisible(anon, table)
                 expect(count, `${table} is still readable by anybody`).toBe(0)

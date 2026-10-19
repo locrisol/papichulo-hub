@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { makeQuery, renderWithRouter, tableOf } from '@/test/helpers'
+import { makeQuery, renderWithRouter, tableOf, COST_VIEWS, costRowsOf } from '@/test/helpers'
 import { todayISO } from '@/lib/dates'
 
 // An employee logging waste at Point Campus. Invented products and prices.
@@ -38,7 +38,7 @@ function setUp({
     }
     db = {
         from: vi.fn(table => {
-            const q = tableOf(tables[table] || [])
+            const q = tableOf((COST_VIEWS.includes(table) ? costRowsOf(tables.product_supplier_prices) : tables[table]) || [])
             q.insert = vi.fn(rows => {
                 saved.push(...rows)
                 return makeQuery({ data: null, error: null })
@@ -53,7 +53,10 @@ function setUp({
     }
 }
 
-vi.mock('@/lib/supabase', () => ({ supabase: new Proxy({}, { get: (_, k) => db[k] }) }))
+vi.mock('@/lib/supabase', async importOriginal => ({
+    ...(await importOriginal()),
+    supabase: new Proxy({}, { get: (_, k) => db[k] }),
+}))
 vi.mock('@/context/auth', () => ({ useAuth: () => ({ user: me }) }))
 vi.mock('@/context/restaurant', () => ({
     useRestaurant: () => ({ activeRestaurant: { id: 'r1', name: 'Point Campus' } }),
