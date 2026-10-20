@@ -3,7 +3,7 @@ import {
     KINDS, STATE_KEYS, kindOf, kindLabel, cellColour, rateFor, dayCell,
     personWeek, weekTotals, labourPercent,
     unanswered, importVerdict, summarise, planImport, ASK_ABOVE_SECONDS,
-    planDrift, NOTICEABLE_MINUTES, ROW_BANDS,
+    planDrift, driftsFor, NOTICEABLE_MINUTES, ROW_BANDS,
 } from '@/lib/timesheet'
 
 // The week of Sunday 25 to Saturday 31 October 2026, which holds the October
@@ -119,6 +119,19 @@ describe('one day', () => {
     it('knows the Monday is a bank holiday', () => {
         expect(dayCell(args).bankHoliday).toMatchObject({ name: 'October Bank Holiday' })
         expect(dayCell({ ...args, date: TUE }).bankHoliday).toBeNull()
+    })
+
+    // A shift is paired with its plan by position, so the plans come in the
+    // order they start, whatever order the database handed them back in.
+    it('puts the rostered shifts in the order they start', () => {
+        const cell = dayCell({
+            person: { id: 'e1' }, date: '2026-10-12',
+            shifts: [
+                { id: 'b', employee_id: 'e1', shift_date: '2026-10-12', starts_at: '17:30:00', ends_at: '21:30:00' },
+                { id: 'a', employee_id: 'e1', shift_date: '2026-10-12', starts_at: '09:00:00', ends_at: '13:00:00' },
+            ],
+        })
+        expect(cell.rostered.map(s => s.id)).toEqual(['a', 'b'])
     })
 
     it('reads a holiday out of the absences rather than the entries', () => {
@@ -937,5 +950,50 @@ describe('what counts as far enough to look at', () => {
     it('bands a row from the same two grounds the week grid uses', () => {
         expect(ROW_BANDS).toHaveLength(2)
         expect(ROW_BANDS[0]).not.toBe(ROW_BANDS[1])
+    })
+})
+
+// What each clock time is set against, by the plans it overlaps (21 October
+// 2026). Times in minutes from midnight.
+describe('driftsFor', () => {
+    const shift = (from, to) => ({ starts_at: from, ends_at: to })
+    const span = (id, from, to) => {
+        const m = t => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
+        return { id, start: m(from), ran: m(to) - m(from) }
+    }
+
+    // Majo, Monday 12 October, with the evening handed back first.
+    it('sets each half of a split shift against its own plan', () => {
+        const drifts = driftsFor(
+            [span('pm', '16:58', '22:32'), span('am', '08:57', '13:00')],
+            [shift('17:30:00', '21:30:00'), shift('09:00:00', '13:00:00')],
+        )
+        expect(drifts.get('am').drift).toEqual({ where: 'in', minutes: -3 })
+        expect(drifts.get('pm').drift).toEqual({ where: 'ran', minutes: 94 })
+    })
+
+    // Camila, Tuesday 13 October: clocked once across both halves. Set
+    // against the whole split shift, the length against the eight hours
+    // rostered, not the morning half.
+    it('sets one clock time across a split shift against the whole of it', () => {
+        const drifts = driftsFor([span('c', '08:51', '21:53')], [shift('09:00:00', '13:00:00'), shift('17:30:00', '21:30:00')])
+        expect(drifts.get('c')).toEqual({ planned: true, drift: { where: 'ran', minutes: 302 }, group: { where: 'ran', minutes: 302 } })
+    })
+
+    // Out for an hour in the middle of one shift: one difference for the
+    // pair, written on the later block, both coloured by it.
+    it('sets two clock times inside one plan against it together', () => {
+        const drifts = driftsFor([span('a', '09:00', '12:00'), span('b', '13:00', '17:00')], [shift('09:00:00', '17:00:00')])
+        expect(drifts.get('a')).toEqual({ planned: true, drift: null, group: { where: 'ran', minutes: -60 } })
+        expect(drifts.get('b').drift).toEqual({ where: 'ran', minutes: -60 })
+    })
+
+    it('takes the nearest plan nothing overlaps for a clock time that overlaps none', () => {
+        const drifts = driftsFor([span('late', '18:00', '22:00')], [shift('09:00:00', '13:00:00')])
+        expect(drifts.get('late')).toMatchObject({ planned: true, drift: { where: 'in', minutes: 540 } })
+    })
+
+    it('says not rostered when there is no plan at all', () => {
+        expect(driftsFor([span('x', '09:00', '17:00')], []).get('x')).toEqual({ planned: false, drift: null, group: null })
     })
 })

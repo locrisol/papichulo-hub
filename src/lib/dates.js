@@ -66,6 +66,18 @@ export function dayMonth(dateStr) {
     return d.toLocaleDateString('en-IE', { day: 'numeric', month: 'long' })
 }
 
+// A day as a heading, for example Sunday 11 October: the timesheet's days,
+// where which day of the week it was is the first thing anybody asks.
+export function fullDayLabel(dateStr) {
+    return `${WEEKDAY_NAMES[new Date(dateStr + 'T00:00:00').getDay()]} ${dayMonth(dateStr)}`
+}
+
+// The day of the month on its own, for example 11, under a day's name in a
+// strip of the week.
+export function dayNumber(dateStr) {
+    return new Date(dateStr + 'T00:00:00').getDate()
+}
+
 // A full date with the year, for example 23/08/2026.
 //
 // Used on the sales and labour grids. "23 Aug" on its own is not enough when

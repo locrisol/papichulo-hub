@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { personWeek } from '@/lib/timesheet'
@@ -39,6 +39,76 @@ describe('the day, drawn the way the roster draws one', () => {
         day()
         expect(screen.getByText('Aoife')).toBeInTheDocument()
         expect(screen.getByText('Cathal')).toBeInTheDocument()
+    })
+
+    // His, 19 October 2026: it said 27/10/2026 and nothing said which day of
+    // the week that was.
+    it('names the day of the week in its heading', () => {
+        day()
+        expect(screen.getByText('Tuesday 27 October')).toBeInTheDocument()
+    })
+})
+
+// His, 21 October 2026: a row is as tall as what it says.
+describe('a row with no shift to draw', () => {
+    const track = name => screen.getByText(name).closest('[style]').querySelector('[data-track]')
+    const holiday = {
+        id: 'a1', employee_id: 'e2', kind: 'holiday', starts_on: DAY, ends_on: DAY, status: 'approved',
+    }
+
+    it('is a short line for somebody with nothing that day, and none on a phone', () => {
+        day({ shifts: [rostered] })
+        expect(track('Cathal').className).toContain('min-h-9')
+        expect(track('Cathal').className).toContain('hidden md:flex')
+        expect(track('Aoife').className).toContain('h-24')
+    })
+
+    // On a phone the day off goes on the name line, with no band under it.
+    it('is only as tall as a whole day off needs', () => {
+        day({ shifts: [rostered], absences: [holiday] })
+        expect(track('Cathal').className).toContain('min-h-9')
+        expect(track('Cathal').className).toContain('hidden md:flex')
+        const onTheLine = screen.getAllByText(/Holiday/i).find(el => el.className.includes('md:hidden'))
+        expect(onTheLine).toBeTruthy()
+    })
+
+    it('keeps a comment in the row, so a long one makes it taller', () => {
+        const note = { id: 't9', employee_id: 'e2', work_date: DAY, starts_at: null, ends_at: null, note: 'Came in to help with the delivery', kind: 'worked', source: 'manual' }
+        day({ entries: [note] })
+        expect(track('Cathal').className).toContain('min-h-9')
+        const said = screen.getAllByText(/Came in to help/)
+        expect(said.some(el => el.parentElement.className.includes('relative'))).toBe(true)
+        expect(said.some(el => el.className.includes('md:hidden'))).toBe(true)
+    })
+})
+
+// The shorter day All days stacks seven of.
+describe('the shorter day, for All days', () => {
+    it('lists only the people rostered, clocked in or off that day', () => {
+        day({ shifts: [rostered], compact: true, legend: false })
+        expect(screen.getByText('Aoife')).toBeInTheDocument()
+        expect(screen.queryByText('Cathal')).toBeNull()
+    })
+
+    it('says so when nobody was in, and leaves the legend to the page', () => {
+        day({ compact: true, legend: false })
+        expect(screen.getByText('Nobody was rostered or clocked in.')).toBeInTheDocument()
+        expect(screen.queryByText('what they were rostered for')).toBeNull()
+    })
+
+    // His pick of 20 October 2026: in All days the day's name opens the
+    // green band, larger, rather than the Day view's small line.
+    it('can name the day in the green band instead of a line', () => {
+        day({ shifts: [rostered], compact: true, heading: 'band' })
+        expect(screen.getAllByText('Tuesday 27 October')).toHaveLength(1)
+        expect(screen.getByText('Tuesday 27 October').className).toContain('font-serif')
+    })
+
+    // The same hours across the top on every day, handed down.
+    it('draws the hours it is given', () => {
+        day({ shifts: [rostered], compact: true, range: { from: 6 * 60, to: 22 * 60 } })
+        expect(screen.getByText('06:00')).toBeInTheDocument()
+        expect(screen.getByText('22:00')).toBeInTheDocument()
     })
 })
 
@@ -104,7 +174,9 @@ describe('a day off', () => {
                 starts_on: DAY, ends_on: DAY, hours: 8,
             }],
         })
-        expect(screen.getByText(/Holiday/)).toBeInTheDocument()
+        // Once across the track for a computer, once on the name line for
+        // a phone.
+        expect(screen.getAllByText(/Holiday/)).toHaveLength(2)
         expect(screen.getByText('8.00')).toBeInTheDocument()
     })
 
@@ -220,7 +292,56 @@ describe('correcting a clock time from the day view', () => {
     })
 })
 
+// His pick of 21 October 2026: a bar too narrow for its words has them
+// written out under the bars. The test browser draws nothing, so the measure
+// is faked: anything longer than ten characters is too wide for its bar.
+describe('a bar too narrow for its words', () => {
+    let widths
+    beforeEach(() => {
+        widths = {
+            scroll: Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollWidth'),
+            client: Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth'),
+        }
+        Object.defineProperty(HTMLElement.prototype, 'scrollWidth', { configurable: true, get() { return this.textContent.length > 10 ? 200 : 10 } })
+        Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get() { return 50 } })
+        vi.stubGlobal('ResizeObserver', class { constructor(seen) { this.seen = seen } observe() { this.seen() } disconnect() {} })
+    })
+    afterEach(() => {
+        for (const [key, name] of [['scroll', 'scrollWidth'], ['client', 'clientWidth']]) {
+            if (widths[key]) Object.defineProperty(HTMLElement.prototype, name, widths[key])
+            else delete HTMLElement.prototype[name]
+        }
+        vi.unstubAllGlobals()
+    })
+
+    it('writes the rostered and clocked times out under the bars', () => {
+        day({ shifts: [rostered], entries: [worked] })
+        expect(screen.getByText('Rostered 09:00 to 17:00')).toBeInTheDocument()
+        const under = screen.getAllByText('09:01 to 17:33').find(el => el.tagName === 'B')
+        expect(under.parentElement.textContent).toContain('out +33 min')
+        // Still in the bar, hidden, so the next measure sees how wide it is.
+        expect(screen.getAllByText('09:01 to 17:33').find(el => el.tagName === 'SPAN').className).toContain('invisible')
+    })
+})
+
 describe('how far off the plan it was', () => {
+    // 21 October 2026: Majo's split shift, with the rows handed back evening
+    // first. Each half is set against its own plan, not the other one.
+    it('sets each half of a split shift against its own plan, whatever order the rows came in', () => {
+        day({
+            shifts: [
+                { id: 's2', employee_id: 'e1', shift_date: DAY, starts_at: '17:30:00', ends_at: '21:30:00' },
+                { id: 's1', employee_id: 'e1', shift_date: DAY, starts_at: '09:00:00', ends_at: '13:00:00' },
+            ],
+            entries: [
+                { ...worked, id: 't2', starts_at: '16:58:00', ends_at: '22:32:00' },
+                { ...worked, id: 't1', starts_at: '08:57:00', ends_at: '13:00:00' },
+            ],
+        })
+        expect(screen.getByText(/in −3 min/)).toBeInTheDocument()
+        expect(screen.queryByText(/513/)).toBeNull()
+    })
+
     // Rostered 09:00 to 17:00, clocked 09:01:22 to 17:33:16. A minute late in
     // and thirty-three past the end, so the end is what gets named.
     it('writes the difference on the block, signed, and says which end', () => {
