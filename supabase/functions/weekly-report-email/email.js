@@ -1315,15 +1315,20 @@ const toneFor = n => (num(n) > 0.004 ? RED : num(n) < -0.004 ? GREEN : MUTED)
 // base64, and to about 72,000 like this. Each list keeps the order the Hub
 // gives it, biggest effect first for moves and switches and furthest out first
 // for recipes, so the ones that matter most are the ones that stay.
-const PRICES_IN_MAIL = { moves: 8, switches: 4, recipes: 4 }
+// "Not what we should be buying" (19 October 2026) stops at four products
+// and three dishes under each, the products with the most extra first.
+const PRICES_IN_MAIL = { moves: 8, switches: 4, recipes: 4, offList: 4, dishes: 3 }
 
 function pricesInMail(p) {
     return {
         moves: p.moves.slice(0, PRICES_IN_MAIL.moves),
-        switches: p.switches.slice(0, PRICES_IN_MAIL.switches),
+        switches: (p.switches || []).slice(0, PRICES_IN_MAIL.switches),
         recipes: p.recipes.slice(0, PRICES_IN_MAIL.recipes),
+        offList: offListNamed(p).slice(0, PRICES_IN_MAIL.offList),
     }
 }
+
+const offListNamed = p => (p.offList || []).filter(x => !x.quiet)
 
 function cappedRows(all, shown, toRow) {
     const rows = shown.map(toRow)
@@ -1381,14 +1386,90 @@ function brandRows(rows) {
     </td></tr>`)
 }
 
+// ---------------------------------------------------------------------------
+// Not what we should be buying
+// ---------------------------------------------------------------------------
+//
+// What was bought instead of the Recommended list, each product with what was
+// bought beside what is recommended and what recipes cost it at, the week's
+// extra, and the dishes it pushed past the restaurant's limit. The supplier
+// is a small badge that wraps with the words; nothing in it holds the mail
+// wider than a phone. A fallback bought on its own is one quiet line.
+
+function supplierBadge(name) {
+    return name
+        ? `<span style="display:inline-block;padding:0 6px;margin-right:4px;border-radius:6px;background:#EEF2F6;`
+            + `color:#334155;font-size:11px;line-height:17px;">${escapeHtml(name)}</span>`
+        : ''
+}
+
+function offBox(label, colour, ground, items, foot) {
+    return `<td width="50%" valign="top" style="padding:10px 12px;background:${ground};border:1px solid ${BORDER};
+        border-radius:8px;${BREAKS}">
+        <div style="font-size:11px;letter-spacing:0.6px;font-weight:700;color:${colour};">${escapeHtml(label).toUpperCase()}</div>
+        ${items.map(item => `<div style="font-size:14px;line-height:1.4;color:${INK};margin-top:4px;">${escapeHtml(item.name)}</div>`
+            + `<div style="font-size:12px;line-height:1.5;color:${MUTED};">${supplierBadge(item.supplier)}`
+            + `${escapeHtml(item.facts.filter(Boolean).join(', '))}</div>`).join('')}
+        ${foot ? `<div style="font-size:13px;font-weight:700;color:${INK};margin-top:6px;">${escapeHtml(foot)}</div>` : ''}
+    </td>`
+}
+
+function offListRows(p, shown) {
+    const rows = shown.map(x => {
+        const dishes = x.dishes.slice(0, PRICES_IN_MAIL.dishes)
+        const moreDishes = x.dishes.length - dishes.length
+        return `<tr><td colspan="2" style="padding:12px 14px;border-bottom:1px solid ${BORDER};">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+            <td width="100%" style="font-size:15px;font-weight:700;color:${INK};${BREAKS}">${escapeHtml(x.name)}</td>
+            <td width="1%" align="right" style="padding-left:12px;font-size:14px;font-weight:700;color:${toneFor(x.extra)};white-space:nowrap;">${x.costed == null ? '' : signedMoney(x.extra)}</td>
+        </tr></table>
+        <div style="font-size:13px;color:${MUTED};margin:2px 0 8px;">${escapeHtml(money(x.money))} this week${x.change == null ? '' : `, ${change(x.change)} a unit against the list`}</div>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;border-spacing:0;">
+            <tr>
+                ${offBox('Bought', AMBER, '#FEF6E7', x.bought.map(b => ({
+                    name: b.name,
+                    supplier: b.supplier,
+                    facts: [b.code ? `code ${b.code}` : null, cases(b.cases, b.loose), b.per != null ? `${money(b.per)} ${x.unit}` : null, b.fallback ? `fallback ${b.fallback}` : null],
+                })))}
+                <td width="8" style="width:8px;min-width:8px;font-size:1px;line-height:1px;">&nbsp;</td>
+                ${offBox('Recommended', GREEN, '#EEF6F1', x.recommended.map(v => ({
+                    name: v.name, supplier: v.supplier, facts: [v.code ? `code ${v.code}` : null],
+                })), x.costed != null
+                    ? `Recipes cost it at ${money(x.costed)} ${x.unit}${x.borrowed ? ", the other restaurant's price" : ''}`
+                    : 'No price for it here or at the other restaurant')}
+            </tr>
+        </table>
+        ${dishes.length ? `<div style="margin-top:8px;padding:8px 10px;border:1px solid #FECACA;background:#FEF2F2;border-radius:8px;font-size:13px;line-height:1.5;color:${INK};${BREAKS}">`
+            + `<div style="font-size:12px;font-weight:700;color:${RED};">Over ${escapeHtml(String(p.threshold))}% at the price paid</div>`
+            + dishes.map(d => `${escapeHtml(d.name)}: ${escapeHtml(money(d.was))} to ${escapeHtml(money(d.now))}, <strong style="color:${RED};">+${escapeHtml(String(d.rise))}%</strong>`).join('<br />')
+            + (moreDishes > 0 ? `<br /><span style="color:${MUTED};">and ${moreDishes} more, on the Hub</span>` : '')
+            + '</div>' : ''}
+    </td></tr>`
+    })
+    const named = offListNamed(p)
+    if (named.length > shown.length) {
+        rows.push(`<tr><td colspan="2" style="padding:9px 14px;border-bottom:1px solid ${BORDER};font-size:13px;">`
+            + `<span style="color:${MUTED};">and ${named.length - shown.length} more, on the Hub</span></td></tr>`)
+    }
+    const quiet = (p.offList || []).filter(x => x.quiet)
+    if (quiet.length) {
+        rows.push(`<tr><td colspan="2" style="padding:9px 14px;border-bottom:1px solid ${BORDER};font-size:13px;color:${MUTED};${BREAKS}">`
+            + `A fallback, as the list allows: ${escapeHtml(quiet.map(q => `${q.name} (${q.bought.map(b => b.name).join(', ')})`).join('; '))}.</td></tr>`)
+    }
+    return rows
+}
+
 // The three that came with the brand's recommendations, as cards, each only
 // when it has something in it: the mail is kept short (his list of 4
 // October), and the report in the Hub says when everything was as
 // recommended. Nothing on a report frozen before they existed.
-function brandCards(p) {
+function brandCards(p, shown) {
     const t = p.totals || {}
     let out = ''
-    if (p.notRecommended?.length) {
+    if (p.offList?.length) {
+        out += priceCard('Not what we should be buying', offListNamed(p).length ? signedMoney(t.offList) : '', toneFor(t.offList),
+            offListRows(p, shown.offList), '')
+    } else if (!p.offList && p.notRecommended?.length) {
         out += priceCard('Not as the brand recommends', String(p.notRecommended.length), AMBER,
             brandRows(p.notRecommended), '')
     }
@@ -1458,7 +1539,8 @@ export function pricesSection(section, f) {
         ],
         'Every code cost what it did the last time it came.')
 
-    const switches = priceCard('Bought as something else', p.switches.length ? signedMoney(t.switches) : '', toneFor(t.switches),
+    // Only on a report sent before "Not what we should be buying".
+    const switches = p.offList ? '' : priceCard('Bought as something else', p.switches.length ? signedMoney(t.switches) : '', toneFor(t.switches),
         cappedRows(p.switches, shown.switches, x => line({
             inset: 14,
             label: escapeHtml(x.name)
@@ -1535,7 +1617,7 @@ export function pricesSection(section, f) {
     // has to know which suppliers were only a typed total. Absent on anything
     // frozen before it existed.
     return heading(section.title, section.number)
-        + brandCards(p)
+        + brandCards(p, shown)
         + moves + switches + recipes + back
         + fresh
         + note(`Recipes checked on ${fmtDate(p.checkedOn)}. Prices are without VAT, as printed on the invoices.`)
@@ -1558,7 +1640,20 @@ function pricesText(p) {
     const t = p.totals || {}
     const shown = pricesInMail(p)
     const out = []
-    if (p.notRecommended?.length) {
+    if (p.offList?.length) {
+        const named = offListNamed(p)
+        out.push(`  Not what we should be buying${named.length ? `: ${signedMoney(t.offList)}` : ''}`)
+        out.push(...cappedText(named, shown.offList, x => [
+            `    ${x.name}, ${money(x.money)}${x.costed == null ? '' : `, ${signedMoney(x.extra)} against the list`}`,
+            ...x.bought.map(b => `      Bought: ${b.name}${b.supplier ? ` (${b.supplier}${b.code ? `, code ${b.code}` : ''})` : ''}`
+                + `${b.per != null ? `, ${money(b.per)} ${x.unit}` : ''}${b.fallback ? `, fallback ${b.fallback}` : ''}`),
+            `      Recommended: ${x.recommended.map(v => v.name + (v.supplier ? ` (${v.supplier})` : '')).join(', ')}`
+                + (x.costed != null ? `; recipes cost it at ${money(x.costed)} ${x.unit}${x.borrowed ? ", the other restaurant's price" : ''}` : ''),
+            ...x.dishes.slice(0, PRICES_IN_MAIL.dishes).map(d => `      Over ${p.threshold}%: ${d.name}, ${money(d.was)} to ${money(d.now)}, +${d.rise}%`),
+        ].join('\n')))
+        const quiet = p.offList.filter(x => x.quiet)
+        if (quiet.length) out.push(`    A fallback, as the list allows: ${quiet.map(q => `${q.name} (${q.bought.map(b => b.name).join(', ')})`).join('; ')}`)
+    } else if (p.notRecommended?.length) {
         out.push('  Not as the brand recommends')
         for (const r of p.notRecommended) {
             out.push(`    ${r.name}, ${[cases(r.cases), money(r.money)].filter(Boolean).join(', ')}`)
@@ -1579,7 +1674,7 @@ function pricesText(p) {
         out.push(...cappedText(p.moves, shown.moves, m => `    ${m.name}: ${m.prices || `${priceOf(m.was, m.per)} to ${priceOf(m.now, m.per)} ${m.per}`}, ${change(m.change)}, ${signedMoney(m.effect)}`
             + (m.split ? ` (${m.split})` : '')))
     }
-    if (p.switches.length) {
+    if (!p.offList && p.switches.length) {
         out.push('  Bought as something else')
         out.push(...cappedText(p.switches, shown.switches, x => `    ${x.name}: ${x.bought}`
             + (x.cannot ? ', cannot be compared' : `, ${change(x.change)}, ${signedMoney(x.effect)}`)))

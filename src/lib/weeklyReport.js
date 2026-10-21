@@ -740,7 +740,13 @@ export function publishCheck(sections = [], figures = null, held = []) {
 // say "Refunds: none". Before 4 an empty list may only mean nobody looked.
 // paperwork.asOf and paperwork.people, the day here it was checked and how
 // many were.
-export const FIGURES_VERSION = 4
+// 5, 19 October 2026: prices.offList, "Not what we should be buying", takes
+// the place of prices.switches and prices.notRecommended, which are empty
+// from 5 on; prices.codeUpdates carries the codes still asked about. A
+// report without offList was sent before it, and the page and the mail draw
+// the two old cards for it. Readers check for the key itself, because
+// prices can be null.
+export const FIGURES_VERSION = 5
 
 export function figuresToStore(figures, at = new Date()) {
     return { ...figures, version: FIGURES_VERSION, frozen_at: at.toISOString() }

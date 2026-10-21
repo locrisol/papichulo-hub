@@ -4,6 +4,7 @@ import { shortDate, dayLabel } from '@/lib/dates'
 import { CLAIM_KINDS } from '@/lib/invoiceClaims'
 import { backByReason, decisionsFrom } from '@/lib/invoiceReport'
 import { canJoinCodes, canBuyBoth } from '@/lib/priceEvents'
+import SupplierBadge from '@/components/ui/SupplierBadge'
 import {
     badge, rowButton, compactField, tableHeadRow, tableHeadCell,
 } from '@/lib/controlStyles'
@@ -91,14 +92,28 @@ export default function ReportPrices({
                                 : t.movesUp ? (t.movesUp === 1 ? 'up' : 'all up') : (t.movesDown === 1 ? 'cheaper' : 'all cheaper'))
                         : 'Every code cost what it did'}
                 />
-                <Tile
-                    tone={toneOf(t.switches)}
-                    label="Bought as something else"
-                    value={section.switches.length ? signed(t.switches) : 'None'}
-                    sub={section.switches.length
-                        ? `${section.switches.length} ${section.switches.length === 1 ? 'product' : 'products'}`
-                        : 'Everything was the usual one'}
-                />
+                {/* The card that replaced the two about switching (19 October
+                    2026). A report sent before it keeps the old tile. */}
+                {section.offList ? (
+                    <Tile
+                        tone={toneOf(t.offList)}
+                        label="Not what we should be buying"
+                        value={t.offListCount ? signed(t.offList) : 'None'}
+                        sub={t.offListCount
+                            ? `${t.offListCount} ${t.offListCount === 1 ? 'product' : 'products'}`
+                                + (t.offListDishes ? `, ${t.offListDishes} ${t.offListDishes === 1 ? 'dish' : 'dishes'} over ${section.threshold}%` : '')
+                            : 'Everything was on the Recommended list'}
+                    />
+                ) : (
+                    <Tile
+                        tone={toneOf(t.switches)}
+                        label="Bought as something else"
+                        value={section.switches.length ? signed(t.switches) : 'None'}
+                        sub={section.switches.length
+                            ? `${section.switches.length} ${section.switches.length === 1 ? 'product' : 'products'}`
+                            : 'Everything was the usual one'}
+                    />
+                )}
                 <Tile
                     tone={t.recipes ? 'warn' : 'quiet'}
                     label="Recipes out of line"
@@ -118,12 +133,14 @@ export default function ReportPrices({
 
             <WeekInShort section={section} />
 
-            <NotRecommended rows={section.notRecommended} />
+            {section.offList
+                ? <OffList rows={section.offList} threshold={section.threshold} />
+                : <NotRecommended rows={section.notRecommended} />}
             <Waiting rows={section.waiting} total={t.waiting} />
             <NotChecked rows={section.notChecked} total={t.notChecked} />
 
             <Moves moves={section.moves} doubtful={section.doubtful || []} />
-            <Switches switches={section.switches} canDecide={canDecide} busy={busy} onBuyBoth={onBuyBoth} />
+            {!section.offList && <Switches switches={section.switches} />}
             <Recipes recipes={section.recipes} checkedOn={section.checkedOn} threshold={section.threshold} />
             <Back
                 back={section.back}
@@ -350,6 +367,7 @@ function WeekInShort({ section }) {
             : t.movesUp ? 'Dearer, same code' : 'Cheaper, same code'
 
     const compared = [...switches].filter(x => !x.cannot)
+    const offList = section.offList ? section.offList.filter(x => !x.quiet) : null
     const off = recipes.filter(r => r.state !== 'cannot')
     const cannot = recipes.filter(r => r.state === 'cannot')
 
@@ -367,20 +385,35 @@ function WeekInShort({ section }) {
                 {doubtful.map(m => <Chip key={m.key} name={m.name} note="check the invoice" tone="warn" />)}
             </ShortRow>
 
-            <ShortRow
-                kind="grey"
-                label="Bought instead"
-                quiet={switches.length ? null : 'Everything was the usual one'}
-                money={compared.length ? signed(t.switches) : null}
-                under="against the usual"
-            >
-                {compared.slice(0, CHIPS).map(x => (
-                    <Chip key={`${x.productId}:${x.code}`} name={x.name} change={x.change} />
-                ))}
-                {switches.length > Math.min(CHIPS, compared.length) && (
-                    <More count={switches.length - Math.min(CHIPS, compared.length)} />
-                )}
-            </ShortRow>
+            {offList ? (
+                <ShortRow
+                    kind="grey"
+                    label="Not on the list"
+                    quiet={offList.length ? null : 'Everything was on the Recommended list'}
+                    money={offList.length ? signed(t.offList) : null}
+                    under="against the list"
+                >
+                    {offList.slice(0, CHIPS).map(x => (x.change == null
+                        ? <Chip key={x.productId} name={x.name} note="no price to compare" tone="grey" />
+                        : <Chip key={x.productId} name={x.name} change={x.change} />))}
+                    {offList.length > CHIPS && <More count={offList.length - CHIPS} />}
+                </ShortRow>
+            ) : (
+                <ShortRow
+                    kind="grey"
+                    label="Bought instead"
+                    quiet={switches.length ? null : 'Everything was the usual one'}
+                    money={compared.length ? signed(t.switches) : null}
+                    under="against the usual"
+                >
+                    {compared.slice(0, CHIPS).map(x => (
+                        <Chip key={`${x.productId}:${x.code}`} name={x.name} change={x.change} />
+                    ))}
+                    {switches.length > Math.min(CHIPS, compared.length) && (
+                        <More count={switches.length - Math.min(CHIPS, compared.length)} />
+                    )}
+                </ShortRow>
+            )}
 
             <ShortRow
                 kind={off.length ? 'warn' : 'grey'}
@@ -553,7 +586,9 @@ function Moves({ moves, doubtful }) {
     )
 }
 
-function Switches({ switches, canDecide, busy, onBuyBoth }) {
+// Drawn only for a report sent before "Not what we should be buying" took its
+// place (19 October 2026), so there is nothing on it to decide.
+function Switches({ switches }) {
     return (
         <Card
             title="Bought as something else"
@@ -569,23 +604,10 @@ function Switches({ switches, canDecide, busy, onBuyBoth }) {
                             {s.bought}, code {s.code} &middot; {shortDate(s.on)}{s.invoice ? `, ${s.invoice}` : ''}
                             {s.deliveries > 1 ? `, ${s.deliveries} deliveries` : ''}
                         </p>
-                        {/* Any row here can be the same thing bought either
-                            way, not only the ones whose words match: the
-                            tortillas come in two brands depending on stock. */}
                         {s.since && (
                             <p className="text-xs text-muted">
                                 {s.since.usual ? 'It is the usual one now.' : 'The usual one has changed since this week.'}
                             </p>
-                        )}
-                        {canDecide && !s.since && canBuyBoth(s) && (
-                            <button
-                                type="button"
-                                disabled={!!busy}
-                                onClick={() => onBuyBoth(s, `switch:${s.productId}:${s.code}:both`)}
-                                className={`${rowButton()} mt-1.5`}
-                            >
-                                {busy === `switch:${s.productId}:${s.code}:both` ? 'Saving...' : 'Same thing, we usually buy both'}
-                            </button>
                         )}
                     </div>
                     {s.cannot ? (
@@ -783,6 +805,110 @@ const quantity = (cases, loose = 0) => [
 // boxes: what was bought and what the brand recommends, each at its price per
 // unit here (layout D, his pick of 4 October). Absent on a report sent before
 // it existed.
+// What was bought instead of the Recommended list, against what recipes
+// cost it at from the list, and the dishes it pushed past the restaurant's
+// limit. A fallback bought on its own, with no dish over, is one quiet line:
+// it is what the list says to buy when the others are out.
+function OffList({ rows, threshold }) {
+    const named = rows.filter(r => !r.quiet)
+    const quiet = rows.filter(r => r.quiet)
+    return (
+        <Card
+            title="Not what we should be buying"
+            sub={named.length ? `${named.length} ${named.length === 1 ? 'product' : 'products'}` : ''}
+            empty="Everything bought was on the Recommended list."
+            count={rows.length}
+        >
+            <ul>
+                {named.map(r => (
+                    <li key={r.productId} className="px-3 py-3 border-b border-border last:border-b-0">
+                        <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+                            <p className="text-sm font-bold text-gray-900">{r.name}</p>
+                            {r.costed != null && (
+                                <p className="text-sm font-bold tabular-nums text-gray-900">{signed(r.extra)}</p>
+                            )}
+                        </div>
+                        <p className="text-xs text-muted mb-2">
+                            {fmtMoney(r.money)} this week
+                            {r.change != null ? `, ${pct(r.change)} a unit against the list` : ''}
+                        </p>
+                        <div className="grid sm:grid-cols-2 gap-2">
+                            <OffBox
+                                label="Bought"
+                                tone="not"
+                                items={r.bought.map(b => ({
+                                    key: `${b.name}:${b.code}`,
+                                    name: b.name,
+                                    supplier: b.supplier,
+                                    facts: [
+                                        b.code ? `code ${b.code}` : null,
+                                        quantity(b.cases, b.loose),
+                                        b.per != null ? `${priceText(b.per)} ${r.unit}` : null,
+                                        b.fallback ? `fallback ${b.fallback}` : null,
+                                    ],
+                                }))}
+                            />
+                            <OffBox
+                                label="Recommended"
+                                tone="good"
+                                items={r.recommended.map(v => ({
+                                    key: `${v.name}:${v.code}`,
+                                    name: v.name,
+                                    supplier: v.supplier,
+                                    facts: [v.code ? `code ${v.code}` : null],
+                                }))}
+                                foot={r.costed != null
+                                    ? `Recipes cost it at ${priceText(r.costed)} ${r.unit}${r.borrowed ? ", the other restaurant's price" : ''}`
+                                    : 'No price for it here or at the other restaurant'}
+                            />
+                        </div>
+                        {r.dishes.length > 0 && (
+                            <div className="mt-2 rounded-lg border border-red-200 bg-red-50 p-2.5">
+                                <p className="text-xs font-semibold text-red-800">
+                                    {r.dishes.length === 1 ? 'A dish' : `${r.dishes.length} dishes`} over {threshold}% at the price paid
+                                </p>
+                                <ul className="mt-1 space-y-0.5">
+                                    {r.dishes.map(d => (
+                                        <li key={d.id} className="text-sm text-gray-900">
+                                            {d.name}: {fmtMoney(d.was)} to {fmtMoney(d.now)}, <b className="text-red-700">+{d.rise}%</b>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
+                    </li>
+                ))}
+                {quiet.length > 0 && (
+                    <li className="px-3 py-2.5 text-sm text-muted">
+                        A fallback, as the list allows: {quiet.map(q => `${q.name} (${q.bought.map(b => b.name).join(', ')})`).join('; ')}.
+                    </li>
+                )}
+            </ul>
+        </Card>
+    )
+}
+
+function OffBox({ label, tone, items, foot }) {
+    const look = tone === 'good' ? 'border-green-200 bg-green-50' : 'border-amber-200 bg-amber-50'
+    return (
+        <div className={`rounded-lg border p-2.5 min-w-0 ${look}`}>
+            <p className="text-xs font-semibold text-muted uppercase tracking-wider">{label}</p>
+            <ul className="mt-1 space-y-1.5">
+                {items.map(item => (
+                    <li key={item.key} className="min-w-0">
+                        <p className="text-sm text-gray-900 break-words">{item.name}</p>
+                        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted mt-0.5">
+                            {item.supplier && <SupplierBadge name={item.supplier} />}
+                            {item.facts.filter(Boolean).join(', ')}
+                        </p>
+                    </li>
+                ))}
+            </ul>
+            {foot && <p className="text-sm font-semibold tabular-nums text-gray-900 mt-2">{foot}</p>}
+        </div>
+    )
+}
+
 function NotRecommended({ rows }) {
     if (!rows) return null
     return (
@@ -902,6 +1028,11 @@ function Ledger({ section }) {
         ['Same product, new price', section.moves.map(m => ({
             key: m.key, name: m.name, what: `${m.pack || ''} code ${m.code}, ${shortDate(m.on)} ${m.invoice || ''}`,
             before: `${priceText(m.was, m.per)} ${m.per}`, now: priceText(m.now, m.per), change: pct(m.change), money: signed(m.effect),
+        }))],
+        ['Not what we should be buying', (section.offList || []).filter(x => !x.quiet).map(x => ({
+            key: `off:${x.productId}`, name: x.name, what: `${x.bought.map(b => b.name).join(', ')} instead`,
+            before: x.costed == null ? '' : `${fmtMoney(x.costed)} ${x.unit}`, now: '',
+            change: pct(x.change), money: x.costed == null ? '' : signed(x.extra),
         }))],
         ['Bought as something else', section.switches.map(s => ({
             key: `${s.productId}:${s.code}`, name: s.name, what: `${s.bought} instead, ${shortDate(s.on)} ${s.invoice || ''}`,
