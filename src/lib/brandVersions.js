@@ -41,6 +41,15 @@ export function versionLabel(version, product, supplierName = '') {
     return [product?.name || 'This product', from].filter(Boolean).join(', ')
 }
 
+// Whether recipes cost this product from its recommended set, the dearest
+// of it (his decision of 18 October 2026), so that nobody chooses its price
+// by hand: the Recommended list does. The same rule as set_cost_row in
+// schema.sql, which refuses such a product.
+export function costsFromTheList(product, versions = []) {
+    return product?.recommends === 'versions'
+        && (versions || []).some(v => v.product_id === product.id && v.is_recommended && v.is_active !== false)
+}
+
 // Whether the version a restaurant costs from is one the brand recommends.
 //
 // `price` is the restaurant's preferred price, which is what it buys and

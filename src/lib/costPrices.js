@@ -43,3 +43,23 @@ export function readCostOf(restaurantId, productId) {
         .eq('product_id', productId)
         .maybeSingle()
 }
+
+// The dishes and everything in them, in the shape the costing helpers take
+// (lib/mixCost: menuItemCost, dishRises, dishChanges): every menu item,
+// category, component, recipe line and product, a page at a time in an order
+// that cannot tie. For the weekly report's dishes over the limit and the
+// Recommended list's cost before a change. Returns { data, error }.
+export async function readMenuCosting() {
+    const reads = await Promise.all([
+        everyRow(() => supabase.from('menu_items').select('id, name, category_id, is_active').order('id')),
+        everyRow(() => supabase.from('menu_categories').select('id, is_active').order('id')),
+        everyRow(() => supabase.from('menu_item_components')
+            .select('id, menu_item_id, product_id, quantity, choice_group, no_quantity').order('id')),
+        everyRow(() => supabase.from('mix_recipes').select('id, mix_product_id, ingredient_product_id, quantity').order('id')),
+        everyRow(() => supabase.from('products').select('id, is_mix, batch_yield, is_active').order('id')),
+    ])
+    const failed = reads.find(r => r.error)
+    if (failed) return { data: null, error: failed.error }
+    const [menuItems, categories, components, recipeLines, products] = reads.map(r => r.data || [])
+    return { data: { menuItems, categories, components, recipeLines, products }, error: null }
+}

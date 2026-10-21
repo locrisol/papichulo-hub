@@ -43,6 +43,7 @@ import { num, fmtMoney, fmtQty, namesList, round2, round4 } from '@/lib/format'
 import { canJoinCodes } from '@/lib/priceEvents'
 import { pricesAsAt } from '@/lib/pricesAsAt'
 import { dishRises } from '@/lib/mixCost'
+import { costsFromTheList } from '@/lib/brandVersions'
 import { addDays, dayMonth, stampDay } from '@/lib/dates'
 import { samePrice, sameWords, similarWords, SAME_WORDS, byPieceWeight } from '@/lib/invoiceImport'
 import { readPackSize, mend } from '@/lib/invoiceSysco'
@@ -737,14 +738,28 @@ export function usualSuggestions(all, { weekStart, weekEnd, prices = [], codes =
 // One that cannot be compared is said, rather than left out, but only in a
 // week it was bought: the answer is to fix how the product is counted, and
 // saying so every week would be noise.
-export function recipeGaps(all, { weekStart, weekEnd, prices = [], codes = [], threshold = DEFAULT_RECIPE_GAP }) {
+export function recipeGaps(all, {
+    weekStart, weekEnd, prices = [], codes = [], versions = [], costPrices = [], threshold = DEFAULT_RECIPE_GAP,
+}) {
     const lineage = lineageOf(codes)
     const productIds = [...new Set(all.filter(d => d.productId && d.date <= weekEnd).map(d => d.productId))]
 
     const out = []
     for (const productId of productIds) {
-        const usual = usualFor(productId, prices, codes)
-        if (!usual) continue
+        const found = usualFor(productId, prices, codes)
+        if (!found) continue
+        // **Costed from the Recommended list** (his decision of 18 October
+        // 2026): recipes cost it at the dearest of its set, and keep_cost_row
+        // keeps the preferred row on this restaurant's own price of that
+        // version, so that version is the one checked, against its own
+        // deliveries only. Averaged over the set, the cheaper pack bought turn
+        // about would put the dearest on the report every week for being the
+        // dearest. One costed from the other restaurant's price is left off:
+        // nothing paid here is that price, and Cost from it would write onto a
+        // row recipes do not use.
+        const listed = costsFromTheList(all.find(d => d.productId === productId)?.product, versions)
+        if (listed && (costPrices || []).some(c => c.product_id === productId && c.borrowed)) continue
+        const usual = listed ? { ...found, group: null } : found
         const mine = all.filter(d => d.productId === productId && d.date <= weekEnd && isUsual(d, usual, lineage))
         const last = mine[mine.length - 1]
         if (!last) continue
@@ -1200,7 +1215,7 @@ export function priceWeek({
     const codeUpdates = withSince(switchesIn(all, { ...scope, versions }).filter(s => s.renumbered), 'switch', prices, codes)
     // One fixed since, so recipes cost now what the week paid, is not said
     // at all (his, 7 October): only a costing still out of line is news.
-    const recipes = withSince(recipeGaps(all, scope), 'recipe', prices, codes)
+    const recipes = withSince(recipeGaps(all, { ...scope, versions, costPrices }), 'recipe', prices, codes)
         .filter(r => !fixedSince(r, threshold))
     const suggestions = withSince(usualSuggestions(all, { ...scope, versions }), 'usual', prices, codes)
     const back = cameBack(credits, claims, { weekStart, weekEnd, invoices })

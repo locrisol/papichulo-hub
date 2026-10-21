@@ -64,3 +64,23 @@ export function packLabel(format, unit) {
     const holds = fmtQty(format?.factor)
     return `${format?.label || 'Pack'}, ${holds} ${unitWords(unit, format?.factor)} each`
 }
+
+// The packs a count offers for one product, from each price row it takes
+// packs from (count_price_rows in schema.sql): the row recipes cost from,
+// first, and the own row of every recommended version, since a set bought
+// turn about can be on the shelf in either (21 October 2026). The same pack
+// on two rows is offered once. Two packs with one name that hold different
+// amounts are told apart by what they hold, "Box of 5" and "Box of 10",
+// because a count line keeps what was counted by the pack's name.
+export function packsOfRows(rows) {
+    const name = f => String(f?.label ?? '').trim().toLowerCase()
+    const seen = new Map()
+    for (const f of (rows || []).flat()) {
+        const key = `${name(f)}|${Number(f.factor)}`
+        if (!seen.has(key)) seen.set(key, f)
+    }
+    const kept = [...seen.values()]
+    const named = new Map()
+    for (const f of kept) named.set(name(f), (named.get(name(f)) || 0) + 1)
+    return orderFormats(kept.map(f => (named.get(name(f)) > 1 ? { ...f, label: `${f.label} of ${fmtQty(f.factor)}` } : f)))
+}

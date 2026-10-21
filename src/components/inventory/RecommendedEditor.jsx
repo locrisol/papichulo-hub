@@ -9,8 +9,10 @@ import {
     rowButton, secondaryButton, segmentButton, segmentTrack,
 } from '@/lib/controlStyles'
 import {
-    anyVersionWords, groupsOf, ownPrice, priceWords, standingOf, withFallback, withoutFallback,
+    anyVersionWords, costPreviewWords, groupsOf, ownPrice, priceWords, setWith, standingOf, withFallback, withoutFallback,
 } from '@/lib/recommended'
+import { readCostPrices, readMenuCosting } from '@/lib/costPrices'
+import { dishChanges } from '@/lib/mixCost'
 import { useConfirm } from '@/context/confirm'
 import AddButton from '@/components/ui/AddButton'
 import ArrangeList from '@/components/ui/ArrangeList'
@@ -86,11 +88,51 @@ export default function RecommendedEditor({ product, list, supplierName, userId,
     }
     const fallbacksTo = (key, ids) => run(key, () => supabase.rpc('set_fallbacks', { product: product.id, versions: ids }), { sheetMayChange: true })
 
+    // Before a change to which versions recipes cost from, what it does to
+    // the cost at each restaurant and to the dishes (his note on step 1, 18
+    // October 2026). The database works the cost out, since the other
+    // restaurant's prices are not an owner's to read; the dishes are worked
+    // out here for each restaurant whose costs can be read. True to go
+    // ahead: straight away when nothing would cost anything different, or
+    // when `also`, anything else the question has to say, is nothing either.
+    const menu = useRef(null)
+    async function costsAllowed(nextIds, { title, confirmLabel, also = '' }) {
+        const { data: rows, error: failed } = await supabase.rpc('recommended_cost_preview', { product: product.id, versions: nextIds })
+        if (failed) { setError(friendlyError(failed)); return false }
+        let words = costPreviewWords(product, rows)
+        if (words) {
+            if (!menu.current) menu.current = (await readMenuCosting()).data
+            const dishes = {}
+            for (const r of rows) {
+                if (!menu.current || r.cost_after == null) continue
+                const { data: costs } = await readCostPrices(r.restaurant_id)
+                if (costs?.length) dishes[r.restaurant_id] = dishChanges(product.id, r.cost_after, { ...menu.current, costPrices: costs })
+            }
+            words = costPreviewWords(product, rows, dishes)
+        }
+        if (!words) return also ? confirm({ title, message: also, confirmLabel }) : true
+        return confirm({
+            title, message: [also, words.message].filter(Boolean).join('\n\n'), details: words.details, groups: words.groups, confirmLabel,
+        })
+    }
+    async function changeSet(key, nextIds, ask, write) {
+        if (busy) return
+        setBusy(key)
+        setError('')
+        const go = await costsAllowed(nextIds, ask)
+        setBusy('')
+        if (go) await run(key, write, { sheetMayChange: true })
+    }
+    const star = (id, patch) => () => supabase.from('product_versions').update(patch).eq('id', id)
+
     async function choose(mode) {
         if (mode === product.recommends || busy) return
         if (mode === 'any') {
-            const words = anyVersionWords(product, groups)
-            if (words && !(await confirm({ title: 'Any version?', message: words, confirmLabel: 'Any version' }))) return
+            setBusy('mode')
+            setError('')
+            const go = await costsAllowed([], { title: 'Any version?', confirmLabel: 'Any version', also: anyVersionWords(product, groups) })
+            setBusy('')
+            if (!go) return
         }
         await run('mode', () => supabase.rpc('set_recommends', { product: product.id, mode }), { sheetMayChange: true })
     }
@@ -138,7 +180,9 @@ export default function RecommendedEditor({ product, list, supplierName, userId,
                                 <button
                                     type="button"
                                     disabled={!!busy}
-                                    onClick={() => fallbacksTo(`fallback-${v.id}`, withFallback(groups.fallbacks, v.id))}
+                                    onClick={() => changeSet(`fallback-${v.id}`, setWith(groups, v.id, false),
+                                        { title: 'Make it a fallback?', confirmLabel: 'Make it a fallback' },
+                                        () => supabase.rpc('set_fallbacks', { product: product.id, versions: withFallback(groups.fallbacks, v.id) }))}
                                     className={rowButton()}
                                 >
                                     Make it a fallback
@@ -146,7 +190,9 @@ export default function RecommendedEditor({ product, list, supplierName, userId,
                                 <button
                                     type="button"
                                     disabled={!!busy}
-                                    onClick={() => change(`star-${v.id}`, v.id, { is_recommended: false }, { sheetMayChange: true })}
+                                    onClick={() => changeSet(`star-${v.id}`, setWith(groups, v.id, false),
+                                        { title: 'Take it off the list?', confirmLabel: 'Take off the list' },
+                                        star(v.id, { is_recommended: false }))}
                                     className={rowButton()}
                                 >
                                     Take off the list
@@ -173,7 +219,9 @@ export default function RecommendedEditor({ product, list, supplierName, userId,
                                 <button
                                     type="button"
                                     disabled={!!busy}
-                                    onClick={() => change(`star-${v.id}`, v.id, { is_recommended: true, fallback_rank: null }, { sheetMayChange: true })}
+                                    onClick={() => changeSet(`star-${v.id}`, setWith(groups, v.id, true),
+                                        { title: 'Add it to the list?', confirmLabel: 'Add to the list' },
+                                        star(v.id, { is_recommended: true, fallback_rank: null }))}
                                     className={rowButton('good')}
                                 >
                                     Add to the list
@@ -211,7 +259,9 @@ export default function RecommendedEditor({ product, list, supplierName, userId,
                                     <button
                                         type="button"
                                         disabled={!!busy}
-                                        onClick={() => change(`star-${v.id}`, v.id, { is_recommended: true }, { sheetMayChange: true })}
+                                        onClick={() => changeSet(`star-${v.id}`, setWith(groups, v.id, true),
+                                            { title: 'Add it to the list?', confirmLabel: 'Add to the list' },
+                                            star(v.id, { is_recommended: true }))}
                                         className={rowButton('edit')}
                                     >
                                         Add to the list

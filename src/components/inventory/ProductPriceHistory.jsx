@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { friendlyError } from '@/lib/errors'
 import { seriesFor } from '@/lib/priceHistory'
+import { todayISO } from '@/lib/dates'
 import { card, cardHeader, hintClass } from '@/lib/controlStyles'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import PriceHistoryChart from '@/components/inventory/PriceHistoryChart'
@@ -22,7 +23,9 @@ import PriceHistoryChart from '@/components/inventory/PriceHistoryChart'
 // refresh is bumped by the page whenever it moves a price, so the chart above
 // the rows follows the change straight away. What is drawn stays until the new
 // answer replaces it, so the chart does not blink out and back.
-export default function ProductPriceHistory({ productId, restaurantId, product, suppliers, refresh = 0 }) {
+//
+// cost is what recipes cost it at today (cost_prices), where the line ends.
+export default function ProductPriceHistory({ productId, restaurantId, product, suppliers, cost = null, refresh = 0 }) {
     const [data, setData] = useState(null)
     const [error, setError] = useState('')
 
@@ -38,7 +41,7 @@ export default function ProductPriceHistory({ productId, restaurantId, product, 
                     .eq('product_id', productId)
                     .eq('invoices.restaurant_id', restaurantId),
                 supabase.from('product_price_events')
-                    .select('at, price_per_unit, reason')
+                    .select('at, price_per_unit, reason, price_id')
                     .eq('product_id', productId)
                     .eq('restaurant_id', restaurantId)
                     .order('at'),
@@ -80,9 +83,10 @@ export default function ProductPriceHistory({ productId, restaurantId, product, 
         return () => { alive = false }
     }, [productId, restaurantId, refresh])
 
+    const costToday = cost?.price_per_unit ?? null
     const series = useMemo(
-        () => (data ? seriesFor({ ...data, suppliers }) : null),
-        [data, suppliers],
+        () => (data ? seriesFor({ ...data, suppliers, costToday, today: todayISO() }) : null),
+        [data, suppliers, costToday],
     )
 
     if (error) return <ErrorBanner className="mb-6">{error}</ErrorBanner>
@@ -96,8 +100,9 @@ export default function ProductPriceHistory({ productId, restaurantId, product, 
                 <p className={hintClass}>
                     Prices are per {product?.unit || 'unit'}, so suppliers with different case sizes
                     can be compared. A filled dot is from an invoice and a hollow dot is a change
-                    made in the Hub. The thick line is the cost the Hub uses. It moves when a
-                    supplier's price changes or when a different price is set as preferred.
+                    made in the Hub. The thick line is what recipes cost it at: the price set as
+                    preferred, or for a product on the Recommended list the dearest of its
+                    versions, which can be the other restaurant's price.
                 </p>
             </div>
         </div>

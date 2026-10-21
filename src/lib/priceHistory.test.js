@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
     PRODUCT_LINE, SUPPLIER_COLOURS, MOST_SUPPLIERS, PRICE_RANGES,
     pointsFromLines, pointsFromEvents, seriesFor, rangesFor, defaultRange,
-    stepCorners, withinWindow, priceScale,
+    stepCorners, withinWindow, priceScale, costedEvents, withCostToday,
 } from '@/lib/priceHistory'
 import { daysBetween } from '@/lib/dates'
 
@@ -108,6 +108,39 @@ describe('what the Hub costs from', () => {
 
     it('skips an event with no time on it', () => {
         expect(pointsFromEvents([{ at: null, price_per_unit: 3.21, reason: 'by_hand' }])).toEqual([])
+    })
+})
+
+// What recipes cost it at, and nothing else (21 October 2026).
+describe('the line recipes cost from', () => {
+    // A cheaper version bought once wrote an invoice event on its own row,
+    // and drew the line down to a price no recipe used.
+    it('follows only the row recipes were costing from at the time', () => {
+        const kept = costedEvents([
+            { at: '2026-08-01T10:00:00Z', price_per_unit: 2.67, reason: 'created', price_id: 'dear' },
+            { at: '2026-08-10T10:00:00Z', price_per_unit: 2.59, reason: 'invoice', price_id: 'cheap' },
+            { at: '2026-08-20T10:00:00Z', price_per_unit: 2.7, reason: 'invoice', price_id: 'dear' },
+            { at: '2026-09-01T10:00:00Z', price_per_unit: 2.59, reason: 'preferred_moved', price_id: 'cheap' },
+            { at: '2026-09-05T10:00:00Z', price_per_unit: 2.61, reason: 'invoice', price_id: 'cheap' },
+        ])
+        expect(kept.map(e => e.price_per_unit)).toEqual([2.67, 2.7, 2.59, 2.61])
+    })
+
+    it('keeps everything before the first choice of row', () => {
+        const all = [{ at: '2026-08-10T10:00:00Z', price_per_unit: 2.59, reason: 'invoice', price_id: 'x' }]
+        expect(costedEvents(all)).toEqual(all)
+    })
+
+    // A change on the Recommended list, or the other restaurant's price,
+    // moves the cost with no event here.
+    it('ends at what recipes cost it at today', () => {
+        const points = [{ date: '2026-09-01', value: 2.67, reason: 'invoice', real: true }]
+        expect(withCostToday(points, '2026-10-21', 2.59)).toEqual([
+            ...points, { date: '2026-10-21', value: 2.59, reason: 'now', real: false },
+        ])
+        expect(withCostToday(points, '2026-10-21', 2.67)).toEqual(points)
+        expect(withCostToday([], '2026-10-21', 2.8)).toEqual([{ date: '2026-10-21', value: 2.8, reason: 'now', real: false }])
+        expect(withCostToday(points, '2026-10-21', null)).toEqual(points)
     })
 })
 

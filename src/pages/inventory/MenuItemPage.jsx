@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, Fragment, useCallback } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { supabase } from '@/lib/supabase'
+import { supabase, everyRow } from '@/lib/supabase'
 import { readCostPrices } from '@/lib/costPrices'
 import { readAllergensAt } from '@/lib/allergensAt'
 import { useRestaurant } from '@/context/restaurant'
@@ -21,7 +21,7 @@ import AddOptions from '@/components/inventory/AddOptions'
 import ProductSelect from '@/components/ui/ProductSelect'
 import QuantityInUnit from '@/components/ui/QuantityInUnit'
 import { numberField } from '@/lib/numberInput'
-import { fmtMoney, fmtPct, fmtUnitCost, namesList } from '@/lib/format'
+import { fmtMoney, fmtPct, namesList } from '@/lib/format'
 import BackButton from '@/components/ui/BackButton'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import Notice from '@/components/ui/Notice'
@@ -172,11 +172,14 @@ export default function MenuItemPage() {
       // instead, further down.
       supabase.from('products').select('*').order('name'),
       supabase.from('menu_item_components').select('*').eq('menu_item_id', id),
-      supabase.from('mix_recipes').select('*'),
+      // Every recipe line, a page at a time in an order that cannot tie, as
+      // the sheet pages read them: read short, an ingredient past the first
+      // thousand lines would drop out of the allergens below without a word.
+      everyRow(() => supabase.from('mix_recipes').select('*').order('id')),
       // At the restaurant open, from the versions it buys (lib/allergensAt).
       readAllergensAt(activeRestaurant?.id),
       supabase.from('menu_items').select('*').eq('is_active', true).order('name'),
-      supabase.from('menu_item_components').select('*'),
+      everyRow(() => supabase.from('menu_item_components').select('*').order('id')),
     ])
 
     // All of it or none of it. supabase-js hands a failed read back rather
@@ -983,7 +986,9 @@ export default function MenuItemPage() {
       <div className={`${card} p-6`}>
         <h3 className="text-sm font-semibold text-gray-900 mb-3">Allergens</h3>
         <p className="text-xs text-muted mb-4">
-          Worked out from the allergens on each component, including everything in a MIX recipe. Customer choices are not included. To change them, edit the allergens on those products.
+          At {activeRestaurant?.name || 'this restaurant'}, from what it bought in the last 8 weeks.
+          Worked out from the allergens on each component, including everything in a MIX recipe.
+          Customer choices are not included. To change them, edit the allergens on those products.
         </p>
         {notEntered.length > 0 && (
           <Notice tone="warn" className="mb-4">
@@ -1310,7 +1315,7 @@ export function ComponentTable({
                   ? <span className="italic">Used, not measured</span>
                   : `${parseFloat(c.quantity)} ${product?.unit || ''}`}
                 {unitCost !== null
-                  ? ` at ${fmtUnitCost(unitCost)} / ${product?.unit}`
+                  ? ` at ${fmtMoney(unitCost)} / ${product?.unit}`
                   : <span className="text-amber-700"> · no cost available</span>}
               </p>
               {c.notes && <p className="text-xs text-muted mt-0.5">{c.notes}</p>}
@@ -1360,7 +1365,7 @@ export function ComponentTable({
                           : `${parseFloat(c.quantity)} ${product?.unit || ''}`}
                       </td>
                       <td className="px-4 py-3 text-muted text-right tabular-nums">
-                        {unitCost !== null ? `${fmtUnitCost(unitCost)} / ${product?.unit}` : <span className="text-amber-700 text-xs">No cost available</span>}
+                        {unitCost !== null ? `${fmtMoney(unitCost)} / ${product?.unit}` : <span className="text-amber-700 text-xs">No cost available</span>}
                       </td>
                       <td className="px-4 py-3 font-medium text-gray-900 text-right tabular-nums">
                         {/* Same as the card above: the dearest one is marked

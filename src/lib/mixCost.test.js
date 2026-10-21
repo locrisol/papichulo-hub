@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { calculateMixCost, resolveUnitCost, menuItemCost, costInside, deactivatedIn, missingIn, menuMargin, marginTone, MARGIN_GREEN, MARGIN_AMBER, dishRises } from '@/lib/mixCost'
+import { calculateMixCost, resolveUnitCost, menuItemCost, costInside, deactivatedIn, missingIn, menuMargin, marginTone, MARGIN_GREEN, MARGIN_AMBER, dishRises, dishChanges } from '@/lib/mixCost'
 
 // --- Test fixtures shaped like real rows ---------------------------------
 
@@ -431,5 +431,20 @@ describe('the dishes a price paid pushes over', () => {
   it('says nothing without a product or a price paid', () => {
     expect(dishRises(null, 3, data)).toEqual([])
     expect(dishRises('peppers', 0, data)).toEqual([])
+  })
+
+  // What a change to the Recommended list would do (21 October 2026): every
+  // dish that moves, either way, however little past a cent.
+  describe('every dish that moves', () => {
+    it('names a dish whose cost goes up or down, and not one that does not move', () => {
+      expect(dishChanges('peppers', 2.1, data)).toEqual([{ id: 'bowl', name: 'Bowl', was: 2, now: 2.05, rise: 2.5 }])
+      expect(dishChanges('peppers', 1, data)).toEqual([{ id: 'bowl', name: 'Bowl', was: 2, now: 1.5, rise: -25 }])
+      // Peppers at 2.008: the bowl comes to 2.004, the same to the cent.
+      expect(dishChanges('peppers', 2.008, data)).toEqual([])
+    })
+
+    it('leaves out a dish switched off or in a category switched off', () => {
+      expect(dishChanges('peppers', 3, data).map(d => d.id)).toEqual(['bowl'])
+    })
   })
 })

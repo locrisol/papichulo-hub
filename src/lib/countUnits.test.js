@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { orderFormats, packsToSave, packLabel, unitWords } from '@/lib/countUnits'
+import { orderFormats, packsToSave, packLabel, unitWords, packsOfRows } from '@/lib/countUnits'
 
 const fmt = (label, factor, sort_order = 0) => ({ label, factor, sort_order })
 const labels = formats => orderFormats(formats).map(f => f.label)
@@ -76,5 +76,26 @@ describe('what a pack box is labelled', () => {
         expect(unitWords('KG', 3)).toBe('kg')
         expect(unitWords('Litre', 2)).toBe('litres')
         expect(unitWords('Units', 1)).toBe('unit')
+    })
+})
+
+// Green peppers bought as either 5 kg box or the 10 kg one, both recommended
+// (21 October 2026): the count offers the packs of each.
+describe('the packs of every row a count takes packs from', () => {
+    const box = (id, label, factor, priceId) => ({ id, label, factor, price_id: priceId, sort_order: 0 })
+
+    it('offers each pack once, the biggest first', () => {
+        const packs = packsOfRows([[box('f1', 'Box', 5, 'p1')], [box('f2', 'Box', 5, 'p2'), box('f3', 'Crate', 20, 'p2')]])
+        expect(packs.map(p => [p.id, p.label])).toEqual([['f3', 'Crate'], ['f1', 'Box']])
+    })
+
+    it('tells two packs with one name apart by what they hold', () => {
+        const packs = packsOfRows([[box('f1', 'Box', 5, 'p1')], [box('f2', 'box', 10, 'p2')]])
+        expect(packs.map(p => p.label)).toEqual(['box of 10', 'Box of 5'])
+    })
+
+    it('is nothing for no rows', () => {
+        expect(packsOfRows([])).toEqual([])
+        expect(packsOfRows(null)).toEqual([])
     })
 })

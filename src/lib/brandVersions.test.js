@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { placesFor, versionLabel, recommendationAt } from './brandVersions'
+import { placesFor, versionLabel, recommendationAt, costsFromTheList } from './brandVersions'
 
 // Invented products and codes.
 
@@ -84,5 +84,24 @@ describe('whether what a restaurant buys is recommended', () => {
     it('says any version is fine when the brand recommends nothing in particular', () => {
         expect(recommendationAt({ ...TORTILLA, recommends: 'any' }, [santa, plain], { version_id: 'v2' }))
             .toEqual({ tone: 'any', label: 'Any version' })
+    })
+})
+
+// His decision of 18 October 2026: a product with a recommended set costs
+// from the dearest of it, so nobody chooses its price by hand.
+describe('whether recipes cost a product from the Recommended list', () => {
+    const PEPPERS = { id: 'p1', recommends: 'versions' }
+    const starred = { id: 'v1', product_id: 'p1', is_recommended: true, is_active: true }
+
+    it('is so with a recommended version switched on', () => {
+        expect(costsFromTheList(PEPPERS, [starred])).toBe(true)
+    })
+
+    it('is not for any version, with nothing starred, or only a switched off or another product\'s star', () => {
+        expect(costsFromTheList({ ...PEPPERS, recommends: 'any' }, [starred])).toBe(false)
+        expect(costsFromTheList(PEPPERS, [{ ...starred, is_recommended: false }])).toBe(false)
+        expect(costsFromTheList(PEPPERS, [{ ...starred, is_active: false }])).toBe(false)
+        expect(costsFromTheList(PEPPERS, [{ ...starred, product_id: 'p2' }])).toBe(false)
+        expect(costsFromTheList(null, [starred])).toBe(false)
     })
 })

@@ -4,7 +4,7 @@ import ProductSelect from '@/components/ui/ProductSelect'
 import SupplierBadge from '@/components/ui/SupplierBadge'
 import useSignedUrls from '@/components/ui/useSignedUrls'
 import { numberField } from '@/lib/numberInput'
-import { fmtMoney, fmtUnitCost, num } from '@/lib/format'
+import { fmtMoney, num } from '@/lib/format'
 import { suggestProducts } from '@/lib/suggestProducts'
 import { VERSION_PICTURES } from '@/lib/photo'
 import {
@@ -102,7 +102,7 @@ export default function MatchLineModal({ row, products, versions = [], onClose, 
                             ? `The invoice says ${line.pack_size}.`
                             : 'The invoice does not say, so enter it yourself.'}
                         {perUnit != null && (
-                            <> That makes it {fmtUnitCost(perUnit)} a {product?.unit || 'unit'}.</>
+                            <> That makes it {fmtMoney(perUnit)} a {product?.unit || 'unit'}.</>
                         )}
                     </p>
                 </div>}

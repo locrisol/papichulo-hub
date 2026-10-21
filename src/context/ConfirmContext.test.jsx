@@ -134,4 +134,21 @@ describe('useConfirm', () => {
         expect(button).toHaveClass('bg-red-600')
         expect(button).not.toHaveClass('bg-accent')
     })
+
+    // What a change to the Recommended list costs (21 October 2026): the
+    // restaurants, each line saying which ones it is, then the dishes.
+    it('lays out a line under a label, and more lists under their own headings', async () => {
+        setup(() => {}, {
+            message: 'Sure?',
+            details: [{ label: '7 restaurants', value: '€2.67 to €2.59 a kg', under: 'Point Campus and 6 more' }],
+            groups: [{ title: 'Dishes at Point Campus', details: [{ label: 'Tacos', value: '€0.01 less' }] }, { title: 'Nothing', details: [] }],
+        })
+
+        await userEvent.click(screen.getByRole('button', { name: 'Delete it' }))
+
+        expect(screen.getByText('Point Campus and 6 more')).toBeInTheDocument()
+        expect(screen.getByText('Dishes at Point Campus')).toBeInTheDocument()
+        expect(screen.getByText('€0.01 less')).toBeInTheDocument()
+        expect(screen.queryByText('Nothing')).not.toBeInTheDocument()
+    })
 })

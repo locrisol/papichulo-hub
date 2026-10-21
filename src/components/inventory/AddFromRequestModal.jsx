@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import Modal from '@/components/ui/Modal'
 import { numberField } from '@/lib/numberInput'
-import { fmtMoney, fmtUnitCost, num } from '@/lib/format'
+import { fmtMoney, num } from '@/lib/format'
 import { FOOD_SECTIONS } from '@/lib/stockTakeSummary'
 import { startsWithoutRecommendation } from '@/lib/recommended'
 import SupplierBadge from '@/components/ui/SupplierBadge'
@@ -131,7 +131,7 @@ export default function AddFromRequestModal({ request, onClose, onAdd }) {
                         />
                         <p className={hintClass}>
                             {request.pack_size ? `The invoice says ${request.pack_size}.` : 'The invoice does not say.'}
-                            {perUnit != null && <> That makes it {fmtUnitCost(perUnit)} a {unitWord(unit, 1)}.</>}
+                            {perUnit != null && <> That makes it {fmtMoney(perUnit)} a {unitWord(unit, 1)}.</>}
                         </p>
                     </div>
                 )}

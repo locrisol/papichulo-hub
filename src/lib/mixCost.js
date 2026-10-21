@@ -250,22 +250,21 @@ export function menuItemCost(components, allProducts, allRecipeLines, prices) {
   return total
 }
 
-// The dishes on sale whose total cost rises by more than `threshold` percent
-// when one product costs `paid` a unit instead of what recipes cost it at
-// (his decision 5 of 18 October 2026): what buying something off the
-// Recommended list did to the menu. Each { id, name, was, now, rise }, the
-// biggest rise first. A dish switched off, in a category switched off, or
-// that cannot be costed both ways is left out; one without the product in it
-// does not rise at all.
-export function dishRises(productId, paid, {
-  menuItems = [], categories = [], components = [], products = [], recipeLines = [], costPrices = [], threshold = 5,
+// The dishes on sale whose total cost moves when one product costs `per` a
+// unit instead of what recipes cost it at, either way: what a change to the
+// Recommended list would do to the menu (21 October 2026). Each { id, name,
+// was, now, rise }, rise in percent, the biggest move first. A dish switched
+// off, in a category switched off, or that cannot be costed both ways is
+// left out, and so is one whose cost does not move to the cent.
+export function dishChanges(productId, per, {
+  menuItems = [], categories = [], components = [], products = [], recipeLines = [], costPrices = [],
 } = {}) {
-  const per = Number(paid)
-  if (!productId || !(per > 0)) return []
+  const price = Number(per)
+  if (!productId || !(price > 0)) return []
   const off = new Set((categories || []).filter(c => c.is_active === false).map(c => c.id))
-  const paidFor = [
+  const priced = [
     ...(costPrices || []).filter(c => c.product_id !== productId),
-    { product_id: productId, price_per_unit: per },
+    { product_id: productId, price_per_unit: price },
   ]
   const out = []
   for (const dish of menuItems || []) {
@@ -273,14 +272,23 @@ export function dishRises(productId, paid, {
     const lines = (components || []).filter(c => c.menu_item_id === dish.id)
     const was = menuItemCost(lines, products, recipeLines, costPrices)
     if (!(was > 0)) continue
-    const now = menuItemCost(lines, products, recipeLines, paidFor)
-    if (now == null) continue
+    const now = menuItemCost(lines, products, recipeLines, priced)
+    if (now == null || cents(now) === cents(was)) continue
     const rise = ((now - was) / was) * 100
-    if (rise > Number(threshold)) {
-      out.push({ id: dish.id, name: dish.name, was: cents(was), now: cents(now), rise: Math.round(rise * 10) / 10 })
-    }
+    out.push({ id: dish.id, name: dish.name, was: cents(was), now: cents(now), rise: Math.round(rise * 10) / 10 })
   }
-  return out.sort((a, b) => b.rise - a.rise || String(a.name).localeCompare(String(b.name)))
+  return out.sort((a, b) => Math.abs(b.rise) - Math.abs(a.rise) || String(a.name).localeCompare(String(b.name)))
+}
+
+// The dishes on sale whose total cost rises by more than `threshold` percent
+// when one product costs `paid` a unit instead of what recipes cost it at
+// (his decision 5 of 18 October 2026): what buying something off the
+// Recommended list did to the menu. dishChanges, rises past the limit only,
+// the biggest rise first.
+export function dishRises(productId, paid, { threshold = 5, ...menu } = {}) {
+  return dishChanges(productId, paid, menu)
+    .filter(d => d.rise > Number(threshold))
+    .sort((a, b) => b.rise - a.rise || String(a.name).localeCompare(String(b.name)))
 }
 
 const cents = n => Math.round(n * 100) / 100
