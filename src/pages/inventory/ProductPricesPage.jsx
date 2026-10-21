@@ -22,6 +22,7 @@ import ProductPriceHistory from '@/components/inventory/ProductPriceHistory'
 import { useSaveOnce } from '@/components/ui/useSaveOnce'
 import SupplierBadge from '@/components/ui/SupplierBadge'
 import KeptHerePanel from '@/components/inventory/KeptHerePanel'
+import { productsWithCode } from '@/lib/versionCodes'
 
 // Every price we can buy one product at, for the restaurant you are working in.
 //
@@ -172,7 +173,49 @@ export default function ProductPricesPage() {
             restaurant_id: activeRestaurant.id,
         }
 
+        // A code means one thing across the brand, so one another product
+        // goes by at either restaurant is refused here rather than half saved.
+        const code = String(formData.supplier_code || '').trim()
+        if (code) {
+            const { data: withCode, error: codeErr } = await productsWithCode(formData.supplier_id, code)
+            if (codeErr) { setFormProblem(friendlyError(codeErr)); return }
+            if ((withCode || []).some(productId => productId !== id)) {
+                setErrors({ supplier_code: 'Another product already has this code with this supplier.' })
+                return
+            }
+        }
+
         if (editingPrice) {
+            // A new code on a price the invoices already have is either the
+            // same thing renumbered, which code_update joins at every
+            // restaurant without losing the star or the allergens, or a
+            // mistake: the invoices would go on saying the old code.
+            const was = String(editingPrice.supplier_code || '').trim()
+            if (was && code && was.toLowerCase() !== code.toLowerCase()) {
+                const { count, error: countErr } = await supabase.from('invoice_lines')
+                    .select('id', { count: 'exact', head: true }).eq('price_id', editingPrice.id)
+                if (countErr) { setFormProblem(friendlyError(countErr)); return }
+                if (count > 0) {
+                    const same = await confirm({
+                        title: 'Is this the same thing under a new code?',
+                        message: `Invoices have this price under code ${was}. If ${getSupplierName(editingPrice.supplier_id) || 'the supplier'} `
+                            + `renumbered it, ${code} becomes its code at every restaurant, and it keeps its place on the `
+                            + 'Recommended list and its allergens.',
+                        confirmLabel: 'Same thing, new code',
+                        cancelLabel: 'Go back',
+                    })
+                    if (!same) {
+                        setFormProblem(`Invoices have this price under code ${was}, so its code stays. To price something else, add a new price instead.`)
+                        return
+                    }
+                    const { error: joinErr } = await supabase.rpc('code_update', {
+                        keep_price: editingPrice.id, new_code: code, make_main: true,
+                    })
+                    if (joinErr) { setFormProblem(friendlyError(joinErr)); return }
+                    delete payload.supplier_code
+                }
+            }
+
             const { data: saved, error } = await supabase
                 .from('product_supplier_prices')
                 .update(payload)

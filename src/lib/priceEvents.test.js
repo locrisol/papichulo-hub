@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
     REASONS, acceptPrice, movePreferred, typedPrice, typedPriceEvent, codeRow, seenAgain,
-    ignoreCode, ownedByAnother, costFromPaid, renumberPlan, alternatePlan, newGroupId,
+    ignoreCode, ownedByAnother, costFromPaid, canJoinCodes, canBuyBoth, newGroupId,
 } from '@/lib/priceEvents'
 
 const PRODUCT = { id: 'p1', name: 'Flour Tortilla', section: 'Dry', unit: 'KG' }
@@ -322,84 +322,46 @@ describe('costing from what was last paid, from the report', () => {
     })
 })
 
+// The report offers these and code_update and buy_both do the work, in one
+// go at every restaurant (19 October 2026). Invented codes.
 describe('the same thing under a new number', () => {
     const item = {
-        code: '483508', codeRowId: 'c2', ownPriceId: 'box2',
-        usualCode: '5018758', usualCodeRowId: 'c1', usualPriceId: 'box',
+        code: '5018758', usualCode: '483508', usualPriceId: 'pr1', ownPriceId: 'pr2', ownPriceOk: true,
     }
 
-    it('moves the new code onto the usual price and remembers the old one', () => {
-        expect(renumberPlan(item)).toEqual({
-            moveLines: { from: 'box2', to: 'box' },
-            release: 'c1',
-            drop: 'box2',
-            point: { id: 'c2', patch: { price_id: 'box', replaces_code: '5018758' } },
-            rowCode: { id: 'box', supplier_code: '483508' },
-        })
+    it('is offered for a code bought instead of the usual one', () => {
+        expect(canJoinCodes(item)).toBe(true)
+        expect(canJoinCodes({ ...item, ownPriceId: null })).toBe(true)
     })
 
-    it('has nothing to drop when the new code had no price of its own', () => {
-        const plan = renumberPlan({ ...item, ownPriceId: null })
-        expect(plan.drop).toBeNull()
-        expect(plan.moveLines).toBeNull()
+    // code_update refuses it too: recipes would lose the price they cost from.
+    it('is not offered when the code bought has its own price that recipes cost from', () => {
+        expect(canJoinCodes({ ...item, ownPriceOk: false })).toBe(false)
     })
 
-    // The green peppers: recipes already cost from the new number, and the
-    // old one turned up on an older invoice.
-    it('goes the other way when the one bought instead is the older number', () => {
-        expect(renumberPlan({ ...item, newer: false })).toEqual({
-            moveLines: { from: 'box2', to: 'box' },
-            release: 'c2',
-            drop: 'box2',
-            point: { id: 'c1', patch: { replaces_code: '483508' } },
-            rowCode: null,
-        })
-    })
-
-    it('cannot go the other way when the usual price has no code row to remember it on', () => {
-        expect(renumberPlan({ ...item, newer: false, usualCodeRowId: null })).toBeNull()
-    })
-
-    it('will not fold away a price that is not safe to lose', () => {
-        expect(renumberPlan({ ...item, ownPriceOk: false })).toBeNull()
-    })
-
-    // The older number's deliveries would drop out of the history.
-    it('will not break a chain of renumberings', () => {
-        expect(renumberPlan({ ...item, newer: false, usualReplaces: 'OLDER' })).toBeNull()
-        expect(renumberPlan({ ...item, replaces: 'SOMETHING' })).toBeNull()
-        expect(renumberPlan({ ...item, replaces: '5018758' })).not.toBeNull()
-    })
-
-    it('is nothing without a code to move', () => {
-        expect(renumberPlan({ ...item, codeRowId: null })).toBeNull()
+    it('is nothing without a usual price or a code', () => {
+        expect(canJoinCodes({ ...item, usualPriceId: null })).toBe(false)
+        expect(canJoinCodes({ ...item, code: null })).toBe(false)
+        expect(canJoinCodes({ ...item, code: '483508' })).toBe(false)
+        expect(canJoinCodes(null)).toBe(false)
     })
 })
 
 describe('codes bought either way', () => {
-    const item = { codeRowId: 'c2', usualCodeRowId: 'c1', group: null, usualGroup: null }
+    const item = { usualPriceId: 'pr1', ownPriceId: 'pr2' }
 
-    it('puts the two codes in a new group', () => {
-        expect(alternatePlan(item, 'fresh')).toEqual({ group: 'fresh', rows: ['c2', 'c1'], fold: null })
+    it('is offered when both codes have a price here', () => {
+        expect(canBuyBoth(item)).toBe(true)
     })
 
-    // A third code joins the group the others are already in.
-    it('joins the group the usual one is already in', () => {
-        expect(alternatePlan({ ...item, usualGroup: 'g1' }, 'fresh')).toMatchObject({ group: 'g1', fold: null })
-        expect(alternatePlan({ ...item, group: 'g2' }, 'fresh')).toMatchObject({ group: 'g2', fold: null })
-    })
-
-    it('folds a group the other one was in into the usual one', () => {
-        expect(alternatePlan({ ...item, group: 'g2', usualGroup: 'g1' }, 'fresh'))
-            .toEqual({ group: 'g1', rows: ['c2', 'c1'], fold: 'g2' })
-    })
-
-    it('has nothing to do when the usual price has no code on it', () => {
-        expect(alternatePlan({ ...item, usualCodeRowId: null }, 'fresh')).toBeNull()
+    // buy_both works on the two prices, so a code with none cannot join.
+    it('is not offered for a code with no price of its own, or the same price twice', () => {
+        expect(canBuyBoth({ ...item, ownPriceId: null })).toBe(false)
+        expect(canBuyBoth({ ...item, ownPriceId: 'pr1' })).toBe(false)
+        expect(canBuyBoth({ ...item, usualPriceId: null })).toBe(false)
     })
 })
 
-// The phone over the shop's Wi-Fi is not a secure page, so no randomUUID.
 describe('a new group id', () => {
     it('is a version 4 id made from random bytes', () => {
         const id = newGroupId(n => new Uint8Array(n).fill(255))

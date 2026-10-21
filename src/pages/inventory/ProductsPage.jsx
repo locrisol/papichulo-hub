@@ -43,6 +43,7 @@ import SendForReviewModal from '@/components/inventory/SendForReviewModal'
 import VersionsModal from '@/components/inventory/VersionsModal'
 import { placesFor, recommendationAt } from '@/lib/brandVersions'
 import { ownPlaces, keptAt, saveKeptHere } from '@/lib/keptHere'
+import { productsWithCode } from '@/lib/versionCodes'
 import { startsWithoutRecommendation } from '@/lib/recommended'
 import SupplierBadge from '@/components/ui/SupplierBadge'
 import { can, BRAND_CHOICES } from '@/lib/access'
@@ -710,19 +711,26 @@ export default function ProductsPage() {
     setPriceErrors({})
 
     // The codes this screen holds are only the preferred ones, so the real
-    // check is a question to the database. One query, and only when a code was
-    // actually typed.
+    // check is a question to the database, only when a code was actually
+    // typed: this restaurant's prices, and every code of every version across
+    // the brand, so a code the other restaurant put on another product is
+    // caught too. A code of this same product is not a clash: the price joins
+    // that version.
     if (wantsPrice && priceForm.supplier_code?.trim()) {
-      const { data: codeRows } = await supabase
-        .from('product_supplier_prices')
-        .select('product_id')
-        .eq('supplier_id', priceForm.supplier_id)
-        .eq('supplier_code', priceForm.supplier_code.trim())
-        .limit(2)
+      const [{ data: codeRows }, { data: withCode }] = await Promise.all([
+        supabase
+          .from('product_supplier_prices')
+          .select('product_id')
+          .eq('supplier_id', priceForm.supplier_id)
+          .eq('supplier_code', priceForm.supplier_code.trim())
+          .limit(2),
+        productsWithCode(priceForm.supplier_id, priceForm.supplier_code),
+      ])
 
-      const someoneElse = (codeRows || []).filter(r => r.product_id !== editingProduct?.id)
+      const someoneElse = [...(codeRows || []).map(r => r.product_id), ...(withCode || [])]
+        .filter(productId => productId !== editingProduct?.id)
       if (someoneElse.length > 0) {
-        const owner = products.find(p => p.id === someoneElse[0].product_id)
+        const owner = products.find(p => p.id === someoneElse[0])
         setPriceErrors({
           supplier_code: `${owner?.name || 'Another product'} already has this code with this supplier.`,
         })

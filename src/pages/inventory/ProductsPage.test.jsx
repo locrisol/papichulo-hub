@@ -839,16 +839,17 @@ describe('a product made from a line on Review', () => {
         expect(pointed).toMatchObject({ how: 'update', row: { price_id: `new${written.indexOf(price) + 1}` } })
     })
 
-    // A price belongs to one code. One a code already means is left alone
-    // when the product is edited.
-    it('leaves a price alone when a code already means it', async () => {
+    // Only the code on the price, and only while that code means nothing yet
+    // (claimCode asks the database for a code with no price); one that
+    // already means a price is left as it is.
+    it('only ever points the code on the price at it', async () => {
         tables.supplier_codes = [{ id: 'c1', price_id: 'pr1', supplier_code: '483508' }]
         const clicker = userEvent.setup()
         const dialog = await editPeppers(clicker)
         await clicker.click(dialog.getByRole('button', { name: 'Save changes' }))
         // The dialog closes after everything the save does, the code included.
         await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
-        expect(written.filter(w => w.table === 'supplier_codes')).toHaveLength(0)
+        expect(written.filter(w => w.table === 'supplier_codes')).toEqual([{ table: 'supplier_codes', how: 'update', row: { price_id: 'pr1' } }])
     })
 
     // The page used to go back to Review anyway, and the line was still there

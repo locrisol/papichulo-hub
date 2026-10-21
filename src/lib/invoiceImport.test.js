@@ -419,6 +419,34 @@ describe('the four piles', () => {
         expect(row.replacedBy.supplier_code).toBe('497870')
     })
 
+    // A number joined at the other restaurant, or an older number of a
+    // version, means this restaurant's price on that version (19 October 2026).
+    it('matches a code it never met to its version, where this restaurant prices that version', () => {
+        const versions = [{ version_id: 'v1', supplier_id: 's1', code: '497871', is_active: true }]
+        const [row] = matchLines({
+            lines: [line({ code: '497871' })], codes: [], versions,
+            prices: [price({ id: 'pr7', supplier_code: '497869', version_id: 'v1' })], supplier: SUPPLIER,
+        })
+        expect(row.pile).toBe('unchanged')
+        expect(row.price.id).toBe('pr7')
+        expect(row.byVersion).toBe(true)
+    })
+
+    it('still calls a code new when its version is switched off or priced only elsewhere', () => {
+        const off = [{ version_id: 'v1', supplier_id: 's1', code: '497871', is_active: false }]
+        const [first] = matchLines({
+            lines: [line({ code: '497871' })], versions: off,
+            prices: [price({ supplier_code: '497869', version_id: 'v1' })], supplier: SUPPLIER,
+        })
+        expect(first.price).toBeNull()
+        const elsewhere = [{ version_id: 'v9', supplier_id: 's1', code: '497871', is_active: true }]
+        const [second] = matchLines({
+            lines: [line({ code: '497871' })], versions: elsewhere,
+            prices: [price({ supplier_code: '497869', version_id: 'v1' })], supplier: SUPPLIER,
+        })
+        expect(second.price).toBeNull()
+    })
+
     it('leaves a line whose price has not moved alone', () => {
         const [row] = matchLines({ lines: [line()], prices: [price()], supplier: SUPPLIER })
         expect(row.pile).toBe('unchanged')

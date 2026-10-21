@@ -36,7 +36,7 @@
 // again. The mail cannot import anything from the app.
 
 import { num, fmtMoney, fmtQty, namesList, round2, round4 } from '@/lib/format'
-import { renumberPlan } from '@/lib/priceEvents'
+import { canJoinCodes } from '@/lib/priceEvents'
 import { pricesAsAt } from '@/lib/pricesAsAt'
 import { addDays, dayMonth, stampDay } from '@/lib/dates'
 import { samePrice, sameWords, similarWords, SAME_WORDS, byPieceWeight } from '@/lib/invoiceImport'
@@ -168,7 +168,11 @@ function sameAs(before, after) {
 //
 // A supplier renumbering something is still the same version of it, so its
 // price history carries on across the change: the first delivery under the
-// new number is compared with the last under the old one.
+// new number is compared with the last under the old one. Since 19 October
+// 2026 every code of one version means the same price here (code_update, and
+// the import finding a code through its version), so codes pointing at the
+// same price are one family as well, even with no replaces_code between
+// them: a number joined at the other restaurant, first met here.
 //
 // It also knows which group a code is in, for codes bought either way: see
 // isUsual. One function carrying both, so nothing that asks one question can
@@ -176,9 +180,15 @@ function sameAs(before, after) {
 export function lineageOf(codes) {
     const replaced = new Map()
     const groups = new Map()
+    const priceOf = new Map()
+    const atPrice = new Map()
     for (const c of codes || []) {
         const key = versionKey(c.supplier_id, c.supplier_code)
         if (c.alternate_group) groups.set(key, c.alternate_group)
+        if (c.price_id && !c.ignored) {
+            priceOf.set(key, c.price_id)
+            atPrice.set(c.price_id, [...(atPrice.get(c.price_id) || []), key])
+        }
         if (!c.replaces_code) continue
         replaced.set(key, versionKey(c.supplier_id, c.replaces_code))
     }
@@ -188,6 +198,11 @@ export function lineageOf(codes) {
         while (at && !out.includes(at)) {
             out.push(at)
             at = replaced.get(at)
+        }
+        for (const known of [...out]) {
+            for (const other of atPrice.get(priceOf.get(known)) || []) {
+                if (!out.includes(other)) out.push(other)
+            }
         }
         return out
     }
@@ -1280,7 +1295,7 @@ export function decisionsFrom(section) {
         // A switch that reads like the usual one under a new number, and that
         // is not already being asked about as three in a row.
         ...(section.switches || [])
-            .filter(s => s.renumbered && !s.since && renumberPlan(s)
+            .filter(s => s.renumbered && !s.since && canJoinCodes(s)
                 && !suggestions.some(g => g.productId === s.productId && g.code === s.code))
             .map(s => ({ kind: 'renumbered', ...s })),
         ...(section.back || []).filter(b => b.unexplained > 0).map(b => ({ kind: 'reason', ...b })),

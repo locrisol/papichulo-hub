@@ -588,12 +588,16 @@ describe('the Recommended list', () => {
         expect(body).not.toMatch(/is_preferred|allow_loose_count|supplier_code/)
     })
 
-    // A store manager renumbering a shared price copies the version, and the
-    // copy must not arrive with nothing the owners wrote on it.
-    it('keeps the description and buying notes on a renumbered copy', () => {
-        expect(fn('price_version')).toMatch(/v\.notes, v\.description/)
-        expect(fn('brand_choice_guard')).toMatch(/new\.notes is not null or new\.description is not null\)\s+and pg_trigger_depth\(\) < 2/)
+    // One thing under two codes is one version (step 4, 19 October 2026):
+    // nothing copies a version any more, so nothing a level deeper carries a
+    // recommendation for a store manager.
+    it('never copies a version, and finds one by any of its codes', () => {
+        const body = fn('price_version')
+        expect(body).not.toMatch(/v\.notes, v\.description|is_recommended/)
+        expect(body).toContain('from public.version_codes c')
+        expect(fn('brand_choice_guard')).not.toContain('pg_trigger_depth')
     })
+
     // Where a version was kept was the last thing a store manager wrote on
     // one; they still add versions by buying them, through price_version.
     it('lets only owners and the super admin write versions directly', () => {
@@ -625,5 +629,53 @@ describe('where a restaurant keeps a product', () => {
         expect(write, 'an employee can change where things are kept').not.toContain('employee')
         expect(write).toContain('restaurant_id = (select public.get_my_restaurant_id())')
         expect(schema).toContain('grant select, insert, update, delete on table public.restaurant_kept_in to authenticated;')
+    })
+})
+
+// The same thing under a new code, and two codes bought either way.
+describe('codes on versions', () => {
+    const fn = name => {
+        const start = schema.indexOf(`create or replace function public.${name}(`)
+        expect(start, `${name} is not in schema.sql`).toBeGreaterThan(-1)
+        return schema.slice(start, schema.indexOf('end $$;', start))
+    }
+    const CODE_UPDATE = 'code_update(keep_price uuid, new_code text, make_main boolean, line_ids uuid[], line_category text)'
+    const BUY_BOTH = 'buy_both(keep_price uuid, other_price uuid)'
+
+    it('lets people signed in call code_update and buy_both, and nobody call join_versions', () => {
+        for (const signature of [CODE_UPDATE, BUY_BOTH]) {
+            expect(schema).toContain(`grant execute on function public.${signature}`)
+        }
+        expect(schema).toContain('grant execute on function public.join_versions(keep uuid, fold uuid) to service_role;')
+        expect(schema).not.toMatch(/grant execute on function public\.join_versions[^;]*authenticated/)
+    })
+
+    // They run as the database, so they check who is asking themselves: a
+    // manager of the price's own restaurant, an owner there, or the super admin.
+    it('checks who is asking before it changes anything', () => {
+        for (const name of ['code_update', 'buy_both']) {
+            const body = fn(name)
+            expect(body).toMatch(/security definer/)
+            expect(body).toContain("me not in ('owner', 'store_manager', 'super_admin')")
+            expect(body).toContain('restaurant_id is distinct from public.get_my_restaurant_id()')
+            expect(body.indexOf("using errcode = '42501'"), `${name} changes something before checking`)
+                .toBeLessThan(body.indexOf("set_config('app.joining_codes'"))
+        }
+    })
+
+    it('lets the guard step aside only inside those two, for that transaction', () => {
+        expect(schema).toContain("if current_setting('app.joining_codes', true) = 'on' then")
+        const set = schema.match(/set_config\('app\.joining_codes', 'on', (\w+)\)/g) || []
+        expect(set.length).toBeGreaterThan(0)
+        for (const call of set) expect(call).toContain("'on', true)")
+    })
+
+    it('refuses to join two versions whose allergens differ', () => {
+        expect(fn('join_versions')).toContain('is distinct from')
+        expect(fn('join_versions')).toContain('Make them the same on the Allergens page first')
+    })
+
+    it('lets more than one code of a version point at its price', () => {
+        expect(schema).not.toContain('supplier_codes_one_per_price')
     })
 })

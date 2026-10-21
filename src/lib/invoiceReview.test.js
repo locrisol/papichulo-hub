@@ -155,7 +155,7 @@ describe('a price typed with a code', () => {
 
     it('points the code the invoices met at it, if the code means nothing yet', async () => {
         expect(await claimCode(price, 'r1')).toBeNull()
-        const q = asked.filter(a => a.table === 'supplier_codes')[1].q
+        const q = asked.filter(a => a.table === 'supplier_codes')[0].q
         expect(q.update).toHaveBeenCalledWith({ price_id: 'pr9' })
         expect(q.eq).toHaveBeenCalledWith('restaurant_id', 'r1')
         expect(q.eq).toHaveBeenCalledWith('supplier_id', 's1')
@@ -164,11 +164,15 @@ describe('a price typed with a code', () => {
         expect(q.eq).toHaveBeenCalledWith('ignored', false)
     })
 
-    // A price belongs to one code.
-    it('leaves alone a price a code already means', async () => {
+    // Every code of a version means its price here (19 October 2026), so a
+    // price another code already means is no reason to stop. Only the code
+    // on the price is pointed, and only while it means nothing yet.
+    it('points the code even when another code of its version already means the price', async () => {
         tables.supplier_codes = [{ id: 'c1' }]
         expect(await claimCode(price, 'r1')).toBeNull()
-        expect(asked.filter(a => a.table === 'supplier_codes')).toHaveLength(1)
+        const [{ q }] = asked.filter(a => a.table === 'supplier_codes')
+        expect(q.update).toHaveBeenCalledWith({ price_id: 'pr9' })
+        expect(q.is).toHaveBeenCalledWith('price_id', null)
     })
 
     it('does nothing for a price with no code', async () => {

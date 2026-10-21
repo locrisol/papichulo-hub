@@ -3,7 +3,7 @@ import { fmtMoney } from '@/lib/format'
 import { shortDate, dayLabel } from '@/lib/dates'
 import { CLAIM_KINDS } from '@/lib/invoiceClaims'
 import { backByReason, decisionsFrom } from '@/lib/invoiceReport'
-import { renumberPlan, alternatePlan } from '@/lib/priceEvents'
+import { canJoinCodes, canBuyBoth } from '@/lib/priceEvents'
 import {
     badge, rowButton, compactField, tableHeadRow, tableHeadCell,
 } from '@/lib/controlStyles'
@@ -201,19 +201,19 @@ function Decision({ item, busy, onCostFrom, onMakeUsual, onRenumber, onGiveReaso
         words = (
             <>
                 <b>{item.name}.</b> The last three deliveries were {item.bought} (code {item.code}), not the
-                one recipes cost from. {item.renumbered && renumberPlan(item)
+                one recipes cost from. {item.renumbered && canJoinCodes(item)
                     ? 'It looks like a code update.'
                     : `Is it the usual one now? The Hub has it at ${fmtMoney(item.rowPer)} ${item.unit}.`}
             </>
         )
         buttons = (
             <>
-                {item.renumbered && renumberPlan(item) && (
+                {item.renumbered && canJoinCodes(item) && (
                     <button type="button" disabled={!!busy} onClick={() => onRenumber(item, `${key}:renumber`)} className={rowButton('good')}>
                         {saving('renumber') ? 'Saving...' : 'Same thing, this is a code update'}
                     </button>
                 )}
-                {alternatePlan(item, 'new') && (
+                {canBuyBoth(item) && (
                     <button type="button" disabled={!!busy} onClick={() => onBuyBoth(item, `${key}:both`)} className={rowButton('good')}>
                         {saving('both') ? 'Saving...' : 'Same thing, we usually buy both'}
                     </button>
@@ -222,7 +222,7 @@ function Decision({ item, busy, onCostFrom, onMakeUsual, onRenumber, onGiveReaso
                     type="button"
                     disabled={!!busy}
                     onClick={() => onMakeUsual(item, `${key}:usual`)}
-                    className={rowButton(item.renumbered && renumberPlan(item) ? 'plain' : 'good')}
+                    className={rowButton(item.renumbered && canJoinCodes(item) ? 'plain' : 'good')}
                 >
                     {saving('usual') ? 'Saving...' : 'Make it the usual one'}
                 </button>
@@ -241,7 +241,7 @@ function Decision({ item, busy, onCostFrom, onMakeUsual, onRenumber, onGiveReaso
                 <button type="button" disabled={!!busy} onClick={() => onRenumber(item, `${key}:renumber`)} className={rowButton('good')}>
                     {saving('renumber') ? 'Saving...' : 'Same thing, this is a code update'}
                 </button>
-                {alternatePlan(item, 'new') && (
+                {canBuyBoth(item) && (
                     <button type="button" disabled={!!busy} onClick={() => onBuyBoth(item, `${key}:both`)} className={rowButton('good')}>
                         {saving('both') ? 'Saving...' : 'Same thing, we usually buy both'}
                     </button>
@@ -577,7 +577,7 @@ function Switches({ switches, canDecide, busy, onBuyBoth }) {
                                 {s.since.usual ? 'It is the usual one now.' : 'The usual one has changed since this week.'}
                             </p>
                         )}
-                        {canDecide && !s.since && alternatePlan(s, 'new') && (
+                        {canDecide && !s.since && canBuyBoth(s) && (
                             <button
                                 type="button"
                                 disabled={!!busy}
