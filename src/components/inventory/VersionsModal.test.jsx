@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, within, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { makeQuery } from '@/test/helpers'
@@ -12,7 +12,10 @@ import { makeQuery } from '@/test/helpers'
 
 let written
 let otherCodes
+let called
+let answer
 const db = {
+    rpc: vi.fn((name, args) => { called.push({ name, args }); return Promise.resolve(answer) }),
     from: vi.fn(table => {
         const q = makeQuery(table === 'version_codes' ? { data: otherCodes, error: null } : undefined)
         q.update = vi.fn(patch => {
@@ -27,6 +30,9 @@ vi.mock('@/lib/supabase', async () => ({
     ...(await vi.importActual('@/lib/supabase')),
     supabase: new Proxy({}, { get: (_, k) => db[k] }),
 }))
+
+const confirm = vi.fn(() => Promise.resolve(true))
+vi.mock('@/context/confirm', () => ({ useConfirm: () => confirm }))
 
 const { default: VersionsModal } = await import('./VersionsModal')
 
@@ -48,7 +54,7 @@ const SUPPLIERS = [
     { id: 's2', name: 'Local', is_active: true, works_without_codes: true },
 ]
 
-function open({ keepsTheList = true, product = TORTILLA, onAddPrice = vi.fn() } = {}) {
+function open({ keepsTheList = true, product = TORTILLA, onAddPrice = vi.fn(), onJoined = vi.fn() } = {}) {
     render(
         <MemoryRouter>
             <VersionsModal
@@ -59,6 +65,7 @@ function open({ keepsTheList = true, product = TORTILLA, onAddPrice = vi.fn() } 
                 keepsTheList={keepsTheList}
                 onClose={() => {}}
                 onAddPrice={onAddPrice}
+                onJoined={onJoined}
             />
         </MemoryRouter>,
     )
@@ -69,6 +76,8 @@ const row = name => within(screen.getByText(name, { exact: false }).closest('li'
 beforeEach(() => {
     written = []
     otherCodes = []
+    called = []
+    answer = { data: null, error: null }
 })
 
 describe('the versions of a product', () => {
@@ -131,5 +140,52 @@ describe('adding a version', () => {
         await userEvent.click(screen.getByRole('button', { name: 'Add a price' }))
         expect(onAddPrice).toHaveBeenCalled()
         expect(screen.queryByRole('button', { name: 'Add a version' })).toBeNull()
+    })
+})
+
+// Two codes from one supplier that are one thing, joined by an owner (21
+// October 2026).
+describe('joining two versions that are one thing', () => {
+    it('is offered to an owner, only between versions from one supplier', () => {
+        open()
+        expect(row('Santa Maria').getByRole('button', { name: 'Same thing as another version' })).toBeInTheDocument()
+        expect(row('Flour plain wraps').getByRole('button', { name: 'Same thing as another version' })).toBeInTheDocument()
+        expect(row('Tortillas from the shop').queryByRole('button', { name: 'Same thing as another version' })).toBeNull()
+    })
+
+    it('is not offered to a store manager', () => {
+        open({ keepsTheList: false })
+        expect(screen.queryByRole('button', { name: 'Same thing as another version' })).toBeNull()
+    })
+
+    it('asks first, then joins the one pressed into the one picked', async () => {
+        const onJoined = vi.fn()
+        open({ onJoined })
+        await userEvent.click(row('Flour plain wraps').getByRole('button', { name: 'Same thing as another version' }))
+        await userEvent.click(screen.getByRole('button', { name: 'Santa Maria flour tortilla wrap 12" (497870)' }))
+        expect(confirm.mock.calls.at(-1)[0].message)
+            .toBe('Flour plain wraps 12" (5013972) joins Santa Maria flour tortilla wrap 12" (497870) and they are one version from now on, at every restaurant. This cannot be undone.')
+        await waitFor(() => expect(called).toEqual([{ name: 'merge_versions', args: { keep: 'v1', fold: 'v2' } }]))
+        expect(await screen.findByText('Flour plain wraps 12" (5013972) is part of Santa Maria flour tortilla wrap 12" now.')).toBeInTheDocument()
+        expect(onJoined).toHaveBeenCalled()
+    })
+
+    it('says why when the database refuses it, and joins nothing', async () => {
+        answer = { data: null, error: { message: 'The two codes have different allergens in the Hub. Make them the same on the Allergens page first' } }
+        const onJoined = vi.fn()
+        open({ onJoined })
+        await userEvent.click(row('Flour plain wraps').getByRole('button', { name: 'Same thing as another version' }))
+        await userEvent.click(screen.getByRole('button', { name: 'Santa Maria flour tortilla wrap 12" (497870)' }))
+        expect(await screen.findByText(/different allergens in the Hub/)).toBeInTheDocument()
+        expect(onJoined).not.toHaveBeenCalled()
+    })
+
+    it('does nothing when the question is answered no', async () => {
+        confirm.mockImplementationOnce(() => Promise.resolve(false))
+        open()
+        await userEvent.click(row('Flour plain wraps').getByRole('button', { name: 'Same thing as another version' }))
+        await userEvent.click(screen.getByRole('button', { name: 'Santa Maria flour tortilla wrap 12" (497870)' }))
+        await waitFor(() => expect(confirm).toHaveBeenCalled())
+        expect(called).toEqual([])
     })
 })
