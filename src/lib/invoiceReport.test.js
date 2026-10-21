@@ -922,8 +922,16 @@ describe('a week read as it stood', () => {
         product_id: 'avo', price_id: 'avo-18', reason: 'invoice', price_per_unit: per, previous_per_unit: 0.9167,
         at: '2026-10-04T12:00:00+00:00', invoice_lines: { invoices: { invoice_date: day } },
     })
+    // Two avocados on a slice of toast, the one dish on the menu.
+    const menu = {
+        menuItems: [{ id: 'toast', name: 'Avocado toast', is_active: true, category_id: 'mains' }],
+        categories: [{ id: 'mains', is_active: true }],
+        components: [{ menu_item_id: 'toast', product_id: 'avo', quantity: 2 }],
+        products: [{ id: 'avo', name: 'Avocado', is_mix: false, is_active: true }],
+    }
     const week38 = (events, per = 1.2939) => priceWeek({
         ...WEEK38, lines: [box('2026-09-22')], prices: today(per), codes, events, threshold: 5, today: '2026-10-05',
+        costPrices: [{ product_id: 'avo', price_per_unit: per }], menu,
     })
 
     it('is not moved by a decision on the next week\'s invoice', () => {
@@ -931,6 +939,28 @@ describe('a week read as it stood', () => {
         expect(section.recipes).toHaveLength(1)
         expect(section.recipes[0]).toMatchObject({ recipe: 0.9167, paid: 1.2939, state: 'behind' })
         expect(section.checkedOn).toBe('2026-09-26')
+    })
+
+    // His, 22 October 2026: the recipes, against what recipes cost today.
+    it('names the recipes out of line, with the ingredients behind them', () => {
+        const section = week38([created, acceptedOn('2026-09-29', 1.1)], 1.1)
+        expect(section.recipesOff).toEqual([{
+            kind: 'dish', id: 'toast', name: 'Avocado toast', unit: null, was: 2.2, now: 2.59, change: 17.6,
+            because: [{ productId: 'avo', name: 'Avocado', unit: 'each', costed: 1.1, paid: 1.2939, effect: 0.39 }],
+        }])
+        expect(section.totals.recipes).toBe(1)
+        expect(section.words).toContain('Recipes out of line: Avocado toast (18% more at what we pay).')
+    })
+
+    // An ingredient a little off moves no dish 5%, and is not said.
+    it('says nothing of an ingredient that moves no recipe the threshold', () => {
+        const section = priceWeek({
+            ...WEEK38, lines: [box('2026-09-22')], prices: today(1.25), codes, threshold: 5, today: '2026-10-05',
+            costPrices: [{ product_id: 'avo', price_per_unit: 1.25 }],
+            menu: { ...menu, components: [...menu.components, { menu_item_id: 'toast', product_id: 'bread', quantity: 1 }], products: [...menu.products, { id: 'bread', is_mix: false, is_active: true }] },
+        })
+        expect(section.recipesOff).toEqual([])
+        expect(section.recipes).toEqual([])
     })
 
     // Its button would act on today's price, which has moved on already.
