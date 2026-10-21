@@ -461,8 +461,15 @@ begin
     return out;
 end $$;
 
--- Kept for the app still live, read by nothing in this one.
-comment on function public.allergens_changed_at() is 'When anything on the allergen sheet last changed, from the change log: allergens, dishes, what is in them, their categories, recipes, and a product renamed, switched on or off, made a MIX or moved section. Not prices, VAT, quantities or notes. Null when the log holds no such change. Read by nothing since 19 October 2026, when the sheet began to be compared with the copy kept at each print; kept for the app live before that until the drops.';
+-- Kept for the app still live, read by nothing in this one. Only while it
+-- is there: 010 drops it, and npm run db:local runs this file again on top
+-- of a schema.sql that no longer has it.
+do $$
+begin
+    if to_regprocedure('public.allergens_changed_at()') is not null then
+        comment on function public.allergens_changed_at() is 'When anything on the allergen sheet last changed, from the change log: allergens, dishes, what is in them, their categories, recipes, and a product renamed, switched on or off, made a MIX or moved section. Not prices, VAT, quantities or notes. Null when the log holds no such change. Read by nothing since 19 October 2026, when the sheet began to be compared with the copy kept at each print; kept for the app live before that until the drops.';
+    end if;
+end $$;
 
 -- The new table gets the change log like every other.
 select public.watch_changes();

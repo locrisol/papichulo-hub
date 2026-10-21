@@ -82,6 +82,9 @@ describe('what Review reads', () => {
             .map((call, i) => (call[0] === table ? db.from.mock.results[from + i].value : null))
             .find(Boolean)
         expect(read('product_versions').eq).toHaveBeenCalledWith('is_active', true)
+        // A line's product is the price's, and whether it is costed from the
+        // Recommended list decides what accepting its price may do.
+        expect(read('product_supplier_prices').select.mock.calls[0][0]).toContain('recommends')
         for (const table of ['product_versions', 'version_codes', 'version_pictures']) {
             expect(read(table).select.mock.calls[0][0]).not.toContain('*')
         }
@@ -252,5 +255,43 @@ describe('a code that is one we already buy', () => {
         expect(failed).toBeNull()
         expect(wrote('buy_both', 'rpc')[0].payload).toEqual({ keep_price: 'pr1', other_price: 'pr2' })
         expect(wrote('supplier_codes', 'update').some(w => 'alternate_group' in w.payload)).toBe(false)
+    })
+})
+
+// A new pack on an invoice, and "Add the pack and cost from it" (21 October
+// 2026): one call moves what recipes cost from, since only one price may say
+// it is the one. Invented prices.
+describe('a new pack to cost from', () => {
+    const SYSCO = { id: 's1', name: 'Sysco Ireland', category: 'food' }
+    const OLD = {
+        id: 'pr1', product_id: 'p1', supplier_id: 's1', restaurant_id: 'r2', supplier_code: '483508',
+        purchase_type: 'case', units_per_case: 5, price_per_case: 13.35, price_per_unit: 2.67, is_preferred: true,
+    }
+    const row = product => ({
+        line: { code: '483508', description: 'GREEN PEPPERS 1X10 KG', pack_size: '1X10 KG', price_per_case: 25.1 },
+        supplierId: 's1', supplier: SYSCO, product, price: OLD, packMoved: true, wantedUnits: 10,
+        stored: { id: 'l1', invoice_id: 'i1', invoices: INVOICE },
+    })
+    const writer = (product, versions = []) => reviewWriter({
+        restaurantId: 'r2', userId: 'u9', rows: [row(product)],
+        data: { prices: [OLD], codes: [], products: [product], suppliers: [SYSCO], versions },
+    })
+
+    it('moves it in one call for a product with no recommendation', async () => {
+        const product = { id: 'p1', name: 'Green Peppers', unit: 'KG', recommends: 'any' }
+        expect(await writer(product).accept(row(product), true)).toBeNull()
+        expect(wrote('set_cost_row', 'rpc').map(w => w.payload)).toEqual([{ price: 'product_supplier_prices-new' }])
+        expect(wrote('product_supplier_prices', 'update').filter(w => 'is_preferred' in w.payload)).toEqual([])
+        expect(wrote('product_price_events', 'insert').some(w => w.payload.reason === 'preferred_moved')).toBe(true)
+    })
+
+    // Recipes cost it from the dearest of its set, which the database put
+    // right as the price went in.
+    it('moves nothing by hand for a product the Recommended list costs', async () => {
+        const product = { id: 'p1', name: 'Green Peppers', unit: 'KG', recommends: 'versions' }
+        const versions = [{ id: 'v1', product_id: 'p1', is_recommended: true }]
+        expect(await writer(product, versions).accept(row(product), true)).toBeNull()
+        expect(wrote('set_cost_row', 'rpc')).toEqual([])
+        expect(wrote('product_price_events', 'insert').some(w => w.payload.reason === 'preferred_moved')).toBe(false)
     })
 })

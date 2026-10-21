@@ -1248,13 +1248,8 @@ export default function ReportPage() {
             const move = movePreferred({ id: item.productId }, to, {
                 restaurantId: report.restaurant_id, userId: user?.id, from, at: new Date().toISOString(),
             })
-            if (move.off) {
-                const { error: e1 } = await supabase.from('product_supplier_prices')
-                    .update({ is_preferred: false }).eq('id', move.off)
-                if (e1) return friendlyError(e1)
-            }
-            const { error: e2 } = await supabase.from('product_supplier_prices')
-                .update({ is_preferred: true }).eq('id', move.on)
+            // One call, so only one price ever says it is the one recipes cost from.
+            const { error: e2 } = await supabase.rpc('set_cost_row', { price: move.on })
             if (e2) return friendlyError(e2)
             const { error: e3 } = await supabase.from('product_price_events').insert({
                 ...move.event, note: `Bought as ${item.bought} three times in a row`,

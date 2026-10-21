@@ -928,12 +928,14 @@ maybe('what each role can see and do', () => {
             }
         })
 
-        // Where a version was kept was the last thing they wrote on one.
+        // Where a version was kept was the last thing they wrote on one, and
+        // since 006 each restaurant says that for itself (the column went in
+        // 010), so nothing is left for them to write.
         it('cannot change a version at all, only add one by buying it', async ({ skip }) => {
             const version = await pricedVersion(manager, ownRestaurantId)
             skip(!version, 'this restaurant has no prices, so there is no version to try')
             const answer = await manager.from('product_versions')
-                .update({ section: 'Freezer', supplier_code: ' ' }).eq('id', version.id).select('id')
+                .update({ supplier_code: ' ' }).eq('id', version.id).select('id')
             expect(versionUntouched(answer), 'a store manager changed a version').toBe(true)
         })
 
@@ -1496,12 +1498,10 @@ maybe('what each role can see and do', () => {
             }
         })
 
-        // Since 30 September: the customer page's Last updated. One date from the
-        // change log, and nothing else of it.
-        it('can ask when the allergen information last changed', async () => {
-            const { data, error } = await anon.rpc('allergens_changed_at')
-            expect(error, 'the allergen page cannot read its own date').toBeNull()
-            expect(data === null || !isNaN(new Date(data))).toBe(true)
+        // Since 21 October 2026, migration 010.
+        it('cannot choose what recipes cost a product from', async () => {
+            const { error } = await anon.rpc('set_cost_row', { price: NOBODY })
+            expect(error, 'anybody can choose the price recipes cost from').not.toBeNull()
         })
 
         it('cannot say the allergen sheet was printed', async () => {

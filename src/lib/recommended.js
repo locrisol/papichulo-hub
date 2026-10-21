@@ -47,6 +47,15 @@ export function standingOf(version, product, versions = []) {
     return { tone: 'fallback', label: `Fallback ${place === -1 ? version.fallback_rank : place + 1}` }
 }
 
+// Whether recipes cost this product from its recommended set, the dearest
+// of it (his decision of 18 October 2026), so that nobody chooses its price
+// by hand: the Recommended list does. The same rule as set_cost_row in
+// schema.sql, which refuses such a product.
+export function costsFromTheList(product, versions = []) {
+    return product?.recommends === 'versions'
+        && (versions || []).some(v => v.product_id === product.id && v.is_recommended && v.is_active !== false)
+}
+
 // The heading over the set: one version is simply the recommended one, and
 // several are any of these.
 export function setHeading(set) {
