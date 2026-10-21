@@ -18,6 +18,7 @@ import { acceptPrice, movePreferred, codeRow, ignoreCode, ownedByAnother, newGro
 import { readToDecide } from '@/lib/invoiceReview'
 import { linesFor } from '@/lib/productRequests'
 import { sameName } from '@/lib/products'
+import { saveKeptHere } from '@/lib/keptHere'
 import { todayISO } from '@/lib/dates'
 
 // Everything Review works from at one restaurant: the lines waiting, every
@@ -554,8 +555,8 @@ async function stillWaiting(request) {
 }
 
 // Add it as a new product: on the brand's list, then priced at the
-// restaurant that sent it from its invoice line, and recommended when the
-// reviewer ticked it. Its allergens are set next, on the Allergens page.
+// restaurant that sent it from its invoice line, kept there anywhere else it
+// was said to be, and recommended when the reviewer ticked it. Its allergens are set next, on the Allergens page.
 // Returns { error, productId, answered, said }: `answered` once the request
 // is answered, whatever failed after.
 //
@@ -573,7 +574,7 @@ export async function addFromRequest(request, { name, section, category = 'ingre
     if (taken) return nothing(`${taken.name} is already on the list. Answer with A version of one we have instead.`)
 
     const { data: made, error: e1 } = await supabase.from('products')
-        .insert({ name: String(name || '').trim(), section, category, also_in: alsoIn, unit })
+        .insert({ name: String(name || '').trim(), section, category, unit })
         .select('id, recommends').single()
     if (e1) return nothing(friendlyError(e1))
 
@@ -581,6 +582,17 @@ export async function addFromRequest(request, { name, section, category = 'ingre
         answer: 'new_product', userId, productId: made.id, unitsPerCase,
     })
     if (error) return { error, productId: made.id, answered: false, said }
+
+    // Anywhere else it is kept is that restaurant's own (lib/keptHere), so it
+    // goes on that restaurant's row rather than on the product.
+    if ((alsoIn || []).length) {
+        const { error: e3 } = await saveKeptHere({
+            restaurantId: request.restaurant_id,
+            product: { id: made.id, section, also_in: [] },
+            kept: { section, also_in: alsoIn },
+        })
+        if (e3) return { error: friendlyError(e3), productId: made.id, answered: true, said }
+    }
 
     // The price made its version (price_version). Only that one exists yet.
     // Not for a product that starts with no recommendation, cleaning,

@@ -109,9 +109,9 @@ export default function StockTakeReviewPage() {
     const { data: recipesData, error: recipesErr } = await supabase
       .from('mix_recipes').select('*')
 
-    // Where each product is kept there, from the versions it buys.
+    // Where each product is kept there, when that restaurant has said.
     const { data: keptData, error: keptErr } = await supabase
-      .from('restaurant_kept_in').select('*').eq('restaurant_id', sessionData.restaurant_id)
+      .from('restaurant_kept_in').select('product_id, section, also_in').eq('restaurant_id', sessionData.restaurant_id)
 
     const failed = productsErr || linesErr || pricesErr || recipesErr || keptErr
     if (failed) {
@@ -140,14 +140,20 @@ export default function StockTakeReviewPage() {
 
   const countedProductIds = useMemo(() => new Set(lines.map(l => l.product_id)), [lines])
 
+  // Where this restaurant mainly keeps a product, which is where a line added
+  // here goes and what the list below is sorted and labelled by. Not the
+  // product's section: a product kept in the Freezer here was added to Dry,
+  // and then flagged as counted in one place only.
+  const mainPlace = useCallback(product => placesFor(product, kept)[0], [kept])
+
   const uncountedProducts = useMemo(() => {
     return products
       .filter(p => !countedProductIds.has(p.id))
       .sort((a, b) => {
-        const r = sectionRank(a.section) - sectionRank(b.section)
+        const r = sectionRank(mainPlace(a)) - sectionRank(mainPlace(b))
         return r !== 0 ? r : a.name.localeCompare(b.name)
       })
-  }, [products, countedProductIds])
+  }, [products, countedProductIds, mainPlace])
 
   // Kept in more than one place, counted in some of them.
   //
@@ -231,7 +237,7 @@ export default function StockTakeReviewPage() {
       .insert({
         stock_take_id: id,
         product_id: product.id,
-        section: product.section || null,
+        section: product.section ? mainPlace(product) : null,
         quantity_counted: qty,
         unit_cost: unitCost,
         line_total: lineTotal,
@@ -463,7 +469,7 @@ export default function StockTakeReviewPage() {
                       <div className="flex items-center justify-between gap-3">
                         <p className="font-medium text-gray-900">
                           {countName(product)}
-                          <span className="text-xs text-muted ml-2">{product.section} · {product.unit}</span>
+                          <span className="text-xs text-muted ml-2">{mainPlace(product)} · {product.unit}</span>
                         </p>
                         <svg className={`w-4 h-4 text-muted transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                           <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />

@@ -83,6 +83,25 @@ async function pictureRefusal(client) {
     return error?.code ?? null
 }
 
+// Where a restaurant keeps a product that cannot exist, so no row is made:
+// refused by the rules, or let through to fail on the missing product.
+async function keptRefusal(client, restaurantId) {
+    const { error } = await client.from('restaurant_kept_in').insert({
+        restaurant_id: restaurantId,
+        product_id: NOBODY,
+        section: 'Dry',
+        also_in: [],
+    })
+    return error?.code ?? null
+}
+
+// A change to a version that the rules hide from a store manager, so it
+// reaches no row at all, or that the guard refuses. Either way nothing is
+// saved, which is what is being proved.
+function versionUntouched({ data, error }) {
+    return error?.code === GUARDED || (!error && (data || []).length === 0)
+}
+
 // A version the store manager's restaurant has a price for. The price is
 // what makes trying to remove it safe: a version with a price cannot go,
 // guard or no guard.
@@ -581,13 +600,14 @@ maybe('what each role can see and do', () => {
             expect(data || []).toEqual([])
         })
 
-        // The stock take lists a product where the versions bought there are
-        // kept, and staff count it, so they read that view, for their own
-        // restaurant only.
-        it('reads where things are kept at their own restaurant only', async () => {
+        // The stock take lists a product where the restaurant keeps it, and
+        // staff count it, so they read that, for their own restaurant only,
+        // and change none of it.
+        it('reads where things are kept at their own restaurant only, and changes none of it', async () => {
             const { data, error } = await employee.from('restaurant_kept_in').select('restaurant_id, product_id, section, also_in')
             expect(error).toBeNull()
             expect((data || []).filter(k => k.restaurant_id !== ownRestaurantId)).toEqual([])
+            expect(await keptRefusal(employee, ownRestaurantId)).toBe(REFUSED_BY_THE_RULES)
         })
 
         it('cannot send anything for review or read what was sent', async () => {
@@ -865,17 +885,33 @@ maybe('what each role can see and do', () => {
                 { name: 'RLS test, should never be saved' },
                 { is_active: !version.is_active },
             ]) {
-                const { error } = await manager.from('product_versions')
-                    .update({ ...change, supplier_code: ' ' }).eq('id', version.id)
-                expect(error?.code, `a store manager changed ${Object.keys(change)[0]}`).toBe(GUARDED)
+                const answer = await manager.from('product_versions')
+                    .update({ ...change, supplier_code: ' ' }).eq('id', version.id).select('id')
+                expect(versionUntouched(answer), `a store manager changed ${Object.keys(change)[0]}`).toBe(true)
             }
+        })
+
+        // Where a version was kept was the last thing they wrote on one.
+        it('cannot change a version at all, only add one by buying it', async ({ skip }) => {
+            const version = await pricedVersion(manager, ownRestaurantId)
+            skip(!version, 'this restaurant has no prices, so there is no version to try')
+            const answer = await manager.from('product_versions')
+                .update({ section: 'Freezer', supplier_code: ' ' }).eq('id', version.id).select('id')
+            expect(versionUntouched(answer), 'a store manager changed a version').toBe(true)
+        })
+
+        // Each restaurant's own (his decision of 18 October 2026), the same
+        // limit its prices have.
+        it('says where things are kept at their own restaurant only', async () => {
+            expect(await keptRefusal(manager, ownRestaurantId)).toBe(PAST_THE_RULES)
+            expect(await keptRefusal(manager, otherRestaurantId)).toBe(REFUSED_BY_THE_RULES)
         })
 
         it('cannot remove a version', async ({ skip }) => {
             const version = await pricedVersion(manager, ownRestaurantId)
             skip(!version, 'this restaurant has no prices, so there is no version to try')
-            const { error } = await manager.from('product_versions').delete().eq('id', version.id)
-            expect(error?.code, 'a store manager removed a version').toBe(GUARDED)
+            const answer = await manager.from('product_versions').delete().eq('id', version.id).select('id')
+            expect(versionUntouched(answer), 'a store manager removed a version').toBe(true)
         })
 
         it('reads the pictures and other codes of each version, and cannot add a picture', async () => {
@@ -989,6 +1025,11 @@ maybe('what each role can see and do', () => {
             expect(await pictureRefusal(owner)).toBe(PAST_THE_RULES)
         })
 
+        it('says where things are kept at their own restaurant only', async () => {
+            expect(await keptRefusal(owner, ownRestaurantId)).toBe(PAST_THE_RULES)
+            expect(await keptRefusal(owner, otherRestaurantId)).toBe(REFUSED_BY_THE_RULES)
+        })
+
         it('reads who reviews', async () => {
             const { count, error } = await countVisible(owner, 'brand_settings')
             expect(error).toBeNull()
@@ -1030,6 +1071,11 @@ maybe('what each role can see and do', () => {
         it('can see both restaurants', async () => {
             const { count } = await countVisible(superadmin, 'restaurants')
             expect(count).toBeGreaterThan(1)
+        })
+
+        it('says where things are kept at either restaurant', async () => {
+            expect(await keptRefusal(superadmin, ownRestaurantId)).toBe(PAST_THE_RULES)
+            expect(await keptRefusal(superadmin, otherRestaurantId)).toBe(PAST_THE_RULES)
         })
 
         it('can see every user', async () => {

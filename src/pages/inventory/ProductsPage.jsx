@@ -42,6 +42,7 @@ import ReviewersModal from '@/components/inventory/ReviewersModal'
 import SendForReviewModal from '@/components/inventory/SendForReviewModal'
 import VersionsModal from '@/components/inventory/VersionsModal'
 import { placesFor, recommendationAt } from '@/lib/brandVersions'
+import { ownPlaces, keptAt, saveKeptHere } from '@/lib/keptHere'
 import { startsWithoutRecommendation } from '@/lib/recommended'
 import SupplierBadge from '@/components/ui/SupplierBadge'
 import { can, BRAND_CHOICES } from '@/lib/access'
@@ -300,6 +301,10 @@ export default function ProductsPage() {
   const [activeSections, setActiveSections] = useState([])
   const [showForm, setShowForm] = useState(!!fromLink)
   const [editingProduct, setEditingProduct] = useState(null)
+  // Where this restaurant keeps the product in the form, once somebody has
+  // said. Until then null, and the form shows the product's own places, which
+  // follow its section as that is changed.
+  const [keptHere, setKeptHere] = useState(null)
   const [showInactive, setShowInactive] = useShowInactive('productsShowInactive')
 
   // What the count of products with no allergens set is worked out from,
@@ -336,7 +341,6 @@ export default function ProductsPage() {
   const [formData, setFormData] = useState(() => ({
     name: '',
     section: 'Freezer',
-    also_in: [],
     held_for: '',
     category: 'ingredient',
     unit: 'KG',
@@ -451,13 +455,12 @@ export default function ProductsPage() {
     // less, rather than something wrong.
     const [versionsRead, keptRead] = await Promise.all([
       everyRow(() => supabase.from('product_versions')
-        .select('id, product_id, supplier_id, supplier_code, name, is_recommended, is_active, fallback_rank, section, also_in')
+        .select('id, product_id, supplier_id, supplier_code, name, is_recommended, is_active, fallback_rank')
         .order('id')),
       everyRow(() => supabase.from('restaurant_kept_in')
-        .select('*')
+        .select('id, product_id, section, also_in')
         .eq('restaurant_id', activeRestaurant.id)
-        .order('product_id')
-        .order('section')),
+        .order('id')),
     ])
     if (!versionsRead.error) setVersions(versionsRead.data || [])
     if (!keptRead.error) setKept(keptRead.data || [])
@@ -809,10 +812,6 @@ export default function ProductsPage() {
       piece_weight: parseFloat(formData.piece_weight) > 0 && !formData.is_mix
         ? parseFloat(formData.piece_weight)
         : null,
-      // Somewhere it is already kept is not somewhere it is also kept. The
-      // section can be changed after the boxes are ticked, so this is cleared
-      // on the way out rather than trusted on the way in.
-      also_in: (formData.also_in || []).filter(place => place !== formData.section),
       held_for: String(formData.held_for || '').trim() || null,
     }
 
@@ -829,6 +828,23 @@ export default function ProductsPage() {
         .eq('id', editingProduct.id)
 
       if (error) { setFormProblem(friendlyError(error)); return }
+
+      // Where this restaurant keeps it, when somebody said. Straight after the
+      // product, since it hangs off nothing else.
+      if (keptHere) {
+        const { error: keptErr } = await saveKeptHere({
+          restaurantId: activeRestaurant.id,
+          product: { id: editingProduct.id, section: payload.section, also_in: editingProduct.also_in },
+          kept: keptHere,
+        })
+        if (keptErr) {
+          setFormProblem(savedButNot(formData.name,
+            [{ what: 'place on the stock take', error: keptErr, next: 'Press Save changes to try again.' }]))
+          fetchProducts()
+          fetchPrices()
+          return
+        }
+      }
 
       // The price, the packs and the allergens, the same three things creating
       // a product asks for. Written here so changing any of them is done where
@@ -1061,6 +1077,12 @@ export default function ProductsPage() {
         }
       }
 
+      // Where this restaurant keeps it, when somebody said.
+      if (keptHere && data) {
+        const { error: keptErr } = await saveKeptHere({ restaurantId: activeRestaurant.id, product: data, kept: keptHere })
+        if (keptErr) missed.push({ what: 'place on the stock take', error: keptErr, next: 'Set it from its Prices page.' })
+      }
+
       const said = [missed.length > 0 ? savedButNot(data.name, missed) : '', ...notes].filter(Boolean)
       if (said.length) setError(said.join(' '))
       // Read before resetForm, which forgets it.
@@ -1078,7 +1100,7 @@ export default function ProductsPage() {
     backTo.current = null
     setFormProblem('')
     setFormData({
-      name: '', section: 'Freezer', also_in: [], held_for: '', category: 'ingredient',
+      name: '', section: 'Freezer', held_for: '', category: 'ingredient',
       unit: 'KG', is_mix: false, weight_loss_pct: 0, piece_weight: '', notes: '', is_active: true,
     })
     setPriceForm(EMPTY_PRICE)
@@ -1092,6 +1114,7 @@ export default function ProductsPage() {
     editingId.current = null
     setOpenExtra(null)
     setEditingProduct(null)
+    setKeptHere(null)
     setShowForm(false)
     setErrors({})
     setPriceErrors({})
@@ -1109,10 +1132,13 @@ export default function ProductsPage() {
   // own row and their own fetch, which is why this waits.
   async function startEdit(product) {
     setFormProblem('')
+    // Where this restaurant keeps it, when it has said. Otherwise the form
+    // shows the product's own places.
+    const keptRow = kept.find(k => k.product_id === product.id)
+    setKeptHere(keptRow ? keptAt(product, keptRow) : null)
     setFormData({
       name: product.name,
       section: product.section,
-      also_in: product.also_in || [],
       held_for: product.held_for || '',
       category: product.category || 'ingredient',
       unit: product.unit,
@@ -1544,7 +1570,6 @@ export default function ProductsPage() {
           keepsTheList={keepsTheList}
           onClose={() => setVersionsOf(null)}
           onAddPrice={() => navigate(`/catalogue/products/${versionsOf}/prices`)}
-          onChanged={() => fetchPrices()}
         />
       )}
       {requesting && (
@@ -1575,6 +1600,9 @@ export default function ProductsPage() {
               problem={formProblem}
               formData={formData}
               onChange={handleFieldChange}
+              keptHere={keptHere || ownPlaces({ section: formData.section, also_in: editingProduct?.also_in })}
+              onKeptHereChange={setKeptHere}
+              restaurantName={activeRestaurant?.name}
               onSubmit={handleSave}
               onCancel={resetForm}
               submitLabel="Add product"
@@ -1952,6 +1980,9 @@ export default function ProductsPage() {
               problem={formProblem}
               formData={formData}
               onChange={handleFieldChange}
+              keptHere={keptHere || ownPlaces({ section: formData.section, also_in: editingProduct?.also_in })}
+              onKeptHereChange={setKeptHere}
+              restaurantName={activeRestaurant?.name}
               onSubmit={handleSave}
               onCancel={resetForm}
               submitLabel="Save changes"

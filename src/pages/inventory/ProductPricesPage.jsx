@@ -21,6 +21,7 @@ import PageHeader from '@/components/ui/PageHeader'
 import ProductPriceHistory from '@/components/inventory/ProductPriceHistory'
 import { useSaveOnce } from '@/components/ui/useSaveOnce'
 import SupplierBadge from '@/components/ui/SupplierBadge'
+import KeptHerePanel from '@/components/inventory/KeptHerePanel'
 
 // Every price we can buy one product at, for the restaurant you are working in.
 //
@@ -589,6 +590,14 @@ export default function ProductPricesPage() {
                 </div>
                 </>
             )}
+
+            {/* Under the prices, since it is the restaurant's own and not about
+                any one of them. It was a version's in the old Versions dialog,
+                the same at both restaurants. */}
+            <div className="mt-6">
+                <KeptHerePanel product={product} restaurant={activeRestaurant} />
+            </div>
+
             {/* The pack formats open in a dialog too, for the same reason as
                 editing: pushed into the table they were hard to tell apart from
                 the prices around them, and they pushed every row below down. */}
