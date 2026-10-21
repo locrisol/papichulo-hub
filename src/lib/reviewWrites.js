@@ -21,6 +21,8 @@ import { sameName } from '@/lib/products'
 import { saveKeptHere } from '@/lib/keptHere'
 import { todayISO } from '@/lib/dates'
 import { versionsWith } from '@/lib/suggestProducts'
+import { costsFromTheList } from '@/lib/brandVersions'
+import { readCostPrices } from '@/lib/costPrices'
 
 // Everything Review works from at one restaurant: the lines waiting, every
 // price and code it has, the suppliers, anything we buy, and the brand's
@@ -30,10 +32,12 @@ export async function readReview(restaurantId, { withSent = false } = {}) {
     // Every price and code the restaurant has, a page at a time. Read in one
     // go, whatever sat past the thousandth row was unknown here, and a code
     // bought every week went back to Never bought before.
-    const [waiting, prices, codes, suppliers, products, versions] = await Promise.all([
+    const [waiting, prices, codes, suppliers, products, versions, costPrices] = await Promise.all([
         readToDecide(restaurantId, { withSent }),
+        // With what the product recommends: a line's product is this one,
+        // and one costed from the Recommended list moves no price by hand.
         everyRow(() => supabase.from('product_supplier_prices')
-            .select('*, products(id, name, section, unit, piece_weight)')
+            .select('*, products(id, name, section, unit, piece_weight, recommends)')
             .eq('restaurant_id', restaurantId)
             .order('id')),
         everyRow(() => supabase.from('supplier_codes').select('*').eq('restaurant_id', restaurantId).order('id')),
@@ -48,9 +52,12 @@ export async function readReview(restaurantId, { withSent = false } = {}) {
             .order('name')
             .order('id')),
         readVersions(),
+        // What recipes cost each product from here, so a price line can say
+        // whether it is about that (costingOf).
+        readCostPrices(restaurantId),
     ])
 
-    const failed = [waiting, prices, codes, suppliers, products, versions].map(r => r.error).find(Boolean)
+    const failed = [waiting, prices, codes, suppliers, products, versions, costPrices].map(r => r.error).find(Boolean)
     if (failed) return { data: null, sent: null, error: friendlyError(failed) }
 
     return {
@@ -61,10 +68,23 @@ export async function readReview(restaurantId, { withSent = false } = {}) {
             suppliers: suppliers.data || [],
             products: products.data || [],
             versions: versions.data,
+            costPrices: costPrices.data || [],
         },
         sent: waiting.sent,
         error: null,
     }
+}
+
+// What a price line on Review is about (21 October 2026). A product with a
+// recommended set costs from the dearest of it, which the database keeps in
+// line, so nothing on the line chooses that: `listed`. `costed` is whether
+// the line's own price row is the one recipes cost from now, so taking its
+// new price moves what recipes cost.
+export function costingOf(row, { versions = [], costPrices = [] } = {}) {
+    const listed = costsFromTheList(row?.product, versions)
+    if (!listed) return { listed: false, costed: true }
+    const cost = (costPrices || []).find(c => c.product_id === row.product.id)
+    return { listed: true, costed: !!cost?.own_price_id && cost.own_price_id === row.price?.id }
 }
 
 // The brand's versions still switched on, with the other codes they go by
@@ -175,21 +195,18 @@ export function reviewWriter({ restaurantId, userId, data, rows, onSaid = () => 
         }
 
         // A second pack, and he said to cost from it. Whatever the product was
-        // costed from before stops being, whichever supplier it was, or two
-        // prices would both say they are the one.
-        if (alsoPrefer && row.packMoved) {
+        // costed from before stops being, whichever supplier it was, in one
+        // call (set_cost_row), since only one price may say it is the one. A
+        // product with a recommended set is costed from the Recommended list
+        // instead, which keep_cost_row has done already as the price went in.
+        if (alsoPrefer && row.packMoved && !costsFromTheList(row.product, data.versions)) {
             const before = data.prices.find(p => (
                 p.product_id === row.product.id && p.is_preferred && p.id !== priceId
             )) || null
             const move = movePreferred(row.product, costed, {
                 restaurantId, userId, from: before, at,
             })
-            if (move.off) {
-                await supabase.from('product_supplier_prices')
-                    .update({ is_preferred: false }).eq('id', move.off)
-            }
-            const { error: e2 } = await supabase.from('product_supplier_prices')
-                .update({ is_preferred: true }).eq('id', priceId)
+            const { error: e2 } = await supabase.rpc('set_cost_row', { price: priceId })
             if (e2) return friendlyError(e2)
             await supabase.from('product_price_events').insert(move.event)
         }

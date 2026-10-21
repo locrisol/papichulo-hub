@@ -631,6 +631,14 @@ maybe('what each role can see and do', () => {
             }
         })
 
+        // Which price rows a count takes packs from (011): ids only.
+        it('reads which rows a count takes packs from at their own restaurant only, and nothing of the price', async () => {
+            const { data, error } = await employee.from('count_price_rows').select('*')
+            expect(error).toBeNull()
+            expect((data || []).filter(r => r.restaurant_id !== ownRestaurantId)).toEqual([])
+            for (const row of data || []) expect(Object.keys(row).sort()).toEqual(['is_preferred', 'price_id', 'product_id', 'restaurant_id'])
+        })
+
         it('reads where things are kept at their own restaurant only, and changes none of it', async () => {
             const { data, error } = await employee.from('restaurant_kept_in').select('restaurant_id, product_id, section, also_in')
             expect(error).toBeNull()
@@ -928,12 +936,14 @@ maybe('what each role can see and do', () => {
             }
         })
 
-        // Where a version was kept was the last thing they wrote on one.
+        // Where a version was kept was the last thing they wrote on one, and
+        // since 006 each restaurant says that for itself (the column went in
+        // 010), so nothing is left for them to write.
         it('cannot change a version at all, only add one by buying it', async ({ skip }) => {
             const version = await pricedVersion(manager, ownRestaurantId)
             skip(!version, 'this restaurant has no prices, so there is no version to try')
             const answer = await manager.from('product_versions')
-                .update({ section: 'Freezer', supplier_code: ' ' }).eq('id', version.id).select('id')
+                .update({ supplier_code: ' ' }).eq('id', version.id).select('id')
             expect(versionUntouched(answer), 'a store manager changed a version').toBe(true)
         })
 
@@ -949,6 +959,13 @@ maybe('what each role can see and do', () => {
             expect((data || []).filter(c => c.restaurant_id !== ownRestaurantId)).toEqual([])
             const { count } = await countVisible(manager, 'cost_choice')
             expect(count, 'a manager can read every restaurant through cost_choice').toBe(0)
+        })
+
+        // The other restaurant's prices are behind it, and the list is an
+        // owner's to change (011).
+        it('cannot ask what a change to the Recommended list would cost', async () => {
+            const { error } = await manager.rpc('recommended_cost_preview', { product: NOBODY, versions: [] })
+            expect(error?.code, 'a store manager can see what the list would cost').toBe('42501')
         })
 
         // Only from inside code_update, after it has checked who is asking.
@@ -1029,6 +1046,16 @@ maybe('what each role can see and do', () => {
     })
 
     describe('owner', () => {
+        // Every restaurant open, the cost per unit and whose it is (011).
+        it('can ask what a change to the Recommended list would cost', async () => {
+            const { data, error } = await owner.rpc('recommended_cost_preview', { product: NOBODY, versions: [] })
+            expect(error).toBeNull()
+            expect((data || []).length).toBeGreaterThan(0)
+            for (const row of data || []) {
+                expect(Object.keys(row).sort()).toEqual(['borrowed_after', 'borrowed_now', 'cost_after', 'cost_now', 'restaurant_id', 'restaurant_name'])
+            }
+        })
+
         it('can see their own sales', async () => {
             const { error } = await countVisible(owner, 'sales_records')
             expect(error).toBeNull()
@@ -1413,7 +1440,7 @@ maybe('what each role can see and do', () => {
                 'menu_item_components', 'mix_recipes', 'product_allergens',
                 'product_versions', 'version_allergens', 'product_supplier_prices',
                 'product_requests', 'brand_settings', 'restaurant_kept_in', 'version_pictures', 'version_codes',
-                'cost_prices', 'staff_cost_prices', 'cost_choice', 'allergen_sheet_prints',
+                'cost_prices', 'staff_cost_prices', 'cost_choice', 'allergen_sheet_prints', 'count_price_rows',
             ]) {
                 const { count } = await countVisible(anon, table)
                 expect(count, `${table} is still readable by anybody`).toBe(0)
@@ -1496,12 +1523,10 @@ maybe('what each role can see and do', () => {
             }
         })
 
-        // Since 30 September: the customer page's Last updated. One date from the
-        // change log, and nothing else of it.
-        it('can ask when the allergen information last changed', async () => {
-            const { data, error } = await anon.rpc('allergens_changed_at')
-            expect(error, 'the allergen page cannot read its own date').toBeNull()
-            expect(data === null || !isNaN(new Date(data))).toBe(true)
+        // Since 21 October 2026, migration 010.
+        it('cannot choose what recipes cost a product from', async () => {
+            const { error } = await anon.rpc('set_cost_row', { price: NOBODY })
+            expect(error, 'anybody can choose the price recipes cost from').not.toBeNull()
         })
 
         it('cannot say the allergen sheet was printed', async () => {

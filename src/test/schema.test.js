@@ -721,4 +721,62 @@ describe('what recipes cost from', () => {
         expect(schema).toContain('grant execute on function public.keep_cost_row(restaurant uuid, product uuid) to service_role;')
         expect(schema).not.toMatch(/grant execute on function public\.keep_cost_row[^;]*authenticated/)
     })
+
+    // Migration 010, 21 October 2026. Checked when a change is finished,
+    // because keep_cost_row moves the flag in one update that meets the new
+    // row before the old one has let go.
+    it('lets one price per product at each restaurant be the one recipes cost from', () => {
+        expect(schema).toMatch(/add constraint product_supplier_prices_one_preferred\s+exclude using btree \(restaurant_id with =, product_id with =\) where \(is_preferred\)\s+deferrable initially deferred;/)
+    })
+
+    // So nothing the app sends marks a second row first and clears the rest
+    // after, and it runs as whoever calls it, under the same row rules.
+    it('moves it by hand in one call, never for a product the Recommended list decides', () => {
+        const body = fn('set_cost_row')
+        expect(body).not.toMatch(/security definer/)
+        expect(body).toContain('set is_preferred = (id = price)')
+        expect(body).toContain("pr.recommends = 'versions'")
+        expect(schema).toContain('grant execute on function public.set_cost_row(price uuid) to authenticated;')
+        expect(schema).not.toMatch(/grant execute on function public\.set_cost_row[^;]*anon/)
+    })
+})
+
+// Migration 011, 21 October 2026.
+describe('what the recommended list left to finish', () => {
+    // Staff count, and may not read versions or prices: ids only.
+    it('tells a count which rows to take packs from, and nothing of them', () => {
+        const start = schema.indexOf('create or replace view public.count_price_rows as')
+        expect(start, 'count_price_rows is not in schema.sql').toBeGreaterThan(-1)
+        const view = schema.slice(start, schema.indexOf(';', start))
+        expect(view).toMatch(/select p\.restaurant_id, p\.product_id, p\.id as price_id, p\.is_preferred\s+from/)
+        expect(view).toContain("pr.recommends = 'versions' and v.is_recommended and v.is_active")
+        expect(view).toContain('p.restaurant_id = (select public.get_my_restaurant_id())')
+        expect(schema).toContain('grant select on public.count_price_rows to authenticated;')
+    })
+
+    // It reads the other restaurant's prices, so it asks who is asking first.
+    it('works out what a change to the list would cost for owners only, and hands back the cost', () => {
+        const start = schema.indexOf('create or replace function public.recommended_cost_preview(')
+        expect(start, 'recommended_cost_preview is not in schema.sql').toBeGreaterThan(-1)
+        const body = schema.slice(start, schema.indexOf('end $$;', start))
+        expect(body).toMatch(/security definer/)
+        expect(body.indexOf("using errcode = '42501'")).toBeLessThan(body.indexOf('return query'))
+        expect(body).toContain('s.per <= s.cheapest * 4')
+        expect(body).toMatch(/returns table \(restaurant_id uuid, restaurant_name text, cost_now numeric, borrowed_now boolean,\s+cost_after numeric, borrowed_after boolean\)/)
+        expect(schema).not.toMatch(/grant execute on function public\.recommended_cost_preview[^;]*anon/)
+    })
+})
+
+// Step 10, 21 October 2026: what the recommended list left behind.
+describe('what is gone', () => {
+    it('keeps no places on a version, which each restaurant says for itself', () => {
+        const start = schema.indexOf('create table if not exists public.product_versions (')
+        const table = schema.slice(start, schema.indexOf(');', start))
+        expect(table).not.toMatch(/\n\s+(section|also_in)\s/)
+        expect(schema).toContain('create table if not exists public.restaurant_kept_in (')
+    })
+
+    it('has no allergens_changed_at, the date the sheet was once judged by', () => {
+        expect(schema).not.toContain('allergens_changed_at')
+    })
 })

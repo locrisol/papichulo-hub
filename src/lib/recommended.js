@@ -16,7 +16,7 @@
 
 import { PLACES, versionLabel } from '@/lib/brandVersions'
 import { unitWord } from '@/lib/invoiceReport'
-import { fmtMoney, fmtQty, fmtUnitCost } from '@/lib/format'
+import { fmtMoney, fmtPct, fmtQty, namesList } from '@/lib/format'
 import { unitWords } from '@/lib/countUnits'
 import { compareForCount } from '@/lib/products'
 
@@ -45,6 +45,94 @@ export function standingOf(version, product, versions = []) {
     if (version.fallback_rank == null) return null
     const place = groupsOf(product, versions).fallbacks.findIndex(v => v.id === version.id)
     return { tone: 'fallback', label: `Fallback ${place === -1 ? version.fallback_rank : place + 1}` }
+}
+
+// The recommended set after one change on the list, as version ids: one
+// added to it, or one taken off (taken off, made a fallback). What
+// recommended_cost_preview is asked about.
+export function setWith(groups, versionId, on) {
+    const ids = (groups?.set || []).map(v => v.id).filter(id => id !== versionId)
+    return on ? [...ids, versionId] : ids
+}
+
+// What the question before a change to the set says about cost: his note on
+// step 1 (18 October 2026, the cost before and after at each restaurant and
+// the dishes it moves) in the layout he chose on 21 October (A), which stays
+// short however many restaurants there are. Restaurants that would see the
+// same change share a line, named under it, so ten costing it the same are
+// one line; then each dish that moves, by how much and at how many
+// restaurants. Null when recipes would cost the product the same everywhere,
+// which asks nothing.
+//
+// `preview` is recommended_cost_preview's rows, `dishes` dishChanges by
+// restaurant id, for the restaurants whose costs the person asking can read.
+export function costPreviewWords(product, preview = [], dishes = {}, { most = 6, names = 7 } = {}) {
+    const rows = preview || []
+    const same = (a, b) => (a == null && b == null) || (a != null && b != null && Math.abs(Number(a) - Number(b)) < 0.00005)
+    const moved = rows.filter(r => !same(r.cost_now, r.cost_after))
+    if (!moved.length) return null
+
+    const each = unitWord(product?.unit)
+    const priced = per => (per == null ? 'no cost' : `${fmtMoney(Number(per))} ${each}`)
+    const change = r => {
+        if (same(r.cost_now, r.cost_after)) return `No change, ${priced(r.cost_after)}`
+        const now = Number(r.cost_now)
+        const after = Number(r.cost_after)
+        const pct = r.cost_now != null && r.cost_after != null && now > 0 ? Math.abs((after - now) / now) * 100 : null
+        const by = pct != null && pct >= 0.05 ? `, ${fmtPct(pct)} ${after > now ? 'more' : 'less'}` : ''
+        return `${r.cost_now == null ? 'No cost' : fmtMoney(now)} to ${priced(r.cost_after)}${by}`
+    }
+    const total = rows.length
+    const named = list => (list.length > names
+        ? `${list.slice(0, names - 1).join(', ')} and ${list.length - names + 1} more`
+        : namesList(list))
+    const lines = new Map()
+    for (const r of rows) {
+        const value = change(r)
+        lines.set(value, [...(lines.get(value) || []), r])
+    }
+    const details = [...lines]
+        .sort(([a, x], [b, y]) => Number(a.startsWith('No change')) - Number(b.startsWith('No change')) || y.length - x.length)
+        .map(([value, list]) => ({
+            label: list.length === 1 ? list[0].restaurant_name
+                : list.length === total ? (total === 2 ? 'Both restaurants' : `All ${total} restaurants`)
+                    : `${list.length} restaurants`,
+            under: list.length > 1 && list.length < total ? named(list.map(r => r.restaurant_name)) : undefined,
+            value,
+        }))
+
+    const name = product?.name
+    const message = total === 1 ? `This changes what recipes cost ${name} at ${rows[0].restaurant_name}.`
+        : moved.length === total ? `This changes what recipes cost ${name} at ${total === 2 ? 'both restaurants' : 'every restaurant'}.`
+            : `This changes what recipes cost ${name} at ${moved.length} of the ${total} restaurants.`
+
+    // Each dish by how far it moves, wherever its cost can be read.
+    const seen = Object.keys(dishes || {}).filter(id => (dishes[id] || []).length)
+    const byDish = new Map()
+    for (const id of seen) {
+        for (const d of dishes[id]) {
+            const move = Math.round((Number(d.now) - Number(d.was)) * 100) / 100
+            byDish.set(d.name, [...(byDish.get(d.name) || []), move])
+        }
+    }
+    const one = seen.length === 1
+    const dishLines = [...byDish]
+        .map(([dish, moves]) => {
+            const sizes = moves.map(Math.abs)
+            const low = Math.min(...sizes)
+            const high = Math.max(...sizes)
+            const way = moves.every(m => m < 0) ? 'less' : moves.every(m => m > 0) ? 'more' : 'either way'
+            const amount = low === high ? fmtMoney(low) : `${fmtMoney(low)} to ${fmtMoney(high)}`
+            return { label: dish, value: `${amount} ${way}${one ? '' : ` at ${moves.length}`}`, size: high }
+        })
+        .sort((a, b) => b.size - a.size || a.label.localeCompare(b.label))
+    const shown = dishLines.slice(0, most).map(({ label, value }) => ({ label, value }))
+    const more = dishLines.length - most
+    if (more > 0) shown.push({ label: 'And', value: `${more} more ${more === 1 ? 'dish' : 'dishes'}` })
+    const where = one ? rows.find(r => r.restaurant_id === seen[0])?.restaurant_name : null
+    const groups = shown.length ? [{ title: where ? `Dishes at ${where}` : 'Dishes', details: shown }] : []
+
+    return { message, details, groups }
 }
 
 // The heading over the set: one version is simply the recommended one, and
@@ -94,13 +182,13 @@ export function ownPrice(versionId, prices = []) {
 }
 
 // A price the way the list says it: what a case costs and how much is in it,
-// then what one unit costs. "€18.50 a case of 9.08 kg · €2.0374 a kg". The
+// then what one unit costs. "€18.50 a case of 9.08 kg · €2.04 a kg". The
 // unit is said after the amount, since "a case of 2.5" left him asking 2.5
 // of what (18 October 2026).
 export function priceWords(price, unit) {
     if (!price) return ''
     const perUnit = price.price_per_unit != null && price.price_per_unit !== ''
-        ? `${fmtUnitCost(Number(price.price_per_unit))} ${unitWord(unit)}`
+        ? `${fmtMoney(Number(price.price_per_unit))} ${unitWord(unit)}`
         : ''
     const pack = price.purchase_type === 'case' && price.price_per_case != null && price.price_per_case !== ''
         ? `${fmtMoney(Number(price.price_per_case))} a case${price.units_per_case

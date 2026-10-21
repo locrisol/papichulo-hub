@@ -1,4 +1,4 @@
-import { fmtUnitCost } from '@/lib/format'
+import { fmtMoney } from '@/lib/format'
 import { useState, useEffect, useRef, Fragment, useCallback } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase, everyRow } from '@/lib/supabase'
@@ -1365,7 +1365,7 @@ export default function ProductsPage() {
       // Null means we could not work it out: a MIX with an ingredient that has
       // no price, or a bought product with no price here or at the other
       // restaurant.
-      cost: unit != null ? fmtUnitCost(unit) : null,
+      cost: unit != null ? fmtMoney(unit) : null,
       borrowed: !p.is_mix && borrowedCost(costPrices, p.id),
       weightLoss: p.weight_loss_pct > 0 ? `${p.weight_loss_pct}%` : '—',
     }
@@ -1962,7 +1962,7 @@ export default function ProductsPage() {
                       </td>
                       <td className={`px-4 py-3 font-medium ${p.is_active ? 'text-gray-900' : 'text-muted'}`}>
                         {unit != null
-                          ? fmtUnitCost(unit)
+                          ? fmtMoney(unit)
                           : (p.is_mix ? <span className="text-amber-700 text-xs">Incomplete</span> : '—')}
                         {!p.is_mix && borrowedCost(costPrices, p.id) && (
                           <span className="block text-xs font-normal text-muted">Other restaurant&apos;s price</span>

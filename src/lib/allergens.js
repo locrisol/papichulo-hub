@@ -320,6 +320,11 @@ export function neverEnteredInDish(menuItemComponents, allProducts, allRecipeLin
 // Every product with no allergens declared: what the red count on Products in
 // the sidebar counts, and what the Products page marks.
 //
+// At one restaurant. The rows handed in are that restaurant's, from the
+// versions on its sheet, which are the ones it bought in the last 56 days
+// (lib/allergensAt), so a product answered at one can be unanswered at the
+// other, and a new delivery of a version nobody answered for brings it back.
+//
 // What counts as missing is neverEntered's rule and nobody else's, so the
 // badge, the Products page and the customer sheet cannot disagree about one
 // product. That means food with no allergen row, and a MIX with no recipe and

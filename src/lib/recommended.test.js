@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
-    alsoBought, anyVersionWords, bySection, countedIn, groupsOf, matchesSearch, namedWithCode, ownPrice,
-    priceWords, purchasesByVersion, setHeading, standingOf, startsWithoutRecommendation, withFallback,
-    withoutFallback,
+    alsoBought, anyVersionWords, bySection, costPreviewWords, countedIn, groupsOf, matchesSearch, namedWithCode,
+    ownPrice, priceWords, purchasesByVersion, setHeading, setWith, standingOf, startsWithoutRecommendation,
+    withFallback, withoutFallback,
 } from '@/lib/recommended'
 
 // Green peppers as Point Campus bought them in October 2026: two 5 kg packs
@@ -112,12 +112,12 @@ describe('what a version costs here, and how often it was bought', () => {
     })
 
     it('says a case price with what is in it, then the unit price', () => {
-        expect(priceWords(prices[0], 'KG')).toBe('€13.35 a case of 5 kg · €2.6700 a kg')
-        expect(priceWords(prices[1], 'KG')).toBe('€2.9000 a kg')
+        expect(priceWords(prices[0], 'KG')).toBe('€13.35 a case of 5 kg · €2.67 a kg')
+        expect(priceWords(prices[1], 'KG')).toBe('€2.90 a kg')
         expect(priceWords({ purchase_type: 'case', price_per_case: 41.12, units_per_case: 180, price_per_unit: 0.2284 }, 'Units'))
-            .toBe('€41.12 a case of 180 units · €0.2284 each')
+            .toBe('€41.12 a case of 180 units · €0.23 each')
         expect(priceWords({ purchase_type: 'case', price_per_case: 9.5, units_per_case: 1, price_per_unit: 9.5 }, 'Litre'))
-            .toBe('€9.50 a case of 1 litre · €9.5000 a litre')
+            .toBe('€9.50 a case of 1 litre · €9.50 a litre')
         expect(priceWords(null, 'KG')).toBe('')
     })
 
@@ -182,5 +182,73 @@ describe('what starts with no recommendation', () => {
         expect(countedIn('KG')).toBe('Counted in kg')
         expect(countedIn('Litre')).toBe('Counted in litres')
         expect(countedIn('Units')).toBe('Counted in units')
+    })
+})
+
+// Before a change to the set is saved, what it does to the cost (21 October
+// 2026, his layout A). Green peppers: taking the 2.67 box off leaves the 2.5944
+// one. Point Campus and Dun Laoghaire as they are, and eight made up.
+describe('what a change to the set would cost', () => {
+    const at = (name, now, after, id = name) => ({
+        restaurant_id: id, restaurant_name: name, cost_now: now, borrowed_now: false, cost_after: after, borrowed_after: false,
+    })
+    const TEN = [
+        ...['Point Campus', 'Dun Laoghaire', 'Restaurant C', 'Restaurant D', 'Restaurant E', 'Restaurant F', 'Restaurant G']
+            .map(name => at(name, 2.67, 2.5944)),
+        at('Restaurant H', 2.71, 2.62), at('Restaurant I', 2.71, 2.62), at('Restaurant J', 2.5944, 2.5944),
+    ]
+
+    it('knows the set after one change', () => {
+        expect(setWith(groupsOf(PEPPERS, ALL), 'a', false)).toEqual(['b'])
+        expect(setWith(groupsOf(PEPPERS, ALL), 'c', true).sort()).toEqual(['a', 'b', 'c'])
+    })
+
+    it('asks nothing when recipes would cost it the same everywhere', () => {
+        expect(costPreviewWords(PEPPERS, [at('Point Campus', 2.67, 2.67), at('Dun Laoghaire', null, null)])).toBeNull()
+    })
+
+    // Money to two decimals, his rule of the same day.
+    it('puts restaurants with the same change on one line, named under it, however many there are', () => {
+        const words = costPreviewWords(PEPPERS, TEN)
+        expect(words.message).toBe('This changes what recipes cost Green Peppers at 9 of the 10 restaurants.')
+        expect(words.details).toEqual([
+            {
+                label: '7 restaurants', value: '€2.67 to €2.59 a kg, 2.8% less',
+                under: 'Point Campus, Dun Laoghaire, Restaurant C, Restaurant D, Restaurant E, Restaurant F and Restaurant G',
+            },
+            { label: '2 restaurants', value: '€2.71 to €2.62 a kg, 3.3% less', under: 'Restaurant H and Restaurant I' },
+            { label: 'Restaurant J', value: 'No change, €2.59 a kg' },
+        ])
+    })
+
+    it('is one line when every restaurant would see the same', () => {
+        const words = costPreviewWords(PEPPERS, [at('Point Campus', 2.67, 2.5944), at('Dun Laoghaire', 2.67, 2.5944)])
+        expect(words.message).toBe('This changes what recipes cost Green Peppers at both restaurants.')
+        expect(words.details).toEqual([{ label: 'Both restaurants', value: '€2.67 to €2.59 a kg, 2.8% less' }])
+        expect(costPreviewWords(PEPPERS, TEN.map(r => ({ ...r, cost_now: 2.67, cost_after: 2.5944 }))).details[0].label)
+            .toBe('All 10 restaurants')
+    })
+
+    it('names the dishes that move at the one restaurant it can see, a few at a time', () => {
+        const dishes = { 'Point Campus': ['Bowl', 'Burrito', 'Tacos'].map((name, i) => ({ id: name, name, was: 9 + i, now: 8.9 + i - i / 100, rise: -1 })) }
+        const words = costPreviewWords(PEPPERS, TEN, dishes, { most: 2 })
+        expect(words.groups).toEqual([{
+            title: 'Dishes at Point Campus',
+            details: [
+                { label: 'Tacos', value: '€0.12 less' },
+                { label: 'Burrito', value: '€0.11 less' },
+                { label: 'And', value: '1 more dish' },
+            ],
+        }])
+    })
+
+    it('says at how many restaurants each dish moves when it can see more than one', () => {
+        const bowl = (was, now) => [{ id: 'bowl', name: 'Bowl', was, now, rise: -1 }]
+        const words = costPreviewWords(PEPPERS, TEN, { 'Point Campus': bowl(9, 8.99), 'Dun Laoghaire': bowl(9.5, 9.47) })
+        expect(words.groups).toEqual([{ title: 'Dishes', details: [{ label: 'Bowl', value: '€0.01 to €0.03 less at 2' }] }])
+    })
+
+    it('says when nothing would be left to cost it from', () => {
+        expect(costPreviewWords(PEPPERS, [at('Point Campus', 2.67, null)]).details[0].value).toBe('€2.67 to no cost')
     })
 })

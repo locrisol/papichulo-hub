@@ -54,11 +54,33 @@ export function ConfirmProvider({ children }) {
     )
 }
 
+// Label and value pairs, one to a line, with a smaller line under the label
+// when a row has one (`under`), such as which restaurants a line is for.
+function DetailList({ rows, className = '' }) {
+    return (
+        <dl className={`border border-border rounded-lg divide-y divide-border ${className}`}>
+            {rows.map(d => (
+                <div key={d.label} className="flex items-baseline justify-between gap-4 px-3 py-2">
+                    <dt className="text-xs text-muted uppercase tracking-wider">
+                        {d.label}
+                        {d.under && <span className="block normal-case tracking-normal mt-0.5">{d.under}</span>}
+                    </dt>
+                    <dd className="text-sm font-semibold text-gray-900 text-right tabular-nums">{d.value}</dd>
+                </div>
+            ))}
+        </dl>
+    )
+}
+
 function ConfirmDialog({ request, onClose }) {
     const {
         title = 'Are you sure?',
         message,
         details,
+        // More lists after the details, each under a heading of its own:
+        // [{ title, details }]. The cost of a change to the Recommended list
+        // lists the restaurants, then the dishes.
+        groups = [],
         confirmLabel = 'Confirm',
         cancelLabel = 'Cancel',
         tone = 'default',
@@ -100,16 +122,13 @@ function ConfirmDialog({ request, onClose }) {
                         squeezed into the sentence. Reading back the supplier and
                         the amount is the difference between confirming and
                         confirming the right one. */}
-                    {details?.length > 0 && (
-                        <dl className="mt-4 border border-border rounded-lg divide-y divide-border">
-                            {details.map(d => (
-                                <div key={d.label} className="flex items-baseline justify-between gap-4 px-3 py-2">
-                                    <dt className="text-xs text-muted uppercase tracking-wider">{d.label}</dt>
-                                    <dd className="text-sm font-semibold text-gray-900 text-right">{d.value}</dd>
-                                </div>
-                            ))}
-                        </dl>
-                    )}
+                    {details?.length > 0 && <DetailList rows={details} className="mt-4" />}
+                    {groups.filter(g => g.details?.length > 0).map(g => (
+                        <div key={g.title} className="mt-5">
+                            <p className="text-xs font-bold text-muted uppercase tracking-wider mb-1">{g.title}</p>
+                            <DetailList rows={g.details} />
+                        </div>
+                    ))}
 
                     {tone === 'danger' && !isNotice && dangerNote && (
                         <p className="mt-4 text-xs text-red-600">{dangerNote}</p>

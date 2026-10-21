@@ -4,6 +4,7 @@ import { act, screen, within, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithRouter, tableOf, makeQuery, A_RESTAURANT, A_MANAGER, AN_EMPLOYEE } from '@/test/helpers'
 import { allergensChanged } from '@/lib/allergensChanged'
+import { saved } from '@/lib/saves'
 
 // The counts on the sidebar.
 //
@@ -180,6 +181,23 @@ describe('when the count on Products is worked out', () => {
         act(() => allergensChanged())
 
         expect(await onProducts('Allergens not set for 1 product')).toBeInTheDocument()
+    })
+
+    // A restaurant's sheet is what it bought in the last 56 days, so a line
+    // decided on Import invoices can answer a product, or stop answering one.
+    it('is worked out again after an invoice is saved, and not after a stock take count', async () => {
+        show('/invoices/import')
+        await onProducts('Allergens not set for 2 products')
+        const before = reads()
+
+        act(() => saved('stock_take_lines'))
+        await new Promise(r => setTimeout(r, 900))
+        expect(reads()).toBe(before)
+
+        tables.product_allergens = [{ product_id: 'cheese' }]
+        act(() => saved('invoice_lines'))
+        expect(await onProducts('Allergens not set for 1 product')).toBeInTheDocument()
+        expect(reads()).toBe(before + 1)
     })
 })
 

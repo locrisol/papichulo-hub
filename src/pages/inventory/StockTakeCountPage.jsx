@@ -11,7 +11,7 @@ import { friendlyError } from '@/lib/errors'
 import { matches } from '@/lib/search'
 import { countName, compareForCount } from '@/lib/products'
 import { countedLine } from '@/lib/countedAt'
-import { orderFormats, packLabel, unitWords } from '@/lib/countUnits'
+import { packLabel, packsOfRows, unitWords } from '@/lib/countUnits'
 import { badge, captionClass, card, chip, fieldBase, fieldClass, labelClass, primaryButton, rowButton } from '@/lib/controlStyles'
 import SearchBox from '@/components/ui/SearchBox'
 import { sectionColour, sectionRank } from '@/lib/sections'
@@ -185,29 +185,48 @@ export default function StockTakeCountPage() {
         if (keptErr) { setError(friendlyError(keptErr)); setLoading(false); return }
         setKept(keptData || [])
 
-        // Fetch pack formats for the preferred prices, build a per-product lookup.
-        const preferredPriceIds = (pricesData || []).map(p => p.id)
+        // Which price rows each product's packs come from there: the one
+        // recipes cost from, and the own row of every recommended version, so
+        // green peppers bought as either box can be counted in either (21
+        // October 2026). Ids only, which staff read (count_price_rows).
+        const { data: rowsData, error: rowsErr } = await supabase
+            .from('count_price_rows')
+            .select('product_id, price_id, is_preferred')
+            .eq('restaurant_id', sessionData.restaurant_id)
+        if (rowsErr) { setError(friendlyError(rowsErr)); setLoading(false); return }
+
+        // Map: product_id -> the price rows, the preferred one first.
+        const priceByProduct = {}
+        for (const p of (pricesData || [])) priceByProduct[p.product_id] = p
+        const rowsOf = {}
+        for (const p of (pricesData || [])) rowsOf[p.product_id] = [p.id]
+        for (const r of (rowsData || [])) {
+            const ids = rowsOf[r.product_id] || (rowsOf[r.product_id] = [])
+            if (!ids.includes(r.price_id)) ids.push(r.price_id)
+        }
+
+        // Fetch pack formats for those prices, build a per-product lookup.
+        const packPriceIds = [...new Set(Object.values(rowsOf).flat())]
         let countUnitsData = []
-        if (preferredPriceIds.length > 0) {
+        if (packPriceIds.length > 0) {
             const { data: cuData, error: cuErr } = await supabase
                 .from('price_count_units')
                 .select('*')
-                .in('price_id', preferredPriceIds)
+                .in('price_id', packPriceIds)
                 .eq('is_active', true)
                 .order('sort_order', { ascending: true })
             if (cuErr) { setError(friendlyError(cuErr)); setLoading(false); return }
             countUnitsData = cuData || []
         }
 
-        // Map: product_id -> { formats: [...], allowLoose: bool }
-        const priceByProduct = {}
-        for (const p of (pricesData || [])) priceByProduct[p.product_id] = p
+        // Map: product_id -> { formats: [...], allowLoose: bool }. Counted
+        // loose as the row recipes cost from says, or loose when there is
+        // none here, which is a cost borrowed from the other restaurant.
         const formatsMap = {}
-        for (const product_id in priceByProduct) {
-            const price = priceByProduct[product_id]
+        for (const product_id in rowsOf) {
             formatsMap[product_id] = {
-                formats: orderFormats(countUnitsData.filter(cu => cu.price_id === price.id)),
-                allowLoose: price.allow_loose_count ?? true,
+                formats: packsOfRows(rowsOf[product_id].map(id => countUnitsData.filter(cu => cu.price_id === id))),
+                allowLoose: priceByProduct[product_id]?.allow_loose_count ?? true,
             }
         }
         setFormatsByProductId(formatsMap)

@@ -1,4 +1,4 @@
-import { fmtMoney, fmtPct, fmtQty, fmtUnitCost } from '@/lib/format'
+import { fmtMoney, fmtPct, fmtQty } from '@/lib/format'
 import { countName } from '@/lib/products'
 import { sectionColour, MIX_COLOUR } from '@/lib/sections'
 import { breakdownParts, bySection, justLoose, summarise } from '@/lib/stockTakeSummary'
@@ -526,10 +526,10 @@ export async function exportStockTakePdf({ session, restaurant, products, lines,
                 pdf.setTextColor(40)
             }
             pdf.text(`${fmtQty(qty)} ${product.unit}`, colQtyRight, y, { align: 'right' })
-            // Four places, like every other unit cost in the Hub. At two a
-            // tortilla at 0.3033 read 0.30 beside a line of 30.33, and the
-            // sheet did not multiply out for anybody checking it by hand.
-            pdf.text(fmtUnitCost(unitCost), colCostRight, y, { align: 'right' })
+            // Two places, like all money in the Hub (his rule of 21 October
+            // 2026). The line total is worked out from the price as kept, so a
+            // tortilla at 0.3033 reads 0.30 beside a line of 30.33 for 100.
+            pdf.text(fmtMoney(unitCost), colCostRight, y, { align: 'right' })
             pdf.text(fmtMoney(value), colTotalRight, y, { align: 'right' })
             y += 5.4 + nameExtra
 

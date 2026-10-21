@@ -227,6 +227,14 @@ describe('a component nobody entered allergens for', () => {
         expect(await chip('Gluten')).toContain('Contains')
     })
 
+    // The answer is the restaurant's own: what is on its sheet is what it
+    // bought in the last 8 weeks (since 19 October 2026).
+    it('says which restaurant and which buying the allergens are worked out from', async () => {
+        useTables(tablesFor())
+        showPage()
+        expect(await screen.findByText(/At Point Campus, from what it bought in the last 8 weeks\./)).toBeInTheDocument()
+    })
+
     it('says Not present once everything in the dish was answered', async () => {
         useTables(tablesFor({
             menu_item_components: WITH_RICE,

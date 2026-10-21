@@ -106,7 +106,7 @@ COMMENT ON COLUMN "public"."restaurants"."forecasting_venue_id" IS 'Superseded b
 COMMENT ON COLUMN "public"."restaurants"."latitude" IS 'Where the shop actually is, which is what the search for nearby places asks from and what the city rule measures against. Null until somebody pins the address, and both of those simply do not run until it is.';
 COMMENT ON COLUMN "public"."restaurants"."timesheet_recipients" IS 'Who the week''s hours are mailed to, typed and kept. Nobody is on it by role: it is the payroll list, not the owners'' list, and it carries no money at all.';
 COMMENT ON COLUMN "public"."restaurants"."pay_period_start" IS 'The first day of any one pay period, which is always a fortnight. Every other period is worked out from this by counting in fourteens, so the exact one that was typed does not matter as long as it really was a period start. It is read back as the Sunday of its own week, because a period that began mid week would put its boundary inside a Hub week and leave the two halves belonging to different weeks. Empty means nobody has said yet, and the hours cannot be sent until they do.';
-COMMENT ON COLUMN "public"."restaurants"."recipe_gap_percent" IS 'How far what recipes cost a product at can be from what was last paid for the version usually bought, before the weekly report lists it. Either way: 5 means five per cent dearer or cheaper. It stays on every report until the two are closer than this.';
+COMMENT ON COLUMN "public"."restaurants"."recipe_gap_percent" IS 'How far what recipes cost a product at can be from what was last paid for it, before the weekly report lists it, either way: 5 means five per cent dearer or cheaper, and it stays on every report until the two are closer than this. The same figure says when something bought off the Recommended list puts a dish''s whole cost up by too much.';
 COMMENT ON COLUMN "public"."restaurants"."allergen_sheet_printed_at" IS 'When the allergen sheet was last printed from the Hub for this restaurant, stamped by allergen_sheet_printed(). Null means never, which counts as due.';
 COMMENT ON COLUMN "public"."restaurants"."delivery_cost_target" IS 'What each delivery platform should keep, as a percentage of what that platform took, not of net sales. The line on the weekly report''s delivery chart. Overridden from a given week in cost_target_overrides, as the other three are.';
 COMMENT ON COLUMN "public"."restaurants"."allergen_sheet_every_months" IS 'How many months the printed allergen sheet stays up before it is due again when nothing on it has changed. A change makes it due straight away whatever this says.';
@@ -319,6 +319,13 @@ CREATE INDEX "idx_prices_restaurant" ON "public"."product_supplier_prices" USING
 CREATE INDEX "idx_prices_supplier" ON "public"."product_supplier_prices" USING "btree" ("supplier_id");
 COMMENT ON COLUMN "public"."product_supplier_prices"."version_id" IS 'Which version this price is for. Set by the price_version trigger from the product, supplier and code, never by the app.';
 comment on column public.product_supplier_prices.is_preferred is 'This restaurant''s own row recipes cost from, and the one the stock take takes its packs from. For a product with a recommended set keep_cost_row keeps it on the recommended row cost_prices costs from; otherwise it is the one somebody chose. What recipes cost a product at is cost_prices, which can be the other restaurant''s price.';
+-- One row recipes cost from per product at each restaurant (010). Checked
+-- when a change is finished, because keep_cost_row moves it in one update.
+alter table public.product_supplier_prices
+    add constraint product_supplier_prices_one_preferred
+    exclude using btree (restaurant_id with =, product_id with =) where (is_preferred)
+    deferrable initially deferred;
+comment on constraint product_supplier_prices_one_preferred on public.product_supplier_prices is 'At most one row recipes cost from per product at each restaurant. Checked when a change is finished, so moving it from one row to another in one go is fine; two changes sent one after the other have to take it off the old row first.';
 CREATE INDEX "idx_product_supplier_prices_version" ON "public"."product_supplier_prices" USING "btree" ("version_id");
 
 CREATE TABLE IF NOT EXISTS "public"."price_count_units" (
@@ -418,17 +425,11 @@ create table if not exists public.product_versions (
     is_active boolean not null default true,
     created_at timestamp with time zone not null default now(),
     created_by uuid references public.users(id) on delete set null,
-    section text,
-    also_in text[],
     fallback_rank smallint,
     notes text,
     description text,
     constraint product_versions_code_not_blank check (supplier_code is null or btrim(supplier_code) <> ''),
     constraint product_versions_name_not_blank check (name is null or btrim(name) <> ''),
-    constraint product_versions_section_known
-        check (section is null or section in ('Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning')),
-    constraint product_versions_also_in_known
-        check (also_in is null or also_in <@ array['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']),
     constraint product_versions_fallback_rank_positive check (fallback_rank is null or fallback_rank > 0),
     constraint product_versions_recommended_or_fallback check (not (is_recommended and fallback_rank is not null)),
     constraint product_versions_notes_not_blank check (notes is null or btrim(notes) <> ''),
@@ -442,8 +443,6 @@ comment on column public.product_versions.is_recommended is 'One of the versions
 comment on column public.product_versions.fallback_rank is 'Where this version comes under If those are out: bought only when none of the recommended ones is in stock, 1 first. Empty for anything that is not a fallback. Never a recommended version as well. Owners and the super admin set it.';
 comment on column public.product_versions.notes is 'How it is bought, for whoever orders it: order by 2pm for the next day, keep the boxes sealed. Owners and the super admin write it.';
 comment on column public.product_versions.description is 'What it is and how to tell it apart from the others: the brand, the size, how it looks. Owners and the super admin write it.';
-comment on column public.product_versions.section is 'Where this version is kept. Empty means where the product is kept (products.section). Frozen tortillas and ambient ones are two versions of one product kept in two places.';
-comment on column public.product_versions.also_in is 'The other places this version is also kept. Empty means the product''s own (products.also_in).';
 
 -- One version per supplier and code for a product, ignoring case and spaces;
 -- one with no code per supplier.
@@ -2066,12 +2065,7 @@ ALTER TABLE ONLY "public"."change_log"
 CREATE INDEX "idx_change_log_row" ON "public"."change_log" USING "btree" ("table_name", "row_id", "changed_at" DESC);
 CREATE INDEX "idx_change_log_user" ON "public"."change_log" USING "btree" ("user_id", "changed_at" DESC);
 CREATE INDEX "idx_change_log_when" ON "public"."change_log" USING "btree" ("changed_at" DESC);
--- For allergens_changed_at(), which the customer allergen page calls on every
--- visit. Without it the function walks back through every change to every
--- table until it meets one of these.
-CREATE INDEX "idx_change_log_allergen_sheet" ON "public"."change_log" USING "btree" ("changed_at" DESC) WHERE ("table_name" = ANY (ARRAY['product_allergens'::"text", 'menu_items'::"text", 'menu_item_components'::"text", 'menu_categories'::"text", 'mix_recipes'::"text", 'products'::"text", 'version_allergens'::"text", 'product_versions'::"text", 'product_supplier_prices'::"text"]));
 
-COMMENT ON INDEX "public"."idx_change_log_allergen_sheet" IS 'Only the tables the allergen sheet is made from, newest first, for allergens_changed_at(), which the customer allergen page calls on every visit.';
 COMMENT ON INDEX "public"."menu_item_components_once_as_ingredient" IS 'A product is in a dish once. Its appearances inside a choice are counted separately.';
 COMMENT ON INDEX "public"."menu_item_components_once_per_choice" IS 'A product is one option of a choice once, and may be an option of a different choice on the same dish.';
 COMMENT ON INDEX "public"."report_items_one_per_key" IS 'One row per key, but only for the kinds where the key names a thing there can be only one of: an overhead line, a platform''s delivery cost, a platform''s rating. Reviews and refunds use the key to say which platform they are about and there can be any number of them.';
@@ -3519,66 +3513,11 @@ $$;
 
 -- -- The allergen sheet ------------------------------------------------
 --
--- When the allergen information last changed, and the stamp the PDF button
--- leaves when the sheet is printed. His ask of 29 September 2026: an accurate
--- "Last updated", and a reminder to print a new sheet every so many months
--- and as soon as anything on it has changed since the last print.
-
--- The newest change that alters what the allergen sheet says: allergens,
--- dishes, what is in them and their categories, recipes, and a product
--- renamed, switched on or off, made a MIX, or moved section. The section
--- counts since 1 October, because a food product with no allergens entered sends
--- the customer to staff and packaging does not. A price, the VAT, a quantity
--- or a note does not count. The customer page is not signed in and cannot read
--- the change log, so this reads it for them and hands back one date.
---
--- Listed by what does not count rather than by what does, on every table but
--- products: a column added to a dish later reminds somebody to print once too
--- often, which costs a sheet of paper, where a column missed would let the
--- paper on the wall go wrong without a word. Products are the other way round
--- because nearly everything on them is about buying and counting.
---
--- So a few things move the date without changing the sheet: the allergen row
--- a new product is saved with, and any edit to a dish that is switched off.
--- The customer's Last updated moves with them too. That is the side to be
--- wrong on, a sheet printed once too often rather than a changed one nobody
--- is told about.
-create or replace function public.allergens_changed_at() returns timestamp with time zone
-    language sql stable security definer
-    set search_path to 'public', 'pg_temp'
-    as $$
-    select l.changed_at
-      from public.change_log l
-     where l.table_name in ('product_allergens', 'menu_items', 'menu_item_components',
-                            'menu_categories', 'mix_recipes', 'products', 'version_allergens',
-                            'product_versions', 'product_supplier_prices')
-       and case
-            -- A new product is on no dish yet. The allergen row it is saved
-            -- with still counts, as an insert on product_allergens.
-            when l.table_name = 'products' and l.action = 'insert' then false
-            -- A price only when it starts or stops a version at a restaurant,
-            -- not every time what it costs moves.
-            when l.table_name = 'product_supplier_prices' then
-                l.action <> 'update' or l.changes ? 'version_id'
-            when l.action <> 'update' then true
-            when l.table_name = 'products' then l.changes ?| array['name', 'is_active', 'is_mix', 'section']
-            -- Recommended counts: a restaurant that buys none of a product's
-            -- versions has its sheet built from the recommended ones.
-            when l.table_name = 'product_versions' then l.changes ?| array['is_active', 'product_id', 'is_recommended']
-            when l.table_name = 'menu_items' then exists (
-                select 1 from jsonb_object_keys(l.changes) k
-                 where k <> all (array['selling_price', 'vat_rate', 'notes']))
-            when l.table_name = 'menu_item_components' then exists (
-                select 1 from jsonb_object_keys(l.changes) k
-                 where k <> all (array['quantity', 'no_quantity', 'notes']))
-            when l.table_name = 'mix_recipes' then exists (
-                select 1 from jsonb_object_keys(l.changes) k
-                 where k <> all (array['quantity', 'notes']))
-            else true
-       end
-     order by l.changed_at desc
-     limit 1
-$$;
+-- The stamp the PDF button leaves when the sheet is printed. His ask of 29
+-- September 2026: an accurate "Last updated", and a reminder to print a new
+-- sheet every so many months and as soon as anything on it has changed since
+-- the last print. What changed is worked out by the app against the copy kept
+-- at each print (allergen_sheet_prints).
 
 create or replace function public.price_version() returns trigger
     language plpgsql security definer
@@ -4085,6 +4024,102 @@ end $$;
 
 comment on function public.keep_cost_row(restaurant uuid, product uuid) is 'For a product with a recommended set, puts is_preferred on the restaurant''s own row cost_prices costs from, moving the packs across when the row has none, and writes the price history event. Nothing for a product with no recommendation or one costed from the other restaurant''s price. Called by cost_row_follows; nobody signed in calls it.';
 
+-- The price somebody chooses to cost a product from, for one with no
+-- recommendation: Set as preferred on the Prices page, "and cost from it" in
+-- Review, Make it the usual one on the report. Each was two updates, the new
+-- row on and then the rest off, which the rule above refuses; now it is one,
+-- so there is never a moment with two rows or none. It runs as whoever calls
+-- it, so the same row rules decide who may. A product with a recommended set
+-- is refused: the Recommended list decides that one, through keep_cost_row.
+create or replace function public.set_cost_row(price uuid) returns void
+    language plpgsql
+    set search_path to 'public', 'pg_temp'
+    as $$
+declare
+    p public.product_supplier_prices;
+begin
+    select * into p from public.product_supplier_prices where id = price;
+    if not found then
+        raise exception 'That price is not in the Hub any more';
+    end if;
+    if exists (select 1 from public.products pr
+                where pr.id = p.product_id and pr.recommends = 'versions'
+                  and exists (select 1 from public.product_versions v
+                               where v.product_id = pr.id and v.is_recommended and v.is_active)) then
+        raise exception 'What recipes cost this from is set on the Recommended list';
+    end if;
+    update public.product_supplier_prices set is_preferred = (id = price)
+     where restaurant_id = p.restaurant_id and product_id = p.product_id
+       and (is_preferred or id = price)
+       and is_preferred is distinct from (id = price);
+    if not exists (select 1 from public.product_supplier_prices where id = price and is_preferred) then
+        raise exception 'That price could not be chosen to cost from';
+    end if;
+end $$;
+
+comment on function public.set_cost_row(price uuid) is 'Makes one price the row recipes cost its product from at its restaurant, and no other, in one update. For a product with no recommendation; refused for one with a recommended set. Runs as the caller, so only those who may change that restaurant''s prices can.';
+
+-- The same rule as cost_choice, for a set that is not saved yet: the dearest
+-- of `versions` still switched on, each at the restaurant's own latest price
+-- or else the other restaurant's, not more than four times the cheapest;
+-- with none of them priced, or no set at all, the price the restaurant chose.
+create or replace function public.recommended_cost_preview(product uuid, versions uuid[])
+returns table (restaurant_id uuid, restaurant_name text, cost_now numeric, borrowed_now boolean,
+               cost_after numeric, borrowed_after boolean)
+    language plpgsql stable security definer
+    set search_path to 'public', 'pg_temp'
+    as $$
+#variable_conflict use_column
+declare
+    me text := public.get_my_role();
+begin
+    if me is distinct from 'owner' and me is distinct from 'super_admin' then
+        raise exception 'Only an owner can change the Recommended list' using errcode = '42501';
+    end if;
+    return query
+    with set_prices as (
+        select r.id as rid, v.id as version_id, own.id as own_id,
+               coalesce(own.price_per_unit, other.price_per_unit) as per
+          from public.restaurants r
+          cross join public.product_versions v
+          left join lateral (
+              select x.id, x.price_per_unit
+                from public.product_supplier_prices x
+               where x.restaurant_id = r.id and x.version_id = v.id and x.price_per_unit > 0
+               order by x.priced_at desc, x.id
+               limit 1) own on true
+          left join lateral (
+              select x.price_per_unit
+                from public.product_supplier_prices x
+               where x.restaurant_id <> r.id and x.version_id = v.id and x.price_per_unit > 0
+               order by x.priced_at desc, x.id
+               limit 1) other on true
+         where r.is_active and v.product_id = recommended_cost_preview.product
+           and v.id = any (recommended_cost_preview.versions) and v.is_active
+           and coalesce(own.price_per_unit, other.price_per_unit) is not null
+    ), from_set as (
+        select distinct on (s.rid) s.rid, s.per, s.own_id
+          from (select s.*, min(s.per) over (partition by s.rid) as cheapest from set_prices s) s
+         where s.per <= s.cheapest * 4
+         order by s.rid, s.per desc, (s.own_id is null), s.version_id
+    ), chosen as (
+        select distinct on (x.restaurant_id) x.restaurant_id as rid, x.price_per_unit as per
+          from public.product_supplier_prices x
+         where x.product_id = recommended_cost_preview.product and x.is_preferred and x.price_per_unit > 0
+         order by x.restaurant_id, x.priced_at desc, x.id
+    )
+    select r.id, r.name::text, c.price_per_unit, coalesce(c.borrowed, false),
+           coalesce(f.per, o.per), coalesce(f.own_id is null and f.rid is not null, false)
+      from public.restaurants r
+      left join public.cost_choice c on c.restaurant_id = r.id and c.product_id = recommended_cost_preview.product
+      left join from_set f on f.rid = r.id
+      left join chosen o on o.rid = r.id
+     where r.is_active
+     order by r.name;
+end $$;
+
+comment on function public.recommended_cost_preview(product uuid, versions uuid[]) is 'What recipes cost a product at, at every restaurant open, now and if its recommended set were the versions given: the cost per unit and whether it is the other restaurant''s price, nothing more. For the Recommended list before a change is saved. Owners and the super admin.';
+
 -- Every restaurant, for each product touched, after a price is added,
 -- removed or changes, a version is recommended or switched off, or a
 -- product changes what it recommends. Never after is_preferred alone, which
@@ -4577,7 +4612,6 @@ comment on function public.user_emails() is 'Every account''s email address, for
 
 comment on function public.allergen_sheet_printed(uuid, jsonb) is 'Stamps now() as when the allergen sheet was last printed for a restaurant and keeps a copy of the lines printed. Managers and owners for their own restaurant, the super admin for any. Returns the stamp.';
 comment on function public.public_allergen_sheet(uuid) is 'The latest printed allergen sheet''s lines at an open restaurant, and the day they last changed, for the customer page. What is on the wall, so nothing more than the page itself shows.';
-COMMENT ON FUNCTION "public"."allergens_changed_at"() IS 'When anything on the allergen sheet last changed, from the change log: allergens, dishes, what is in them, their categories, recipes, and a product renamed, switched on or off, made a MIX or moved section. Not prices, VAT, quantities or notes. Null when the log holds no such change. Read by nothing since 19 October 2026, when the sheet began to be compared with the copy kept at each print; kept for the app live before that until the drops.';
 COMMENT ON FUNCTION "public"."answer_time_off"("request_id" "uuid", "answer" "text", "clear_shift_ids" "uuid"[]) IS 'Approves or declines a request for time off that is still waiting, and on approval takes off the roster those of the given shifts that are theirs and inside the dates, recording them in cleared_shifts. All in one transaction. Managers only, under their own row rules. Returns the answered row.';
 COMMENT ON FUNCTION "public"."audit_ignored_columns"() IS 'Columns the change log does not treat as a change. Housekeeping stamps only: if one of these is all that moved, nothing is written.';
 COMMENT ON FUNCTION "public"."checklist_left"("round" "uuid") IS 'How many things at the bottom of the list a round has not ticked yet, counting what is on the list now.';
@@ -4598,8 +4632,6 @@ revoke all on function public.allergen_sheet_printed(uuid, jsonb) from public, a
 grant execute on function public.allergen_sheet_printed(uuid, jsonb) to authenticated;
 revoke all on function public.public_allergen_sheet(uuid) from public, anon, authenticated, service_role;
 grant execute on function public.public_allergen_sheet(uuid) to anon, authenticated;
-revoke all on function "public"."allergens_changed_at"() from public, anon, authenticated, service_role;
-grant execute on function "public"."allergens_changed_at"() to anon, authenticated;
 revoke all on function "public"."brand_choice_guard"() from public, anon, authenticated, service_role;
 grant execute on function "public"."brand_choice_guard"() to service_role;
 revoke all on function public.set_aside_guard() from public, anon, authenticated, service_role;
@@ -4624,6 +4656,10 @@ grant execute on function public.code_update(keep_price uuid, new_code text, mak
     to authenticated;
 revoke all on function public.buy_both(keep_price uuid, other_price uuid) from public, anon, authenticated, service_role;
 grant execute on function public.buy_both(keep_price uuid, other_price uuid) to authenticated;
+revoke all on function public.set_cost_row(price uuid) from public, anon, authenticated, service_role;
+grant execute on function public.set_cost_row(price uuid) to authenticated;
+revoke all on function public.recommended_cost_preview(product uuid, versions uuid[]) from public, anon, authenticated, service_role;
+grant execute on function public.recommended_cost_preview(product uuid, versions uuid[]) to authenticated;
 revoke all on function public.keep_cost_row(restaurant uuid, product uuid) from public, anon, authenticated, service_role;
 grant execute on function public.keep_cost_row(restaurant uuid, product uuid) to service_role;
 revoke all on function public.cost_row_follows() from public, anon, authenticated, service_role;
@@ -5895,6 +5931,21 @@ create or replace view public.staff_cost_prices as
 
 comment on view public.staff_cost_prices is 'What each product costs at your restaurant, per unit and nothing else, for the stock take and waste, which staff do. Not the supplier, the version or whose price it is.';
 
+-- The price rows whose packs a stock take count offers (011): the one
+-- recipes cost from and every own row of a recommended version. Ids only.
+create or replace view public.count_price_rows as
+ select p.restaurant_id, p.product_id, p.id as price_id, p.is_preferred
+   from public.product_supplier_prices p
+   join public.products pr on pr.id = p.product_id
+   left join public.product_versions v on v.id = p.version_id
+  where (p.is_preferred
+         or (pr.recommends = 'versions' and v.is_recommended and v.is_active))
+    and ((select public.get_my_role()) = 'super_admin'
+         or ((select public.get_my_role()) = any (array['owner', 'store_manager', 'employee'])
+             and p.restaurant_id = (select public.get_my_restaurant_id())));
+
+comment on view public.count_price_rows is 'The price rows at your restaurant whose packs a stock take count offers for each product: the one recipes cost from, and every one of a version the brand recommends, which can be on the shelf turn about. Ids only, for staff, who count.';
+
 COMMENT ON VIEW "public"."roster_published" IS 'The week as it went out to staff, at your restaurant: every published shift as it stands, and a shift changed since the week went out as it was then, from published_as. Changing a shift takes it back to a draft so the roster can say so, and without this it vanished from somebody''s week and phone until the week was published again. The note is there only for the person the shift is on and for the managers. Only shifts from nine weeks before today to nine after, by the day as it went out: the weeks My shifts opens and one more. My shifts reads this rather than roster_shifts.';
 COMMENT ON VIEW "public"."roster_asks" IS 'Which shifts at your restaurant somebody has asked about and is still waiting on, for the mark on My shifts: the shift given, the shift asked for and the status. Not who asked whom, the hours or the message, which only the two people in it and the managers read on shift_requests.';
 COMMENT ON VIEW "public"."roster_away" IS 'The days somebody is not there, with no reason attached, the hours they can still work when it is only part of a day, and the shifts a freed day left going spare. Only time off that touches the weeks from nine before today to nine after, the weeks My shifts opens and one more. The kind, the note and the hours stay on the absences table, which nobody below a manager can read. This is what the staff week greys out, and it reads Not available the same way the picture that goes to the WhatsApp group does.';
@@ -5979,6 +6030,8 @@ revoke all on public.cost_prices from anon, authenticated, public;
 revoke all on public.staff_cost_prices from anon, authenticated, public;
 grant select on public.cost_prices to authenticated;
 grant select on public.staff_cost_prices to authenticated;
+revoke all on public.count_price_rows from anon, authenticated, public;
+grant select on public.count_price_rows to authenticated;
 
 
 -- ======================================================================

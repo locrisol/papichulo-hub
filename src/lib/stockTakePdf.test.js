@@ -42,18 +42,18 @@ async function printed(products, lines) {
 }
 
 describe('the cost of one unit on the stock take PDF', () => {
-    // A hundred tortillas at 0.3033 each. Printed to two places the cost read
-    // 0.30 beside a line of 30.33, which does not multiply out, so anybody
-    // checking the sheet by hand thinks it is wrong.
-    it('is printed to the four places the rest of the Hub uses', async () => {
+    // A hundred tortillas at 0.3033 each. Money is shown to two decimals
+    // everywhere (his rule of 21 October 2026), so the cost reads 0.30 beside
+    // a line of 30.33, which is worked out from the price as kept, 0.3033.
+    it('is printed to two places, like all money in the Hub', async () => {
         const text = await printed([TORTILLAS], [{
             id: 'l1', product_id: 'p1', section: 'Dry', quantity_counted: 100,
             unit_cost: 0.3033, line_total: 30.33, counted_at: '2026-09-30T09:00:00+00:00',
         }])
 
-        expect(text).toContain('€0.3033')
+        expect(text).toContain('€0.30')
         expect(text).toContain('€30.33')
-        expect(text).not.toContain('€0.30')
+        expect(text).not.toContain('€0.3033')
     })
 
     it('says nothing for a line that had no price', async () => {
@@ -62,7 +62,8 @@ describe('the cost of one unit on the stock take PDF', () => {
             unit_cost: null, line_total: null, counted_at: '2026-09-30T09:00:00+00:00',
         }])
 
-        expect(text).not.toContain('€0.0000')
+        // Its unit cost is a dash, never a cost of nothing.
+        expect(text[text.indexOf('4 Units') + 1]).toBe('—')
     })
 })
 

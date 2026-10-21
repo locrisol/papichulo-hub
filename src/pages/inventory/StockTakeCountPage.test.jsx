@@ -109,6 +109,23 @@ describe('a super admin counting one restaurant', () => {
         expect(screen.getByLabelText(/^Case of 12,/)).toBeInTheDocument()
         expect(screen.queryByLabelText(/^Case of 6,/)).not.toBeInTheDocument()
     })
+
+    // Two versions both on the Recommended list, bought turn about: either
+    // can be on the shelf, so the packs of each are offered (21 October 2026).
+    it('offers the packs of every recommended version bought there, not only the one recipes cost from', async () => {
+        const otherBox = { id: 'pr3', product_id: 'p1', restaurant_id: 'r1', is_preferred: false, price_per_unit: 7.2, allow_loose_count: true }
+        setUp({ prices: [AT_POINT_CAMPUS, otherBox] })
+        tables.price_count_units = [...CASES, { id: 'cu3', price_id: 'pr3', label: 'Box', factor: 5, is_active: true, sort_order: 1 }]
+        tables.count_price_rows = [
+            { restaurant_id: 'r1', product_id: 'p1', price_id: 'pr1', is_preferred: true },
+            { restaurant_id: 'r1', product_id: 'p1', price_id: 'pr3', is_preferred: false },
+        ]
+        const clicker = open()
+        await clicker.click(await screen.findByText('Cheddar'))
+        expect(screen.getByLabelText(/^Case of 12,/)).toBeInTheDocument()
+        expect(screen.getByLabelText(/^Box, 5 kg each/)).toBeInTheDocument()
+        expect(screen.queryByLabelText(/^Case of 6,/)).not.toBeInTheDocument()
+    })
 })
 
 describe('an employee counting a MIX', () => {
@@ -289,7 +306,7 @@ describe('a read that fails', () => {
         user = { id: 'u0', role: 'store_manager', full_name: 'Leandro' }
     })
 
-    it.each(['stock_take_lines', 'product_supplier_prices', 'staff_cost_prices', 'price_count_units', 'staff_mix_recipes'])(
+    it.each(['stock_take_lines', 'product_supplier_prices', 'staff_cost_prices', 'count_price_rows', 'price_count_units', 'staff_mix_recipes'])(
         'says so when %s cannot be read, rather than counting on without it',
         async table => {
             setUp({ prices: [AT_POINT_CAMPUS], failing: table })

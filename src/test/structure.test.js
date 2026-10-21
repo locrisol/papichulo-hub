@@ -258,6 +258,34 @@ describe('labour is read from the view, never from the frozen table', () => {
     })
 })
 
+describe('what recipes cost is read from cost_prices, never from the preferred price', () => {
+    // Since 19 October 2026 a product on the Recommended list costs from the
+    // dearest of its versions, which can be the other restaurant's price, so
+    // the preferred row is only this restaurant's own and may not be what
+    // recipes cost at all. lib/costPrices reads cost_prices for every screen
+    // that costs something. These still read the preferred row, for what it
+    // is rather than for a cost.
+    const ALLOWED = {
+        'pages/inventory/ProductsPage.jsx': "the form edits this restaurant's own price and its packs",
+        'pages/inventory/StockTakeCountPage.jsx': 'the packs to count in, and whether it is counted loose',
+    }
+    const reads = sourcePaths
+        .filter(p => /\.from\('product_supplier_prices'\)[\s\S]{0,300}?\.eq\('is_preferred', true\)/.test(sources[p]))
+        .map(p => p.replace(/^\.\.\//, ''))
+
+    it('has screens reading it, or this check is watching nothing', () => {
+        expect(reads.length).toBeGreaterThan(0)
+    })
+
+    it('is read only where it is not a cost', () => {
+        expect(reads.filter(p => !(p in ALLOWED)), 'cost from cost_prices (lib/costPrices)').toEqual([])
+    })
+
+    it('has no stale entries on the list', () => {
+        expect(Object.keys(ALLOWED).filter(p => !reads.includes(p))).toEqual([])
+    })
+})
+
 describe('what a week cost is read from the view, never from the invoices', () => {
     // The same rule as labour, and it arrived the same way.
     //

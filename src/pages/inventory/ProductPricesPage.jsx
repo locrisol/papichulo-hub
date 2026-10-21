@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
-import { fmtMoney, fmtUnitCost } from '@/lib/format'
+import { fmtMoney } from '@/lib/format'
 import { priceProblem, pricePayload } from '@/lib/productPrice'
 import { movePreferred, typedPriceEvent } from '@/lib/priceEvents'
 import PriceForm from '@/components/inventory/PriceForm'
@@ -25,7 +25,7 @@ import KeptHerePanel from '@/components/inventory/KeptHerePanel'
 import { productsWithCode } from '@/lib/versionCodes'
 import { readCostOf } from '@/lib/costPrices'
 import { standingOf } from '@/lib/recommended'
-import { versionLabel } from '@/lib/brandVersions'
+import { costsFromTheList, versionLabel } from '@/lib/brandVersions'
 
 // Every price we can buy one product at, for the restaurant you are working in.
 //
@@ -284,8 +284,8 @@ export default function ProductPricesPage() {
             message: `Recipes and the stock take cost ${product?.name || 'this product'} from the price marked `
                 + 'preferred. Say whether this one takes its place.',
             details: [
-                { label: 'Costed from now', value: `${getSupplierName(now.supplier_id)}, ${fmtUnitCost(parseFloat(now.price_per_unit))}` },
-                { label: 'This price', value: `${getSupplierName(saved.supplier_id)}, ${fmtUnitCost(parseFloat(saved.price_per_unit))}` },
+                { label: 'Costed from now', value: `${getSupplierName(now.supplier_id)}, ${fmtMoney(parseFloat(now.price_per_unit))}` },
+                { label: 'This price', value: `${getSupplierName(saved.supplier_id)}, ${fmtMoney(parseFloat(saved.price_per_unit))}` },
             ],
             confirmLabel: 'Cost from this one',
             cancelLabel: 'Keep it as an extra price',
@@ -356,46 +356,20 @@ export default function ProductPricesPage() {
         setErrors({})
     }
 
-    // Moves the preferred flag to a different price.
+    // Moves the preferred flag to a different price, for a product with no
+    // recommendation (one with a set is costed from the Recommended list and
+    // offers no button).
     //
-    // This takes two updates, because supabase-js sends one statement at a time
-    // and there is no transaction around them. So the order matters, and it is
-    // deliberate: set the new one first, then clear the others.
-    //
-    // Doing it the other way round, clearing first, means a failure on the
-    // second update leaves the product with no preferred price at all. Its cost
-    // then reads as nothing in every place that depends on it, the menu margins,
-    // the waste value and the stock take, and nothing on screen says why.
-    //
-    // This way the worst case is two rows briefly marked preferred. The cost
-    // still resolves, it might just resolve to the old supplier until somebody
-    // presses it again, and the error message says something went wrong. A wrong
-    // price is recoverable. A missing one goes unnoticed.
-    //
-    // The clear step deliberately excludes the row we just set, so it cannot
-    // undo its own work.
-    //
-    // Doing both in one database function would remove the window entirely, and
-    // that is the proper fix if this ever actually bites.
+    // One call, set_cost_row, which moves it in a single update: the database
+    // allows one preferred price per product at each restaurant (migration
+    // 010), so the old way, the new row on and then the others off in two
+    // requests, is refused at the first. And there is never a moment with two
+    // rows marked, or none, which is what the two requests used to risk.
     async function setAsPreferred(price) {
         setError('')
 
-        const { error: e1 } = await supabase
-            .from('product_supplier_prices')
-            .update({ is_preferred: true })
-            .eq('id', price.id)
-
+        const { error: e1 } = await supabase.rpc('set_cost_row', { price: price.id })
         if (e1) { setError(friendlyError(e1)); return }
-
-        // Every other price for this product and restaurant.
-        const { error: e2 } = await supabase
-            .from('product_supplier_prices')
-            .update({ is_preferred: false })
-            .eq('product_id', id)
-            .eq('restaurant_id', activeRestaurant.id)
-            .neq('id', price.id)
-
-        if (e2) { setError(friendlyError(e2)); return }
 
         // Buying it somewhere else is the decision with no document behind
         // it, so this is the only record the chart has of it. The row it
@@ -419,7 +393,7 @@ export default function ProductPricesPage() {
                     : 'The product keeps whichever price is preferred.',
             details: [
                 { label: 'Supplier', value: getSupplierName(price.supplier_id) },
-                { label: 'Per unit', value: fmtUnitCost(parseFloat(price.price_per_unit)) },
+                { label: 'Per unit', value: fmtMoney(parseFloat(price.price_per_unit)) },
             ],
             confirmLabel: 'Remove price',
             tone: 'danger',
@@ -443,7 +417,7 @@ export default function ProductPricesPage() {
     // decision of 18 October 2026), so nobody chooses its price here: the
     // Recommended list does. A product with no recommendation keeps Set as
     // preferred.
-    const fromTheList = product?.recommends === 'versions' && versions.some(v => v.is_recommended && v.is_active)
+    const fromTheList = costsFromTheList(product, versions)
     const costVersion = versions.find(v => v.id === costRow?.version_id) || null
     const standing = price => standingOf(versions.find(v => v.id === price.version_id), product, versions)
 
@@ -496,6 +470,7 @@ export default function ProductPricesPage() {
                 restaurantId={activeRestaurant?.id}
                 product={product}
                 suppliers={suppliers}
+                cost={costRow}
                 refresh={historyVersion}
             />
 
@@ -503,7 +478,7 @@ export default function ProductPricesPage() {
                 {fromTheList ? (
                     <>
                         {costRow
-                            ? <>Recipes cost it at {fmtUnitCost(parseFloat(costRow.price_per_unit))}, from {costVersion ? versionLabel(costVersion, product) : 'a recommended version'}
+                            ? <>Recipes cost it at {fmtMoney(parseFloat(costRow.price_per_unit))}, from {costVersion ? versionLabel(costVersion, product) : 'a recommended version'}
                                 {costRow.borrowed ? `, the other restaurant's price: ${activeRestaurant?.name} has not bought it yet.` : '.'}</>
                             : 'No recommended version has a price yet, here or at the other restaurant.'}
                         {' '}It is the dearest of the versions on the Recommended list, which is where they are chosen.
@@ -565,7 +540,7 @@ export default function ProductPricesPage() {
                             <div className="flex items-baseline justify-between gap-3">
                                 <SupplierBadge name={getSupplierName(p.supplier_id)} />
                                 <span className="text-base font-semibold text-gray-900 whitespace-nowrap tabular-nums">
-                                    {fmtUnitCost(parseFloat(p.price_per_unit))}
+                                    {fmtMoney(parseFloat(p.price_per_unit))}
                                 </span>
                             </div>
                             <div className="flex items-baseline justify-between gap-3 mt-0.5">
@@ -642,7 +617,7 @@ export default function ProductPricesPage() {
                                                 : '—'}
                                         </td>
                                         <td className="px-4 py-3 font-medium text-gray-900 text-right tabular-nums">
-                                            {fmtUnitCost(parseFloat(p.price_per_unit))}
+                                            {fmtMoney(parseFloat(p.price_per_unit))}
                                         </td>
                                         <td className="px-4 py-3">
                                             {costChoice(p)}

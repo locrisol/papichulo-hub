@@ -1400,3 +1400,53 @@ describe('a version the brand recommends', () => {
         expect(switchesIn(free, { ...WEEK, prices, codes, versions: versions(false) })).toEqual([])
     })
 })
+
+// His decision of 18 October 2026: a product with a recommended set costs
+// from the dearest of it. The report checks that version against its own
+// deliveries, and leaves a cost borrowed from the other restaurant alone (21
+// October 2026). The green peppers: two 5 kg codes, both recommended.
+describe('recipes costed from the Recommended list', () => {
+    const LISTED = { ...PEPPERS, recommends: 'versions' }
+    const WEEK20 = { weekStart: '2026-09-20', weekEnd: '2026-09-26' }
+    // The box at 2.67 is the dearer of the two, so recipes cost from it.
+    const prices = [
+        price({ id: 'dear', product_id: 'pep', supplier_code: '483508', price_per_case: 13.35, units_per_case: 5, price_per_unit: 2.67, version_id: 'v1' }),
+        price({ id: 'cheap', product_id: 'pep', supplier_code: '5018758', price_per_case: 12.95, units_per_case: 5, price_per_unit: 2.59, version_id: 'v2', is_preferred: false }),
+    ]
+    const codes = [
+        code({ id: 'c1', supplier_code: '483508', price_id: 'dear', alternate_group: 'g1' }),
+        code({ id: 'c2', supplier_code: '5018758', price_id: 'cheap', alternate_group: 'g1' }),
+    ]
+    const versions = [
+        { id: 'v1', product_id: 'pep', is_recommended: true, is_active: true },
+        { id: 'v2', product_id: 'pep', is_recommended: true, is_active: true },
+    ]
+    const box = (product, codeNo, priceId, date, perCase) => line({
+        code: codeNo, product, priceId, date, perCase, units: 5, pack: '1X5 KG', description: 'GREEN PEPPERS 1X5 KG',
+    })
+    const turnAbout = product => deliveriesFrom([
+        box(product, '5018758', 'cheap', '2026-09-20', 12.95), box(product, '5018758', 'cheap', '2026-09-22', 12.95),
+        box(product, '483508', 'dear', '2026-09-23', 13.35), box(product, '5018758', 'cheap', '2026-09-25', 12.95),
+    ])
+
+    it('checks the version recipes cost from against its own deliveries, never the set averaged', () => {
+        expect(recipeGaps(turnAbout(LISTED), { ...WEEK20, prices, codes, versions, threshold: 2 })).toEqual([])
+        // Grouped and not on the list, the average is still what is checked.
+        const [gap] = recipeGaps(turnAbout(PEPPERS), { ...WEEK20, prices, codes, versions: [], threshold: 2 })
+        expect(gap.state).toBe('high')
+    })
+
+    it('still says when that version was bought dearer than recipes cost it', () => {
+        const all = deliveriesFrom([box(LISTED, '483508', 'dear', '2026-09-23', 15)])
+        const [gap] = recipeGaps(all, { ...WEEK20, prices, codes, versions, threshold: 2 })
+        expect(gap).toMatchObject({ state: 'behind', priceId: 'dear', paid: 3, recipe: 2.67, averaged: null })
+    })
+
+    it("leaves off one costed from the other restaurant's price", () => {
+        const all = deliveriesFrom([box(LISTED, '5018758', 'cheap', '2026-09-23', 15)])
+        const old = prices.map(p => ({ ...p, is_preferred: p.id === 'cheap' }))
+        const costPrices = [{ product_id: 'pep', price_per_unit: 2.8, borrowed: true }]
+        expect(recipeGaps(all, { ...WEEK20, prices: old, codes, versions, costPrices, threshold: 2 })).toEqual([])
+        expect(recipeGaps(all, { ...WEEK20, prices: old, codes, versions, threshold: 2 })).toHaveLength(1)
+    })
+})
