@@ -24,6 +24,7 @@ import { nameClashMessage, declaresAllergens } from '@/lib/products'
 import { sectionColour } from '@/lib/sections'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import AddButton from '@/components/ui/AddButton'
+import KeptHereFields from '@/components/inventory/KeptHereFields'
 
 // The five places, in the order the store is walked. The database has the same
 // list twice over, as a check on products.section and as a check on
@@ -40,6 +41,7 @@ export default function ProductForm({
   allergens, onAllergenChange, allergensAnswered, onNoAllergens, allergensUnread = false, allergensElsewhere = false,
   extras, openExtra, onOpenExtra,
   otherPriceCount = 0, onOpenPrices, recipeBlock = true, saving = false, nameLocked = false,
+  keptHere, onKeptHereChange, restaurantName,
 }) {
   // Both of these only make sense for something you buy. A mix has no supplier
   // by definition, and its allergens come from its recipe rather than from
@@ -122,6 +124,7 @@ export default function ProductForm({
               </option>
             ))}
           </select>
+          <p className={hintClass}>What it is. The costing and the reports go by this.</p>
         </div>
 
         <div>
@@ -250,49 +253,18 @@ export default function ProductForm({
         </p>
       </div>
 
-      {/* Where else it turns up.
-          Not a second section. The section above is what the product is, and
-          the costing and the reports read that and only that. This is about
-          where somebody with a clipboard will find it: tacos live in the
-          freezer and there are two boxes in the cold room defrosting, and on a
-          count they were being missed because the screen only ever showed them
-          under one heading. */}
+      {/* Where it turns up on a stock take here. Not a second section: the
+          section above is what the product is, and the costing and the
+          reports read that and only that. This is where somebody with a
+          clipboard finds it: tacos live in the freezer with two boxes
+          defrosting in the cold room. Each restaurant says its own. */}
       <div className="mb-4">
-        <label className={labelClass}>
-          Also kept in
-        </label>
-        <div className="flex flex-wrap gap-2">
-          {SECTIONS.filter(section => section !== formData.section).map(section => {
-            const on = (formData.also_in || []).includes(section)
-            return (
-              <label
-                key={section}
-                className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-sm cursor-pointer transition-colors ${
-                  on
-                    ? 'bg-accent-light border-accent text-accent-ink font-semibold'
-                    : 'bg-white border-border text-gray-700 hover:bg-gray-50'
-                }`}
-              >
-                <input
-                  type="checkbox"
-                  checked={on}
-                  onChange={e => onChange(
-                    'also_in',
-                    e.target.checked
-                      ? [...(formData.also_in || []), section]
-                      : (formData.also_in || []).filter(x => x !== section),
-                  )}
-                  className={checkbox}
-                />
-                {section}
-              </label>
-            )
-          })}
-        </div>
-        <p className={hintClass}>
-          Only changes where it shows up on a stock take. Leave these alone for
-          nearly everything.
-        </p>
+        <KeptHereFields
+          restaurantName={restaurantName}
+          value={keptHere}
+          onChange={onKeptHereChange}
+          idPrefix="product-kept"
+        />
       </div>
 
       <div className="mb-4">

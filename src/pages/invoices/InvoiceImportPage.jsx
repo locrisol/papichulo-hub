@@ -17,6 +17,7 @@ import { mainCategory } from '@/lib/invoiceCategories'
 import { creditSettles, sentWeeks, canDetach } from '@/lib/invoiceClaims'
 import { orderByUse, USE_WINDOW_DAYS } from '@/lib/supplierOrder'
 import { codeRow, seenAgain } from '@/lib/priceEvents'
+import { readVersionCodes } from '@/lib/versionCodes'
 import { creditsFor } from '@/lib/supplierDocuments'
 import { readToDecide } from '@/lib/invoiceReview'
 import {
@@ -108,7 +109,7 @@ export default function InvoiceImportPage() {
             // read hands back, so they are read a page at a time. An invoice
             // missing from what is held would let a document already in the
             // Hub, or a typed day, go in a second time.
-            const [accounts, suppliers, prices, codes, held, documents] = await Promise.all([
+            const [accounts, suppliers, prices, codes, held, documents, versions] = await Promise.all([
                 supabase.from('supplier_accounts').select('*'),
                 supabase.from('suppliers').select('id, name, category, is_active'),
                 everyRow(() => supabase.from('product_supplier_prices')
@@ -127,10 +128,13 @@ export default function InvoiceImportPage() {
                 // says for certain whether a credit was already taken off a
                 // total typed by hand.
                 everyRow(() => supabase.from('supplier_documents').select('*').eq('restaurant_id', restaurantId).order('id')),
+                // Every code each version goes by, across the brand, so a
+                // number joined at the other restaurant is known here too.
+                readVersionCodes(),
             ])
 
             if (!alive) return
-            const failed = [accounts, suppliers, prices, codes, held, documents].map(r => r.error).find(Boolean)
+            const failed = [accounts, suppliers, prices, codes, held, documents, versions].map(r => r.error).find(Boolean)
             if (failed && loadedFor.current === restaurantId) {
                 // Read again after a batch: said after whatever the batch
                 // said, and nothing more is read off a file, because the old
@@ -155,6 +159,7 @@ export default function InvoiceImportPage() {
                 documents: documents.data || [],
                 prices: prices.data || [],
                 codes: codes.data || [],
+                versions: versions.data || [],
                 held: held.data || [],
             })
         }
@@ -191,6 +196,7 @@ export default function InvoiceImportPage() {
                 lines: doc.lines,
                 codes: known.codes.filter(c => c.supplier_id === where.supplierId),
                 prices: known.prices.filter(p => p.supplier_id === where.supplierId),
+                versions: (known.versions || []).filter(v => v.supplier_id === where.supplierId),
                 supplier,
                 date: doc.date,
             })

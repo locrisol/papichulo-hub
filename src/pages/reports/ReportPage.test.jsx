@@ -45,11 +45,15 @@ const { default: ReportPage } = await import('./ReportPage')
 // charts is a list. The restaurant row fails when it is asked for a column
 // the live database has not got yet. `items` is the one chain every write to
 // the report's lines goes through, for a test to look at.
-function answer({ changedAt, head = HEAD, failing = [], waiting = {}, lines = [], claims = [], items = null }) {
+//
+// `print` is the last allergen sheet printed, with the lines it kept: none
+// unless a test says.
+function answer({ print = { data: null, error: null }, head = HEAD, failing = [], waiting = {}, lines = [], claims = [], items = null } = {}) {
     db.from.mockImplementation(table => {
         if (failing.includes(table)) {
             return makeQuery({ data: null, error: { message: `Could not read ${table}` } })
         }
+        if (table === 'allergen_sheet_prints') return makeQuery(print)
         if (table === 'invoice_line_claims') return makeQuery({ data: claims, error: null })
         if (table === 'report_items' && items) return items
         // Invoice lines nobody has decided on Review, honouring the date they
@@ -89,7 +93,7 @@ function answer({ changedAt, head = HEAD, failing = [], waiting = {}, lines = []
         }
         return makeQuery({ data: [], error: null })
     })
-    db.rpc.mockImplementation(() => Promise.resolve(changedAt))
+    db.rpc.mockImplementation(() => Promise.resolve({ data: null, error: null }))
 }
 
 function renderReport() {
@@ -104,14 +108,17 @@ beforeEach(() => {
 })
 
 describe('the report on a database without the allergen sheet columns', () => {
+    // Nor the copy kept with each print, which came later.
+    const older = { failing: ['allergen_sheet_prints'] }
+
     it('still shows the typed recipients', async () => {
-        answer({ changedAt: { data: null, error: { message: 'Could not find the function public.allergens_changed_at' } } })
+        answer(older)
         renderReport()
         expect(await screen.findByText('accounts@example.ie')).toBeInTheDocument()
     })
 
     it('says nothing about the allergen sheet', async () => {
-        answer({ changedAt: { data: null, error: { message: 'Could not find the function public.allergens_changed_at' } } })
+        answer(older)
         renderReport()
         await screen.findByText('accounts@example.ie')
         expect(screen.queryByText(/Allergen sheet/)).toBeNull()
@@ -123,7 +130,7 @@ describe('the report on a database without the allergen sheet columns', () => {
 // meant the paperwork said there was nobody to check. Publish then froze that
 // and mailed it to the owners and the accountant.
 describe('a read that fails', () => {
-    const fine = { changedAt: { data: null, error: null } }
+    const fine = {}
 
     it('says so and will not publish what it has', async () => {
         answer({ ...fine, failing: ['employees'] })
@@ -202,7 +209,7 @@ describe('a report published but not sent', () => {
     }
 
     it('sends it as it was frozen, and writes nothing to the report', async () => {
-        answer({ changedAt: { data: null, error: null }, head: notSent })
+        answer({ head: notSent })
         db.functions.invoke.mockClear()
         db.functions.invoke.mockResolvedValue({ data: { sent: 2 }, error: null })
         renderReport()
@@ -224,7 +231,7 @@ describe('a report published but not sent', () => {
     // Nobody got the first one, so publishing it again is not a correction,
     // and the question asked before re-opening must not say it is.
     it('does not warn that re-opening it leads to a correction', async () => {
-        answer({ changedAt: { data: null, error: null }, head: notSent })
+        answer({ head: notSent })
         confirmed.mockClear()
         renderReport()
 
@@ -236,7 +243,7 @@ describe('a report published but not sent', () => {
     })
 
     it('still warns of a correction once a send has reached somebody', async () => {
-        answer({ changedAt: { data: null, error: null }, head: { ...notSent, sent_to: ['owner@example.ie'] } })
+        answer({ head: { ...notSent, sent_to: ['owner@example.ie'] } })
         confirmed.mockClear()
         renderReport()
 
@@ -250,7 +257,7 @@ describe('a report published but not sent', () => {
 // Review is not actioned, counting only lines on invoices dated up to the
 // report's week.
 describe('lines still waiting for a decision', () => {
-    const fine = { changedAt: { data: null, error: null } }
+    const fine = {}
     const waitingOn = date => ({
         id: `l-${date}`, invoice_id: `i-${date}`, supplier_code: '777001', line_total: 14.5, decision: null,
         invoices: {
@@ -294,7 +301,7 @@ describe('lines still waiting for a decision', () => {
 // off is put back and stale money in its words is brought up to date. The
 // lists of what to write have tests of their own; this is the writing.
 describe('the support list kept from the claims', () => {
-    const fine = { changedAt: { data: null, error: null } }
+    const fine = {}
     const CLAIM = {
         id: 'k1', restaurant_id: 'r1', what: 'Bowls charged 49.73', kind: 'price', amount: 24.75,
         credited_amount: 0, status: 'open', raised_on: WEEK, counted_week: WEEK,
@@ -346,15 +353,39 @@ describe('the support list kept from the claims', () => {
 })
 
 describe('the allergen sheet line', () => {
-    it('says a new one is due, from the restaurant already loaded', async () => {
+    // The last print kept a line this restaurant's sheet no longer has: the
+    // menu read here is empty.
+    const print = {
+        data: { id: 'pr1', printed_at: '2026-06-12T12:00:00Z', sheet_changed_at: '2026-06-12T12:00:00Z',
+            rows: [{ category: 'Sides', name: 'Plain Rice', complete: true, contains: [], may_contain: [] }] },
+        error: null,
+    }
+
+    it('says a new one is due and which lines changed, from the restaurant already loaded', async () => {
         restaurant = {
             id: 'r1', name: 'Testville',
             allergen_sheet_printed_at: '2026-06-12T12:00:00Z', allergen_sheet_every_months: 24,
         }
-        answer({ changedAt: { data: '2026-06-20T12:00:00Z', error: null } })
+        answer({ print })
         renderReport()
-        expect(await screen.findByText(/The allergen information has changed since then/)).toBeInTheDocument()
+        expect(await screen.findByText(/1 line on it has changed since then/)).toBeInTheDocument()
+        expect(screen.getByText('Plain Rice (Sides): No longer on the sheet')).toBeInTheDocument()
         expect(screen.getByText('accounts@example.ie')).toBeInTheDocument()
+    })
+
+    // A sent report says what it was sent with, and reads nothing for it.
+    it('shows a sent report as it was sent', async () => {
+        answer({
+            head: {
+                ...HEAD, status: 'published', send_count: 1,
+                figures: { paperwork: { allergenSheet: { reason: 'changed', words: 'Last printed 12 June. 1 line on it has changed since then. Print a new sheet.',
+                    changes: [{ category: 'Sides', name: 'Corn', what: 'New on the sheet' }], more: 2 } } },
+            },
+        })
+        renderReport()
+        expect(await screen.findByText('Corn (Sides): New on the sheet')).toBeInTheDocument()
+        expect(screen.getByText('and 2 more')).toBeInTheDocument()
+        expect(db.from).not.toHaveBeenCalledWith('allergen_sheet_prints')
     })
 })
 
@@ -362,7 +393,7 @@ describe('the allergen sheet line', () => {
 // on saying "Saved at" with the time of the last write that worked after one
 // had failed, so a comment that never reached the database looked kept.
 describe('the save line', () => {
-    const fine = { changedAt: { data: null, error: null } }
+    const fine = {}
 
     it('says Not saved once a write fails, rather than the time of the last one', async () => {
         answer({ ...fine, items: makeQuery({ data: null, error: null }) })

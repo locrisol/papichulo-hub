@@ -6,29 +6,30 @@ import { placesFor, versionLabel, recommendationAt } from './brandVersions'
 const TORTILLA = { id: 'p1', name: 'Flour Tortilla', section: 'Dry', also_in: [], recommends: 'versions' }
 
 describe('where a product is kept at a restaurant', () => {
-    it('is where the product says when the restaurant buys no version of it', () => {
+    it('is where the product says when the restaurant has not said otherwise', () => {
         expect(placesFor({ ...TORTILLA, also_in: ['Freezer'] }, [])).toEqual(['Dry', 'Freezer'])
     })
 
-    // His answer of 4 October: frozen and ambient tortillas are two versions,
-    // kept in two places, and the stock take lists the product under both.
-    it('is every place of every version it buys, the product\'s own first', () => {
+    // Each restaurant's own business (his decision of 18 October): frozen and
+    // ambient tortillas at one restaurant, kept in two places, are listed
+    // under both, its main place first and the rest as the store is walked.
+    it('is where this restaurant keeps it, its main place first', () => {
         const kept = [
-            { product_id: 'p1', section: 'Freezer', also_in: [] },
-            { product_id: 'p1', section: 'Dry', also_in: ['Cold Room'] },
+            { product_id: 'p1', section: 'Freezer', also_in: ['Dry', 'Cold Room'] },
             { product_id: 'other', section: 'Cleaning', also_in: [] },
         ]
-        expect(placesFor(TORTILLA, kept)).toEqual(['Dry', 'Freezer', 'Cold Room'])
+        expect(placesFor(TORTILLA, kept)).toEqual(['Freezer', 'Cold Room', 'Dry'])
     })
 
-    it('counts a version with no place of its own where the product is', () => {
-        expect(placesFor(TORTILLA, [{ product_id: 'p1', section: null, also_in: null }])).toEqual(['Dry'])
+    it('leaves out the Also in of the product once the restaurant has said where', () => {
+        const kept = [{ product_id: 'p1', section: 'Dry', also_in: [] }]
+        expect(placesFor({ ...TORTILLA, also_in: ['Cleaning'] }, kept)).toEqual(['Dry'])
     })
 
     // A place changed while a count is open would hide what was counted.
     it('keeps every place a stock take already counted it in', () => {
         const kept = [{ product_id: 'p1', section: 'Freezer', also_in: [] }]
-        expect(placesFor(TORTILLA, kept, ['Dry'])).toEqual(['Dry', 'Freezer'])
+        expect(placesFor(TORTILLA, kept, ['Dry'])).toEqual(['Freezer', 'Dry'])
         expect(placesFor(TORTILLA, kept, ['Cleaning'])).toEqual(['Freezer', 'Cleaning'])
     })
 
@@ -64,6 +65,15 @@ describe('whether what a restaurant buys is recommended', () => {
     it('names what the brand recommends when it buys another', () => {
         expect(recommendationAt(TORTILLA, [santa, plain], { version_id: 'v2' }))
             .toEqual({ tone: 'not', label: 'Not recommended', instead: [santa] })
+    })
+
+    // The Recommended list of 19 October 2026: bought only when the
+    // recommended ones are out, numbered by where it comes.
+    it('says which fallback it buys, with what the brand recommends', () => {
+        const first = { ...plain, id: 'v3', fallback_rank: 2 }
+        const second = { ...plain, fallback_rank: 5 }
+        expect(recommendationAt(TORTILLA, [santa, first, second], { version_id: 'v2' }))
+            .toEqual({ tone: 'fallback', label: 'Fallback 2', instead: [santa] })
     })
 
     it('leaves out a version switched off', () => {

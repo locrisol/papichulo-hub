@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-    whereItGoes, placeDocument, lineCategory, SECTION_CATEGORY, similarWords,
+    whereItGoes, placeDocument, lineCategory, SECTION_CATEGORY, similarWords, withoutPack,
     codeSuccessor, unitsWanted, matchLines, pilesOf, documentTotals,
     linePayload, invoicePayload, documentBlocks, storedLine,
     fillInPlan, fillInPayload, fillInClaim, creditOnHandEntry, documentTotal, lineCost, typedAgain,
@@ -185,6 +185,24 @@ describe('what kind of cost a line is', () => {
     })
 })
 
+describe('the pack is not a word', () => {
+    it('takes the count and the size off a line', () => {
+        expect(withoutPack('GREEN PEPPERS 1X5 KG')).toBe('GREEN PEPPERS')
+        expect(withoutPack('COKE ZERO 24X330 ML')).toBe('COKE ZERO')
+        expect(withoutPack('SYSCO CLASSIC PAPRIKA PEPPER 6X850 GM')).toBe('SYSCO CLASSIC PAPRIKA PEPPER')
+        expect(withoutPack('CHOPPED TOMATOES 4X2.5KG')).toBe('CHOPPED TOMATOES')
+        expect(withoutPack('ROUND KRAFT BOWL 750ML 1X300 EA')).toBe('ROUND KRAFT BOWL')
+        expect(withoutPack('Green Peppers 1x5 Kg')).toBe('Green Peppers')
+    })
+
+    // A size that tells two things apart is what they are, not how they come.
+    it('keeps a size that is part of what the thing is', () => {
+        expect(withoutPack('FRIES 9X9MM 4X2.5 KG')).toBe('FRIES 9X9MM')
+        expect(withoutPack('FLOUR TORTILLA 12" 1X18 EA')).toBe('FLOUR TORTILLA 12"')
+        expect(withoutPack(null)).toBe('')
+    })
+})
+
 describe('telling whether one code became another', () => {
     it('scores a longer name that contains the shorter one as the same thing', () => {
         expect(similarWords('SANTA MARIA FLOUR TORTILLA', 'SANTA MARIA FLOUR TORTILLA 12IN')).toBe(1)
@@ -288,6 +306,35 @@ describe('telling whether one code became another', () => {
             peppers,
             { onThisDocument: ['5016517'], date: '2026-09-20' },
         )).toBeNull()
+    })
+
+    // The real pair, 21 Oct 2026: two words of the strawberries' three were
+    // the pack, and the same pack added its own bit on top.
+    it('does not take a shared pack for shared words', () => {
+        const tajin = [{
+            supplier_code: '5012303', price_id: 'pr7', last_description: 'MEXGROCER TAJIN CHILLI & LIME SEASONING 1X400 GM',
+            pack_size: '1X400 GM', last_seen_on: '2026-09-17', ignored: false,
+        }]
+        expect(codeSuccessor(
+            line({ code: '5006786', description: 'STRAWBERRIES 1X400 GM', pack_size: '1X400 GM' }),
+            tajin,
+            { onThisDocument: ['5006786'], date: '2026-10-16' },
+        )).toBeNull()
+    })
+
+    // And one Sysco really did renumber: the new description carries the
+    // lids' codes as well, and is still the bowl.
+    it('still finds a renumbered thing whose new name says more', () => {
+        const bowl = [{
+            supplier_code: '5017616', price_id: 'pr6', last_description: 'ROUND KRAFT BOWL 750ML 1X300 EA',
+            pack_size: '1X300 EA', last_seen_on: '2026-08-20', ignored: false,
+        }]
+        const found = codeSuccessor(
+            line({ code: '5034636', description: 'ROUND KRAFT BOWL 750ML (LIDS 5036664 & 5036663) 1X300 EA', pack_size: '1X300 EA' }),
+            bowl,
+            { onThisDocument: ['5034636'], date: '2026-09-14' },
+        )
+        expect(found.supplier_code).toBe('5017616')
     })
 
     it('leaves out a code nobody ever matched to a price', () => {
@@ -417,6 +464,34 @@ describe('the four piles', () => {
         expect(row.pile).toBe('unchanged')
         expect(row.price.id).toBe('pr1')
         expect(row.replacedBy.supplier_code).toBe('497870')
+    })
+
+    // A number joined at the other restaurant, or an older number of a
+    // version, means this restaurant's price on that version (19 October 2026).
+    it('matches a code it never met to its version, where this restaurant prices that version', () => {
+        const versions = [{ version_id: 'v1', supplier_id: 's1', code: '497871', is_active: true }]
+        const [row] = matchLines({
+            lines: [line({ code: '497871' })], codes: [], versions,
+            prices: [price({ id: 'pr7', supplier_code: '497869', version_id: 'v1' })], supplier: SUPPLIER,
+        })
+        expect(row.pile).toBe('unchanged')
+        expect(row.price.id).toBe('pr7')
+        expect(row.byVersion).toBe(true)
+    })
+
+    it('still calls a code new when its version is switched off or priced only elsewhere', () => {
+        const off = [{ version_id: 'v1', supplier_id: 's1', code: '497871', is_active: false }]
+        const [first] = matchLines({
+            lines: [line({ code: '497871' })], versions: off,
+            prices: [price({ supplier_code: '497869', version_id: 'v1' })], supplier: SUPPLIER,
+        })
+        expect(first.price).toBeNull()
+        const elsewhere = [{ version_id: 'v9', supplier_id: 's1', code: '497871', is_active: true }]
+        const [second] = matchLines({
+            lines: [line({ code: '497871' })], versions: elsewhere,
+            prices: [price({ supplier_code: '497869', version_id: 'v1' })], supplier: SUPPLIER,
+        })
+        expect(second.price).toBeNull()
     })
 
     it('leaves a line whose price has not moved alone', () => {

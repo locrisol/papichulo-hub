@@ -4,30 +4,27 @@
 
 export const PLACES = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
 
-// Where a product is kept at a restaurant, its own section first.
+// Where a product is kept at a restaurant, its main place first.
 //
-// `kept` is the restaurant_kept_in rows for this product: one for each
-// version the restaurant buys, with that version's section and the other
-// places it is also kept. A restaurant buying frozen and ambient tortillas
-// keeps the product in both. With no rows, the product's own section and its
-// Also in, as before versions had places.
+// `kept` is the restaurant's restaurant_kept_in rows: at most one for this
+// product, with where this restaurant mainly keeps it and the other places it
+// is also kept (see lib/keptHere). A restaurant keeping frozen and ambient
+// tortillas keeps the product in both. With no row, the product's own section
+// and its Also in.
 //
 // `counted` is the places a stock take already has lines for this product
 // in. A place changed while a count is open, or after one closed, would
 // otherwise hide what was counted there, and the shelf would be counted
 // again somewhere else.
 export function placesFor(product, kept = [], counted = []) {
-    const own = product?.section || 'Other'
-    const rows = (kept || []).filter(k => k.product_id === product?.id)
+    const row = (kept || []).find(k => k.product_id === product?.id)
+    const own = row?.section || product?.section || 'Other'
     const listed = [
-        ...(rows.length
-            ? rows.flatMap(k => [k.section || own, ...(k.also_in || [])])
-            : [own, ...(product?.also_in || [])]),
+        ...(row ? [own, ...(row.also_in || [])] : [own, ...(product?.also_in || [])]),
         ...(counted || []),
     ]
     const places = [...new Set(listed.filter(Boolean))]
-    // The product's own section first when it is one of them, the rest in the
-    // order the store is walked.
+    // The main place first, the rest in the order the store is walked.
     return places.sort((a, b) => (a === own ? -1 : b === own ? 1 : rank(a) - rank(b)))
 }
 
@@ -53,6 +50,7 @@ export function versionLabel(version, product, supplierName = '') {
 //   any        the brand recommends nothing in particular
 //   none       the brand has not recommended a version yet
 //   good       it buys a recommended version
+//   fallback   it buys one of the fallbacks, numbered by where it comes
 //   not        it buys another; `instead` is what the brand recommends
 export function recommendationAt(product, versions = [], price = null) {
     if (!product || product.is_mix || !price) return null
@@ -62,5 +60,11 @@ export function recommendationAt(product, versions = [], price = null) {
     if (!recommended.length) return { tone: 'none', label: 'None recommended' }
     const bought = mine.find(v => v.id === price.version_id)
     if (bought?.is_recommended) return { tone: 'good', label: 'Recommended' }
+    if (bought?.fallback_rank != null) {
+        const place = mine.filter(v => !v.is_recommended && v.fallback_rank != null)
+            .sort((a, b) => a.fallback_rank - b.fallback_rank)
+            .findIndex(v => v.id === bought.id)
+        return { tone: 'fallback', label: `Fallback ${place + 1}`, instead: recommended }
+    }
     return { tone: 'not', label: 'Not recommended', instead: recommended }
 }

@@ -28,7 +28,7 @@ import { claimCode } from '@/lib/invoiceReview'
 import { matches } from '@/lib/search'
 import { orderFormats, packsToSave } from '@/lib/countUnits'
 import {
-  tableHeadRow, tableHeadCell, badge, mixBadge, inactiveBadge, card, cardEdge, cardHeader, rowButton, chip,
+  tableHeadRow, tableHeadCell, badge, mixBadge, inactiveBadge, drinkBadge, card, cardEdge, cardHeader, rowButton, chip,
   primaryButton, secondaryButton, urgentNote,
 } from '@/lib/controlStyles'
 import { readStored, writeStored } from '@/lib/browserStore'
@@ -41,7 +41,12 @@ import SentForReview from '@/components/inventory/SentForReview'
 import ReviewersModal from '@/components/inventory/ReviewersModal'
 import SendForReviewModal from '@/components/inventory/SendForReviewModal'
 import VersionsModal from '@/components/inventory/VersionsModal'
-import { placesFor, recommendationAt, versionLabel } from '@/lib/brandVersions'
+import { placesFor, recommendationAt } from '@/lib/brandVersions'
+import { ownPlaces, keptAt, saveKeptHere } from '@/lib/keptHere'
+import { productsWithCode } from '@/lib/versionCodes'
+import { readCostPrices, borrowedCost } from '@/lib/costPrices'
+import { startsWithoutRecommendation } from '@/lib/recommended'
+import SupplierBadge from '@/components/ui/SupplierBadge'
 import { can, BRAND_CHOICES } from '@/lib/access'
 import { requestForProduct } from '@/lib/productRequests'
 import { emailTheReview } from '@/lib/rosterMail'
@@ -140,7 +145,7 @@ const STICK_TOP = 'top-[-1.75rem]'
 function typeBadge(p) {
   if (!p.is_active) return { label: p.is_mix ? 'MIX' : 'Purchased', cls: `${badge} bg-gray-100 text-muted` }
   if (p.is_mix) return { label: 'MIX', cls: mixBadge }
-  if (p.category === 'drink') return { label: 'Drink', cls: `${badge} bg-sky-100 text-sky-800` }
+  if (p.category === 'drink') return { label: 'Drink', cls: drinkBadge }
   return { label: 'Purchased', cls: `${badge} bg-green-100 text-green-800` }
 }
 
@@ -171,6 +176,10 @@ export default function ProductsPage() {
   // restaurant, and which versions it buys (lib/brandVersions).
   const [versions, setVersions] = useState([])
   const [kept, setKept] = useState([])
+  // What recipes cost each product at here (lib/costPrices), for the cost
+  // column. The preferred rows in prices are this restaurant's own, for the
+  // form and the packs.
+  const [costPrices, setCostPrices] = useState([])
   const [boughtHere, setBoughtHere] = useState(() => new Set())
   const [versionsOf, setVersionsOf] = useState(null)
   const [products, setProducts] = useState([])
@@ -298,6 +307,10 @@ export default function ProductsPage() {
   const [activeSections, setActiveSections] = useState([])
   const [showForm, setShowForm] = useState(!!fromLink)
   const [editingProduct, setEditingProduct] = useState(null)
+  // Where this restaurant keeps the product in the form, once somebody has
+  // said. Until then null, and the form shows the product's own places, which
+  // follow its section as that is changed.
+  const [keptHere, setKeptHere] = useState(null)
   const [showInactive, setShowInactive] = useShowInactive('productsShowInactive')
 
   // What the count of products with no allergens set is worked out from,
@@ -334,7 +347,6 @@ export default function ProductsPage() {
   const [formData, setFormData] = useState(() => ({
     name: '',
     section: 'Freezer',
-    also_in: [],
     held_for: '',
     category: 'ingredient',
     unit: 'KG',
@@ -447,18 +459,19 @@ export default function ProductsPage() {
     // What the row says about the brand's recommendations and where it is
     // kept here. A failed read leaves what was there: the row then says
     // less, rather than something wrong.
-    const [versionsRead, keptRead] = await Promise.all([
+    const [versionsRead, keptRead, costRead] = await Promise.all([
       everyRow(() => supabase.from('product_versions')
-        .select('id, product_id, supplier_id, supplier_code, name, is_recommended, is_active, section, also_in')
+        .select('id, product_id, supplier_id, supplier_code, name, is_recommended, is_active, fallback_rank')
         .order('id')),
       everyRow(() => supabase.from('restaurant_kept_in')
-        .select('*')
+        .select('id, product_id, section, also_in')
         .eq('restaurant_id', activeRestaurant.id)
-        .order('product_id')
-        .order('section')),
+        .order('id')),
+      readCostPrices(activeRestaurant.id),
     ])
     if (!versionsRead.error) setVersions(versionsRead.data || [])
     if (!keptRead.error) setKept(keptRead.data || [])
+    if (!costRead.error) setCostPrices(costRead.data || [])
 
     // The packs hanging off those prices. Fetched here rather than in its own
     // effect because it is meaningless without them: a pack belongs to a price
@@ -705,19 +718,26 @@ export default function ProductsPage() {
     setPriceErrors({})
 
     // The codes this screen holds are only the preferred ones, so the real
-    // check is a question to the database. One query, and only when a code was
-    // actually typed.
+    // check is a question to the database, only when a code was actually
+    // typed: this restaurant's prices, and every code of every version across
+    // the brand, so a code the other restaurant put on another product is
+    // caught too. A code of this same product is not a clash: the price joins
+    // that version.
     if (wantsPrice && priceForm.supplier_code?.trim()) {
-      const { data: codeRows } = await supabase
-        .from('product_supplier_prices')
-        .select('product_id')
-        .eq('supplier_id', priceForm.supplier_id)
-        .eq('supplier_code', priceForm.supplier_code.trim())
-        .limit(2)
+      const [{ data: codeRows }, { data: withCode }] = await Promise.all([
+        supabase
+          .from('product_supplier_prices')
+          .select('product_id')
+          .eq('supplier_id', priceForm.supplier_id)
+          .eq('supplier_code', priceForm.supplier_code.trim())
+          .limit(2),
+        productsWithCode(priceForm.supplier_id, priceForm.supplier_code),
+      ])
 
-      const someoneElse = (codeRows || []).filter(r => r.product_id !== editingProduct?.id)
+      const someoneElse = [...(codeRows || []).map(r => r.product_id), ...(withCode || [])]
+        .filter(productId => productId !== editingProduct?.id)
       if (someoneElse.length > 0) {
-        const owner = products.find(p => p.id === someoneElse[0].product_id)
+        const owner = products.find(p => p.id === someoneElse[0])
         setPriceErrors({
           supplier_code: `${owner?.name || 'Another product'} already has this code with this supplier.`,
         })
@@ -783,16 +803,30 @@ export default function ProductsPage() {
       }
     }
 
+    // Cleaning, packaging and drinks start with no recommendation (his
+    // decision of 18 October 2026), which the database gives a product as it
+    // is added. One moved into them later keeps its list unless an owner says
+    // otherwise, so it is asked here. Either answer still saves the product.
+    let clearList = false
+    if (editingProduct && keepsTheList && editingProduct.recommends !== 'any'
+        && startsWithoutRecommendation(formData) && !startsWithoutRecommendation(editingProduct)) {
+      setAsking(true)
+      clearList = await confirm({
+        title: 'Any version?',
+        message: `Cleaning, packaging and drinks start with no recommendation. Should ${formData.name} have none too? `
+          + 'Its recommended versions and fallbacks would come off the Recommended list.',
+        confirmLabel: 'Any version',
+        cancelLabel: 'Keep the list',
+      })
+      setAsking(false)
+    }
+
     const payload = {
       ...formData,
       weight_loss_pct: parseFloat(formData.weight_loss_pct),
       piece_weight: parseFloat(formData.piece_weight) > 0 && !formData.is_mix
         ? parseFloat(formData.piece_weight)
         : null,
-      // Somewhere it is already kept is not somewhere it is also kept. The
-      // section can be changed after the boxes are ticked, so this is cleared
-      // on the way out rather than trusted on the way in.
-      also_in: (formData.also_in || []).filter(place => place !== formData.section),
       held_for: String(formData.held_for || '').trim() || null,
     }
 
@@ -809,6 +843,23 @@ export default function ProductsPage() {
         .eq('id', editingProduct.id)
 
       if (error) { setFormProblem(friendlyError(error)); return }
+
+      // Where this restaurant keeps it, when somebody said. Straight after the
+      // product, since it hangs off nothing else.
+      if (keptHere) {
+        const { error: keptErr } = await saveKeptHere({
+          restaurantId: activeRestaurant.id,
+          product: { id: editingProduct.id, section: payload.section, also_in: editingProduct.also_in },
+          kept: keptHere,
+        })
+        if (keptErr) {
+          setFormProblem(savedButNot(formData.name,
+            [{ what: 'place on the stock take', error: keptErr, next: 'Press Save changes to try again.' }]))
+          fetchProducts()
+          fetchPrices()
+          return
+        }
+      }
 
       // The price, the packs and the allergens, the same three things creating
       // a product asks for. Written here so changing any of them is done where
@@ -898,6 +949,21 @@ export default function ProductsPage() {
           await fetchPrices()
           fetchProducts()
           // The product row itself was saved, so the count may have moved.
+          allergensChanged()
+          return
+        }
+      }
+
+      // Last, so that failing here leaves everything above saved and says so.
+      if (clearList) {
+        const { error: listError } = await supabase.rpc('set_recommends', { product: editingProduct.id, mode: 'any' })
+        if (listError) {
+          setFormProblem(savedButNot(formData.name, [{
+            what: 'change to any version', error: listError,
+            next: 'Choose Any version for it on the Recommended list instead.',
+          }]))
+          await fetchPrices()
+          fetchProducts()
           allergensChanged()
           return
         }
@@ -1026,6 +1092,12 @@ export default function ProductsPage() {
         }
       }
 
+      // Where this restaurant keeps it, when somebody said.
+      if (keptHere && data) {
+        const { error: keptErr } = await saveKeptHere({ restaurantId: activeRestaurant.id, product: data, kept: keptHere })
+        if (keptErr) missed.push({ what: 'place on the stock take', error: keptErr, next: 'Set it from its Prices page.' })
+      }
+
       const said = [missed.length > 0 ? savedButNot(data.name, missed) : '', ...notes].filter(Boolean)
       if (said.length) setError(said.join(' '))
       // Read before resetForm, which forgets it.
@@ -1043,7 +1115,7 @@ export default function ProductsPage() {
     backTo.current = null
     setFormProblem('')
     setFormData({
-      name: '', section: 'Freezer', also_in: [], held_for: '', category: 'ingredient',
+      name: '', section: 'Freezer', held_for: '', category: 'ingredient',
       unit: 'KG', is_mix: false, weight_loss_pct: 0, piece_weight: '', notes: '', is_active: true,
     })
     setPriceForm(EMPTY_PRICE)
@@ -1057,6 +1129,7 @@ export default function ProductsPage() {
     editingId.current = null
     setOpenExtra(null)
     setEditingProduct(null)
+    setKeptHere(null)
     setShowForm(false)
     setErrors({})
     setPriceErrors({})
@@ -1074,10 +1147,13 @@ export default function ProductsPage() {
   // own row and their own fetch, which is why this waits.
   async function startEdit(product) {
     setFormProblem('')
+    // Where this restaurant keeps it, when it has said. Otherwise the form
+    // shows the product's own places.
+    const keptRow = kept.find(k => k.product_id === product.id)
+    setKeptHere(keptRow ? keptAt(product, keptRow) : null)
     setFormData({
       name: product.name,
       section: product.section,
-      also_in: product.also_in || [],
       held_for: product.held_for || '',
       category: product.category || 'ingredient',
       unit: product.unit,
@@ -1255,6 +1331,7 @@ export default function ProductsPage() {
     if (!said) return null
     const look = {
       good: 'bg-green-100 text-green-800',
+      fallback: 'bg-blue-50 text-blue-800',
       not: 'bg-amber-100 text-amber-800',
       any: 'bg-gray-100 text-gray-700',
       none: 'bg-white text-gray-600 border border-gray-300',
@@ -1263,8 +1340,14 @@ export default function ProductsPage() {
       <span className="block mt-1">
         <span className={`${badge} ${look}`}>{said.label}</span>
         {said.instead && (
-          <span className="block text-xs text-muted mt-0.5">
-            Brand: {said.instead.map(v => versionLabel(v, p, getSupplierName(v.supplier_id))).join(', ')}
+          <span className="flex flex-wrap items-center gap-1 text-xs text-muted mt-1">
+            <span>Brand:</span>
+            {said.instead.map(v => (
+              <span key={v.id} className="inline-flex flex-wrap items-center gap-1">
+                <span>{v.name || p.name}</span>
+                <SupplierBadge name={getSupplierName(v.supplier_id)} />
+              </span>
+            ))}
           </span>
         )}
       </span>
@@ -1276,28 +1359,27 @@ export default function ProductsPage() {
   // different things about the same product.
   function rowValues(p) {
     const price = getPreferredPrice(p.id)
-    const mixResult = p.is_mix ? calculateMixCost(p, products, recipeLines, prices) : null
+    const unit = unitCostOf(p)
     return {
       supplier: p.is_mix ? 'House-made' : getSupplierName(price?.supplier_id),
       // Null means we could not work it out: a MIX with an ingredient that has
-      // no price, or a bought product with no preferred price set.
-      cost: p.is_mix
-        ? (mixResult?.cost != null ? fmtUnitCost(mixResult.cost) : null)
-        : (price ? fmtUnitCost(parseFloat(price.price_per_unit)) : null),
+      // no price, or a bought product with no price here or at the other
+      // restaurant.
+      cost: unit != null ? fmtUnitCost(unit) : null,
+      borrowed: !p.is_mix && borrowedCost(costPrices, p.id),
       weightLoss: p.weight_loss_pct > 0 ? `${p.weight_loss_pct}%` : '—',
     }
   }
 
-  // What a product is worth per unit. A MIX is costed from its recipe, a bought
-  // product from its preferred supplier price. Null when neither can be worked
+  // What a product is worth per unit: what recipes cost it at here
+  // (lib/costPrices), a MIX from its recipe and a bought product the dearest
+  // of its recommended versions or the price chosen, which can be the other
+  // restaurant's when this one never bought it. Null when it cannot be worked
   // out, which sorts to the bottom rather than pretending to be zero.
   function unitCostOf(p) {
-    if (p.is_mix) {
-      const result = calculateMixCost(p, products, recipeLines, prices)
-      return result?.cost ?? null
-    }
-    const price = getPreferredPrice(p.id)
-    return price ? parseFloat(price.price_per_unit) : null
+    if (p.is_mix) return calculateMixCost(p, products, recipeLines, costPrices).cost ?? null
+    const perUnit = Number(costPrices.find(c => c.product_id === p.id)?.price_per_unit)
+    return Number.isFinite(perUnit) && perUnit > 0 ? perUnit : null
   }
 
   // The value a column sorts on. Text comes back lowercased so the sort is not
@@ -1499,12 +1581,9 @@ export default function ProductsPage() {
           versions={versions}
           suppliers={suppliers}
           boughtHere={boughtHere}
-          canRecommend={keepsTheList}
+          keepsTheList={keepsTheList}
           onClose={() => setVersionsOf(null)}
           onAddPrice={() => navigate(`/catalogue/products/${versionsOf}/prices`)}
-          // A recommendation can change which version a restaurant's
-          // allergen sheet reads, so the sidebar counts them again.
-          onChanged={async () => { allergensChanged(); await Promise.all([fetchProducts(), fetchPrices()]) }}
         />
       )}
       {requesting && (
@@ -1535,6 +1614,9 @@ export default function ProductsPage() {
               problem={formProblem}
               formData={formData}
               onChange={handleFieldChange}
+              keptHere={keptHere || ownPlaces({ section: formData.section, also_in: editingProduct?.also_in })}
+              onKeptHereChange={setKeptHere}
+              restaurantName={activeRestaurant?.name}
               onSubmit={handleSave}
               onCancel={resetForm}
               submitLabel="Add product"
@@ -1714,6 +1796,7 @@ export default function ProductsPage() {
                           {p.is_mix ? 'Incomplete' : 'No price set'}
                         </span>
                       )}
+                      {v.borrowed && <span className="block text-xs font-normal text-muted">Other restaurant&apos;s price</span>}
                     </dd>
                   </div>
                   <div className="flex items-baseline justify-between gap-3">
@@ -1799,7 +1882,7 @@ export default function ProductsPage() {
             <tbody>
               {filteredProducts.map((p, i) => {
                 const price = getPreferredPrice(p.id)
-                const mixResult = p.is_mix ? calculateMixCost(p, products, recipeLines, prices) : null
+                const unit = unitCostOf(p)
                 const last = i === filteredProducts.length - 1
                 return (
                   <Fragment key={p.id}>
@@ -1878,11 +1961,12 @@ export default function ProductsPage() {
                         {brandMark(p)}
                       </td>
                       <td className={`px-4 py-3 font-medium ${p.is_active ? 'text-gray-900' : 'text-muted'}`}>
-                        {p.is_mix
-                          ? (mixResult?.cost !== null
-                              ? fmtUnitCost(mixResult.cost)
-                              : <span className="text-amber-700 text-xs">Incomplete</span>)
-                          : (price ? fmtUnitCost(parseFloat(price.price_per_unit)) : '—')}
+                        {unit != null
+                          ? fmtUnitCost(unit)
+                          : (p.is_mix ? <span className="text-amber-700 text-xs">Incomplete</span> : '—')}
+                        {!p.is_mix && borrowedCost(costPrices, p.id) && (
+                          <span className="block text-xs font-normal text-muted">Other restaurant&apos;s price</span>
+                        )}
                       </td>
                       <td className={`px-4 py-3 ${p.is_active ? 'text-gray-700' : 'text-muted'}`}>
                         {p.weight_loss_pct > 0 ? `${p.weight_loss_pct}%` : '—'}
@@ -1912,6 +1996,9 @@ export default function ProductsPage() {
               problem={formProblem}
               formData={formData}
               onChange={handleFieldChange}
+              keptHere={keptHere || ownPlaces({ section: formData.section, also_in: editingProduct?.also_in })}
+              onKeptHereChange={setKeptHere}
+              restaurantName={activeRestaurant?.name}
               onSubmit={handleSave}
               onCancel={resetForm}
               submitLabel="Save changes"

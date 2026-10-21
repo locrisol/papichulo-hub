@@ -48,12 +48,14 @@ export function calculateMixCost(product, allProducts, allRecipeLines, preferred
     return { cost: null, status: 'cycle' }
   }
 
-  // A non-MIX product's "cost" comes from its preferred price, not this helper.
-  // The helper is only meaningful for MIX products.
+  // A non-MIX product's "cost" comes from what recipes cost it at
+  // (lib/costPrices), not this helper. The helper is only meaningful for MIX
+  // products. A price with no figure, or nought, is no price: NaN would
+  // otherwise go into a margin and look like a number.
   if (!product.is_mix) {
-    const price = preferredPrices.find(p => p.product_id === product.id)
-    return price
-      ? { cost: parseFloat(price.price_per_unit), status: 'ok' }
+    const perUnit = unitPrice(preferredPrices, product.id)
+    return perUnit != null
+      ? { cost: perUnit, status: 'ok' }
       : { cost: null, status: 'missing_price', missing: [product.id] }
   }
 
@@ -118,11 +120,15 @@ export function resolveUnitCost(product, allProducts, allRecipeLines, preferredP
     return result && result.status === 'ok' ? result.cost : null
   }
 
-  const price = preferredPrices.find(p => p.product_id === product.id)
-  if (!price) return null
+  return unitPrice(preferredPrices, product.id)
+}
 
-  const perUnit = Number(price.price_per_unit)
-  return isNaN(perUnit) ? null : perUnit
+// The price per unit a product costs at, or null when there is none worth
+// the name: no row, no figure, or nought.
+function unitPrice(prices, productId) {
+  const price = (prices || []).find(p => p.product_id === productId)
+  const perUnit = Number(price?.price_per_unit)
+  return price && price.price_per_unit != null && Number.isFinite(perUnit) && perUnit > 0 ? perUnit : null
 }
 
 // What one unit of a product costs as a line in something else: a component
@@ -243,6 +249,41 @@ export function menuItemCost(components, allProducts, allRecipeLines, prices) {
 
   return total
 }
+
+// The dishes on sale whose total cost rises by more than `threshold` percent
+// when one product costs `paid` a unit instead of what recipes cost it at
+// (his decision 5 of 18 October 2026): what buying something off the
+// Recommended list did to the menu. Each { id, name, was, now, rise }, the
+// biggest rise first. A dish switched off, in a category switched off, or
+// that cannot be costed both ways is left out; one without the product in it
+// does not rise at all.
+export function dishRises(productId, paid, {
+  menuItems = [], categories = [], components = [], products = [], recipeLines = [], costPrices = [], threshold = 5,
+} = {}) {
+  const per = Number(paid)
+  if (!productId || !(per > 0)) return []
+  const off = new Set((categories || []).filter(c => c.is_active === false).map(c => c.id))
+  const paidFor = [
+    ...(costPrices || []).filter(c => c.product_id !== productId),
+    { product_id: productId, price_per_unit: per },
+  ]
+  const out = []
+  for (const dish of menuItems || []) {
+    if (dish.is_active === false || off.has(dish.category_id)) continue
+    const lines = (components || []).filter(c => c.menu_item_id === dish.id)
+    const was = menuItemCost(lines, products, recipeLines, costPrices)
+    if (!(was > 0)) continue
+    const now = menuItemCost(lines, products, recipeLines, paidFor)
+    if (now == null) continue
+    const rise = ((now - was) / was) * 100
+    if (rise > Number(threshold)) {
+      out.push({ id: dish.id, name: dish.name, was: cents(was), now: cents(now), rise: Math.round(rise * 10) / 10 })
+    }
+  }
+  return out.sort((a, b) => b.rise - a.rise || String(a.name).localeCompare(String(b.name)))
+}
+
+const cents = n => Math.round(n * 100) / 100
 
 // Where a menu item's margin turns amber and where it turns red: green at 65%
 // or more, amber from 60% up to 65%, red below 60%. There is no recorded

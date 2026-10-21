@@ -405,6 +405,20 @@ export const badge =
 export const mixBadge = `${badge} bg-amber-100 text-amber-800`
 export const inactiveBadge = `${badge} bg-red-200 text-red-800`
 
+// A drink, the sky the Products list has always used for it. Here since the
+// Recommended list says it too.
+export const drinkBadge = `${badge} bg-sky-100 text-sky-800`
+
+// Who a version is bought from, wherever a screen names the supplier of one:
+// the Recommended list, the versions of a product, its prices, its allergens
+// and Review. His decision of 19 October 2026: one look for every supplier,
+// no colour of its own, so the name is read rather than a colour learned.
+//
+// Slate rather than gray so it does not read as the grey "Bought here" pill
+// that often sits beside it, with an edge so it reads as a tag. Slate 800 on
+// slate 100 is about 13 to 1. Used through the SupplierBadge component.
+export const supplierBadge = `${badge} bg-slate-100 text-slate-800 border border-slate-200`
+
 // The little count at the end of an item in the sidebar: requests waiting on
 // Roster, products with allergens not set on Products.
 //

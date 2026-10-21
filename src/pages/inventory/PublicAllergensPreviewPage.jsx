@@ -1,6 +1,6 @@
-import { supabase, everyRow } from '@/lib/supabase'
-import { readAllergensAt } from '@/lib/allergensAt'
-import { everyReadArrived, reprintDue } from '@/lib/allergenSheet'
+import { supabase } from '@/lib/supabase'
+import { reprintDue, dueToKeep, sameSheet } from '@/lib/allergenSheet'
+import { compareSheet } from '@/lib/sheetAt'
 import { friendlyError } from '@/lib/errors'
 import { qrCardPdf, allergenListPdf } from '@/lib/allergenPdf'
 import { useAuth } from '@/context/auth'
@@ -12,6 +12,7 @@ import { card, captionClass, hintClass, primaryButton, secondaryButton } from '@
 import { useConfirm } from '@/context/confirm'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import Notice from '@/components/ui/Notice'
+import SheetChanges from '@/components/allergens/SheetChanges'
 import PageHeader from '@/components/ui/PageHeader'
 
 // The manager's side of the public allergen page: the QR code to print, the
@@ -40,36 +41,42 @@ export default function PublicAllergensPreviewPage() {
     // Why the allergen list did not print, said beside the button that was
     // pressed rather than by the button quietly doing nothing.
     const [printProblem, setPrintProblem] = useState('')
-    // When anything on the sheet last changed, for the reminder. Nothing is
-    // said about printing until it has been asked, so the notice does not
-    // appear a moment after the page does and push everything down.
-    const [changed, setChanged] = useState({ read: false, at: null })
+    // The sheet as it stands against the copy kept with the last print
+    // (lib/sheetAt), for the reminder. Nothing is said about printing until
+    // it has been asked, so the notice does not appear a moment after the
+    // page does and push everything down.
+    const [sheet, setSheet] = useState({ read: false, data: null })
+    // Goes up with each print, so the preview below reads again and its Last
+    // updated follows the paper just printed.
+    const [prints, setPrints] = useState(0)
 
     const baseUrl = import.meta.env.VITE_PUBLIC_URL || window.location.origin
     const publicUrl = activeRestaurant
         ? `${baseUrl}/allergens/${activeRestaurant.slug}`
         : ''
 
+    const restaurantId = activeRestaurant?.id
     useEffect(() => {
+        if (!restaurantId) return
         let current = true
-        supabase.rpc('allergens_changed_at').then(({ data, error }) => {
-            // A date that would not come back leaves the reminder to the
-            // months alone. The button reads it again and will not print
-            // without it.
-            if (current) setChanged({ read: true, at: error ? null : data })
+        compareSheet(restaurantId).then(({ data, error }) => {
+            // A sheet that would not read leaves the reminder to the months
+            // alone. The button reads it again and will not print without it.
+            if (current) setSheet({ read: true, data: error ? null : data })
         })
         return () => { current = false }
-    }, [])
+    }, [restaurantId])
 
-    // Every so many months, and as soon as anything on the sheet has changed
-    // since the last print. The weekly report says the same thing in the
-    // same words, from the same function.
-    const due = changed.read && activeRestaurant
-        ? reprintDue({
+    // Every so many months, and as soon as a line on the sheet differs from
+    // the one printed. The sidebar and the weekly report say the same thing
+    // in the same words, from the same function.
+    const due = sheet.read && activeRestaurant
+        ? dueToKeep(reprintDue({
             printedAt: activeRestaurant.allergen_sheet_printed_at,
             everyMonths: activeRestaurant.allergen_sheet_every_months,
-            changedAt: changed.at,
-        })
+            kept: sheet.data ? sheet.data.kept : true,
+            changes: sheet.data?.changes ?? null,
+        }))
         : null
 
     useEffect(() => {
@@ -110,70 +117,52 @@ export default function PublicAllergensPreviewPage() {
     // allergen was changed in another tab printed the old answer, and the
     // preview below is a separate read that cannot vouch for it.
     //
-    // All six or nothing. It used to print whatever arrived, and a failed read
-    // of the allergens came out as a grid with no marks in it, which reads as
-    // none of the fourteen. That paper sits on the counter for months.
-    //
-    // And all of each, a page at a time in an order that cannot tie, for the
-    // same reason as the customer page: past a thousand lines a dish lost one
-    // and printed whole without its allergens.
-    async function readSheet() {
-        const [changedRes, ...reads] = await Promise.all([
-            // The date the form carries, which is the day anything on it last
-            // changed. It was the newest allergen row, which says nothing about
-            // a new dish or a changed recipe.
-            supabase.rpc('allergens_changed_at'),
-            everyRow(() => supabase.from('menu_categories').select('*').eq('is_active', true).order('sort_order').order('id')),
-            everyRow(() => supabase.from('menu_items').select('*').eq('is_active', true).order('name').order('id')),
-            everyRow(() => supabase.from('menu_item_components').select('*').order('id')),
-            everyRow(() => supabase.from('products').select('*').order('name').order('id')),
-            everyRow(() => supabase.from('mix_recipes').select('*').order('id')),
-            // This restaurant's, from the versions it buys (lib/allergensAt).
-            readAllergensAt(activeRestaurant.id),
-        ])
-        if (changedRes.error || !everyReadArrived(reads)) return null
-
-        const [categoriesRes, menuItemsRes, componentsRes, productsRes, recipesRes, allergensRes] = reads
-        return {
-            changedAt: changedRes.data,
-            categories: categoriesRes.data,
-            menuItems: menuItemsRes.data,
-            components: componentsRes.data,
-            products: productsRes.data,
-            recipeLines: recipesRes.data,
-            allergens: allergensRes.data,
-        }
-    }
-
+    // All of it or nothing (lib/sheetAt): it used to print whatever arrived,
+    // and a failed read of the allergens came out as a grid with no marks in
+    // it, which reads as none of the fourteen. That paper sits on the counter
+    // for months. The last print is read with it, for the date on the paper,
+    // and a print that would not read stops it too.
     async function handleDownloadAllergenListPdf() {
         if (!activeRestaurant || printing) return
 
         setPrinting(true)
         setPrintProblem('')
         try {
-            const menuData = await readSheet()
-            if (!menuData) {
+            const { data: now, error } = await compareSheet(activeRestaurant.id)
+            if (error) {
                 setPrintProblem('The allergen list could not be read just now, so nothing was printed. '
                     + 'Check your connection and try again.')
                 return
             }
+            // The day its lines last changed: the last print's when this one
+            // says the same, otherwise today.
+            const date = now.kept && sameSheet(now.print.rows, now.snapshot)
+                ? now.print.sheet_changed_at
+                : new Date().toISOString()
             await allergenListPdf({
-                menuData,
+                groups: now.groups,
+                date,
                 slug: activeRestaurant.slug,
                 userName: user?.full_name || user?.email || 'Unknown',
             })
-            setChanged({ read: true, at: menuData.changedAt })
 
             // Printing is what stops the reminder, so the button says it
-            // happened. Through the database rather than onto the row, because
-            // an owner can print but cannot write the restaurant.
+            // happened, with the very lines it printed, which is what the next
+            // reminder is worked out against. Through the database rather than
+            // onto the row, because an owner can print but cannot write the
+            // restaurant.
             const { data: stamp, error: stampError } = await supabase
-                .rpc('allergen_sheet_printed', { restaurant: activeRestaurant.id })
+                .rpc('allergen_sheet_printed', { restaurant: activeRestaurant.id, sheet: now.snapshot })
             if (stampError) {
                 setPrintProblem('The sheet was made, but the Hub could not record that it was printed, '
                     + `so the reminder may still show. ${friendlyError(stampError)}`)
                 return
             }
+            setSheet({
+                read: true,
+                data: { ...now, print: { rows: now.snapshot, sheet_changed_at: date }, kept: true, changes: [] },
+            })
+            setPrints(n => n + 1)
             setActiveRestaurant({ ...activeRestaurant, allergen_sheet_printed_at: stamp })
         } finally {
             setPrinting(false)
@@ -217,9 +206,18 @@ export default function PublicAllergensPreviewPage() {
             />
 
             {/* The reminder to print a new sheet, at the top because the
-                paper on the wall is what an inspector reads. It goes once the
-                button below has printed one. */}
-            <Notice tone="warn" className="mb-6">{due?.words}</Notice>
+                paper on the wall is what an inspector reads, with the lines
+                that changed when that is why. Red when the paper is wrong,
+                amber when it is only old. It goes once the button below has
+                printed one. */}
+            <Notice tone={due?.reason === 'changed' ? 'urgent' : 'warn'} className="mb-6">
+                {due && (
+                    <>
+                        <p>{due.words}</p>
+                        <SheetChanges changes={due.changes} more={due.more} className="mt-2" />
+                    </>
+                )}
+            </Notice>
 
             {/* QR + actions bar */}
             <div className={`${card} p-5 mb-6`}>
@@ -313,7 +311,7 @@ export default function PublicAllergensPreviewPage() {
 
             {/* Embedded customer view */}
             <div className="border border-border rounded-xl overflow-hidden bg-app-bg">
-                <PublicAllergensPage slugOverride={activeRestaurant.slug} />
+                <PublicAllergensPage key={prints} slugOverride={activeRestaurant.slug} />
             </div>
         </>
     )

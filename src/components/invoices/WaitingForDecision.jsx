@@ -18,6 +18,7 @@ import Notice from '@/components/ui/Notice'
 import MatchLineModal from '@/components/invoices/MatchLineModal'
 import SendForReviewModal from '@/components/inventory/SendForReviewModal'
 import { useRecountBadges } from '@/context/badges'
+import SupplierBadge from '@/components/ui/SupplierBadge'
 
 // What the week's invoices want somebody to decide, at the top of Import
 // invoices.
@@ -201,6 +202,7 @@ export default function WaitingForDecision({ restaurantId, refresh: imported = 0
                 <MatchLineModal
                     row={matching}
                     products={data.products}
+                    versions={data.versions}
                     onClose={() => setMatching(null)}
                     onMatch={async chosen => {
                         setMatching(null)
@@ -308,8 +310,8 @@ function ReviewRow({
             <div className="flex flex-wrap items-start justify-between gap-3 mb-2">
                 <div className="min-w-0">
                     <p className="text-sm font-bold text-gray-900">{line.description}</p>
-                    <p className="text-xs text-muted mt-0.5">
-                        {supplier?.name || 'Unknown supplier'}, code {line.code}
+                    <p className="text-xs text-muted mt-1">
+                        <SupplierBadge name={supplier?.name} /> code {line.code}
                         {line.pack_size ? `, ${line.pack_size}` : ''}, on{' '}
                         {doc.document_type === 'credit' ? 'credit note' : 'invoice'}{' '}
                         {doc.invoice_number} of {shortDate(doc.invoice_date)}

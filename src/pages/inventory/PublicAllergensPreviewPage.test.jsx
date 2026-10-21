@@ -62,10 +62,16 @@ const WHOLE = {
     menu_item_components: { data: [{ id: 'k1', menu_item_id: 'm1', product_id: 'p1' }], error: null },
     products: { data: [{ id: 'p1', name: 'Rice', is_mix: false }], error: null },
     mix_recipes: { data: [], error: null },
-    // Older than the last change on purpose: the sheet's date is the change,
-    // not the newest allergen row.
+    // Older than the last change on purpose: the sheet's date is the day its
+    // lines last changed, not the newest allergen row.
     product_allergens: { data: [{ product_id: 'p1', updated_at: '2026-08-01T10:00:00Z' }], error: null },
 }
+
+// The copy kept with the last print, which says what the sheet above says.
+const RICE = { category: 'Sides', name: 'Plain Rice', complete: true, contains: [], may_contain: [] }
+const PRINT = { id: 'pr1', printed_at: '2026-09-02T12:00:00+00:00', rows: [RICE], sheet_changed_at: '2026-09-01T10:00:00+00:00' }
+const printedAs = print => ({ ...WHOLE, allergen_sheet_prints: { data: print, error: null } })
+WHOLE.allergen_sheet_prints = { data: PRINT, error: null }
 
 const FAILED = { data: null, error: { message: 'Failed to fetch' } }
 
@@ -75,13 +81,12 @@ function answer(tables) {
     db.from.mockImplementation(table => makeQuery(tables[table] || { data: [], error: null }))
 }
 
-// What the two database functions answer: when anything on the sheet last
-// changed, and the stamp the button leaves once it has printed.
+// The stamp the button leaves once it has printed. The customer page below
+// asks for the last print too, and gets nothing.
 const STAMP = '2026-09-30T12:05:00+00:00'
-function functions({ changed = { data: '2026-09-01T10:00:00+00:00', error: null },
-    printed = { data: STAMP, error: null } } = {}) {
+function functions({ printed = { data: STAMP, error: null } } = {}) {
     db.rpc.mockImplementation(name => Promise.resolve(
-        name === 'allergens_changed_at' ? changed : printed))
+        name === 'allergen_sheet_printed' ? printed : { data: null, error: null }))
 }
 
 beforeEach(() => {
@@ -209,6 +214,7 @@ describe('printing the allergen sheet', () => {
         'products',
         'menu_items',
         'menu_categories',
+        'allergen_sheet_prints',
     ])('refuses to print and says why when %s fails', async table => {
         answer({ ...WHOLE, [table]: FAILED })
         const me = userEvent.setup()
@@ -238,9 +244,11 @@ describe('printing the allergen sheet', () => {
         expect(screen.queryByText(/could not be read just now/)).toBeNull()
     })
 
-    // The Date on the form is the day anything on it last changed. It was
-    // the newest allergen row, which says nothing about a new dish.
-    it('prints the day anything on it last changed as its date', async () => {
+    // The Date on the form is the day its lines last changed: the last
+    // print's when they are the same. It was the newest allergen row, which
+    // says nothing about a new dish, and then the change log's last change
+    // to anything, which moved for a new rice with the same allergens.
+    it('prints the day its lines last changed as its date', async () => {
         answer(WHOLE)
         const me = userEvent.setup()
         renderWithRouter(<PublicAllergensPreviewPage />)
@@ -251,29 +259,49 @@ describe('printing the allergen sheet', () => {
         expect(drawnText).toContain('01/09/2026')
     })
 
-    it('refuses to print when that date cannot be read', async () => {
-        answer(WHOLE)
-        functions({ changed: FAILED })
+    it('prints today as its date when a line has changed', async () => {
+        answer(printedAs({ ...PRINT, rows: [{ ...RICE, contains: ['gluten'] }] }))
         const me = userEvent.setup()
         renderWithRouter(<PublicAllergensPreviewPage />)
 
         await me.click(button())
 
-        expect(await screen.findByText(/could not be read just now, so nothing was printed/)).toBeInTheDocument()
-        expect(saved).toHaveLength(0)
+        await waitFor(() => expect(saved).toHaveLength(1))
+        expect(drawnText).toContain('30/09/2026')
+        expect(drawnText).not.toContain('01/09/2026')
     })
 })
 
 // His ask of 29 September: a reminder to print a new sheet every so many
 // months, and as soon as anything on it has changed since the last one.
+// Since 19 October 2026 a change is a line that differs from the copy kept
+// with the last print, and the reminder names it.
 describe('the reminder to print a new sheet', () => {
-    it('says so at the top while something has changed since the last print', async () => {
-        restaurant.allergen_sheet_printed_at = '2026-06-12T12:00:00+00:00'
-        answer(WHOLE)
+    it('says so at the top while a line has changed since the last print, and names it', async () => {
+        answer(printedAs({ ...PRINT, rows: [{ ...RICE, contains: ['gluten'] }] }))
         renderWithRouter(<PublicAllergensPreviewPage />)
 
         expect(await screen.findByText(
-            'Last printed 12 June. The allergen information has changed since then. Print a new sheet.')).toBeInTheDocument()
+            'Last printed 2 September. 1 line on it has changed since then. Print a new sheet.')).toBeInTheDocument()
+        expect(screen.getByText('Plain Rice (Sides): No longer has Gluten')).toBeInTheDocument()
+    })
+
+    // A new rice with the same allergens is the same sheet.
+    it('says nothing when the lines say the same, however the sheet was made', async () => {
+        answer(WHOLE)
+        renderWithRouter(<PublicAllergensPreviewPage />)
+
+        await waitFor(() => expect(db.from).toHaveBeenCalledWith('allergen_sheet_prints'))
+        await waitFor(() => expect(db.from).toHaveBeenCalledWith('product_allergens'))
+        expect(screen.queryByText(/Last printed/)).toBeNull()
+    })
+
+    // The first time after the release: the last print kept no copy.
+    it('asks for one more print when the last kept no copy of its lines', async () => {
+        answer(printedAs(null))
+        renderWithRouter(<PublicAllergensPreviewPage />)
+
+        expect(await screen.findByText(/before the Hub kept a copy of what is on it/)).toBeInTheDocument()
     })
 
     it('says so when it has never been printed from the Hub', async () => {
@@ -284,32 +312,33 @@ describe('the reminder to print a new sheet', () => {
         expect(await screen.findByText(/has not been printed from the Hub yet/)).toBeInTheDocument()
     })
 
-    it('says nothing when it was printed after the last change and the months have not passed', async () => {
+    it('says nothing when no line has changed and the months have not passed', async () => {
         answer(WHOLE)
         renderWithRouter(<PublicAllergensPreviewPage />)
 
-        await waitFor(() => expect(db.rpc).toHaveBeenCalledWith('allergens_changed_at'))
+        await waitFor(() => expect(db.from).toHaveBeenCalledWith('allergen_sheet_prints'))
         expect(screen.queryByText(/Last printed/)).toBeNull()
         expect(screen.queryByText(/has not been printed/)).toBeNull()
     })
 
     // Printing is what stops it, for an owner too, who cannot write the
     // restaurant row. So the button leaves its stamp through the database.
+    // And it hands over the very lines it printed, which the next reminder
+    // is worked out against.
     it('goes once the sheet is printed', async () => {
-        restaurant.allergen_sheet_printed_at = '2026-06-12T12:00:00+00:00'
-        answer(WHOLE)
+        answer(printedAs({ ...PRINT, rows: [{ ...RICE, contains: ['gluten'] }] }))
         const me = userEvent.setup()
         const { rerender } = renderWithRouter(<PublicAllergensPreviewPage />)
-        await screen.findByText(/The allergen information has changed since then/)
+        await screen.findByText(/1 line on it has changed since then/)
 
         await me.click(button())
 
         await waitFor(() => expect(setActiveRestaurant).toHaveBeenCalled())
-        expect(db.rpc).toHaveBeenCalledWith('allergen_sheet_printed', { restaurant: 'r1' })
+        expect(db.rpc).toHaveBeenCalledWith('allergen_sheet_printed', { restaurant: 'r1', sheet: [RICE] })
         expect(restaurant.allergen_sheet_printed_at).toBe(STAMP)
 
         rerender(<PublicAllergensPreviewPage />)
-        expect(screen.queryByText(/The allergen information has changed since then/)).toBeNull()
+        expect(screen.queryByText(/1 line on it has changed since then/)).toBeNull()
     })
 
     it('says so when the print could not be recorded', async () => {

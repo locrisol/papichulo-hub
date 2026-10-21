@@ -137,3 +137,8 @@ export const A_RESTAURANT = {
 
 export const A_MANAGER = { id: 'u1', full_name: 'A Manager', role: 'store_manager', restaurant_id: 'r1' }
 export const AN_EMPLOYEE = { id: 'u2', full_name: 'An Employee', role: 'employee', restaurant_id: 'r1' }
+
+// The cost views (lib/costPrices) in a test: a fixture's preferred prices,
+// which for a product with no recommendation is what recipes cost from.
+export const COST_VIEWS = ['cost_prices', 'staff_cost_prices']
+export const costRowsOf = prices => (prices || []).filter(p => p.is_preferred !== false)

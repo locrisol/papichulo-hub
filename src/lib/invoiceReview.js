@@ -94,9 +94,11 @@ export async function readToDecide(restaurantId, { upTo = null, withSent = false
 // The import saves every code it meets, so a price typed with a code, on the
 // product form or the Prices page, carried the code while the code itself
 // still pointed at nothing: a product made from a line on Review left that
-// line asking under Never bought before. Only a code with no price, and only a
-// price no code means yet, since a price belongs to one code: anything already
-// joined is Review's to move, not a form's.
+// line asking under Never bought before. Only a code with no price: anything
+// already joined is Review's to move, not a form's. A price that another code
+// already means is no reason to stop, since the code on the price is one of
+// its version's (price_version put it there), and every code of a version
+// means its price here (19 October 2026).
 //
 // The price is saved by then, so this says what did not happen rather than
 // stopping anything: a sentence, or null.
@@ -105,11 +107,6 @@ export async function claimCode(price, restaurantId) {
     if (!code || !price.supplier_id) return null
     const missed = err => `The price was saved, but it could not be matched to code ${code}: `
         + `${friendlyError(err)} Match the code on Import invoices instead.`
-
-    const { data: taken, error: readErr } = await supabase.from('supplier_codes')
-        .select('id').eq('price_id', price.id).limit(1)
-    if (readErr) return missed(readErr)
-    if (taken?.length) return null
 
     const { error: codeErr } = await supabase.from('supplier_codes')
         .update({ price_id: price.id })

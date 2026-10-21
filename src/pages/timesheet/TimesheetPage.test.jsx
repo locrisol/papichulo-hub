@@ -710,3 +710,26 @@ describe('sending the hours', () => {
         expect(screen.getByText('payroll@example.ie')).toBeInTheDocument()
     })
 })
+
+// His call of 20 October 2026: the second view is the Day view on a
+// computer and All days on a phone. Both are drawn and the width decides.
+describe('the second view', () => {
+    it('is called Day on a computer and All days on a phone', async () => {
+        render(<TimesheetPage />)
+        const phone = await screen.findByText('All days')
+        expect(phone.className).toContain('md:hidden')
+        const computer = screen.getByText('Day')
+        expect(computer.className).toContain('hidden md:inline')
+        expect(phone.closest('button')).toBe(computer.closest('button'))
+    })
+
+    it('draws all the days for a phone and one day for a computer', async () => {
+        render(<TimesheetPage />)
+        await userEvent.click(await screen.findByRole('button', { name: /All days/ }))
+        expect(document.querySelectorAll('section[id^="timesheet-day-"]')).toHaveLength(7)
+        expect(document.querySelectorAll('section[id^="timesheet-day-"]')[0].closest('[class~="md:hidden"]')).not.toBeNull()
+        const picked = screen.getAllByRole('button', { pressed: true })
+        expect(picked).toHaveLength(1)
+        expect(picked[0].closest('[class~="hidden"][class~="md:block"]')).not.toBeNull()
+    })
+})

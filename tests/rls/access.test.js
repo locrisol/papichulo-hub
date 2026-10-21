@@ -74,6 +74,57 @@ async function productRefusal(client) {
     return error?.code ?? null
 }
 
+// A picture of a version that cannot exist, so no row is ever made.
+async function pictureRefusal(client) {
+    const { error } = await client.from('version_pictures').insert({
+        version_id: NOBODY,
+        path: `${NOBODY}/rls-test.jpg`,
+    })
+    return error?.code ?? null
+}
+
+// Where a restaurant keeps a product that cannot exist, so no row is made:
+// refused by the rules, or let through to fail on the missing product.
+async function keptRefusal(client, restaurantId) {
+    const { error } = await client.from('restaurant_kept_in').insert({
+        restaurant_id: restaurantId,
+        product_id: NOBODY,
+        section: 'Dry',
+        also_in: [],
+    })
+    return error?.code ?? null
+}
+
+// Saying a code is the same thing as a price that cannot exist, or that two
+// such prices are bought either way, so nothing is ever joined: refused for
+// who is asking, or let through to fail on the missing price.
+const NOT_IN_THE_HUB = 'That price is not in the Hub any more'
+async function joinRefusal(client) {
+    const join = await client.rpc('code_update', { keep_price: NOBODY, new_code: 'RLS-TEST' })
+    const both = await client.rpc('buy_both', { keep_price: NOBODY, other_price: NOBODY })
+    const said = error => (error?.message === NOT_IN_THE_HUB ? 'past' : error?.code ?? null)
+    return [said(join.error), said(both.error)]
+}
+
+// A change to a version that the rules hide from a store manager, so it
+// reaches no row at all, or that the guard refuses. Either way nothing is
+// saved, which is what is being proved.
+function versionUntouched({ data, error }) {
+    return error?.code === GUARDED || (!error && (data || []).length === 0)
+}
+
+// A version the store manager's restaurant has a price for. The price is
+// what makes trying to remove it safe: a version with a price cannot go,
+// guard or no guard.
+async function pricedVersion(client, restaurantId) {
+    const { data: prices } = await client.from('product_supplier_prices')
+        .select('version_id').eq('restaurant_id', restaurantId).limit(1)
+    if (!prices?.length) return null
+    const { data } = await client.from('product_versions')
+        .select('id, is_recommended, is_active').eq('id', prices[0].version_id).single()
+    return data
+}
+
 // Saying a code is not stock, for a supplier that cannot exist.
 async function notStockRefusal(client, restaurantId) {
     const { error } = await client.from('supplier_codes').insert({
@@ -548,19 +599,43 @@ maybe('what each role can see and do', () => {
         // page reads the public_ views, which leave all of that out.
         it('cannot read the menu, what goes into each dish or the allergen tables', async () => {
             for (const table of ['menu_items', 'menu_item_components', 'product_allergens', 'menu_categories',
-                'product_versions', 'version_allergens']) {
+                'product_versions', 'version_allergens', 'version_pictures', 'version_codes']) {
                 const { count } = await countVisible(employee, table)
                 expect(count, `an employee can read ${table}`).toBe(0)
             }
         })
 
-        // The stock take lists a product where the versions bought there are
-        // kept, and staff count it, so they read that view, for their own
-        // restaurant only.
-        it('reads where things are kept at their own restaurant only', async () => {
+        // Staff screens show no pictures, so staff are given none of them.
+        it('is given none of the pictures of each version', async () => {
+            const { data } = await employee.storage.from('version-pictures').list()
+            expect(data || []).toEqual([])
+        })
+
+        // The stock take lists a product where the restaurant keeps it, and
+        // staff count it, so they read that, for their own restaurant only,
+        // and change none of it.
+        it('cannot join two codes or say two are bought either way', async () => {
+            expect(await joinRefusal(employee)).toEqual([REFUSED_BY_THE_RULES, REFUSED_BY_THE_RULES])
+        })
+
+        // What a product costs, for the stock take and waste, at their own
+        // restaurant only, and nothing about whose price it is (step 5).
+        it('reads what things cost at their own restaurant only, and only the cost', async () => {
+            const { data, error } = await employee.from('staff_cost_prices').select('*')
+            expect(error).toBeNull()
+            expect((data || []).filter(c => c.restaurant_id !== ownRestaurantId)).toEqual([])
+            for (const row of data || []) expect(Object.keys(row).sort()).toEqual(['price_per_unit', 'product_id', 'restaurant_id'])
+            for (const view of ['cost_prices', 'cost_choice']) {
+                const { count } = await countVisible(employee, view)
+                expect(count, `an employee can read ${view}`).toBe(0)
+            }
+        })
+
+        it('reads where things are kept at their own restaurant only, and changes none of it', async () => {
             const { data, error } = await employee.from('restaurant_kept_in').select('restaurant_id, product_id, section, also_in')
             expect(error).toBeNull()
             expect((data || []).filter(k => k.restaurant_id !== ownRestaurantId)).toEqual([])
+            expect(await keptRefusal(employee, ownRestaurantId)).toBe(REFUSED_BY_THE_RULES)
         })
 
         it('cannot send anything for review or read what was sent', async () => {
@@ -576,8 +651,17 @@ maybe('what each role can see and do', () => {
                 'public_product_versions', 'public_version_allergens', 'public_restaurant_versions']) {
                 const { count, error } = await countVisible(employee, view)
                 expect(error).toBeNull()
+                // Since 19 October 2026 which versions a restaurant buys goes
+                // by the last 56 days, which a quiet stretch can leave empty.
+                if (view === 'public_restaurant_versions') continue
                 expect(count, `an employee cannot read ${view}`).toBeGreaterThan(0)
             }
+        })
+
+        // What each print said is the managers' business.
+        it('cannot read what the allergen sheets printed said', async () => {
+            const { count } = await countVisible(employee, 'allergen_sheet_prints')
+            expect(count, 'an employee can read the printed allergen sheets').toBe(0)
         })
 
         it('is refused when writing a MIX recipe', async () => {
@@ -823,6 +907,83 @@ maybe('what each role can see and do', () => {
             expect(await productRefusal(manager)).toBe(GUARDED)
         })
 
+        // The Recommended list of 19 October 2026 is the owners'. Each change
+        // goes with a blank code, which the database refuses anyway, so
+        // nothing on live changes whether or not the guard holds: the guard
+        // answers first, and without it the blank code would.
+        it('cannot change anything on the Recommended list', async ({ skip }) => {
+            const version = await pricedVersion(manager, ownRestaurantId)
+            skip(!version, 'this restaurant has no prices, so there is no version to try')
+            for (const change of [
+                { is_recommended: !version.is_recommended },
+                { fallback_rank: 1 },
+                { notes: 'RLS test, should never be saved' },
+                { description: 'RLS test, should never be saved' },
+                { name: 'RLS test, should never be saved' },
+                { is_active: !version.is_active },
+            ]) {
+                const answer = await manager.from('product_versions')
+                    .update({ ...change, supplier_code: ' ' }).eq('id', version.id).select('id')
+                expect(versionUntouched(answer), `a store manager changed ${Object.keys(change)[0]}`).toBe(true)
+            }
+        })
+
+        // Where a version was kept was the last thing they wrote on one.
+        it('cannot change a version at all, only add one by buying it', async ({ skip }) => {
+            const version = await pricedVersion(manager, ownRestaurantId)
+            skip(!version, 'this restaurant has no prices, so there is no version to try')
+            const answer = await manager.from('product_versions')
+                .update({ section: 'Freezer', supplier_code: ' ' }).eq('id', version.id).select('id')
+            expect(versionUntouched(answer), 'a store manager changed a version').toBe(true)
+        })
+
+        // As today (his decision 6 of 18 October 2026): a store manager says
+        // a code is the same thing, or that two are bought either way.
+        it('may join two codes and say two are bought either way', async () => {
+            expect(await joinRefusal(manager)).toEqual(['past', 'past'])
+        })
+
+        it('reads what recipes cost at their own restaurant only', async () => {
+            const { data, error } = await manager.from('cost_prices').select('restaurant_id, product_id, borrowed')
+            expect(error).toBeNull()
+            expect((data || []).filter(c => c.restaurant_id !== ownRestaurantId)).toEqual([])
+            const { count } = await countVisible(manager, 'cost_choice')
+            expect(count, 'a manager can read every restaurant through cost_choice').toBe(0)
+        })
+
+        // Only from inside code_update, after it has checked who is asking.
+        it('cannot join two versions directly', async () => {
+            const { error } = await manager.rpc('join_versions', { keep: NOBODY, fold: NOBODY })
+            expect(error?.code, 'a store manager joined two versions directly').toBe(REFUSED_BY_THE_RULES)
+        })
+
+        // Each restaurant's own (his decision of 18 October 2026), the same
+        // limit its prices have.
+        it('says where things are kept at their own restaurant only', async () => {
+            expect(await keptRefusal(manager, ownRestaurantId)).toBe(PAST_THE_RULES)
+            expect(await keptRefusal(manager, otherRestaurantId)).toBe(REFUSED_BY_THE_RULES)
+        })
+
+        it('cannot remove a version', async ({ skip }) => {
+            const version = await pricedVersion(manager, ownRestaurantId)
+            skip(!version, 'this restaurant has no prices, so there is no version to try')
+            const answer = await manager.from('product_versions').delete().eq('id', version.id).select('id')
+            expect(versionUntouched(answer), 'a store manager removed a version').toBe(true)
+        })
+
+        it('reads the pictures and other codes of each version, and cannot add a picture', async () => {
+            for (const table of ['version_pictures', 'version_codes']) {
+                const { error } = await countVisible(manager, table)
+                expect(error, `a manager cannot read ${table}`).toBeNull()
+            }
+            expect(await pictureRefusal(manager)).toBe(REFUSED_BY_THE_RULES)
+            const path = `${NOBODY}/rls-test.jpg`
+            const { error } = await manager.storage.from('version-pictures')
+                .upload(path, new Blob(['x'], { type: 'image/jpeg' }), { contentType: 'image/jpeg' })
+            if (!error) await superadmin.storage.from('version-pictures').remove([path])
+            expect(error, 'a store manager put a picture in the bucket').not.toBeNull()
+        })
+
         it('cannot say a code is not stock, or set a line aside', async () => {
             expect(await notStockRefusal(manager, ownRestaurantId)).toBe(GUARDED)
             const { error } = await manager.from('invoice_lines').insert({
@@ -909,6 +1070,23 @@ maybe('what each role can see and do', () => {
             expect(await notStockRefusal(owner, ownRestaurantId)).toBe(PAST_THE_RULES)
         })
 
+        // The same blank code as the store manager's test: the owner gets past
+        // the guard and is stopped by the code instead, so nothing is saved.
+        it('gets past the guard on the Recommended list', async ({ skip }) => {
+            const { data: versions } = await owner.from('product_versions').select('id').limit(1)
+            skip(!versions?.length, 'there are no versions to try')
+            const { error } = await owner.from('product_versions')
+                .update({ notes: 'RLS test, should never be saved', supplier_code: ' ' }).eq('id', versions[0].id)
+            expect(error, 'an owner saved a blank code').not.toBeNull()
+            expect(error.code).not.toBe(GUARDED)
+            expect(await pictureRefusal(owner)).toBe(PAST_THE_RULES)
+        })
+
+        it('says where things are kept at their own restaurant only', async () => {
+            expect(await keptRefusal(owner, ownRestaurantId)).toBe(PAST_THE_RULES)
+            expect(await keptRefusal(owner, otherRestaurantId)).toBe(REFUSED_BY_THE_RULES)
+        })
+
         it('reads who reviews', async () => {
             const { count, error } = await countVisible(owner, 'brand_settings')
             expect(error).toBeNull()
@@ -950,6 +1128,11 @@ maybe('what each role can see and do', () => {
         it('can see both restaurants', async () => {
             const { count } = await countVisible(superadmin, 'restaurants')
             expect(count).toBeGreaterThan(1)
+        })
+
+        it('says where things are kept at either restaurant', async () => {
+            expect(await keptRefusal(superadmin, ownRestaurantId)).toBe(PAST_THE_RULES)
+            expect(await keptRefusal(superadmin, otherRestaurantId)).toBe(PAST_THE_RULES)
         })
 
         it('can see every user', async () => {
@@ -1229,11 +1412,24 @@ maybe('what each role can see and do', () => {
                 'restaurants', 'products', 'menu_items', 'menu_categories',
                 'menu_item_components', 'mix_recipes', 'product_allergens',
                 'product_versions', 'version_allergens', 'product_supplier_prices',
-                'product_requests', 'brand_settings', 'restaurant_kept_in',
+                'product_requests', 'brand_settings', 'restaurant_kept_in', 'version_pictures', 'version_codes',
+                'cost_prices', 'staff_cost_prices', 'cost_choice', 'allergen_sheet_prints',
             ]) {
                 const { count } = await countVisible(anon, table)
                 expect(count, `${table} is still readable by anybody`).toBe(0)
             }
+        })
+
+        it('cannot call the functions that change the Recommended list', async () => {
+            const recommends = await anon.rpc('set_recommends', { product: NOBODY, mode: 'any' })
+            const fallbacks = await anon.rpc('set_fallbacks', { product: NOBODY, versions: [] })
+            expect(recommends.error, 'anybody can call set_recommends').not.toBeNull()
+            expect(fallbacks.error, 'anybody can call set_fallbacks').not.toBeNull()
+            const [join, both] = await joinRefusal(anon)
+            expect(join, 'anybody can join two codes').not.toBe('past')
+            expect(both, 'anybody can say two codes are bought either way').not.toBe('past')
+            const { error } = await anon.rpc('join_versions', { keep: NOBODY, fold: NOBODY })
+            expect(error, 'anybody can join two versions').not.toBeNull()
         })
 
         // What the views hand over, stated as columns rather than as a
@@ -1311,6 +1507,22 @@ maybe('what each role can see and do', () => {
         it('cannot say the allergen sheet was printed', async () => {
             const { error } = await anon.rpc('allergen_sheet_printed', { restaurant: NOBODY })
             expect(error, 'anybody can stamp the allergen sheet as printed').not.toBeNull()
+            const kept = await anon.rpc('allergen_sheet_printed', { restaurant: NOBODY, sheet: [] })
+            expect(kept.error, 'anybody can leave a printed allergen sheet').not.toBeNull()
+        })
+
+        // Since 19 October 2026: the customer page's Last updated is the last
+        // print's lines and the day they last changed, and nothing else of it.
+        it('can ask for the last printed sheet, and is given its lines and its date only', async () => {
+            const { data: places } = await anon.from('public_restaurants').select('id')
+            for (const place of places || []) {
+                const { data, error } = await anon.rpc('public_allergen_sheet', { restaurant: place.id })
+                expect(error, 'the allergen page cannot read the last print').toBeNull()
+                if (data) expect(Object.keys(data).sort()).toEqual(['changed_at', 'rows'])
+            }
+            const { data, error } = await anon.rpc('public_allergen_sheet', { restaurant: NOBODY })
+            expect(error).toBeNull()
+            expect(data).toBeNull()
         })
 
         it('cannot read what anything costs', async () => {
@@ -1424,6 +1636,9 @@ maybe('what each role can see and do', () => {
             expect(data).toHaveProperty('claims_late')
             expect(data).toHaveProperty('timesheet')
             expect(data).toHaveProperty('permits')
+            // Since 19 October 2026 whether the last print kept its lines; the
+            // app works out whether they have changed.
+            expect(Object.keys(data.sheet).sort()).toEqual(['every_months', 'kept', 'printed_at'])
         })
 
         // What was sent for review is counted for whoever answers it.

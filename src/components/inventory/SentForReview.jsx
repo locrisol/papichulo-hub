@@ -9,12 +9,13 @@ import { dayLabel, stampDay } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
 import { roleLabel } from '@/lib/access'
 import { answersFor, answerLabel, answeredWords, kindWords } from '@/lib/productRequests'
-import { settleRequest, addFromRequest } from '@/lib/reviewWrites'
+import { settleRequest, addFromRequest, readVersions } from '@/lib/reviewWrites'
 import { card, cardHeader, rowButton, badge } from '@/lib/controlStyles'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import Notice from '@/components/ui/Notice'
 import MatchLineModal from '@/components/invoices/MatchLineModal'
 import AddFromRequestModal from '@/components/inventory/AddFromRequestModal'
+import SupplierBadge from '@/components/ui/SupplierBadge'
 
 // What store managers sent for review, on top of Products, for the owners and
 // the super admin to answer.
@@ -29,6 +30,7 @@ export default function SentForReview({ onChanged }) {
     const recountBadges = useRecountBadges()
     const [requests, setRequests] = useState([])
     const [products, setProducts] = useState([])
+    const [versions, setVersions] = useState([])
     const [error, setError] = useState('')
     const [said, setSaid] = useState('')
     const [busy, setBusy] = useState('')
@@ -40,7 +42,7 @@ export default function SentForReview({ onChanged }) {
     useEffect(() => {
         let alive = true
         async function load() {
-            const [waiting, list] = await Promise.all([
+            const [waiting, list, brand] = await Promise.all([
                 everyRow(() => supabase.from('product_requests')
                     .select('*, sender:users!product_requests_sent_by_fkey(full_name, role), restaurants(name), suppliers(name)')
                     .is('answer', null)
@@ -49,17 +51,20 @@ export default function SentForReview({ onChanged }) {
                 // Anything we buy, for A version of one we have. The same list
                 // Review offers.
                 everyRow(() => supabase.from('products')
-                    .select('id, name, section, unit, is_mix, category, is_active, piece_weight')
+                    .select('id, name, section, unit, is_mix, category, is_active, piece_weight, recommends')
                     .eq('is_active', true)
                     .eq('is_mix', false)
                     .order('name')
                     .order('id')),
+                // The brand's versions, for the same suggestions Review makes.
+                readVersions(),
             ])
             if (!alive) return
-            const failed = waiting.error || list.error
+            const failed = waiting.error || list.error || brand.error
             if (failed) { setError(friendlyError(failed)); return }
             setRequests(waiting.data || [])
             setProducts(list.data || [])
+            setVersions(brand.data || [])
         }
         load()
         return () => { alive = false }
@@ -138,7 +143,7 @@ export default function SentForReview({ onChanged }) {
                             <dd className="text-gray-900">{dayLabel(stampDay(request.sent_at))}</dd>
                             {request.suppliers?.name && <>
                                 <dt className="text-xs text-muted pt-0.5">Supplier</dt>
-                                <dd className="text-gray-900">{request.suppliers.name}</dd>
+                                <dd><SupplierBadge name={request.suppliers.name} /></dd>
                             </>}
                             {request.supplier_code && <>
                                 <dt className="text-xs text-muted pt-0.5">Code</dt>
@@ -209,9 +214,11 @@ export default function SentForReview({ onChanged }) {
                             price_per_case: matching.price_per_case,
                         },
                         wantedUnits: matching.units_per_case != null ? Number(matching.units_per_case) : null,
+                        supplierId: matching.supplier_id,
                     }}
                     withPack={!!matching.supplier_code}
                     products={products}
+                    versions={versions}
                     onClose={() => setMatching(null)}
                     onMatch={async chosen => {
                         const request = matching

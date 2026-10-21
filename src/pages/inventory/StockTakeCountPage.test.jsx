@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Route, Routes } from 'react-router-dom'
-import { heldQuery, makeQuery, renderWithRouter, tableOf } from '@/test/helpers'
+import { heldQuery, makeQuery, renderWithRouter, tableOf, COST_VIEWS, costRowsOf } from '@/test/helpers'
 
 // Counting a Point Campus stock take. Invented products and prices.
 
@@ -49,7 +49,7 @@ function setUp({ products = [CHEDDAR], prices, recipes = [], kept = [], failing 
     db = {
         from: vi.fn(table => {
             if (table === failing) return makeQuery({ data: null, error: { message: 'Failed to fetch' } })
-            const q = tableOf(tables[table] || [])
+            const q = tableOf((COST_VIEWS.includes(table) ? costRowsOf(tables.product_supplier_prices) : tables[table]) || [])
             q.insert = vi.fn(row => {
                 saved.push(row)
                 const answer = { data: { id: `l${saved.length}`, ...row }, error: null }
@@ -63,7 +63,10 @@ function setUp({ products = [CHEDDAR], prices, recipes = [], kept = [], failing 
     }
 }
 
-vi.mock('@/lib/supabase', () => ({ supabase: new Proxy({}, { get: (_, k) => db[k] }) }))
+vi.mock('@/lib/supabase', async importOriginal => ({
+    ...(await importOriginal()),
+    supabase: new Proxy({}, { get: (_, k) => db[k] }),
+}))
 vi.mock('@/context/auth', () => ({ useAuth: () => ({ user }) }))
 vi.mock('@/context/confirm', () => ({ useConfirm: () => vi.fn(async () => true) }))
 
@@ -194,18 +197,14 @@ describe('the products on a count', () => {
     })
 })
 
-// His answer of 4 October: where a product is kept is said by the versions a
-// restaurant buys, so frozen and ambient versions put it under both headings.
+// Each restaurant says where it keeps a product (his decision of 18
+// October), so one kept frozen and in the cold room is under both headings.
 describe('where each product is counted', () => {
-    it('is under the place of every version this restaurant buys', async () => {
+    it('is under every place this restaurant keeps it', async () => {
         user = { id: 'u2', role: 'employee', full_name: 'Maria' }
         setUp({
             prices: [AT_POINT_CAMPUS],
-            kept: [
-                { restaurant_id: 'r1', product_id: 'p1', section: 'Cold Room', also_in: [] },
-                { restaurant_id: 'r1', product_id: 'p1', section: 'Freezer', also_in: [] },
-                { restaurant_id: 'r2', product_id: 'p1', section: 'Dry', also_in: [] },
-            ],
+            kept: [{ restaurant_id: 'r1', product_id: 'p1', section: 'Cold Room', also_in: ['Freezer'] }],
         })
         open()
         await waitFor(() => expect(screen.getAllByText('Cheddar')).toHaveLength(2))
@@ -213,8 +212,8 @@ describe('where each product is counted', () => {
         expect(asked.eq).toHaveBeenCalledWith('restaurant_id', 'r1')
     })
 
-    // A version moved while the count is open: what was counted where it
-    // used to be stays on the count.
+    // Moved while the count is open: what was counted where it used to be
+    // stays on the count.
     it('keeps a place it was already counted in', async () => {
         user = { id: 'u2', role: 'employee', full_name: 'Maria' }
         setUp({ prices: [AT_POINT_CAMPUS], kept: [{ restaurant_id: 'r1', product_id: 'p1', section: 'Freezer', also_in: [] }] })
@@ -223,7 +222,7 @@ describe('where each product is counted', () => {
         await waitFor(() => expect(screen.getAllByText('Cheddar')).toHaveLength(2))
     })
 
-    it('is where the product says when this restaurant buys no version of it', async () => {
+    it('is where the product says when this restaurant has not said otherwise', async () => {
         user = { id: 'u2', role: 'employee', full_name: 'Maria' }
         setUp({ prices: [AT_POINT_CAMPUS] })
         open()
@@ -290,7 +289,7 @@ describe('a read that fails', () => {
         user = { id: 'u0', role: 'store_manager', full_name: 'Leandro' }
     })
 
-    it.each(['stock_take_lines', 'product_supplier_prices', 'price_count_units', 'staff_mix_recipes'])(
+    it.each(['stock_take_lines', 'product_supplier_prices', 'staff_cost_prices', 'price_count_units', 'staff_mix_recipes'])(
         'says so when %s cannot be read, rather than counting on without it',
         async table => {
             setUp({ prices: [AT_POINT_CAMPUS], failing: table })

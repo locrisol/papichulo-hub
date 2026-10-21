@@ -279,7 +279,7 @@ CREATE TABLE IF NOT EXISTS "public"."products" (
     CONSTRAINT "products_recommends_known" CHECK (("recommends" = ANY (ARRAY['versions'::"text", 'any'::"text"])))
 );
 
-comment on column public.products.recommends is 'versions: the brand recommends the versions marked recommended, and buying any other is named on the weekly report. any: nothing in particular, any version is fine and the report never mentions it, for cleaning and packaging the brand leaves free. Owners and the super admin set it.';
+comment on column public.products.recommends is 'versions: the brand recommends the versions marked recommended, and buying any other is named on the weekly report. any: nothing in particular, any version is fine and the report never mentions it. Cleaning, packaging and drinks start as any (products_default_recommends). Owners and the super admin set it.';
 
 COMMENT ON COLUMN "public"."products"."also_in" IS 'The other places this product turns up, on top of its own section. It only affects where it appears on a stock take: the section is still what the product is, and the costing and the reports read that and never this. Empty for nearly everything.';
 COMMENT ON COLUMN "public"."products"."category" IS 'What kind of thing this is, as opposed to where it is kept, which is the section. ingredient is anything that can go into a recipe and is the default. drink is counted on a stock take like everything else but is never offered as an ingredient in a MIX. Menu items are not filtered by this: a can of Coke is a real line on a menu.';
@@ -303,8 +303,11 @@ CREATE TABLE IF NOT EXISTS "public"."product_supplier_prices" (
     "updated_at" timestamp with time zone DEFAULT "now"(),
     "allow_loose_count" boolean DEFAULT true NOT NULL,
     "version_id" "uuid" NOT NULL,
+    "priced_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     CONSTRAINT "product_supplier_prices_purchase_type_check" CHECK (("purchase_type" IN ('case', 'loose')))
 );
+
+comment on column public.product_supplier_prices.priced_at is 'When the price itself last changed: set when the row is added and when the price, the pack or the units in it change. Not when it is chosen to cost from, ticked for loose counts or given a code, which updated_at counts.';
 
 COMMENT ON COLUMN "public"."product_supplier_prices"."supplier_code" IS 'The supplier''s code this price is for. Each code has a price of its own, because two codes are two versions of a product even in the same pack, and one of them costing more is not the other one going up. supplier_codes is the authority on which row a code means; this is kept in step with it.';
 
@@ -315,6 +318,7 @@ ALTER TABLE ONLY "public"."product_supplier_prices"
 CREATE INDEX "idx_prices_restaurant" ON "public"."product_supplier_prices" USING "btree" ("restaurant_id", "is_preferred");
 CREATE INDEX "idx_prices_supplier" ON "public"."product_supplier_prices" USING "btree" ("supplier_id");
 COMMENT ON COLUMN "public"."product_supplier_prices"."version_id" IS 'Which version this price is for. Set by the price_version trigger from the product, supplier and code, never by the app.';
+comment on column public.product_supplier_prices.is_preferred is 'This restaurant''s own row recipes cost from, and the one the stock take takes its packs from. For a product with a recommended set keep_cost_row keeps it on the recommended row cost_prices costs from; otherwise it is the one somebody chose. What recipes cost a product at is cost_prices, which can be the other restaurant''s price.';
 CREATE INDEX "idx_product_supplier_prices_version" ON "public"."product_supplier_prices" USING "btree" ("version_id");
 
 CREATE TABLE IF NOT EXISTS "public"."price_count_units" (
@@ -416,18 +420,28 @@ create table if not exists public.product_versions (
     created_by uuid references public.users(id) on delete set null,
     section text,
     also_in text[],
+    fallback_rank smallint,
+    notes text,
+    description text,
     constraint product_versions_code_not_blank check (supplier_code is null or btrim(supplier_code) <> ''),
     constraint product_versions_name_not_blank check (name is null or btrim(name) <> ''),
     constraint product_versions_section_known
         check (section is null or section in ('Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning')),
     constraint product_versions_also_in_known
-        check (also_in is null or also_in <@ array['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning'])
+        check (also_in is null or also_in <@ array['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']),
+    constraint product_versions_fallback_rank_positive check (fallback_rank is null or fallback_rank > 0),
+    constraint product_versions_recommended_or_fallback check (not (is_recommended and fallback_rank is not null)),
+    constraint product_versions_notes_not_blank check (notes is null or btrim(notes) <> ''),
+    constraint product_versions_description_not_blank check (description is null or btrim(description) <> '')
 );
 
 comment on table public.product_versions is 'One thing that can be bought for a product: a supplier, and the supplier''s code for it. Shared by every restaurant, the way products are; each restaurant''s price for it is a product_supplier_prices row pointing here. Made by the price_version trigger whenever a price names a supplier and code no version has yet, so nothing that writes prices has to know.';
 comment on column public.product_versions.supplier_code is 'The supplier''s code. Empty only for a supplier that works without codes, or for a price typed before codes were asked for, which the Products page marks.';
 comment on column public.product_versions.name is 'What this version is, when the product''s name is not enough: Santa Maria 12" wraps. Empty means the product''s name.';
-comment on column public.product_versions.is_recommended is 'One of the versions the brand recommends for its product. A product can have several (ambient or frozen tortillas both fine). Ignored when the product recommends nothing in particular. Owners and the super admin set it.';
+comment on column public.product_versions.is_recommended is 'One of the versions the brand recommends for its product, under Any of these on the Recommended list: all equally fine, bought depending on stock (both packs of green peppers). Ignored when the product recommends nothing in particular. Owners and the super admin set it.';
+comment on column public.product_versions.fallback_rank is 'Where this version comes under If those are out: bought only when none of the recommended ones is in stock, 1 first. Empty for anything that is not a fallback. Never a recommended version as well. Owners and the super admin set it.';
+comment on column public.product_versions.notes is 'How it is bought, for whoever orders it: order by 2pm for the next day, keep the boxes sealed. Owners and the super admin write it.';
+comment on column public.product_versions.description is 'What it is and how to tell it apart from the others: the brand, the size, how it looks. Owners and the super admin write it.';
 comment on column public.product_versions.section is 'Where this version is kept. Empty means where the product is kept (products.section). Frozen tortillas and ambient ones are two versions of one product kept in two places.';
 comment on column public.product_versions.also_in is 'The other places this version is also kept. Empty means the product''s own (products.also_in).';
 
@@ -437,6 +451,8 @@ create unique index if not exists product_versions_one_per_code
     on public.product_versions (product_id, supplier_id, lower(btrim(coalesce(supplier_code, ''))));
 create index if not exists idx_product_versions_product on public.product_versions (product_id);
 create index if not exists idx_product_versions_supplier on public.product_versions (supplier_id);
+create unique index if not exists product_versions_one_per_fallback_rank
+    on public.product_versions (product_id, fallback_rank) where fallback_rank is not null;
 
 
 -- Each version's allergens. The same fourteen as product_allergens, which now
@@ -462,6 +478,91 @@ create table if not exists public.version_allergens (
 );
 
 comment on table public.version_allergens is 'The allergens of one version of a product. A version with no row has not been answered, and a dish using it says Ask a member of staff at a restaurant that buys it. A restaurant''s sheet takes every version it buys together, the worst answer for each allergen.';
+
+-- Pictures of a version, for the Recommended list (19 October 2026). The
+-- files are in the version-pictures bucket, whose policies are at the end
+-- of this file.
+create table if not exists public.version_pictures (
+    id uuid default gen_random_uuid() not null primary key,
+    version_id uuid not null references public.product_versions(id) on delete cascade,
+    path text not null unique,
+    sort_order smallint default 0 not null,
+    added_by uuid references public.users(id) on delete set null,
+    added_at timestamp with time zone default now() not null
+);
+
+comment on table public.version_pictures is 'Up to four pictures of a version, so whoever orders or takes a delivery knows what it looks like. The files are in the version-pictures bucket, in a folder named after the version they were added to; a version joined into another keeps them where they are.';
+
+create index if not exists idx_version_pictures_version on public.version_pictures (version_id, sort_order);
+
+-- The other codes a version goes by. Empty until the code update is built:
+-- then the same thing under a new code becomes one version with two codes,
+-- rather than a second version that leaves the star and the allergens behind.
+create table if not exists public.version_codes (
+    id uuid default gen_random_uuid() not null primary key,
+    version_id uuid not null references public.product_versions(id) on delete cascade,
+    supplier_id uuid not null references public.suppliers(id),
+    code text not null,
+    added_at timestamp with time zone default now() not null,
+    added_by uuid references public.users(id) on delete set null,
+    constraint version_codes_code_not_blank check (btrim(code) <> '')
+);
+
+comment on table public.version_codes is 'A code a version also goes by, beside its own supplier_code: the supplier renumbered it, and it is still the same thing. One version per code across the brand, so a code always means the same thing at every restaurant.';
+
+create unique index if not exists version_codes_one_per_code
+    on public.version_codes (supplier_id, lower(btrim(code)));
+create index if not exists idx_version_codes_version on public.version_codes (version_id);
+
+-- Where a restaurant keeps a product (his decision of 18 October 2026, built
+-- 19 October): each restaurant's own business, so Point Campus moving the
+-- tortillas to the freezer does not move them at Dun Laoghaire. One row only
+-- where the places are not the product's own section and Also in; with no
+-- row the product's own, and it goes on following its section. The section
+-- itself stays what the product is, read by the costing and the reports.
+create table if not exists public.restaurant_kept_in (
+    id uuid default gen_random_uuid() not null primary key,
+    restaurant_id uuid not null references public.restaurants(id) on delete cascade,
+    product_id uuid not null references public.products(id) on delete cascade,
+    section text not null,
+    also_in text[] default '{}' not null,
+    constraint restaurant_kept_in_one_per_product unique (restaurant_id, product_id),
+    constraint restaurant_kept_in_section_known
+        check (section in ('Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning')),
+    constraint restaurant_kept_in_also_in_known
+        check (also_in <@ array['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']),
+    constraint restaurant_kept_in_also_in_not_section check (not (section = any (also_in)))
+);
+
+comment on table public.restaurant_kept_in is 'Where a restaurant keeps a product, when that is not simply the product''s own section and Also in: the main place first on the stock take, and the other places it is also counted in. One row per restaurant and product, changed only by that restaurant''s managers. No row means the product''s own. It carries no supplier, code or price, because staff read it to count.';
+comment on column public.restaurant_kept_in.section is 'Where this restaurant mainly keeps it, which is where the stock take lists it first.';
+comment on column public.restaurant_kept_in.also_in is 'The other places this restaurant keeps it in, each counted on the stock take as well.';
+
+create index if not exists idx_restaurant_kept_in_product on public.restaurant_kept_in (product_id);
+
+-- Every allergen sheet printed from the Hub (his decision of 18 October
+-- 2026, built 19 October), so a reprint is asked only when the sheet would
+-- really differ.
+-- One row a print. rows is the sheet as printed, one entry a line, which
+-- the app compares with the sheet as it stands. sheet_changed_at is the day
+-- those lines last changed: carried over from the print before when they are
+-- the same, which is the date on the paper and the customer page's Last
+-- updated. Written only by allergen_sheet_printed().
+create table if not exists public.allergen_sheet_prints (
+    id uuid default gen_random_uuid() not null primary key,
+    restaurant_id uuid not null references public.restaurants(id) on delete cascade,
+    printed_at timestamp with time zone default now() not null,
+    printed_by uuid references public.users(id) on delete set null,
+    rows jsonb,
+    sheet_changed_at timestamp with time zone default now() not null,
+    constraint allergen_sheet_prints_rows_a_list check (rows is null or jsonb_typeof(rows) = 'array')
+);
+
+comment on table public.allergen_sheet_prints is 'Every allergen sheet printed from the Hub, with the lines it printed, so the Hub can say which lines have changed since. Written only by allergen_sheet_printed(). Read by the managers of the restaurant; the customer page gets the latest through public_allergen_sheet().';
+comment on column public.allergen_sheet_prints.rows is 'The sheet as printed: one entry a line, with its category, its name, whether it was answered, and what it contains and may contain. Null for a print from before the Hub kept a copy.';
+comment on column public.allergen_sheet_prints.sheet_changed_at is 'When these lines last changed: the print before''s when they are the same, otherwise this print''s. The date on the paper.';
+
+create index if not exists idx_allergen_sheet_prints_latest on public.allergen_sheet_prints (restaurant_id, printed_at desc);
 
 
 -- -- The menu ----------------------------------------------------------
@@ -784,6 +885,9 @@ CREATE INDEX "idx_invoice_lines_invoice" ON "public"."invoice_lines" USING "btre
 CREATE INDEX "idx_invoice_lines_code" ON "public"."invoice_lines" USING "btree" ("supplier_code") WHERE ("supplier_code" IS NOT NULL);
 CREATE INDEX "idx_invoice_lines_product" ON "public"."invoice_lines" USING "btree" ("product_id") WHERE ("product_id" IS NOT NULL);
 CREATE INDEX "idx_invoice_lines_waiting" ON "public"."invoice_lines" USING "btree" ("invoice_id") WHERE ("decision" IS NULL);
+-- The lines bought at a price: when a version was last on an invoice, and
+-- what a removed price leaves behind.
+create index if not exists idx_invoice_lines_price on public.invoice_lines (price_id) where price_id is not null;
 
 -- The account number a supplier prints on a document, and which restaurant it
 -- means.
@@ -848,9 +952,6 @@ ALTER TABLE ONLY "public"."supplier_codes"
     ADD CONSTRAINT "supplier_codes_pkey" PRIMARY KEY ("id");
 CREATE UNIQUE INDEX "supplier_codes_once" ON "public"."supplier_codes" USING "btree" ("supplier_id", "restaurant_id", "supplier_code");
 CREATE INDEX "idx_supplier_codes_price" ON "public"."supplier_codes" USING "btree" ("price_id") WHERE ("price_id" IS NOT NULL);
--- A price row belongs to one code. Two codes are two versions of a product,
--- each with its own price, even when they come in the same pack.
-CREATE UNIQUE INDEX "supplier_codes_one_per_price" ON "public"."supplier_codes" USING "btree" ("price_id") WHERE ("price_id" IS NOT NULL);
 CREATE INDEX "idx_supplier_codes_alternate_group" ON "public"."supplier_codes" USING "btree" ("alternate_group") WHERE ("alternate_group" IS NOT NULL);
 COMMENT ON COLUMN "public"."supplier_codes"."alternate_group" IS 'Codes for the same thing that are bought either way, depending on what the supplier has. Every code in a group keeps its own price and none is ever bought instead of another; recipes cost from the one chosen and are checked against what the group cost on average. Empty for a code on its own, which is nearly all of them.';
 
@@ -3127,7 +3228,7 @@ CREATE OR REPLACE FUNCTION "public"."audit_skips"() RETURNS "text"[]
 CREATE OR REPLACE FUNCTION "public"."audit_ignored_columns"() RETURNS "text"[]
     LANGUAGE "sql" IMMUTABLE
     SET "search_path" TO 'public', 'pg_temp'
-    AS $$ select array['updated_at', 'last_seen_at', 'feed_synced_at', 'feed_count', 'last_read_at', 'last_read_count'] $$;
+    AS $$ select array['updated_at', 'last_seen_at', 'feed_synced_at', 'feed_count', 'last_read_at', 'last_read_count', 'priced_at'] $$;
 
 CREATE OR REPLACE FUNCTION "public"."row_label"("tbl" "text", "row_data" "jsonb") RETURNS "text"
     LANGUAGE "plpgsql" SECURITY DEFINER
@@ -3484,52 +3585,61 @@ create or replace function public.price_version() returns trigger
     set search_path to 'public', 'pg_temp'
     as $$
 declare
-    code text := nullif(btrim(new.supplier_code), '');
+    wanted text := nullif(btrim(new.supplier_code), '');
     found uuid;
-    others integer;
 begin
+    -- A version chosen on purpose, when it goes by this code: join_versions
+    -- moving prices onto the version they are joined to.
+    if new.version_id is not null and (tg_op = 'INSERT' or new.version_id is distinct from old.version_id)
+       and exists (select 1 from public.product_versions v
+                    where v.id = new.version_id and v.product_id = new.product_id and v.supplier_id = new.supplier_id
+                      and (lower(btrim(coalesce(v.supplier_code, ''))) = lower(coalesce(wanted, ''))
+                           or exists (select 1 from public.version_codes c
+                                       where c.version_id = v.id and lower(btrim(c.code)) = lower(wanted)))) then
+        return new;
+    end if;
+
+    -- The version that goes by this code, as its own or as one of its others.
     select v.id into found
       from public.product_versions v
      where v.product_id = new.product_id and v.supplier_id = new.supplier_id
-       and lower(btrim(coalesce(v.supplier_code, ''))) = lower(coalesce(code, ''));
-
+       and lower(btrim(coalesce(v.supplier_code, ''))) = lower(coalesce(wanted, ''));
+    if found is null and wanted is not null then
+        select c.version_id into found
+          from public.version_codes c
+          join public.product_versions v on v.id = c.version_id
+         where v.product_id = new.product_id and c.supplier_id = new.supplier_id
+           and lower(btrim(c.code)) = lower(wanted);
+    end if;
     if found is not null then
         new.version_id := found;
         return new;
     end if;
 
-    if tg_op = 'UPDATE' and old.version_id is not null
-       and new.product_id = old.product_id and new.supplier_id = old.supplier_id then
-        select count(*) into others
-          from public.product_supplier_prices p
-         where p.version_id = old.version_id and p.id <> old.id;
-        if others = 0 then
-            update public.product_versions set supplier_code = code where id = old.version_id;
-            new.version_id := old.version_id;
-            return new;
-        end if;
-        insert into public.product_versions (product_id, supplier_id, supplier_code, name, section, also_in,
-                                             is_recommended, created_by)
-        select new.product_id, new.supplier_id, code, v.name, v.section, v.also_in, v.is_recommended, auth.uid()
-          from public.product_versions v where v.id = old.version_id
-        returning id into found;
-        insert into public.version_allergens (version_id, gluten, crustaceans, eggs, fish, peanuts, soybeans, milk,
-                                              nuts, celery, mustard, sesame, sulphites, lupin, molluscs)
-        select found, a.gluten, a.crustaceans, a.eggs, a.fish, a.peanuts, a.soybeans, a.milk,
-               a.nuts, a.celery, a.mustard, a.sesame, a.sulphites, a.lupin, a.molluscs
-          from public.version_allergens a where a.version_id = old.version_id;
-        new.version_id := found;
+    -- A code changed on a price, that no version goes by. Written on the
+    -- version itself when it is the version's first code, a price typed with
+    -- none, or a typo nothing else has used: no other price on the version
+    -- and no invoice line on this one. Anything else is a new version. The
+    -- same thing under a new code is code_update's to say, which keeps one.
+    if tg_op = 'UPDATE' and old.version_id is not null and wanted is not null
+       and new.product_id = old.product_id and new.supplier_id = old.supplier_id
+       and ((select v.supplier_code from public.product_versions v where v.id = old.version_id) is null
+            or (not exists (select 1 from public.product_supplier_prices p
+                             where p.version_id = old.version_id and p.id <> old.id)
+                and not exists (select 1 from public.invoice_lines l where l.price_id = old.id))) then
+        update public.product_versions set supplier_code = wanted where id = old.version_id;
+        new.version_id := old.version_id;
         return new;
     end if;
 
     insert into public.product_versions (product_id, supplier_id, supplier_code, created_by)
-    values (new.product_id, new.supplier_id, code, auth.uid())
+    values (new.product_id, new.supplier_id, wanted, auth.uid())
     returning id into found;
     new.version_id := found;
     return new;
 end $$;
 
-comment on function public.price_version() is 'Points a price at its version, from the product, supplier and code, starting a version when none matches. A new code for the same product and supplier renumbers the version and keeps its allergens; anything else new starts with none.';
+comment on function public.price_version() is 'Points a price at its version, from the product, supplier and code, the version''s own code or one of its others. A code changed on a price with nothing else on its version renames it; otherwise a code no version goes by starts a new version with nothing on it. The same thing under a new code is code_update.';
 
 drop trigger if exists product_supplier_prices_version on public.product_supplier_prices;
 create trigger product_supplier_prices_version
@@ -3537,8 +3647,11 @@ create trigger product_supplier_prices_version
     for each row execute function public.price_version();
 
 -- What only owners and the super admin decide: what the brand recommends,
--- and which suppliers work without codes. A store manager still adds
--- versions, by buying them, and sets their allergens.
+-- the rest of the Recommended list, and which suppliers work without codes.
+-- A store manager still adds versions, by buying them, and sets their
+-- allergens. code_update and buy_both say so for the one transaction they
+-- run in, after checking who is asking, since what they change is what the
+-- brand already decided: the same thing under a new code keeps its star.
 create or replace function public.brand_choice_guard() returns trigger
     language plpgsql
     set search_path to 'public', 'pg_temp'
@@ -3550,7 +3663,13 @@ begin
     if public.get_my_role() in ('owner', 'super_admin') then
         return coalesce(new, old);
     end if;
+    if current_setting('app.joining_codes', true) = 'on' then
+        return coalesce(new, old);
+    end if;
     if tg_table_name = 'product_versions' then
+        if tg_op = 'DELETE' then
+            raise exception 'Only an owner can remove a version';
+        end if;
         -- A version is one supplier's code for one product. Moved to another
         -- product its allergens would answer for that one, and the prices
         -- on it would still say the first. Nothing in the app does it.
@@ -3558,13 +3677,19 @@ begin
                                  or new.supplier_id is distinct from old.supplier_id) then
             raise exception 'A version stays with its product and supplier';
         end if;
-        -- The one insert that may carry a recommendation for a store manager:
-        -- price_version's copy of a renumbered version, which keeps what the
-        -- brand already said about it. It comes from inside that trigger, so
-        -- it is a level deeper than anything the app writes.
-        if (tg_op = 'INSERT' and new.is_recommended and pg_trigger_depth() < 2)
+        if (tg_op = 'INSERT' and new.is_recommended)
            or (tg_op = 'UPDATE' and new.is_recommended is distinct from old.is_recommended) then
             raise exception 'Only an owner can choose what the brand recommends';
+        end if;
+        -- The rest of what the Recommended list says (19 October 2026).
+        if (tg_op = 'INSERT' and (new.fallback_rank is not null or not new.is_active
+                                  or new.name is not null or new.notes is not null or new.description is not null))
+           or (tg_op = 'UPDATE' and (new.fallback_rank is distinct from old.fallback_rank
+                                     or new.notes is distinct from old.notes
+                                     or new.description is distinct from old.description
+                                     or new.name is distinct from old.name
+                                     or new.is_active is distinct from old.is_active)) then
+            raise exception 'Only an owner can change the Recommended list';
         end if;
     elsif tg_table_name = 'products' then
         if tg_op = 'INSERT' then
@@ -3588,7 +3713,476 @@ begin
     return coalesce(new, old);
 end $$;
 
-comment on function public.brand_choice_guard() is 'Keeps to owners and the super admin what the brand decides: adding, renaming and switching off a product, the recommendations, and the suppliers that work without codes. Store managers write the same rows for everything else.';
+comment on function public.brand_choice_guard() is 'Keeps to owners and the super admin what the brand decides: adding, renaming and switching off a product, the Recommended list (what is recommended, the fallbacks, a version''s name, description and notes, switching a version off or removing it), and the suppliers that work without codes. Store managers write the same rows for everything else.';
+
+-- Recommending particular versions of a product, or any. Any version takes
+-- every star and fallback off, so going back to particular versions starts
+-- from nothing rather than bringing back an old list. One call, so the
+-- product never says any while its versions still say otherwise. It runs as
+-- whoever calls it, so brand_choice_guard decides who may.
+create or replace function public.set_recommends(product uuid, mode text) returns void
+    language plpgsql
+    set search_path to 'public', 'pg_temp'
+    as $$
+begin
+    if mode is null or mode not in ('versions', 'any') then
+        raise exception 'The brand recommends particular versions or any version';
+    end if;
+    update public.products set recommends = mode
+     where id = product and recommends is distinct from mode;
+    if mode = 'any' then
+        update public.product_versions set is_recommended = false, fallback_rank = null
+         where product_id = product and (is_recommended or fallback_rank is not null);
+    end if;
+end $$;
+
+comment on function public.set_recommends(product uuid, mode text) is 'Says whether the brand recommends particular versions of a product or any version. Any version takes every recommended version and fallback off it. Owners and the super admin.';
+
+-- The fallbacks of a product in the order given, first first. Any of its
+-- versions left out stops being a fallback, and a version made a fallback
+-- stops being recommended. Only the rows whose place changes are written, so
+-- the change log shows the move and not a row cleared and put back.
+create or replace function public.set_fallbacks(product uuid, versions uuid[]) returns void
+    language plpgsql
+    set search_path to 'public', 'pg_temp'
+    as $$
+declare
+    wanted uuid[] := coalesce(versions, '{}');
+begin
+    if exists (select 1 from unnest(wanted) x(id)
+                where not exists (select 1 from public.product_versions v
+                                   where v.id = x.id and v.product_id = product)) then
+        raise exception 'Those are not all versions of that product';
+    end if;
+    if exists (select 1 from public.product_versions v
+                where v.id = any (wanted) and not v.is_active) then
+        raise exception 'Switch a version back on before making it a fallback';
+    end if;
+    update public.product_versions v set fallback_rank = null
+     where v.product_id = product and v.fallback_rank is not null
+       and v.fallback_rank is distinct from array_position(wanted, v.id);
+    update public.product_versions v
+       set fallback_rank = array_position(wanted, v.id), is_recommended = false
+     where v.product_id = product and v.id = any (wanted)
+       and (v.fallback_rank is distinct from array_position(wanted, v.id) or v.is_recommended);
+end $$;
+
+comment on function public.set_fallbacks(product uuid, versions uuid[]) is 'Puts a product''s fallbacks in the order given and takes the rest of its versions off. Owners and the super admin.';
+
+-- Folds one version of a product into another: its codes, its prices at every
+-- restaurant, its pictures as far as there is room, its allergen answers when
+-- the version kept has none, and what the owners wrote where the version
+-- kept says nothing. Recommended if either was. Refused when both have
+-- allergen answers and they differ, which only an owner can settle. Only
+-- for code_update; nobody signed in calls it.
+create or replace function public.join_versions(keep uuid, fold uuid) returns void
+    language plpgsql security definer
+    set search_path to 'public', 'pg_temp'
+    as $$
+declare
+    k public.product_versions;
+    f public.product_versions;
+    ka public.version_allergens;
+    fa public.version_allergens;
+begin
+    select * into k from public.product_versions where id = keep;
+    select * into f from public.product_versions where id = fold;
+    if k.id is null or f.id is null or k.id = f.id then
+        return;
+    end if;
+    if k.product_id <> f.product_id or k.supplier_id <> f.supplier_id then
+        raise exception 'Only two versions of one product from one supplier can be joined';
+    end if;
+    perform set_config('app.joining_codes', 'on', true);
+
+    select * into ka from public.version_allergens where version_id = keep;
+    select * into fa from public.version_allergens where version_id = fold;
+    if ka.id is not null and fa.id is not null
+       and (ka.gluten, ka.crustaceans, ka.eggs, ka.fish, ka.peanuts, ka.soybeans, ka.milk,
+            ka.nuts, ka.celery, ka.mustard, ka.sesame, ka.sulphites, ka.lupin, ka.molluscs)
+           is distinct from
+           (fa.gluten, fa.crustaceans, fa.eggs, fa.fish, fa.peanuts, fa.soybeans, fa.milk,
+            fa.nuts, fa.celery, fa.mustard, fa.sesame, fa.sulphites, fa.lupin, fa.molluscs) then
+        raise exception 'The two codes have different allergens in the Hub. Make them the same on the Allergens page first';
+    end if;
+    if ka.id is null and fa.id is not null then
+        update public.version_allergens set version_id = keep where id = fa.id;
+    end if;
+
+    -- Every code it went by, its own first, goes with it.
+    update public.version_codes set version_id = keep where version_id = fold;
+    if nullif(btrim(f.supplier_code), '') is not null
+       and lower(btrim(f.supplier_code)) <> lower(btrim(coalesce(k.supplier_code, ''))) then
+        insert into public.version_codes (version_id, supplier_id, code, added_by)
+        values (keep, f.supplier_id, btrim(f.supplier_code), auth.uid())
+        on conflict do nothing;
+    end if;
+
+    -- Its prices at every restaurant. price_version keeps them here now that
+    -- this version goes by their codes.
+    update public.product_supplier_prices set version_id = keep where version_id = fold;
+    if exists (select 1 from public.product_supplier_prices where version_id = fold) then
+        raise exception 'A price could not be moved onto the version kept';
+    end if;
+
+    update public.version_pictures p
+       set version_id = keep, sort_order = p.sort_order + 4
+     where p.id in (select x.id from public.version_pictures x where x.version_id = fold
+                     order by x.sort_order
+                     limit greatest(0, 4 - (select count(*) from public.version_pictures y where y.version_id = keep)));
+
+    update public.product_versions
+       set is_recommended = k.is_recommended or (f.is_recommended and k.fallback_rank is null),
+           is_active = k.is_active or f.is_active,
+           name = coalesce(k.name, f.name),
+           notes = coalesce(k.notes, f.notes),
+           description = coalesce(k.description, f.description)
+     where id = keep;
+
+    delete from public.product_versions where id = fold;
+end $$;
+
+comment on function public.join_versions(keep uuid, fold uuid) is 'Folds one version of a product into another, for code_update: codes, prices at every restaurant, pictures as far as there is room, allergens when the version kept has none, and what the owners wrote. Refused when both have allergens and they differ. Not called by anybody signed in.';
+
+-- What "Yes, same product" on Review and "They are the same" on the report
+-- say: `new_code` is the version of `keep_price` under another number. The
+-- version takes the code, as its own (`make_main`, the newer number) or as
+-- another, at every restaurant; anything the code had of its own here is
+-- folded into this price, its lines and codes with it, and its version into
+-- this one. Here both codes then point at the price, and the new one
+-- remembers the number it replaced for the price history. `line_ids` are
+-- lines under the new code still to point at the price, with their category.
+--
+-- Refused for a code another product goes by, for a price under the new
+-- code that recipes cost from when this one is not, and for two sets of
+-- allergen answers that differ. All of it or none.
+create or replace function public.code_update(keep_price uuid, new_code text, make_main boolean default true,
+                                              line_ids uuid[] default '{}', line_category text default null)
+    returns void
+    language plpgsql security definer
+    set search_path to 'public', 'pg_temp'
+    as $$
+declare
+    p public.product_supplier_prices;
+    v public.product_versions;
+    wanted text := nullif(btrim(new_code), '');
+    me text := public.get_my_role();
+    elsewhere text;
+    fold uuid;
+    old_main text;
+    today date := (now() at time zone 'Europe/Dublin')::date;
+begin
+    if me is null or me not in ('owner', 'store_manager', 'super_admin') then
+        raise exception 'Only a manager can say so' using errcode = '42501';
+    end if;
+    select * into p from public.product_supplier_prices where id = keep_price;
+    if p.id is null then
+        raise exception 'That price is not in the Hub any more';
+    end if;
+    if me <> 'super_admin' and p.restaurant_id is distinct from public.get_my_restaurant_id() then
+        raise exception 'Only a manager of that restaurant can say so' using errcode = '42501';
+    end if;
+    if wanted is null then
+        raise exception 'There is no new code to join';
+    end if;
+    select * into v from public.product_versions where id = p.version_id;
+
+    -- A code means one thing across the brand.
+    select pr.name into elsewhere
+      from public.product_versions x
+      join public.products pr on pr.id = x.product_id
+     where x.supplier_id = p.supplier_id and x.product_id <> p.product_id
+       and (lower(btrim(coalesce(x.supplier_code, ''))) = lower(wanted)
+            or exists (select 1 from public.version_codes c
+                        where c.version_id = x.id and lower(btrim(c.code)) = lower(wanted)))
+     limit 1;
+    if elsewhere is not null then
+        raise exception 'Code % is % in the Hub, so it cannot be this as well', wanted, elsewhere;
+    end if;
+
+    perform set_config('app.joining_codes', 'on', true);
+
+    -- The version the code started under, if it has one of its own.
+    select x.id into fold
+      from public.product_versions x
+     where x.product_id = p.product_id and x.supplier_id = p.supplier_id and x.id <> v.id
+       and (lower(btrim(coalesce(x.supplier_code, ''))) = lower(wanted)
+            or exists (select 1 from public.version_codes c
+                        where c.version_id = x.id and lower(btrim(c.code)) = lower(wanted)))
+     limit 1;
+
+    if fold is not null then
+        if exists (select 1 from public.product_supplier_prices o
+                    where o.version_id = fold and o.restaurant_id = p.restaurant_id and o.is_preferred)
+           and not p.is_preferred then
+            raise exception 'Recipes cost from the price under code %. Make the usual one the price recipes cost from first', wanted;
+        end if;
+        -- Here its price goes into this one, and its lines and codes follow.
+        update public.invoice_lines l set price_id = p.id, product_id = p.product_id
+          from public.product_supplier_prices o
+         where o.version_id = fold and o.restaurant_id = p.restaurant_id and l.price_id = o.id;
+        update public.supplier_codes s set price_id = p.id
+          from public.product_supplier_prices o
+         where o.version_id = fold and o.restaurant_id = p.restaurant_id and s.price_id = o.id;
+        delete from public.product_supplier_prices o where o.version_id = fold and o.restaurant_id = p.restaurant_id;
+        perform public.join_versions(v.id, fold);
+        select * into v from public.product_versions where id = p.version_id;
+    end if;
+
+    -- The code goes on this version: its own from now on, the one before
+    -- it kept as another, or the other way round for an older number.
+    if lower(btrim(coalesce(v.supplier_code, ''))) <> lower(wanted) then
+        if make_main then
+            old_main := nullif(btrim(v.supplier_code), '');
+            delete from public.version_codes c where c.version_id = v.id and lower(btrim(c.code)) = lower(wanted);
+            update public.product_versions set supplier_code = wanted where id = v.id;
+            if old_main is not null then
+                insert into public.version_codes (version_id, supplier_id, code, added_by)
+                values (v.id, v.supplier_id, old_main, auth.uid())
+                on conflict do nothing;
+            end if;
+            update public.product_supplier_prices set supplier_code = wanted where id = p.id;
+        elsif not exists (select 1 from public.version_codes c
+                           where c.version_id = v.id and lower(btrim(c.code)) = lower(wanted)) then
+            insert into public.version_codes (version_id, supplier_id, code, added_by)
+            values (v.id, v.supplier_id, wanted, auth.uid())
+            on conflict do nothing;
+        end if;
+    end if;
+
+    -- Here both codes mean this price. The newer remembers the number it
+    -- replaced, which is how the report's price history runs on.
+    insert into public.supplier_codes (supplier_id, restaurant_id, supplier_code, price_id, replaces_code,
+                                       first_seen_on, last_seen_on)
+    values (p.supplier_id, p.restaurant_id, wanted, p.id, old_main, today, today)
+    on conflict (supplier_id, restaurant_id, supplier_code) do update
+       set price_id = excluded.price_id, ignored = false,
+           replaces_code = coalesce(supplier_codes.replaces_code, excluded.replaces_code);
+    if old_main is not null then
+        update public.supplier_codes set price_id = p.id
+         where supplier_id = p.supplier_id and restaurant_id = p.restaurant_id
+           and supplier_code = old_main and price_id is null and not ignored;
+    end if;
+    if not make_main and v.supplier_code is not null then
+        update public.supplier_codes set replaces_code = coalesce(replaces_code, wanted)
+         where supplier_id = p.supplier_id and restaurant_id = p.restaurant_id
+           and supplier_code = v.supplier_code and supplier_code <> wanted;
+    end if;
+
+    update public.invoice_lines l
+       set price_id = p.id, product_id = p.product_id, category = coalesce(line_category, l.category)
+      from public.invoices i
+     where l.id = any (coalesce(line_ids, '{}')) and i.id = l.invoice_id and i.restaurant_id = p.restaurant_id;
+end $$;
+
+comment on function public.code_update(keep_price uuid, new_code text, make_main boolean, line_ids uuid[], line_category text) is 'The same thing under a new code: the price''s version takes the code at every restaurant and keeps its star, allergens and pictures, and anything the code had of its own is folded in. Store managers of that restaurant, owners and the super admin.';
+
+-- What "We buy both" says: the two prices are the same thing, bought
+-- depending on what the supplier has, and each keeps its own. When either
+-- version is recommended both are, at every restaurant. When neither is,
+-- their codes go in one group here, as before, so neither is listed as
+-- bought instead of the other.
+create or replace function public.buy_both(keep_price uuid, other_price uuid) returns void
+    language plpgsql security definer
+    set search_path to 'public', 'pg_temp'
+    as $$
+declare
+    a public.product_supplier_prices;
+    b public.product_supplier_prices;
+    me text := public.get_my_role();
+    grp uuid;
+begin
+    if me is null or me not in ('owner', 'store_manager', 'super_admin') then
+        raise exception 'Only a manager can say so' using errcode = '42501';
+    end if;
+    select * into a from public.product_supplier_prices where id = keep_price;
+    select * into b from public.product_supplier_prices where id = other_price;
+    if a.id is null or b.id is null then
+        raise exception 'That price is not in the Hub any more';
+    end if;
+    if me <> 'super_admin' and a.restaurant_id is distinct from public.get_my_restaurant_id() then
+        raise exception 'Only a manager of that restaurant can say so' using errcode = '42501';
+    end if;
+    if a.restaurant_id <> b.restaurant_id or a.product_id <> b.product_id then
+        raise exception 'Only two prices of one product at one restaurant are bought either way';
+    end if;
+    if a.version_id = b.version_id then
+        return;
+    end if;
+    perform set_config('app.joining_codes', 'on', true);
+
+    if exists (select 1 from public.product_versions v join public.products pr on pr.id = v.product_id
+                where v.id in (a.version_id, b.version_id) and v.is_recommended and pr.recommends = 'versions') then
+        update public.product_versions set is_recommended = true, fallback_rank = null
+         where id in (a.version_id, b.version_id) and not is_recommended;
+        return;
+    end if;
+
+    select coalesce(
+        (select s.alternate_group from public.supplier_codes s
+          where s.price_id = a.id and s.alternate_group is not null limit 1),
+        (select s.alternate_group from public.supplier_codes s
+          where s.price_id = b.id and s.alternate_group is not null limit 1),
+        gen_random_uuid()) into grp;
+    update public.supplier_codes s set alternate_group = grp
+     where s.restaurant_id = a.restaurant_id
+       and (s.price_id in (a.id, b.id)
+            or s.alternate_group in (select x.alternate_group from public.supplier_codes x
+                                      where x.price_id in (a.id, b.id) and x.alternate_group is not null));
+end $$;
+
+comment on function public.buy_both(keep_price uuid, other_price uuid) is 'Two prices of one product bought either way: recommended both, at every restaurant, when either was, otherwise grouped at that restaurant. Store managers of that restaurant, owners and the super admin.';
+
+-- -- What recipes cost from ------------------------------------------------------
+
+-- For a product with a recommended set, puts is_preferred on this
+-- restaurant's own row the cost comes from, and says so in the price
+-- history. The packs the stock take counts it in go with it when the row
+-- has none of its own. Nothing for a product with no recommendation, or one
+-- costed from the other restaurant's price: the row stays as it was.
+create or replace function public.keep_cost_row(restaurant uuid, product uuid) returns void
+    language plpgsql security definer
+    set search_path to 'public', 'pg_temp'
+    as $$
+declare
+    target uuid;
+    was public.product_supplier_prices;
+    now_row public.product_supplier_prices;
+begin
+    select c.own_price_id into target
+      from public.cost_choice c
+     where c.restaurant_id = restaurant and c.product_id = product and c.from_set and c.own_price_id is not null;
+    if target is null then
+        return;
+    end if;
+
+    select * into was
+      from public.product_supplier_prices
+     where restaurant_id = restaurant and product_id = product and is_preferred
+     order by (id = target) desc, priced_at desc
+     limit 1;
+    update public.product_supplier_prices set is_preferred = (id = target)
+     where restaurant_id = restaurant and product_id = product and (is_preferred or id = target)
+       and is_preferred is distinct from (id = target);
+    if was.id = target then
+        return;
+    end if;
+
+    select * into now_row from public.product_supplier_prices where id = target;
+    if was.id is not null and not exists (select 1 from public.price_count_units u where u.price_id = target) then
+        insert into public.price_count_units (price_id, label, factor, sort_order, is_active)
+        select target, u.label, u.factor, u.sort_order, u.is_active
+          from public.price_count_units u where u.price_id = was.id;
+        update public.product_supplier_prices set allow_loose_count = was.allow_loose_count where id = target;
+    end if;
+    if now_row.price_per_unit is not null then
+        insert into public.product_price_events (restaurant_id, product_id, price_id, price_per_unit, previous_per_unit,
+                                                 reason, changed_by, note)
+        values (restaurant, product, target, now_row.price_per_unit, was.price_per_unit,
+                'preferred_moved', auth.uid(), 'The recommended version');
+    end if;
+end $$;
+
+comment on function public.keep_cost_row(restaurant uuid, product uuid) is 'For a product with a recommended set, puts is_preferred on the restaurant''s own row cost_prices costs from, moving the packs across when the row has none, and writes the price history event. Nothing for a product with no recommendation or one costed from the other restaurant''s price. Called by cost_row_follows; nobody signed in calls it.';
+
+-- Every restaurant, for each product touched, after a price is added,
+-- removed or changes, a version is recommended or switched off, or a
+-- product changes what it recommends. Never after is_preferred alone, which
+-- is what keep_cost_row writes.
+create or replace function public.cost_row_follows() returns trigger
+    language plpgsql security definer
+    set search_path to 'public', 'pg_temp'
+    as $$
+declare
+    touched uuid[];
+    p uuid;
+    r uuid;
+begin
+    if tg_table_name = 'products' then
+        touched := array[new.id];
+    elsif tg_op = 'INSERT' then
+        touched := array[new.product_id];
+    elsif tg_op = 'DELETE' then
+        touched := array[old.product_id];
+    else
+        touched := array[old.product_id, new.product_id];
+    end if;
+    for p in select distinct t from unnest(touched) t loop
+        for r in select id from public.restaurants loop
+            perform public.keep_cost_row(r, p);
+        end loop;
+    end loop;
+    return null;
+end $$;
+
+drop trigger if exists product_supplier_prices_cost_row on public.product_supplier_prices;
+create trigger product_supplier_prices_cost_row
+    after insert or delete or update of price_per_unit, price_per_case, units_per_case, version_id, product_id, restaurant_id
+    on public.product_supplier_prices
+    for each row execute function public.cost_row_follows();
+
+drop trigger if exists product_versions_cost_row on public.product_versions;
+create trigger product_versions_cost_row
+    after update of is_recommended, is_active on public.product_versions
+    for each row execute function public.cost_row_follows();
+
+drop trigger if exists products_cost_row on public.products;
+create trigger products_cost_row
+    after update of recommends, is_active, is_mix on public.products
+    for each row execute function public.cost_row_follows();
+
+-- Cleaning, packaging and drinks start with no recommendation (his decision
+-- of 18 October 2026: food is what matters, and the few others worth it he
+-- switches on himself). Only on adding: a product moved into one of these
+-- later is the app's question to ask, since a trigger cannot ask and a store
+-- manager cannot change what the brand recommends.
+create or replace function public.product_default_recommends() returns trigger
+    language plpgsql
+    set search_path to 'public', 'pg_temp'
+    as $$
+begin
+    if new.section in ('Cleaning', 'Packaging') or new.category = 'drink' then
+        new.recommends := 'any';
+    end if;
+    return new;
+end $$;
+
+comment on function public.product_default_recommends() is 'A new product in Cleaning or Packaging, or a drink, starts with any version recommended.';
+
+-- At most four pictures on a version.
+create or replace function public.version_pictures_four() returns trigger
+    language plpgsql
+    set search_path to 'public', 'pg_temp'
+    as $$
+begin
+    if (select count(*) from public.version_pictures p where p.version_id = new.version_id) >= 4 then
+        raise exception 'A version can have four pictures at most';
+    end if;
+    return new;
+end $$;
+
+comment on function public.version_pictures_four() is 'Refuses a fifth picture on a version.';
+
+-- When a price itself last changed. updated_at moves on every write to the
+-- row: choosing which price to cost from, ticking loose counts, a code.
+-- Costing from another restaurant's latest price needs this instead.
+create or replace function public.price_priced_at() returns trigger
+    language plpgsql
+    set search_path to 'public', 'pg_temp'
+    as $$
+begin
+    if tg_op = 'INSERT' then
+        new.priced_at := now();
+    elsif (new.price_per_case, new.price_per_unit, new.units_per_case)
+          is distinct from (old.price_per_case, old.price_per_unit, old.units_per_case) then
+        new.priced_at := now();
+    else
+        new.priced_at := old.priced_at;
+    end if;
+    return new;
+end $$;
+
+comment on function public.price_priced_at() is 'Stamps priced_at when a price is added or what it costs changes, and keeps it as it was on any other write.';
 create or replace function public.set_aside_guard() returns trigger
     language plpgsql
     set search_path to 'public', 'pg_temp'
@@ -3624,12 +4218,18 @@ comment on function public.set_aside_guard() is 'Keeps setting an invoice line a
 -- write the restaurant row, so the stamp goes through here. The restaurant is
 -- passed rather than read from the account, because the super admin prints
 -- for whichever restaurant is open; anybody else can only stamp their own.
-create or replace function public.allergen_sheet_printed(restaurant uuid) returns timestamp with time zone
+--
+-- It hands over what it printed too, kept in allergen_sheet_prints so the
+-- Hub can say which lines have changed since. Called with the restaurant
+-- alone it keeps no copy, which asks for one more print.
+create or replace function public.allergen_sheet_printed(restaurant uuid, sheet jsonb default null) returns timestamp with time zone
     language plpgsql security definer
     set search_path to 'public', 'pg_temp'
     as $$
 declare
     stamped timestamp with time zone;
+    before_rows jsonb;
+    before_changed timestamp with time zone;
 begin
     if auth.uid() is null
        or coalesce(public.get_my_role(), '') not in ('store_manager', 'owner', 'super_admin') then
@@ -3641,6 +4241,10 @@ begin
         raise exception 'That is not your restaurant';
     end if;
 
+    if sheet is not null and jsonb_typeof(sheet) <> 'array' then
+        raise exception 'The sheet has to be a list of its lines';
+    end if;
+
     update public.restaurants
        set allergen_sheet_printed_at = now()
      where id = restaurant
@@ -3650,8 +4254,38 @@ begin
         raise exception 'That restaurant does not exist';
     end if;
 
+    select p.rows, p.sheet_changed_at into before_rows, before_changed
+      from public.allergen_sheet_prints p
+     where p.restaurant_id = restaurant
+     order by p.printed_at desc, p.id desc
+     limit 1;
+
+    -- The same lines in any order are the same sheet.
+    insert into public.allergen_sheet_prints (restaurant_id, printed_at, printed_by, rows, sheet_changed_at)
+    values (restaurant, stamped, auth.uid(), sheet,
+            case when sheet is not null and before_rows is not null
+                      and (select coalesce(jsonb_agg(x order by x::text), '[]'::jsonb) from jsonb_array_elements(before_rows) x)
+                        = (select coalesce(jsonb_agg(x order by x::text), '[]'::jsonb) from jsonb_array_elements(sheet) x)
+                 then before_changed
+                 else stamped end);
+
     return stamped;
 end $$;
+
+-- The customer page's Last updated: the latest print's lines and the day
+-- they last changed, for an open restaurant. The page shows the date only
+-- when its own lines are the same.
+create or replace function public.public_allergen_sheet(restaurant uuid) returns jsonb
+    language sql stable security definer
+    set search_path to 'public', 'pg_temp'
+    as $$
+    select jsonb_build_object('rows', p.rows, 'changed_at', p.sheet_changed_at)
+      from public.allergen_sheet_prints p
+      join public.restaurants r on r.id = p.restaurant_id
+     where p.restaurant_id = restaurant and r.is_active
+     order by p.printed_at desc, p.id desc
+     limit 1
+$$;
 
 -- Everything the sidebar badges count, in one call. Security definer for two
 -- counts a person cannot read (an edited shift's real date, the allergen
@@ -3784,12 +4418,16 @@ begin
                             where s.employee_id = e.id and s.shift_date between today and this_week + 13)), '[]'::jsonb),
         'rules', (select r.roster_rules from public.restaurants r where r.id = restaurant),
 
-        -- Public allergens: whether a new printed sheet is due.
+        -- Public allergens: when the sheet was last printed, how often it is
+        -- due, and whether that print kept a copy of its lines. Whether the
+        -- sheet has changed since is the app's to work out.
         'sheet', (
             select jsonb_build_object(
                 'printed_at', r.allergen_sheet_printed_at,
                 'every_months', r.allergen_sheet_every_months,
-                'changed_at', public.allergens_changed_at())
+                'kept', coalesce((select p.rows is not null from public.allergen_sheet_prints p
+                                   where p.restaurant_id = r.id
+                                   order by p.printed_at desc, p.id desc limit 1), false))
               from public.restaurants r where r.id = restaurant),
 
         -- Dishes on sale on the allergen sheet with nothing in them.
@@ -3937,8 +4575,9 @@ $$;
 
 comment on function public.user_emails() is 'Every account''s email address, for the Users page. Security definer because the addresses live in auth.users; only an active super admin gets rows, everybody else gets none.';
 
-COMMENT ON FUNCTION "public"."allergen_sheet_printed"("restaurant" "uuid") IS 'Stamps now() as when the allergen sheet was last printed for a restaurant. Managers and owners for their own restaurant, the super admin for any. Returns the stamp.';
-COMMENT ON FUNCTION "public"."allergens_changed_at"() IS 'When anything on the allergen sheet last changed, from the change log: allergens, dishes, what is in them, their categories, recipes, and a product renamed, switched on or off, made a MIX or moved section. Not prices, VAT, quantities or notes. Null when the log holds no such change.';
+comment on function public.allergen_sheet_printed(uuid, jsonb) is 'Stamps now() as when the allergen sheet was last printed for a restaurant and keeps a copy of the lines printed. Managers and owners for their own restaurant, the super admin for any. Returns the stamp.';
+comment on function public.public_allergen_sheet(uuid) is 'The latest printed allergen sheet''s lines at an open restaurant, and the day they last changed, for the customer page. What is on the wall, so nothing more than the page itself shows.';
+COMMENT ON FUNCTION "public"."allergens_changed_at"() IS 'When anything on the allergen sheet last changed, from the change log: allergens, dishes, what is in them, their categories, recipes, and a product renamed, switched on or off, made a MIX or moved section. Not prices, VAT, quantities or notes. Null when the log holds no such change. Read by nothing since 19 October 2026, when the sheet began to be compared with the copy kept at each print; kept for the app live before that until the drops.';
 COMMENT ON FUNCTION "public"."answer_time_off"("request_id" "uuid", "answer" "text", "clear_shift_ids" "uuid"[]) IS 'Approves or declines a request for time off that is still waiting, and on approval takes off the roster those of the given shifts that are theirs and inside the dates, recording them in cleared_shifts. All in one transaction. Managers only, under their own row rules. Returns the answered row.';
 COMMENT ON FUNCTION "public"."audit_ignored_columns"() IS 'Columns the change log does not treat as a change. Housekeeping stamps only: if one of these is all that moved, nothing is written.';
 COMMENT ON FUNCTION "public"."checklist_left"("round" "uuid") IS 'How many things at the bottom of the list a round has not ticked yet, counting what is on the list now.';
@@ -3955,8 +4594,10 @@ COMMENT ON FUNCTION "public"."watch_changes"() IS 'Puts the change_log trigger o
 
 revoke all on function "public"."absence_answer_guard"() from public, anon, authenticated, service_role;
 grant execute on function "public"."absence_answer_guard"() to service_role;
-revoke all on function "public"."allergen_sheet_printed"("restaurant" "uuid") from public, anon, authenticated, service_role;
-grant execute on function "public"."allergen_sheet_printed"("restaurant" "uuid") to authenticated;
+revoke all on function public.allergen_sheet_printed(uuid, jsonb) from public, anon, authenticated, service_role;
+grant execute on function public.allergen_sheet_printed(uuid, jsonb) to authenticated;
+revoke all on function public.public_allergen_sheet(uuid) from public, anon, authenticated, service_role;
+grant execute on function public.public_allergen_sheet(uuid) to anon, authenticated;
 revoke all on function "public"."allergens_changed_at"() from public, anon, authenticated, service_role;
 grant execute on function "public"."allergens_changed_at"() to anon, authenticated;
 revoke all on function "public"."brand_choice_guard"() from public, anon, authenticated, service_role;
@@ -3965,6 +4606,28 @@ revoke all on function public.set_aside_guard() from public, anon, authenticated
 grant execute on function public.set_aside_guard() to service_role;
 revoke all on function "public"."price_version"() from public, anon, authenticated, service_role;
 grant execute on function "public"."price_version"() to service_role;
+revoke all on function public.price_priced_at() from public, anon, authenticated, service_role;
+grant execute on function public.price_priced_at() to service_role;
+revoke all on function public.product_default_recommends() from public, anon, authenticated, service_role;
+grant execute on function public.product_default_recommends() to service_role;
+revoke all on function public.version_pictures_four() from public, anon, authenticated, service_role;
+grant execute on function public.version_pictures_four() to service_role;
+revoke all on function public.set_recommends(product uuid, mode text) from public, anon, authenticated, service_role;
+grant execute on function public.set_recommends(product uuid, mode text) to authenticated;
+revoke all on function public.set_fallbacks(product uuid, versions uuid[]) from public, anon, authenticated, service_role;
+grant execute on function public.set_fallbacks(product uuid, versions uuid[]) to authenticated;
+revoke all on function public.join_versions(keep uuid, fold uuid) from public, anon, authenticated, service_role;
+grant execute on function public.join_versions(keep uuid, fold uuid) to service_role;
+revoke all on function public.code_update(keep_price uuid, new_code text, make_main boolean, line_ids uuid[], line_category text)
+    from public, anon, authenticated, service_role;
+grant execute on function public.code_update(keep_price uuid, new_code text, make_main boolean, line_ids uuid[], line_category text)
+    to authenticated;
+revoke all on function public.buy_both(keep_price uuid, other_price uuid) from public, anon, authenticated, service_role;
+grant execute on function public.buy_both(keep_price uuid, other_price uuid) to authenticated;
+revoke all on function public.keep_cost_row(restaurant uuid, product uuid) from public, anon, authenticated, service_role;
+grant execute on function public.keep_cost_row(restaurant uuid, product uuid) to service_role;
+revoke all on function public.cost_row_follows() from public, anon, authenticated, service_role;
+grant execute on function public.cost_row_follows() to service_role;
 revoke all on function "public"."answer_time_off"("request_id" "uuid", "answer" "text", "clear_shift_ids" "uuid"[]) from public, anon, authenticated, service_role;
 grant execute on function "public"."answer_time_off"("request_id" "uuid", "answer" "text", "clear_shift_ids" "uuid"[]) to authenticated;
 revoke all on function "public"."checklist_photos_due"() from public, anon, authenticated, service_role;
@@ -4148,22 +4811,75 @@ CREATE POLICY "product_allergens_select" ON "public"."product_allergens" FOR SEL
 CREATE POLICY "product_allergens_write" ON "public"."product_allergens" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
 -- The same for versions and their allergens. A store manager adds versions
--- by buying them and answers their allergens; what is recommended is kept to
--- owners by brand_choice_guard.
+-- by buying them, through price_version, and answers their allergens; the
+-- versions themselves are written by owners and the super admin, and what is
+-- recommended is kept to them by brand_choice_guard as well.
 alter table public.product_versions enable row level security;
 alter table public.version_allergens enable row level security;
 
 create policy product_versions_select on public.product_versions for select to authenticated
     using ((select public.get_my_role()) = any (array['super_admin', 'owner', 'store_manager']));
 create policy product_versions_write on public.product_versions to authenticated
-    using ((select public.get_my_role()) = any (array['super_admin', 'owner', 'store_manager']))
-    with check ((select public.get_my_role()) = any (array['super_admin', 'owner', 'store_manager']));
+    using ((select public.get_my_role()) = any (array['super_admin', 'owner']))
+    with check ((select public.get_my_role()) = any (array['super_admin', 'owner']));
 
 create policy version_allergens_select on public.version_allergens for select to authenticated
     using ((select public.get_my_role()) = any (array['super_admin', 'owner', 'store_manager']));
 create policy version_allergens_write on public.version_allergens to authenticated
     using ((select public.get_my_role()) = any (array['super_admin', 'owner', 'store_manager']))
     with check ((select public.get_my_role()) = any (array['super_admin', 'owner', 'store_manager']));
+
+-- A version's pictures are read by anybody who manages a restaurant, the way
+-- versions are, and added and taken away by owners and the super admin, who
+-- keep the Recommended list. Its other codes are read the same way and
+-- written by nobody yet.
+alter table public.version_pictures enable row level security;
+alter table public.version_codes enable row level security;
+
+create policy version_pictures_select on public.version_pictures for select to authenticated
+    using ((select public.get_my_role()) = any (array['super_admin', 'owner', 'store_manager']));
+create policy version_pictures_write on public.version_pictures to authenticated
+    using ((select public.get_my_role()) = any (array['super_admin', 'owner']))
+    with check ((select public.get_my_role()) = any (array['super_admin', 'owner']));
+create policy version_codes_select on public.version_codes for select to authenticated
+    using ((select public.get_my_role()) = any (array['super_admin', 'owner', 'store_manager']));
+
+revoke all on table public.version_pictures from anon, authenticated, public;
+grant select, insert, update, delete on table public.version_pictures to authenticated;
+revoke all on table public.version_codes from anon, authenticated, public;
+grant select on table public.version_codes to authenticated;
+
+-- Where things are kept: everybody who counts reads their own restaurant's,
+-- the super admin every one. The managers of a restaurant change its own,
+-- the same limit its prices have.
+alter table public.restaurant_kept_in enable row level security;
+
+create policy restaurant_kept_in_select on public.restaurant_kept_in for select to authenticated
+    using ((select public.get_my_role()) = 'super_admin'
+           or ((select public.get_my_role()) = any (array['owner', 'store_manager', 'employee'])
+               and restaurant_id = (select public.get_my_restaurant_id())));
+create policy restaurant_kept_in_write on public.restaurant_kept_in to authenticated
+    using ((select public.get_my_role()) = 'super_admin'
+           or ((select public.get_my_role()) = any (array['owner', 'store_manager'])
+               and restaurant_id = (select public.get_my_restaurant_id())))
+    with check ((select public.get_my_role()) = 'super_admin'
+                or ((select public.get_my_role()) = any (array['owner', 'store_manager'])
+                    and restaurant_id = (select public.get_my_restaurant_id())));
+
+revoke all on table public.restaurant_kept_in from anon, authenticated, public;
+grant select, insert, update, delete on table public.restaurant_kept_in to authenticated;
+
+-- What each print said: the managers of the restaurant read it, the super
+-- admin every one. Nobody writes it but allergen_sheet_printed().
+alter table public.allergen_sheet_prints enable row level security;
+
+create policy allergen_sheet_prints_select on public.allergen_sheet_prints for select to authenticated
+    using ((select public.get_my_role()) = 'super_admin'
+           or ((select public.get_my_role()) = any (array['owner', 'store_manager'])
+               and restaurant_id = (select public.get_my_restaurant_id())));
+
+revoke all on table public.allergen_sheet_prints from anon, authenticated, public;
+grant select on table public.allergen_sheet_prints to authenticated;
 
 -- What was sent for review, and who reviews. The brand's settings are the
 -- owners' and the super admin's.
@@ -5042,6 +5758,14 @@ CREATE OR REPLACE VIEW "public"."public_restaurants" AS
 -- What a restaurant's allergen sheet is worked out from, for the customer
 -- page: the versions, their allergens, and which versions each restaurant
 -- buys. No codes, no suppliers, no prices. Since 4 October.
+--
+-- Which versions a restaurant buys (his decision of 18 October 2026, built
+-- 19 October): on an invoice there in the last 56 days, or priced there from
+-- a supplier whose invoices are not read line by line; for a product with
+-- neither, the version last bought there at any age. Never a switched off
+-- version. A document with lines is one that was read, the same rule the
+-- weekly report's "Read from" uses, and credit notes and lines set aside
+-- are not buying anything.
 create or replace view public.public_product_versions as
  select v.id, v.product_id, v.is_recommended, v.is_active
    from public.product_versions v;
@@ -5052,31 +5776,124 @@ create or replace view public.public_version_allergens as
    from public.version_allergens a;
 
 create or replace view public.public_restaurant_versions as
- select distinct p.restaurant_id, p.version_id
-   from public.product_supplier_prices p;
+with lined as (
+    select distinct i.restaurant_id, i.supplier_id
+      from public.invoices i
+     where i.invoice_date >= (now() at time zone 'Europe/Dublin')::date - 56
+       and exists (select 1 from public.invoice_lines l where l.invoice_id = i.id)
+), bought as (
+    select i.restaurant_id, v.product_id, v.id as version_id, i.invoice_date
+      from public.invoices i
+      join public.invoice_lines l on l.invoice_id = i.id
+      join public.product_supplier_prices p on p.id = l.price_id
+      join public.product_versions v on v.id = p.version_id
+     where i.document_type = 'invoice'
+       and l.decision is distinct from 'ignored'
+       and v.is_active
+), recent as (
+    select b.restaurant_id, b.product_id, b.version_id
+      from bought b
+     where b.invoice_date >= (now() at time zone 'Europe/Dublin')::date - 56
+    union
+    select p.restaurant_id, v.product_id, v.id
+      from public.product_supplier_prices p
+      join public.product_versions v on v.id = p.version_id
+      left join public.suppliers s on s.id = p.supplier_id
+     where v.is_active
+       and (coalesce(s.works_without_codes, false)
+            or not exists (select 1 from lined d
+                            where d.restaurant_id = p.restaurant_id and d.supplier_id = p.supplier_id))
+), last_bought as (
+    select b.restaurant_id, b.product_id, b.version_id
+      from (select b.*, max(b.invoice_date) over (partition by b.restaurant_id, b.product_id) as latest
+              from bought b) b
+     where b.invoice_date = b.latest
+       and not exists (select 1 from recent r
+                        where r.restaurant_id = b.restaurant_id and r.product_id = b.product_id)
+)
+select restaurant_id, version_id from recent
+union
+select restaurant_id, version_id from last_bought;
 
 comment on view public.public_product_versions is 'Each version of each product, for the customer allergen page: which product it is of, whether the brand recommends it and whether it is in use. Not the supplier, the code or the price.';
 comment on view public.public_version_allergens is 'Each version''s allergens, for the customer allergen page.';
--- What the stock take reads, for everybody who counts: at each restaurant,
--- where each product it buys is kept, version by version. Nothing about
--- suppliers, codes or prices. A product with no price at a restaurant has no
--- row, and is counted where the product says. A version switched off says
--- nothing about where anything is kept. Their own restaurant only, or
--- every one for the super admin.
-create or replace view public.restaurant_kept_in as
- select distinct p.restaurant_id, v.product_id,
-        coalesce(v.section, pr.section::text) as section,
-        coalesce(v.also_in, pr.also_in) as also_in
-   from public.product_supplier_prices p
-   join public.product_versions v on v.id = p.version_id
-   join public.products pr on pr.id = v.product_id
-  where v.is_active
-    and ((select public.get_my_role()) = 'super_admin'
-         or p.restaurant_id = (select public.get_my_restaurant_id()));
+comment on view public.public_restaurant_versions is 'Which versions each restaurant''s allergen sheet is built from: on an invoice there in the last 56 days, or priced there from a supplier not read line by line, or for a product with neither the version last bought there. Never a switched off version. Not the price.';
 
-comment on view public.restaurant_kept_in is 'Where each product a restaurant buys is kept there, one row for each place its versions say. For the stock take, which staff count, so it carries no supplier, code or price.';
+-- Every restaurant's, for the two views below and keep_cost_row. Nobody
+-- signed in reads it directly.
+create or replace view public.cost_choice as
+with costed as (
+    select p.id as product_id, p.recommends
+      from public.products p
+     where p.is_active and not p.is_mix
+),
+set_prices as (
+    select r.id as restaurant_id, v.product_id, v.id as version_id,
+           own.id as own_price_id,
+           coalesce(own.price_per_unit, other.price_per_unit) as price_per_unit
+      from public.restaurants r
+      cross join public.product_versions v
+      join costed c on c.product_id = v.product_id and c.recommends = 'versions'
+      left join lateral (
+          select x.id, x.price_per_unit
+            from public.product_supplier_prices x
+           where x.restaurant_id = r.id and x.version_id = v.id and x.price_per_unit > 0
+           order by x.priced_at desc, x.id
+           limit 1) own on true
+      left join lateral (
+          select x.price_per_unit
+            from public.product_supplier_prices x
+           where x.restaurant_id <> r.id and x.version_id = v.id and x.price_per_unit > 0
+           order by x.priced_at desc, x.id
+           limit 1) other on true
+     where r.is_active and v.is_recommended and v.is_active
+       and coalesce(own.price_per_unit, other.price_per_unit) is not null
+),
+from_set as (
+    -- The dearest that is not more than four times the cheapest, which is a
+    -- price typed per case where it should be per unit, not a dearer box.
+    select distinct on (s.restaurant_id, s.product_id)
+           s.restaurant_id, s.product_id, s.price_per_unit, s.version_id, s.own_price_id
+      from (select s.*, min(s.price_per_unit) over (partition by s.restaurant_id, s.product_id) as cheapest
+              from set_prices s) s
+     where s.price_per_unit <= s.cheapest * 4
+     order by s.restaurant_id, s.product_id, s.price_per_unit desc, (s.own_price_id is null), s.version_id
+),
+chosen as (
+    select distinct on (x.restaurant_id, x.product_id)
+           x.restaurant_id, x.product_id, x.price_per_unit, x.version_id, x.id as own_price_id
+      from public.product_supplier_prices x
+      join costed c on c.product_id = x.product_id
+     where x.is_preferred and x.price_per_unit > 0
+     order by x.restaurant_id, x.product_id, x.priced_at desc, x.id
+)
+select f.restaurant_id, f.product_id, f.price_per_unit, f.version_id, f.own_price_id,
+       f.own_price_id is null as borrowed, true as from_set
+  from from_set f
+union all
+select o.restaurant_id, o.product_id, o.price_per_unit, o.version_id, o.own_price_id, false, false
+  from chosen o
+ where not exists (select 1 from from_set f where f.restaurant_id = o.restaurant_id and f.product_id = o.product_id);
 
-comment on view public.public_restaurant_versions is 'Which versions each restaurant has a price for, which is which versions its allergen sheet is built from. Not the price.';
+comment on view public.cost_choice is 'What every product costs at every restaurant: the dearest of its recommended versions, at the restaurant''s own latest price or the other restaurant''s, or the price the restaurant chose when there is no recommendation or none of it is priced anywhere. One row per restaurant and product with a price. For cost_prices, staff_cost_prices and keep_cost_row; nobody signed in reads it.';
+
+create or replace view public.cost_prices as
+ select c.restaurant_id, c.product_id, c.price_per_unit, c.version_id, c.own_price_id, c.borrowed
+   from public.cost_choice c
+  where (select public.get_my_role()) = 'super_admin'
+     or ((select public.get_my_role()) = any (array['owner', 'store_manager'])
+         and c.restaurant_id = (select public.get_my_restaurant_id()));
+
+comment on view public.cost_prices is 'What recipes cost each product at, at your restaurant: the price per unit, the version it comes from, this restaurant''s price row when it is its own, and borrowed when it is the other restaurant''s, never bought here. Managers; the super admin sees every restaurant.';
+
+create or replace view public.staff_cost_prices as
+ select c.restaurant_id, c.product_id, c.price_per_unit
+   from public.cost_choice c
+  where (select public.get_my_role()) = 'super_admin'
+     or ((select public.get_my_role()) = any (array['owner', 'store_manager', 'employee'])
+         and c.restaurant_id = (select public.get_my_restaurant_id()));
+
+comment on view public.staff_cost_prices is 'What each product costs at your restaurant, per unit and nothing else, for the stock take and waste, which staff do. Not the supplier, the version or whose price it is.';
 
 COMMENT ON VIEW "public"."roster_published" IS 'The week as it went out to staff, at your restaurant: every published shift as it stands, and a shift changed since the week went out as it was then, from published_as. Changing a shift takes it back to a draft so the roster can say so, and without this it vanished from somebody''s week and phone until the week was published again. The note is there only for the person the shift is on and for the managers. Only shifts from nine weeks before today to nine after, by the day as it went out: the weeks My shifts opens and one more. My shifts reads this rather than roster_shifts.';
 COMMENT ON VIEW "public"."roster_asks" IS 'Which shifts at your restaurant somebody has asked about and is still waiting on, for the mark on My shifts: the shift given, the shift asked for and the status. Not who asked whom, the hours or the message, which only the two people in it and the managers read on shift_requests.';
@@ -5147,7 +5964,6 @@ revoke all on public.public_restaurants          from anon, authenticated, publi
 revoke all on public.public_product_versions     from anon, authenticated, public;
 revoke all on public.public_version_allergens    from anon, authenticated, public;
 revoke all on public.public_restaurant_versions  from anon, authenticated, public;
-revoke all on public.restaurant_kept_in from anon, authenticated, public;
 grant select on public.public_menu_categories      to anon, authenticated;
 grant select on public.public_menu_item_components to anon, authenticated;
 grant select on public.public_menu_items           to anon, authenticated;
@@ -5158,7 +5974,11 @@ grant select on public.public_restaurants          to anon, authenticated;
 grant select on public.public_product_versions     to anon, authenticated;
 grant select on public.public_version_allergens    to anon, authenticated;
 grant select on public.public_restaurant_versions  to anon, authenticated;
-grant select on public.restaurant_kept_in to authenticated;
+revoke all on public.cost_choice from anon, authenticated, public;
+revoke all on public.cost_prices from anon, authenticated, public;
+revoke all on public.staff_cost_prices from anon, authenticated, public;
+grant select on public.cost_prices to authenticated;
+grant select on public.staff_cost_prices to authenticated;
 
 
 -- ======================================================================
@@ -5336,6 +6156,43 @@ create policy checklist_photos_remove on storage.objects
              and split_part(name, '/', 1) = get_my_restaurant_id()::text))
   );
 
+
+
+-- The pictures on the Recommended list.
+--
+-- Private, and read only by managers through signed addresses, the same as
+-- the version rows: no staff screen shows them. Added and taken away by
+-- owners and the super admin, who keep the list. The first folder is the
+-- version. The bucket row is in seed.sql: 3MB and JPEG only, because the
+-- phone shrinks every picture before it leaves.
+
+drop policy if exists version_picture_files_read on storage.objects;
+create policy version_picture_files_read on storage.objects
+  for select
+  to authenticated
+  using (
+    bucket_id = 'version-pictures'
+    and get_my_role() in ('store_manager', 'owner', 'super_admin')
+  );
+
+drop policy if exists version_picture_files_add on storage.objects;
+create policy version_picture_files_add on storage.objects
+  for insert
+  to authenticated
+  with check (
+    bucket_id = 'version-pictures'
+    and get_my_role() in ('owner', 'super_admin')
+  );
+
+drop policy if exists version_picture_files_remove on storage.objects;
+create policy version_picture_files_remove on storage.objects
+  for delete
+  to authenticated
+  using (
+    bucket_id = 'version-pictures'
+    and get_my_role() in ('owner', 'super_admin')
+  );
+
 -- ======================================================================
 -- What watches it all
 -- ======================================================================
@@ -5356,8 +6213,11 @@ CREATE OR REPLACE TRIGGER "product_supplier_prices_updated_at" BEFORE UPDATE ON 
 CREATE OR REPLACE TRIGGER "product_allergens_updated_at" BEFORE UPDATE ON "public"."product_allergens" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "version_allergens_updated_at" BEFORE UPDATE ON "public"."version_allergens" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "product_supplier_prices_version" BEFORE INSERT OR UPDATE OF "product_id", "supplier_id", "supplier_code", "version_id" ON "public"."product_supplier_prices" FOR EACH ROW EXECUTE FUNCTION "public"."price_version"();
-CREATE OR REPLACE TRIGGER "product_versions_brand_choice" BEFORE INSERT OR UPDATE ON "public"."product_versions" FOR EACH ROW EXECUTE FUNCTION "public"."brand_choice_guard"();
+CREATE OR REPLACE TRIGGER "product_versions_brand_choice" BEFORE INSERT OR UPDATE OR DELETE ON "public"."product_versions" FOR EACH ROW EXECUTE FUNCTION "public"."brand_choice_guard"();
 CREATE OR REPLACE TRIGGER "products_brand_choice" BEFORE INSERT OR UPDATE OR DELETE ON "public"."products" FOR EACH ROW EXECUTE FUNCTION "public"."brand_choice_guard"();
+CREATE OR REPLACE TRIGGER "products_default_recommends" BEFORE INSERT ON "public"."products" FOR EACH ROW EXECUTE FUNCTION "public"."product_default_recommends"();
+CREATE OR REPLACE TRIGGER "product_supplier_prices_priced_at" BEFORE INSERT OR UPDATE ON "public"."product_supplier_prices" FOR EACH ROW EXECUTE FUNCTION "public"."price_priced_at"();
+CREATE OR REPLACE TRIGGER "version_pictures_four" BEFORE INSERT ON "public"."version_pictures" FOR EACH ROW EXECUTE FUNCTION "public"."version_pictures_four"();
 CREATE OR REPLACE TRIGGER "invoice_lines_set_aside" BEFORE INSERT OR UPDATE OF "decision" ON "public"."invoice_lines" FOR EACH ROW EXECUTE FUNCTION "public"."set_aside_guard"();
 CREATE OR REPLACE TRIGGER "supplier_codes_set_aside" BEFORE INSERT OR UPDATE OF "ignored" ON "public"."supplier_codes" FOR EACH ROW EXECUTE FUNCTION "public"."set_aside_guard"();
 CREATE OR REPLACE TRIGGER "suppliers_brand_choice" BEFORE INSERT OR UPDATE ON "public"."suppliers" FOR EACH ROW EXECUTE FUNCTION "public"."brand_choice_guard"();

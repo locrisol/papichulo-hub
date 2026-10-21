@@ -3,6 +3,8 @@ import Modal from '@/components/ui/Modal'
 import { numberField } from '@/lib/numberInput'
 import { fmtMoney, fmtUnitCost, num } from '@/lib/format'
 import { FOOD_SECTIONS } from '@/lib/stockTakeSummary'
+import { startsWithoutRecommendation } from '@/lib/recommended'
+import SupplierBadge from '@/components/ui/SupplierBadge'
 import {
     modalFooter, secondaryButton, primaryButton, labelClass, fieldClass, hintClass, errorBanner,
     checkbox, checkRow, chip,
@@ -14,8 +16,8 @@ const UNITS = ['KG', 'Units', 'Litre']
 // Adding something sent for review to the brand's list.
 //
 // Only what the brand's list needs, and what the invoice line cannot say:
-// the name, where it is kept, what it is counted in and how many of those
-// are in a case. The price comes off the line. Allergens come next, on the
+// the name, its section, what it is counted in and how many of those are in
+// a case, and anywhere else the restaurant that sent it keeps it. The price comes off the line. Allergens come next, on the
 // Allergens page, because a dish with it in says Ask a member of staff
 // until they are set.
 export default function AddFromRequestModal({ request, onClose, onAdd }) {
@@ -26,20 +28,25 @@ export default function AddFromRequestModal({ request, onClose, onAdd }) {
     const [unit, setUnit] = useState('Units')
     const [perPack, setPerPack] = useState(request.units_per_case != null ? String(num(request.units_per_case)) : '')
     const [recommend, setRecommend] = useState(true)
+    const [drink, setDrink] = useState(false)
     const [problem, setProblem] = useState('')
     const [busy, setBusy] = useState(false)
 
     const units = num(perPack)
     const perUnit = units > 0 ? num(request.price_per_case) / units : null
     const food = FOOD_SECTIONS.includes(section)
+    // Cleaning, packaging and drinks start with no recommendation, so there
+    // is nothing to tick for them (his decision of 18 October 2026).
+    const category = drink ? 'drink' : 'ingredient'
+    const canRecommend = onLine && !startsWithoutRecommendation({ section, category })
 
     async function go() {
         if (!name.trim()) { setProblem('Give it a name.'); return }
         if (onLine && !(units > 0)) { setProblem(`Say how many ${unitWord(unit)} are in a case.`); return }
         setBusy(true)
         const failed = await onAdd({
-            name, section, alsoIn: alsoIn.filter(place => place !== section), unit,
-            unitsPerCase: onLine ? units : null, recommend, food,
+            name, section, category, alsoIn: alsoIn.filter(place => place !== section), unit,
+            unitsPerCase: onLine ? units : null, recommend: canRecommend && recommend, food,
         })
         setBusy(false)
         if (failed) setProblem(failed)
@@ -53,7 +60,7 @@ export default function AddFromRequestModal({ request, onClose, onAdd }) {
                 {onLine && (
                     <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-sm">
                         <dt className="text-xs text-muted pt-0.5">Supplier</dt>
-                        <dd className="text-gray-900">{request.suppliers?.name || 'Unknown supplier'}</dd>
+                        <dd><SupplierBadge name={request.suppliers?.name} /></dd>
                         <dt className="text-xs text-muted pt-0.5">Code</dt>
                         <dd className="text-gray-900 tabular-nums">{request.supplier_code}</dd>
                         <dt className="text-xs text-muted pt-0.5">On the invoice</dt>
@@ -75,7 +82,7 @@ export default function AddFromRequestModal({ request, onClose, onAdd }) {
 
                 <div className="grid gap-4 sm:grid-cols-2">
                     <div>
-                        <label className={labelClass} htmlFor="add-section">Kept in</label>
+                        <label className={labelClass} htmlFor="add-section">Section</label>
                         <select id="add-section" value={section} onChange={e => setSection(e.target.value)} className={fieldClass}>
                             {SECTIONS.map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
@@ -87,6 +94,11 @@ export default function AddFromRequestModal({ request, onClose, onAdd }) {
                         </select>
                     </div>
                 </div>
+
+                <label className={checkRow}>
+                    <input type="checkbox" checked={drink} onChange={e => setDrink(e.target.checked)} className={checkbox} />
+                    <span className="text-sm text-gray-900">This is a drink (counted as normal, never an ingredient in a MIX)</span>
+                </label>
 
                 <div>
                     <p className={labelClass}>Also kept in</p>
@@ -106,6 +118,7 @@ export default function AddFromRequestModal({ request, onClose, onAdd }) {
                             )
                         })}
                     </div>
+                    <p className={hintClass}>Only at the restaurant that sent it. Each restaurant sets its own.</p>
                 </div>
 
                 {onLine && (
@@ -123,7 +136,7 @@ export default function AddFromRequestModal({ request, onClose, onAdd }) {
                     </div>
                 )}
 
-                {onLine && (
+                {canRecommend && (
                     <label className={checkRow}>
                         <input
                             type="checkbox"

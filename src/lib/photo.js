@@ -17,6 +17,10 @@
 // The private bucket every checklist photo and guide picture lives in.
 export const PHOTO_BUCKET = 'checklist-photos'
 
+// The private bucket the pictures on the Recommended list live in, shrunk
+// the same way.
+export const VERSION_PICTURES = 'version-pictures'
+
 export const LONGEST_SIDE = 1200
 export const QUALITY = 0.7
 
@@ -156,4 +160,10 @@ export async function shrinkPhoto(file, { longest = LONGEST_SIDE, quality = QUAL
 export function photoPath(restaurantId, kind, folder) {
     const name = `${crypto.randomUUID()}.jpg`
     return kind === 'guide' ? `${restaurantId}/guides/${name}` : `${restaurantId}/rounds/${folder}/${name}`
+}
+
+// Where a picture of a version goes: a folder named after the version, which
+// the database checks a picture's row against.
+export function versionPicturePath(versionId) {
+    return `${versionId}/${crypto.randomUUID()}.jpg`
 }

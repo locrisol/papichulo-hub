@@ -69,6 +69,19 @@ describe('ReportPaperwork', () => {
         expect(screen.getByText(DUE.words)).toBeTruthy()
     })
 
+    // Since 19 October 2026 the lines that changed, one to a line. A report
+    // frozen before has the words alone, as above.
+    it('lists the lines that changed under the words, and how many more', () => {
+        draw(team, {
+            reason: 'changed',
+            words: 'Last printed 12 June. 3 lines on it have changed since then. Print a new sheet.',
+            changes: [{ category: 'Desserts', name: 'Churros', what: 'Now contains Milk' }],
+            more: 2,
+        })
+        expect(screen.getByText('Churros (Desserts): Now contains Milk')).toBeTruthy()
+        expect(screen.getByText('and 2 more')).toBeTruthy()
+    })
+
     it('says nothing about the allergen sheet while it is not due', () => {
         draw(team, null)
         expect(screen.queryByText('Allergen sheet:')).toBeNull()

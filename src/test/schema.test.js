@@ -509,11 +509,216 @@ describe('the change log', () => {
     it('does not log a sync that only says when it ran and how many it found', () => {
         for (const text of [schema]) {
             const ignored = ignoredIn(text)
-            for (const column of ['updated_at', 'last_seen_at', 'feed_synced_at', 'feed_count', 'last_read_at', 'last_read_count']) {
+            for (const column of ['updated_at', 'last_seen_at', 'feed_synced_at', 'feed_count', 'last_read_at', 'last_read_count', 'priced_at']) {
                 expect(ignored).toContain(column)
             }
             expect(ignored).not.toContain('feed_problem')
             expect(ignored).not.toContain('read_problem')
         }
+    })
+})
+
+// The Recommended list, 19 October 2026: owners and the super admin keep it,
+// store managers read it, and nothing about it reaches staff.
+describe('the Recommended list', () => {
+    const policy = name => schema.match(new RegExp(String.raw`create policy ${name} on [^;]*;`))?.[0] || ''
+    const fn = name => {
+        const start = schema.indexOf(`create or replace function public.${name}(`)
+        expect(start, `${name} is not in schema.sql`).toBeGreaterThan(-1)
+        return schema.slice(start, schema.indexOf('end $$;', start))
+    }
+    const table = name => {
+        const start = schema.indexOf(`create table if not exists public.${name} (`)
+        expect(start, `${name} is not in schema.sql`).toBeGreaterThan(-1)
+        return schema.slice(start, schema.indexOf(');', start))
+    }
+
+    it('never makes a version recommended and a fallback at once, and never two fallbacks one place', () => {
+        expect(table('product_versions')).toContain('check (not (is_recommended and fallback_rank is not null))')
+        expect(schema).toMatch(/product_versions_one_per_fallback_rank\s+on public\.product_versions \(product_id, fallback_rank\) where fallback_rank is not null/)
+    })
+
+    it('keeps the list to owners and the super admin, removing a version as well', () => {
+        const guard = fn('brand_choice_guard')
+        for (const column of ['fallback_rank', 'notes', 'description', 'is_active', 'name', 'is_recommended']) {
+            expect(guard, `a store manager can change ${column}`).toContain(`new.${column} is distinct from old.${column}`)
+        }
+        expect(guard).toMatch(/tg_op = 'DELETE' then\s+raise exception 'Only an owner can remove a version'/)
+        expect(schema).toMatch(/"product_versions_brand_choice" BEFORE INSERT OR UPDATE OR DELETE ON "public"\."product_versions"/)
+    })
+
+    it('shows a version\'s pictures to managers, and lets only owners add or take them away', () => {
+        expect(policy('version_pictures_select')).toContain("'store_manager'")
+        for (const name of ['version_pictures_write', 'version_picture_files_add', 'version_picture_files_remove']) {
+            expect(policy(name), `${name} is missing`).toContain("'owner'")
+            expect(policy(name), `a store manager can ${name}`).not.toContain('store_manager')
+        }
+        expect(policy('version_picture_files_read')).toContain("bucket_id = 'version-pictures'")
+        expect(policy('version_picture_files_read')).not.toContain('employee')
+    })
+
+    it('lets nobody write a version\'s other codes yet', () => {
+        const onCodes = schema.match(/create policy \w+ on public\.version_codes[^;]*;/g) || []
+        expect(onCodes).toHaveLength(1)
+        expect(onCodes[0]).toContain('for select')
+        expect(schema).toContain('grant select on table public.version_codes to authenticated;')
+    })
+
+    it('lets only people signed in call the functions that change it', () => {
+        for (const signature of ['set_recommends(product uuid, mode text)', 'set_fallbacks(product uuid, versions uuid[])']) {
+            expect(schema).toContain(`revoke all on function public.${signature} from public, anon, authenticated, service_role;`)
+            expect(schema).toContain(`grant execute on function public.${signature} to authenticated;`)
+        }
+    })
+
+    it('runs those functions as whoever calls them, so the guard decides', () => {
+        for (const name of ['set_recommends', 'set_fallbacks']) {
+            expect(fn(name), `${name} goes round the rules`).not.toMatch(/security definer/i)
+        }
+    })
+
+    it('starts cleaning, packaging and drinks with any version, only as they are added', () => {
+        expect(schema).toMatch(/"products_default_recommends" BEFORE INSERT ON "public"\."products"/)
+        expect(fn('product_default_recommends')).toContain("new.section in ('Cleaning', 'Packaging') or new.category = 'drink'")
+    })
+
+    it('stamps when a price changed only when what it costs changes', () => {
+        const body = fn('price_priced_at')
+        expect(body).toContain('(new.price_per_case, new.price_per_unit, new.units_per_case)')
+        expect(body).not.toMatch(/is_preferred|allow_loose_count|supplier_code/)
+    })
+
+    // One thing under two codes is one version (step 4, 19 October 2026):
+    // nothing copies a version any more, so nothing a level deeper carries a
+    // recommendation for a store manager.
+    it('never copies a version, and finds one by any of its codes', () => {
+        const body = fn('price_version')
+        expect(body).not.toMatch(/v\.notes, v\.description|is_recommended/)
+        expect(body).toContain('from public.version_codes c')
+        expect(fn('brand_choice_guard')).not.toContain('pg_trigger_depth')
+    })
+
+    // Where a version was kept was the last thing a store manager wrote on
+    // one; they still add versions by buying them, through price_version.
+    it('lets only owners and the super admin write versions directly', () => {
+        expect(policy('product_versions_write')).toContain("'owner'")
+        expect(policy('product_versions_write')).not.toContain('store_manager')
+        expect(fn('price_version')).toMatch(/language plpgsql security definer/)
+    })
+})
+
+// Where each restaurant keeps a product (his decision of 18 October 2026).
+describe('where a restaurant keeps a product', () => {
+    const policy = name => schema.match(new RegExp(String.raw`create policy ${name} on [^;]*;`))?.[0] || ''
+    const start = schema.indexOf('create table if not exists public.restaurant_kept_in (')
+    const table = start === -1 ? '' : schema.slice(start, schema.indexOf(');', start))
+
+    it('is a table of one row per restaurant and product, in the five places only', () => {
+        expect(table, 'restaurant_kept_in is not a table in schema.sql').not.toBe('')
+        expect(schema).not.toMatch(/create or replace view public\.restaurant_kept_in/)
+        expect(table).toContain('unique (restaurant_id, product_id)')
+        expect(table).toContain("check (section in ('Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning'))")
+        expect(table).toContain('check (not (section = any (also_in)))')
+    })
+
+    it('is read by everybody who counts at their own restaurant, and changed by its managers', () => {
+        expect(policy('restaurant_kept_in_select')).toContain("'employee'")
+        expect(policy('restaurant_kept_in_select')).toContain('restaurant_id = (select public.get_my_restaurant_id())')
+        const write = policy('restaurant_kept_in_write')
+        expect(write).toContain("array['owner', 'store_manager']")
+        expect(write, 'an employee can change where things are kept').not.toContain('employee')
+        expect(write).toContain('restaurant_id = (select public.get_my_restaurant_id())')
+        expect(schema).toContain('grant select, insert, update, delete on table public.restaurant_kept_in to authenticated;')
+    })
+})
+
+// The same thing under a new code, and two codes bought either way.
+describe('codes on versions', () => {
+    const fn = name => {
+        const start = schema.indexOf(`create or replace function public.${name}(`)
+        expect(start, `${name} is not in schema.sql`).toBeGreaterThan(-1)
+        return schema.slice(start, schema.indexOf('end $$;', start))
+    }
+    const CODE_UPDATE = 'code_update(keep_price uuid, new_code text, make_main boolean, line_ids uuid[], line_category text)'
+    const BUY_BOTH = 'buy_both(keep_price uuid, other_price uuid)'
+
+    it('lets people signed in call code_update and buy_both, and nobody call join_versions', () => {
+        for (const signature of [CODE_UPDATE, BUY_BOTH]) {
+            expect(schema).toContain(`grant execute on function public.${signature}`)
+        }
+        expect(schema).toContain('grant execute on function public.join_versions(keep uuid, fold uuid) to service_role;')
+        expect(schema).not.toMatch(/grant execute on function public\.join_versions[^;]*authenticated/)
+    })
+
+    // They run as the database, so they check who is asking themselves: a
+    // manager of the price's own restaurant, an owner there, or the super admin.
+    it('checks who is asking before it changes anything', () => {
+        for (const name of ['code_update', 'buy_both']) {
+            const body = fn(name)
+            expect(body).toMatch(/security definer/)
+            expect(body).toContain("me not in ('owner', 'store_manager', 'super_admin')")
+            expect(body).toContain('restaurant_id is distinct from public.get_my_restaurant_id()')
+            expect(body.indexOf("using errcode = '42501'"), `${name} changes something before checking`)
+                .toBeLessThan(body.indexOf("set_config('app.joining_codes'"))
+        }
+    })
+
+    it('lets the guard step aside only inside those two, for that transaction', () => {
+        expect(schema).toContain("if current_setting('app.joining_codes', true) = 'on' then")
+        const set = schema.match(/set_config\('app\.joining_codes', 'on', (\w+)\)/g) || []
+        expect(set.length).toBeGreaterThan(0)
+        for (const call of set) expect(call).toContain("'on', true)")
+    })
+
+    it('refuses to join two versions whose allergens differ', () => {
+        expect(fn('join_versions')).toContain('is distinct from')
+        expect(fn('join_versions')).toContain('Make them the same on the Allergens page first')
+    })
+
+    it('lets more than one code of a version point at its price', () => {
+        expect(schema).not.toContain('supplier_codes_one_per_price')
+    })
+})
+
+// What recipes cost from (step 5, 19 October 2026).
+describe('what recipes cost from', () => {
+    const view = name => {
+        const start = schema.indexOf(`create or replace view public.${name} as`)
+        expect(start, `${name} is not in schema.sql`).toBeGreaterThan(-1)
+        return schema.slice(start, schema.indexOf(';', start))
+    }
+    const fn = name => {
+        const start = schema.indexOf(`create or replace function public.${name}(`)
+        expect(start, `${name} is not in schema.sql`).toBeGreaterThan(-1)
+        return schema.slice(start, schema.indexOf('end $$;', start))
+    }
+
+    it('costs a product with a recommended set at the dearest sensible price of it, its own first', () => {
+        const body = view('cost_choice')
+        expect(body).toContain('v.is_recommended and v.is_active')
+        expect(body).toContain('order by s.restaurant_id, s.product_id, s.price_per_unit desc')
+        expect(body).toContain('s.price_per_unit <= s.cheapest * 4')
+    })
+
+    // Staff get only what their screens use (his rule of 1 October).
+    it('gives staff the cost and nothing else, and managers where it comes from', () => {
+        expect(view('staff_cost_prices')).toMatch(/select c\.restaurant_id, c\.product_id, c\.price_per_unit\s+from public\.cost_choice c/)
+        expect(view('staff_cost_prices')).toContain("'employee'")
+        expect(view('cost_prices')).toContain('c.borrowed')
+        expect(view('cost_prices')).not.toContain("'employee'")
+        for (const name of ['cost_prices', 'staff_cost_prices']) {
+            expect(view(name)).toContain('c.restaurant_id = (select public.get_my_restaurant_id())')
+            expect(schema).toContain(`grant select on public.${name} to authenticated;`)
+        }
+        expect(schema).not.toMatch(/grant select on public\.cost_choice/)
+    })
+
+    it('keeps the row recipes cost from in line, never after is_preferred alone', () => {
+        expect(fn('keep_cost_row')).toContain('c.from_set and c.own_price_id is not null')
+        const triggers = schema.match(/create trigger \w+_cost_row[^;]*;/g) || []
+        expect(triggers).toHaveLength(3)
+        for (const t of triggers) expect(t, t).not.toContain('is_preferred')
+        expect(schema).toContain('grant execute on function public.keep_cost_row(restaurant uuid, product uuid) to service_role;')
+        expect(schema).not.toMatch(/grant execute on function public\.keep_cost_row[^;]*authenticated/)
     })
 })

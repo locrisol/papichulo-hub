@@ -10,38 +10,47 @@
 // The database functions that change something. Every other function the app
 // calls only reads, my_badges among them, which must not set off a recount of
 // itself.
-const WRITING_FUNCTIONS = ['allergen_sheet_printed', 'set_my_landing_page']
+const WRITING_FUNCTIONS = ['allergen_sheet_printed', 'set_my_landing_page', 'set_recommends', 'set_fallbacks', 'code_update', 'buy_both']
+
+// Which table or function a request to the database API was for, as
+// 'invoice_lines' or 'rpc/code_update', or null for anything else.
+export function writtenTo(url) {
+    let path
+    try {
+        path = new URL(String(url), 'http://hub.local').pathname
+    } catch {
+        return null
+    }
+    const at = path.indexOf('/rest/v1/')
+    if (at === -1) return null
+    return path.slice(at + '/rest/v1/'.length) || null
+}
 
 // Whether a request to the database API changed anything: a write to a table,
 // or a call to a function that writes. Reads, sign in and files do not.
 export function isWrite(url, method = 'GET') {
     const verb = String(method || 'GET').toUpperCase()
     if (['GET', 'HEAD', 'OPTIONS'].includes(verb)) return false
-    let path
-    try {
-        path = new URL(String(url), 'http://hub.local').pathname
-    } catch {
-        return false
-    }
-    const at = path.indexOf('/rest/v1/')
-    if (at === -1) return false
-    const rest = path.slice(at + '/rest/v1/'.length)
+    const rest = writtenTo(url)
+    if (!rest) return false
     if (rest.startsWith('rpc/')) return WRITING_FUNCTIONS.includes(rest.slice(4))
     return true
 }
 
 const listeners = new Set()
 
-// Somebody is told every time something is saved. Returns the way to stop.
+// Somebody is told every time something is saved, and what it was saved to
+// (writtenTo), for a listener that only minds some tables. Returns the way to
+// stop.
 export function onSaved(listener) {
     listeners.add(listener)
     return () => listeners.delete(listener)
 }
 
-export function saved() {
+export function saved(to = null) {
     for (const listener of listeners) {
         try {
-            listener()
+            listener(to)
         } catch (err) {
             console.warn('Something listening for saves failed.', err)
         }

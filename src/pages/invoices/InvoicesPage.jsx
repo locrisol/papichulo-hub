@@ -16,6 +16,8 @@ import {
     INVOICE_SUMMARY_CARDS, invoiceCategory, groupByDay, invoiceSplit, mainCategory, spentIn, costedByLine,
 } from '@/lib/invoiceCategories'
 import CategoryBadges from '@/components/invoices/CategoryBadges'
+import ShowInvoiceModal from '@/components/invoices/ShowInvoiceModal'
+import { hasLines } from '@/lib/invoiceLines'
 import { orderByUse, USE_WINDOW_DAYS } from '@/lib/supplierOrder'
 import { creditTakenBack, claimTakesOff } from '@/lib/invoiceClaims'
 import ErrorBanner from '@/components/ui/ErrorBanner'
@@ -159,6 +161,10 @@ export default function InvoicesPage() {
     // The invoice the dialog is showing, looked up from the list rather than
     // kept as a second copy, so it cannot go stale if the list reloads.
     const editingInvoice = invoices.find(i => i.id === editingId) || null
+
+    // The document Show invoice has open, the same way.
+    const [showingId, setShowingId] = useState(null)
+    const showing = invoices.find(i => i.id === showingId) || null
 
     // Which week the list below is showing.
     //
@@ -610,6 +616,11 @@ export default function InvoicesPage() {
                                                     <p className="text-xs text-muted mt-1">{inv.notes}</p>
                                                 )}
                                                 <div className="flex flex-wrap gap-3 mt-2 pt-2 border-t border-border">
+                                                    {hasLines(inv) && (
+                                                        <button type="button" onClick={() => setShowingId(inv.id)} className={rowButton()}>
+                                                            Show invoice
+                                                        </button>
+                                                    )}
                                                     <button
                                                         onClick={() => isEditing ? cancelEdit() : startEdit(inv)}
                                                         className={rowButton('edit')}
@@ -650,8 +661,15 @@ export default function InvoicesPage() {
                                                     <td className="px-3 py-2 text-right text-gray-900 font-medium w-28 whitespace-nowrap">
                                                         {fmtMoney(inv.total_amount)}
                                                     </td>
-                                                    <td className="px-3 py-2 w-28">
+                                                    <td className="px-3 py-2 w-40">
                                                         <div className="flex flex-wrap gap-2">
+                                                            {/* Only for a document with lines to show. A
+                                                                total typed off the paper is all on the row. */}
+                                                            {hasLines(inv) && (
+                                                                <button type="button" onClick={() => setShowingId(inv.id)} className={rowButton()}>
+                                                                    Show invoice
+                                                                </button>
+                                                            )}
                                                             <button
                                                                 onClick={() => isEditing ? cancelEdit() : startEdit(inv)}
                                                                 className={rowButton('edit')}
@@ -698,6 +716,7 @@ export default function InvoicesPage() {
                     </div>
                 </Modal>
             )}
+            {showing && <ShowInvoiceModal invoice={showing} onClose={() => setShowingId(null)} />}
         </>
     )
 }

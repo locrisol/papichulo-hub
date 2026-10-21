@@ -173,6 +173,22 @@ export function similarWords(a, b) {
     return shared / Math.min(one.size, two.size)
 }
 
+// The pack, which is not what a thing is: 1X5 KG, 24X330 ML, 6X850 GM,
+// 4X2.5KG, 750ML. Two lines in the same pack share those words whatever is
+// in the box, so mango in a 1X1 KG bag read as half way to green peppers in
+// one, and strawberries in a 400 g punnet as the Tajin seasoning in its 400 g
+// tub. A size that tells two things apart stays: 9X9MM fries, a 12" wrap.
+const UNIT = '(?:KGS?|GRMS?|GMS?|GR|G|MLS?|CL|LTRS?|LT|L|EA|PCS?|PK)'
+const PACK = new RegExp(
+    String.raw`\b\d+(?:[.,]\d+)?\s*X\s*\d+(?:[.,]\d+)?(?:\s*${UNIT})?\b`
+    + String.raw`|\b\d+(?:[.,]\d+)?\s*${UNIT}\b`,
+    'gi',
+)
+
+export function withoutPack(text) {
+    return String(text ?? '').replace(PACK, ' ').replace(/\s+/g, ' ').trim()
+}
+
 // How much two descriptions are the same words, measured against the longer
 // of the two, so a name with an extra word in it is not the same thing:
 // SANTA MARIA TORTILLA against SANTA MARIA TORTILLA WHOLEMEAL is 0.8 here and 1
@@ -214,7 +230,8 @@ const tidyPack = p => String(p || '').toUpperCase().replace(/\s+/g, '')
 export function sameThing(line, code) {
     if (!line?.pack_size || !code?.pack_size) return false
     if (tidyPack(line.pack_size) !== tidyPack(code.pack_size)) return false
-    return sameWords(line.description, code.last_description) >= SAME_WORDS
+    // The pack is checked once, above, and not again as words.
+    return sameWords(withoutPack(line.description), withoutPack(code.last_description)) >= SAME_WORDS
 }
 
 // A code that stopped appearing, that this new one looks like it replaced.
@@ -243,7 +260,10 @@ export function codeSuccessor(line, codes, { onThisDocument = [], date = null } 
     const scored = gone
         .map(c => ({
             code: c,
-            score: similarWords(line.description, c.last_description)
+            // The words without the pack: STRAWBERRIES 1X400 GM read as two
+            // thirds of the Tajin seasoning in its 1X400 GM tub, and the same
+            // pack on top made it a question on 21 Oct 2026.
+            score: similarWords(withoutPack(line.description), withoutPack(c.last_description))
                 // A pack size that matches is worth something on its own, and a
                 // pack size that does not is worth a warning rather than a
                 // refusal: a supplier changing the pack is exactly when the code
@@ -427,7 +447,12 @@ function lineQuantity(line, units) {
 // `codes` is the authority once it has anything in it. The supplier_code column
 // on a price row seeds it on the first import and is the fallback after that,
 // so the fact ends up living in one place rather than two.
-export function matchLines({ lines = [], codes = [], prices = [], supplier = null, date = null }) {
+//
+// `versions` is every code each of this supplier's versions goes by, across
+// the brand (lib/versionCodes). The last place a code is looked for: one this
+// restaurant never met that belongs to a version it prices means that price,
+// a number joined at the other restaurant or an older one turning up again.
+export function matchLines({ lines = [], codes = [], prices = [], versions = [], supplier = null, date = null }) {
     const onThisDocument = lines.map(l => l.code)
     const byCode = new Map((codes || []).map(c => [c.supplier_code, c]))
     const byId = new Map((prices || []).map(p => [p.id, p]))
@@ -453,10 +478,18 @@ export function matchLines({ lines = [], codes = [], prices = [], supplier = nul
         const replacedBy = codeRow && !codeRow.price_id
             ? (codes || []).find(c => c.replaces_code === line.code && c.price_id && byId.get(c.price_id))
             : null
-        const price = (codeRow?.price_id && byId.get(codeRow.price_id))
+        const known = (codeRow?.price_id && byId.get(codeRow.price_id))
             || (replacedBy && byId.get(replacedBy.price_id))
             || (!codeRow && prices.find(p => p.supplier_code === line.code))
             || null
+        const wanted = String(line.code ?? '').trim().toLowerCase()
+        const version = known || !wanted ? null : (versions || []).find(v => (
+            String(v.code ?? '').trim().toLowerCase() === wanted && v.is_active !== false
+        )) || null
+        const price = known || (version && (
+            prices.find(p => p.version_id === version.version_id && p.is_preferred)
+            || prices.find(p => p.version_id === version.version_id)
+        )) || null
         const product = price?.products || price?.product || null
 
         if (!price) {
@@ -503,6 +536,7 @@ export function matchLines({ lines = [], codes = [], prices = [], supplier = nul
             line,
             codeRow,
             replacedBy,
+            byVersion: !known,
             price,
             product,
             was,

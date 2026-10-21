@@ -10,11 +10,19 @@
 //
 // Which versions count, for a product at a restaurant:
 //
-//   the ones the restaurant has a price for, switched off or not: if it has
-//     a price it may have it on the shelf;
+//   the ones it buys, which public_restaurant_versions says: on an invoice
+//     there in the last 56 days, or priced there from a supplier not read
+//     line by line, or else the one last bought there (since 19 October
+//     2026; it was every version with a price there, and a price typed in
+//     months ago kept an old make on the sheet);
 //   if it buys none, the ones the brand recommends, which is what it would
 //     buy (Dun Laoghaire, which has bought nothing through the Hub yet);
-//   if none is recommended, every one in use, and failing that every one.
+//   if none is recommended, every one in use.
+//
+// Never a switched off version. A product whose versions are all switched
+// off gets no row, so its dishes say Ask a member of staff: there is nothing
+// left to answer for it, and a row of fourteen nones nobody gave would read
+// as an answer.
 //
 // All of them together, the worst answer for each allergen: if both tortillas
 // are on the shelf a customer could be handed either.
@@ -40,7 +48,7 @@ export function allergensAt({ productAllergens = [], versions = [], versionAller
     const out = []
     for (const [productId, list] of byProduct) {
         const used = versionsUsed(list, here)
-        if (!used.every(v => answers.has(v.id))) continue
+        if (!used.length || !used.every(v => answers.has(v.id))) continue
         const row = { product_id: productId, ...emptyAllergens() }
         for (const v of used) {
             const answer = answers.get(v.id)
@@ -58,12 +66,12 @@ export function allergensAt({ productAllergens = [], versions = [], versionAller
 // Which of a product's versions a restaurant's sheet is built from. See the
 // note at the top.
 export function versionsUsed(list, here) {
-    const bought = list.filter(v => here.has(v.id))
-    if (bought.length) return bought
     const live = list.filter(v => v.is_active !== false)
+    const bought = live.filter(v => here.has(v.id))
+    if (bought.length) return bought
     const recommended = live.filter(v => v.is_recommended)
     if (recommended.length) return recommended
-    return live.length ? live : list
+    return live
 }
 
 // The reads behind it, for a restaurant, as one result in the shape every

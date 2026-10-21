@@ -1,4 +1,3 @@
-import { sheetRows, productsWithARow } from '@/lib/allergenSheet'
 import { stampDate } from '@/lib/dates'
 import { SHEET_ORDER, ALLERGEN_SHORT } from '@/lib/allergens'
 import { loadJsPdf } from '@/lib/pdfPage'
@@ -74,9 +73,12 @@ export async function qrCardPdf({ restaurantName, qrDataUrl, publicUrl, slug }) 
     return pdf
 }
 
-// The allergen record form, from everything readSheet on the page fetched in
-// one go. userName is whoever printed it, for the Created by box.
-export async function allergenListPdf({ menuData, slug, userName }) {
+// The allergen record form. groups is sheetGroups' answer, the very rows
+// the Hub keeps a copy of when it is printed, so the paper and the copy
+// cannot differ. date is the day its lines last changed (the last print's
+// when they are the same, otherwise today), and userName whoever printed it,
+// for the Created by box.
+export async function allergenListPdf({ groups, date, slug, userName }) {
     const pdf = new (await loadJsPdf())({ unit: 'mm', format: 'a4', orientation: 'landscape' })
     const pageWidth = pdf.internal.pageSize.getWidth()   // 297
     const pageHeight = pdf.internal.pageSize.getHeight() // 210
@@ -84,11 +86,12 @@ export async function allergenListPdf({ menuData, slug, userName }) {
     const marginY = 10
     const contentWidth = pageWidth - marginX * 2
 
-    // The day anything on the sheet last changed. Today only when the
-    // change log holds no such day, which means nothing on the sheet has
-    // changed since the log began in September 2026: today is then the
-    // day the form was made, which is true.
-    const lastUpdatedStr = stampDate(menuData.changedAt || new Date().toISOString())
+    // The day the lines on the sheet last changed. Since 19 October 2026
+    // that is the copy kept with the last print: its date when this sheet
+    // says the same, today when it does not. It used to be the change log's
+    // last change to anything the sheet is made from, which moved for a new
+    // rice with the same allergens.
+    const lastUpdatedStr = stampDate(date || new Date().toISOString())
     const todayStr = stampDate(new Date())
 
     // Loaded before anything is drawn, because it goes on every page and a
@@ -448,34 +451,10 @@ export async function allergenListPdf({ menuData, slug, userName }) {
     drawMetaBlock()
     drawTableHeader()
 
-    // The same rows the customer page shows, worked out in one place so the
-    // printed sheet and the screen cannot come out saying different things.
-    // They used to have a copy of this reasoning each.
-    //
-    // A category can be kept off the sheet. No answer means shown, so
-    // nothing recorded before that switch existed disappears.
-    const sheetCategories = menuData.categories.filter(c => c.on_allergen_sheet !== false)
-
-    // What already has a row of its own anywhere on the sheet, asked once
-    // of all of it, the same as the customer page asks.
-    const withARow = productsWithARow(
-        menuData.menuItems.filter(i => sheetCategories.some(c => c.id === i.category_id)),
-        menuData.components,
-        menuData.products,
-    )
-
-    for (const category of sheetCategories) {
-        const rows = sheetRows(
-            menuData.menuItems.filter(i => i.category_id === category.id),
-            menuData.components,
-            menuData.products,
-            menuData.recipeLines,
-            menuData.allergens,
-            withARow,
-        )
-
-        if (rows.length === 0) continue
-
+    // The same rows the customer page shows, worked out in one place
+    // (sheetGroups) so the printed sheet and the screen cannot come out
+    // saying different things.
+    for (const { category, rows } of groups) {
         const whole = categoryRowHeight
             + rows.reduce((sum, r) => sum + rowHeightFor(r), 0)
         const opening = categoryRowHeight

@@ -22,7 +22,8 @@ import {
 } from '@/lib/weeklyReport'
 import { keyedPlatforms, platformsToShow } from '@/lib/salesTenders'
 import { paperworkFor } from '@/lib/reportPeople'
-import { reprintDue } from '@/lib/allergenSheet'
+import { reprintDue, dueToKeep } from '@/lib/allergenSheet'
+import { compareSheet } from '@/lib/sheetAt'
 import { weeksBack, byWeek } from '@/lib/reportChart'
 import { FOOD, PACKAGING } from '@/lib/invoiceCategories'
 import { chartSpecs, deliveryRates, accountColour } from '@/lib/reportCharts'
@@ -36,10 +37,12 @@ import ReportPaperwork from '@/components/reports/ReportPaperwork'
 import ReportActions from '@/components/reports/ReportActions'
 import ReportPrices from '@/components/reports/ReportPrices'
 import usePriceWeek from '@/components/reports/usePriceWeek'
+import useWhatWasOn from '@/components/reports/useWhatWasOn'
+import ReportWhatWasOn from '@/components/reports/ReportWhatWasOn'
 import useCleaningWeek from '@/components/reports/useCleaningWeek'
 import ReportCleaning from '@/components/reports/ReportCleaning'
 import { claimActions } from '@/lib/invoiceReport'
-import { costFromPaid, movePreferred, renumberPlan, alternatePlan, newGroupId } from '@/lib/priceEvents'
+import { costFromPaid, movePreferred, canJoinCodes, canBuyBoth } from '@/lib/priceEvents'
 import { claimKind } from '@/lib/invoiceClaims'
 import { readToDecide } from '@/lib/invoiceReview'
 import ReportSectionHead from '@/components/reports/ReportSectionHead'
@@ -193,6 +196,14 @@ export default function ReportPage() {
     // with everything else when it goes out, the same as the prices.
     const liveCleaning = useCleaningWeek({
         restaurantId: report?.restaurant_id,
+        weekStart: report?.week_start,
+        enabled: report?.status === 'draft',
+    })
+
+    // What was on each day beside what it took, and the show nights. Live on
+    // a draft, frozen when it goes out, the same as the checklists.
+    const liveOn = useWhatWasOn({
+        restaurant: activeRestaurant,
         weekStart: report?.week_start,
         enabled: report?.status === 'draft',
     })
@@ -440,7 +451,7 @@ export default function ReportPage() {
                 setToDecide(waiting.lines.length)
             }
 
-            const [ownerRows, place, changedRes] = await Promise.all([
+            const [ownerRows, place, sheetRes] = await Promise.all([
                 supabase.from('users')
                     .select('id, full_name')
                     .eq('restaurant_id', head.restaurant_id)
@@ -453,9 +464,10 @@ export default function ReportPage() {
                 supabase.from('restaurants')
                     .select('report_recipients')
                     .eq('id', head.restaurant_id).maybeSingle(),
-                // When anything on the allergen sheet last changed, for the
-                // line in the paperwork saying a new one is due.
-                supabase.rpc('allergens_changed_at'),
+                // The allergen sheet as it stands against the copy kept with
+                // the last print, for the line in the paperwork saying a new
+                // one is due. A sent report says what it was sent with.
+                head.status === 'published' ? Promise.resolve(null) : compareSheet(head.restaurant_id),
             ])
             setExtrasRead(!place.error)
             if (ownerRows.error || place.error) return stop(ownerRows.error || place.error)
@@ -471,18 +483,21 @@ export default function ReportPage() {
             // failed that read and the card showed nobody, and adding one
             // person back would have saved a list of one over the whole list.
             //
-            // Left unanswered when the date would not come back, rather than
-            // null, which is what a sheet that is not due gets. A reminder
-            // worked out from half of what it needs would be a guess.
+            // Left unanswered when the sheet would not read, rather than null,
+            // which is what a sheet that is not due gets. A reminder worked
+            // out from half of what it needs would be a guess. Kept as the
+            // report freezes it, the first few changed lines and how many
+            // more, so the draft shows what will be sent.
             // A sent report says what it was sent with, the same as the rest
             // of its paperwork.
             const sentPaper = head.status === 'published' ? head.figures?.paperwork : null
             if (sentPaper) setAllergenSheet(sentPaper.allergenSheet)
-            else setAllergenSheet(changedRes.error || !activeRestaurant ? undefined : reprintDue({
+            else setAllergenSheet(!sheetRes || sheetRes.error || !activeRestaurant ? undefined : dueToKeep(reprintDue({
                 printedAt: activeRestaurant.allergen_sheet_printed_at,
                 everyMonths: activeRestaurant.allergen_sheet_every_months,
-                changedAt: changedRes.data,
-            }))
+                kept: sheetRes.data.kept,
+                changes: sheetRes.data.changes,
+            })))
 
             // Our week only. The days read above run a day past it.
             const totals = {}
@@ -868,6 +883,9 @@ export default function ReportPage() {
             // The checklists, words and all, with the paths of the week's
             // photos so the page can still show them while they are kept.
             cleaning: liveCleaning.ready ? liveCleaning.data : null,
+            // What was on, words and all. Null when it could not be read, and
+            // the mail then leaves the list out rather than holding the week.
+            whatWasOn: liveOn.ready ? liveOn.data : null,
             paperwork: {
                 // The day here it was checked on, for the sent page. frozen_at
                 // is UTC, a day early for a report sent after midnight.
@@ -880,10 +898,11 @@ export default function ReportPage() {
                 // on next week's roster and somebody who is waiting on the post.
                 permits,
                 // Only while a new allergen sheet is due, in the words the
-                // Public Allergens page uses. Null says it was checked and
-                // was not. Undefined, when it could not be checked, is left
-                // out of the stored copy, the same as a report frozen before
-                // version 3.
+                // Public Allergens page uses, with the first few lines that
+                // changed when that is why (version 6). Null says it was
+                // checked and was not. Undefined, when it could not be
+                // checked, is left out of the stored copy, the same as a
+                // report frozen before version 3.
                 allergenSheet,
             },
         })
@@ -893,6 +912,12 @@ export default function ReportPage() {
     // so both have to have finished reading, and be this week's, before
     // anything goes out.
     function stillReading() {
+        // Waited for, but never a reason to hold the week: a list that could
+        // not be read goes out as nothing rather than stopping the report.
+        if (!liveOn.ready && !liveOn.error) {
+            setError('What was on this week is still loading. Wait a moment and try again.')
+            return true
+        }
         if (sections.some(s => s.key === 'cleaning') && !liveCleaning.ready) {
             setError(liveCleaning.error
                 ? `The checklists could not be loaded, so this cannot be sent yet: ${liveCleaning.error}`
@@ -1238,72 +1263,41 @@ export default function ReportPage() {
         }, `${item.name} is costed from ${item.bought} now.`)
     }
 
+    // One call, code_update, the same one Review makes: the usual version
+    // takes the code at both restaurants and keeps its star, allergens and
+    // pictures, and a price the code had of its own here is folded in, its
+    // lines with it. All of it or none.
     function renumber(item, key) {
-        const plan = renumberPlan(item)
         return decidePrice(key, {
             title: 'Is this a code update?',
             message: `${item.bought} (code ${item.code}) and the ${item.name} usually bought`
-                + `${item.usualCode ? ` (code ${item.usualCode})` : ''} become one, with one price and one price `
-                + 'history. What recipes cost it at does not change here: if the price moved, it shows as a price '
-                + 'change from now on.',
+                + `${item.usualCode ? ` (code ${item.usualCode})` : ''} become one version, with one price and one price `
+                + 'history, at every restaurant. It keeps its place on the Recommended list and its allergens. What '
+                + 'recipes cost it at does not change here: if the price moved, it shows as a price change from now on.',
             confirmLabel: 'They are the same',
         }, async () => {
-            if (!plan) return 'The Hub cannot join these two. Match the code in the review instead.'
-            if (plan.moveLines) {
-                const { error: e1 } = await supabase.from('invoice_lines')
-                    .update({ price_id: plan.moveLines.to }).eq('price_id', plan.moveLines.from)
-                if (e1) return friendlyError(e1)
-            }
-            if (plan.release) {
-                const { error: e2 } = await supabase.from('supplier_codes')
-                    .update({ price_id: null }).eq('id', plan.release)
-                if (e2) return friendlyError(e2)
-            }
-            // Asked to say what it removed, because a removal the database
-            // quietly declines comes back with no error and nothing gone, and
-            // the green peppers were left with a price nobody pointed at.
-            if (plan.drop) {
-                const { data: gone, error: e3 } = await supabase.from('product_supplier_prices')
-                    .delete().eq('id', plan.drop).select('id')
-                if (e3) return friendlyError(e3)
-                if (!gone?.length) {
-                    return "The code was joined, but its old price could not be removed. It is on the product's "
-                        + 'prices page and nothing uses it: delete it there.'
-                }
-            }
-            const { error: e4 } = await supabase.from('supplier_codes').update(plan.point.patch).eq('id', plan.point.id)
-            if (e4) return friendlyError(e4)
-            if (plan.rowCode) {
-                const { error: e5 } = await supabase.from('product_supplier_prices')
-                    .update({ supplier_code: plan.rowCode.supplier_code }).eq('id', plan.rowCode.id)
-                if (e5) return friendlyError(e5)
-            }
-            return null
+            if (!canJoinCodes(item)) return 'The Hub cannot join these two. Match the code in the review instead.'
+            const { error } = await supabase.rpc('code_update', {
+                keep_price: item.usualPriceId, new_code: item.code, make_main: item.newer !== false,
+            })
+            return error ? friendlyError(error) : null
         }, `${item.bought} and the usual ${item.name} are one version now.`)
     }
 
-    // The same thing bought either way. Nothing is moved or removed: the two
-    // codes go in one group and each keeps its own price.
+    // The same thing bought either way: each keeps its own price, and both
+    // are recommended when either was, at every restaurant (buy_both).
     function buyBoth(item, key) {
-        const plan = alternatePlan(item, newGroupId())
         return decidePrice(key, {
             title: 'Same thing, you usually buy both?',
             message: `${item.bought} (code ${item.code}) and ${item.usualName}`
-                + `${item.usualCode ? ` (code ${item.usualCode})` : ''} become one product bought either way. `
-                + 'Each keeps its own price, neither is listed as bought instead of the other again, and recipes are '
-                + 'checked against what they cost on average.',
+                + `${item.usualCode ? ` (code ${item.usualCode})` : ''} become one product bought either way, at every `
+                + 'restaurant. Each keeps its own price, neither is listed as bought instead of the other again, and '
+                + 'when one is recommended, both are.',
             confirmLabel: 'We buy both',
         }, async () => {
-            if (!plan) return 'The Hub cannot group these two. The usual price has no code on it.'
-            const { error: e1 } = await supabase.from('supplier_codes')
-                .update({ alternate_group: plan.group }).in('id', plan.rows)
-            if (e1) return friendlyError(e1)
-            if (plan.fold) {
-                const { error: e2 } = await supabase.from('supplier_codes')
-                    .update({ alternate_group: plan.group }).eq('alternate_group', plan.fold)
-                if (e2) return friendlyError(e2)
-            }
-            return null
+            if (!canBuyBoth(item)) return 'The Hub cannot group these two. Match the code in the review first.'
+            const { error } = await supabase.rpc('buy_both', { keep_price: item.usualPriceId, other_price: item.ownPriceId })
+            return error ? friendlyError(error) : null
         }, `${item.name} is bought either way now.`)
     }
 
@@ -1506,6 +1500,13 @@ export default function ReportPage() {
 
                     <WeekChart rows={history} {...specs.sales} />
                     <figcaption className="text-xs text-muted mt-2">{specs.sales.caption}</figcaption>
+
+                    <h3 className="text-xs font-bold text-muted uppercase tracking-wider mt-6 mb-2">What was on</h3>
+                    <ReportWhatWasOn
+                        data={report.status === 'published' ? figures.whatWasOn : liveOn.data}
+                        error={liveOn.error}
+                        published={report.status === 'published'}
+                    />
 
                     {salesCosts && (
                         <ReportComments

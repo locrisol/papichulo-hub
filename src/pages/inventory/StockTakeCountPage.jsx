@@ -2,6 +2,7 @@ import { stampDate } from '@/lib/dates'
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
+import { readStaffCostPrices } from '@/lib/costPrices'
 import { useAuth } from '@/context/auth'
 import { useConfirm } from '@/context/confirm'
 import { resolveUnitCost } from '@/lib/mixCost'
@@ -39,12 +40,11 @@ const REFRESH_EVERY = 60 * 1000
 // in it, so adding it again counted it twice.
 const withLine = line => prev => (prev.some(l => l.id === line.id) ? prev : [...prev, line])
 
-// Every place a product is kept at this restaurant: the places of each
-// version it buys there, or the product's own section and Also in when it
-// buys none (lib/brandVersions). Frozen and ambient tortillas are two
-// versions in two places, so the product is counted under both. And every
-// place this count already has a line for it in, so a place changed during
-// the count never hides what was counted.
+// Every place a product is kept at this restaurant: where the restaurant
+// said, or the product's own section and Also in when it has not
+// (lib/brandVersions, lib/keptHere). Tortillas kept frozen and ambient are
+// counted under both. And every place this count already has a line for it
+// in, so a place changed during the count never hides what was counted.
 function placesOf(product, kept, lines) {
     const counted = (lines || []).filter(l => l.product_id === product.id).map(l => l.section || 'Other')
     return placesFor(product, kept, counted)
@@ -78,7 +78,10 @@ export default function StockTakeCountPage() {
     const [session, setSession] = useState(null)
     const [products, setProducts] = useState([])
     const [lines, setLines] = useState([])
-    const [preferredPrices, setPreferredPrices] = useState([])
+    // What each product costs where the shelf is (lib/costPrices), which is
+    // what the count is valued at. The preferred price rows are only read for
+    // the packs a product is counted in.
+    const [costPrices, setCostPrices] = useState([])
     // Where each product is kept at this restaurant, version by version.
     const [kept, setKept] = useState([])
     const [recipeLines, setRecipeLines] = useState([])
@@ -169,13 +172,15 @@ export default function StockTakeCountPage() {
             .eq('restaurant_id', sessionData.restaurant_id)
             .eq('is_preferred', true)
         if (pricesErr) { setError(friendlyError(pricesErr)); setLoading(false); return }
-        setPreferredPrices(pricesData || [])
+        const { data: costData, error: costErr } = await readStaffCostPrices(sessionData.restaurant_id)
+        if (costErr) { setError(friendlyError(costErr)); setLoading(false); return }
+        setCostPrices(costData || [])
 
-        // Where each product is kept there, from the versions it buys. The
-        // view carries nothing about suppliers or prices, so staff read it.
+        // Where each product is kept there, when that restaurant has said.
+        // It carries nothing about suppliers or prices, so staff read it.
         const { data: keptData, error: keptErr } = await supabase
             .from('restaurant_kept_in')
-            .select('*')
+            .select('product_id, section, also_in')
             .eq('restaurant_id', sessionData.restaurant_id)
         if (keptErr) { setError(friendlyError(keptErr)); setLoading(false); return }
         setKept(keptData || [])
@@ -386,7 +391,7 @@ export default function StockTakeCountPage() {
 
         setSavingLine(true)
 
-        const unitCost = resolveUnitCost(product, products, recipeLines, preferredPrices)
+        const unitCost = resolveUnitCost(product, products, recipeLines, costPrices)
         const lineTotal = unitCost != null ? total * unitCost : null
 
         const { data, error: insertErr } = await writing(() => supabase
@@ -440,7 +445,7 @@ export default function StockTakeCountPage() {
     // the accident instead of trying to prevent it.
     async function handleNone(product, section) {
         setSavingLine(true)
-        const unitCost = resolveUnitCost(product, products, recipeLines, preferredPrices)
+        const unitCost = resolveUnitCost(product, products, recipeLines, costPrices)
 
         const { data, error: noneErr } = await writing(() => supabase
             .from('stock_take_lines')

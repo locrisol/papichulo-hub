@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
     inHolidayPeriod, weeklyCap, ageOn, longestRest, shortestGap, checkWeek,
-    permissionFor, DEFAULT_RULES, findingsByEmployee, worstLevel, overlapFindings,
+    permissionFor, DEFAULT_RULES, findingsByEmployee, worstLevel, rowTint, overlapFindings,
     graceFor, isPaperwork, aboutThisWeek,
 } from '@/lib/workRules'
 
@@ -766,5 +766,15 @@ describe('a split day is not a short turnaround', () => {
             shift(WEEK[1], '06:00', '14:00'),
         ]
         expect(shortestGap(shifts, WEEK).hours).toBe(7)
+    })
+})
+
+// His, 17 October: a person's whole row is tinted while anything is wrong.
+describe('rowTint', () => {
+    it('is yellow for a warning, red for something to fix, and nothing for a clean row', () => {
+        expect(rowTint([{ level: 'warn' }])).toBe('bg-amber-100')
+        expect(rowTint([{ level: 'warn' }, { level: 'block' }])).toBe('bg-red-100')
+        expect(rowTint([])).toBe('')
+        expect(rowTint(undefined)).toBe('')
     })
 })

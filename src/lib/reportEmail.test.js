@@ -28,6 +28,26 @@ const figures = {
         { id: 'p2', name: 'Uber Eats', bucket: 'online_platform', taken: 2100, colour: '#1B6B43', mark: '#248C58' },
         { id: 'p3', name: 'Corporate Ltd', bucket: 'catering', taken: 900 },
     ],
+    // What was on, as lib/whatWasOn freezes it. Long names on purpose: they
+    // have to wrap under the day rather than widen the mail.
+    whatWasOn: {
+        usualWeeks: 8,
+        days: [
+            { date: '2026-10-04', weekday: 'Sunday', closed: true, net: null, usual: null, change: null, nothingNearby: true, on: [] },
+            {
+                date: '2026-10-05', weekday: 'Monday', closed: false, net: 2152.34, usual: 1708.69, change: 0.2597, nothingNearby: false,
+                on: [
+                    { tone: 'show', text: '3Arena, 18:30 · The Pussycat Dolls: PCD FOREVER TOUR, with very special guests from overseas' },
+                    { tone: 'catering', text: 'Catering · Ancestry, 11:30' },
+                    { tone: 'also', text: 'Also on: 11:30 Lunch Team, 12:10 Feedr' },
+                ],
+            },
+            { date: '2026-10-06', weekday: 'Tuesday', closed: false, net: null, usual: 2369.8, change: null, nothingNearby: true, on: [] },
+            { date: '2026-10-07', weekday: 'Wednesday', closed: false, net: 1497.72, usual: null, change: null, nothingNearby: true, on: [] },
+        ],
+        week: { net: 3650.06, usual: 1708.69, comparedNet: 2152.34 },
+        showsWords: 'Over the last 12 weeks, days with a show at the 3Arena took 29% more than usual for that day, and days without one 2% less than usual.',
+    },
     paperwork: {
         food: { total: 8, fine: 8, ok: true, missing: [], expired: [], expiring: [] },
         permits: {
@@ -1377,6 +1397,31 @@ describe('the allergen sheet', () => {
         expect(due.text).toContain(`  ${words}`)
     })
 
+    // Since 19 October 2026 (version 6), the lines that changed, free to
+    // wrap, and in the plain copy one to a line.
+    it('lists the lines that changed, and how many more', () => {
+        const changed = reportEmail({
+            ...base,
+            figures: {
+                ...figures,
+                paperwork: {
+                    ...figures.paperwork,
+                    allergenSheet: {
+                        reason: 'changed',
+                        words: 'Last printed 12 June. 3 lines on it have changed since then. Print a new sheet.',
+                        changes: [{ category: 'Desserts', name: 'Churros', what: 'Now contains Milk' }],
+                        more: 2,
+                    },
+                },
+            },
+        })
+        expect(changed.html).toContain('Churros (Desserts): Now contains Milk')
+        expect(changed.html).toContain('and 2 more')
+        expect(changed.text).toContain('    - Churros (Desserts): Now contains Milk')
+        expect(changed.text).toContain('    and 2 more')
+        expect(due.html).not.toContain('and 2 more')
+    })
+
     // Not due, or a report frozen before this existed.
     it('says nothing while it is not due', () => {
         const mail = reportEmail(base)
@@ -1456,13 +1501,15 @@ describe('prices and suppliers', () => {
         expect(mail.text).toContain('    BWG Foodservice: €98.50, not read line by line yet')
     })
 
-    // Layout D, his pick of 4 October: two boxes a product.
+    // Layout D, his pick of 4 October: two boxes a product. A report sent
+    // before "Not what we should be buying" keeps this card.
     it('sets what was bought beside what the brand recommends, and what waits on a review', () => {
         const brand = reportEmail({
             ...base, sections: withPrices, figures: {
                 ...figures,
                 prices: {
                     ...prices,
+                    offList: undefined,
                     notRecommended: [{
                         name: 'Flour Tortilla (Burritos)', unit: 'each', cases: 3, money: 99.09, others: 0,
                         bought: { name: 'Plain wraps 12"', per: 0.3303 },
@@ -1482,6 +1529,51 @@ describe('prices and suppliers', () => {
         expect(brand.text).toContain('      Bought: Plain wraps 12", €0.33 each')
         expect(brand.text).toContain('      Recommended: Santa Maria wrap 12", €0.30 each')
         expect(brand.text).toContain('    Corn Tortilla 6 inch: 1 case, €41.80, sent 18 Sept')
+    })
+
+    // The card that took the place of the two about switching (his decision
+    // 5 of 18 October 2026).
+    const OFF = {
+        productId: 'tor', name: 'Flour Tortilla (Burritos)', unit: 'each', money: 99.09, extra: 8.19, change: 9,
+        costed: 0.303, borrowed: true, quiet: false,
+        bought: [{ name: 'Plain wraps 12"', supplier: 'Sysco Ireland', code: '5013972', cases: 3, loose: 0, money: 99.09, per: 0.3303, fallback: null }],
+        recommended: [{ name: 'Santa Maria wrap 12"', supplier: 'Sysco Ireland', code: '497870' }],
+        dishes: [{ id: 'd1', name: 'Chicken Burrito', was: 3.2, now: 3.45, rise: 7.8 }],
+    }
+    const offMail = (offList, extra = {}) => reportEmail({
+        ...base, sections: withPrices, figures: {
+            ...figures,
+            prices: { ...prices, offList, totals: { ...prices.totals, offList: 8.19, offListCount: 1, offListDishes: 1 }, ...extra },
+        },
+    })
+
+    it('sets what was bought beside the recommended ones, with the dishes it pushed over', () => {
+        const off = offMail([OFF])
+        expect(off.html).toContain('Not what we should be buying')
+        expect(off.html).toContain('+€8.19')
+        expect(off.html).toContain('Plain wraps 12&quot;')
+        expect(off.html).toContain('Sysco Ireland')
+        expect(off.html).toContain("Recipes cost it at €0.30 each, the other restaurant's price")
+        expect(off.html).toContain('Chicken Burrito: €3.20 to €3.45')
+        expect(off.html.indexOf('Not what we should be buying')).toBeLessThan(off.html.indexOf('Same product, new price'))
+        expect(off.html).not.toContain('Bought as something else')
+        expect(off.text).toContain('  Not what we should be buying: +€8.19')
+        expect(off.text).toContain('      Bought: Plain wraps 12" (Sysco Ireland, code 5013972), €0.33 each')
+        expect(off.text).toContain('      Over 5%: Chicken Burrito, €3.20 to €3.45, +7.8%')
+    })
+
+    it('stops at four products, and says a fallback quietly', () => {
+        const many = Array.from({ length: 6 }, (_, i) => ({ ...OFF, productId: `p${i}`, name: `Product ${i}` }))
+        const quiet = { ...OFF, productId: 'q', name: 'Green Peppers', quiet: true, dishes: [], bought: [{ ...OFF.bought[0], name: 'Green Peppers 1x1 Kg', fallback: 1 }] }
+        const off = offMail([...many, quiet])
+        expect(off.html).toContain('and 2 more, on the Hub')
+        expect(off.html).toContain('A fallback, as the list allows: Green Peppers (Green Peppers 1x1 Kg).')
+        expect(off.html).not.toContain('Product 5')
+    })
+
+    it('draws the old cards for a report sent before it', () => {
+        const sent = offMail(undefined, { switches: [] })
+        expect(sent.html).not.toContain('Not what we should be buying')
     })
 
     it('leaves the card out when everything bought was what the brand recommends, and on a report frozen before', () => {
@@ -2015,6 +2107,28 @@ describe('a heavy week', () => {
         expect(mail.html.length).toBeLessThan(75000)
     })
 
+    // A heavy week on a report from 19 October 2026, with "Not what we should
+    // be buying" in place of the switches: fifteen products bought off the
+    // list, each with two versions bought and five dishes pushed over.
+    it('stays under the size Gmail cuts off at with the card about the Recommended list full', () => {
+        const offList = many(15, i => ({
+            productId: `p${i}`, name: `Off the list ${i}`, unit: 'a kg', money: 120, extra: 15 - i, change: 12.5,
+            costed: 2.2, borrowed: i % 2 === 0, quiet: false,
+            bought: many(2, j => ({ name: `Other brand ${i}.${j}`, supplier: 'Henderson Foodservice', code: `C${i}${j}`, cases: 2, loose: 0, money: 60, per: 2.5, fallback: null })),
+            recommended: [{ name: `The recommended one ${i}`, supplier: 'Sysco Ireland', code: `R${i}` }],
+            dishes: many(5, k => ({ id: `d${i}${k}`, name: `A dish with a long name ${k}`, was: 3.2, now: 3.6, rise: 12.5 })),
+        }))
+        const listed = reportEmail({
+            ...base, sections: heavySections,
+            figures: { ...figures, cleaning, prices: { ...prices, switches: [], offList, totals: { ...prices.totals, switches: 0, offList: 120, offListCount: 15 } } },
+        })
+        expect(listed.html).toContain('Off the list 3<')
+        expect(listed.html).not.toContain('Off the list 4<')
+        expect(listed.html).toContain('and 11 more, on the Hub')
+        expect(listed.html).toContain('and 2 more, on the Hub')
+        expect(listed.html.length).toBeLessThan(75000)
+    })
+
     it('shows the top of each list and says how many more', () => {
         // The first of each list, in its own order, and none past the cap.
         expect(mail.html).toContain('Product number 7<')
@@ -2241,5 +2355,37 @@ describe('actions done this week in the mail', () => {
     it('are listed, apart from the open ones', () => {
         expect(doneActions(section).map(a => a.label)).toEqual(['Bag stamper'])
         expect(openActions(section, '2026-10-04').map(a => a.label)).toEqual(['Find coloured bowls'])
+    })
+})
+
+// His, 17 October: what was on each day, under the sales and costs.
+describe('what was on', () => {
+    const html = reportEmail(base).html
+
+    it('gives each day its takings against a usual day, and what was on under it', () => {
+        expect(html).toContain('What was on')
+        expect(html).toContain('Usual Monday €1,708.69')
+        expect(html).toMatch(/\+26%/)
+        expect(html).toContain('3Arena, 18:30 · The Pussycat Dolls')
+        expect(html).toContain('Also on: 11:30 Lunch Team, 12:10 Feedr')
+    })
+
+    it('says a closed day, a day with no sales, and a day with no usual yet', () => {
+        expect(html).toContain('>Closed</span>')
+        expect(html).toContain('No sales entered')
+        expect(html).toContain('Not enough weeks yet to say what is usual')
+        expect(html).toContain('Nothing on nearby')
+    })
+
+    it('says what usual means, and how show nights have gone', () => {
+        expect(html).toContain('Usual is the middle of the same day over the 8 weeks before')
+        expect(html).toContain('days with a show at the 3Arena took 29% more')
+        expect(html).toContain('A usual week €1,708.69')
+    })
+
+    it('is left out of a report frozen before it existed', () => {
+        const { whatWasOn, ...older } = base.figures
+        expect(whatWasOn).toBeTruthy()
+        expect(reportEmail({ ...base, figures: older }).html).not.toContain('What was on')
     })
 })

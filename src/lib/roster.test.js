@@ -3,7 +3,7 @@ import {
     toMinutes, toTime, shiftMinutes, shiftHours, breakFor, breakLabel, hoursForDay, shiftEdges,
     endLabel, shiftsOverlap, findOverlaps, totals, publishState, fmtHours, hoursForDate,
     timelineRange, staffAt, staffPerSlot, weekRows, dayTotals, tint, DEFAULT_BREAK_RULES,
-    hourLabelStep, dayBreakLabels, endMinutes, closeMinutes, STAFF_WEEKS, staffWeekRange,
+    hourLabelStep, dayBreakLabels, endMinutes, closeMinutes, STAFF_WEEKS, staffWeekRange, publishQuestion,
 } from '@/lib/roster'
 
 const shift = (starts_at, ends_at, extra = {}) => ({
@@ -637,5 +637,46 @@ describe('staffWeekRange', () => {
 
     it('is the same whichever day of the week it is asked on', () => {
         expect(staffWeekRange('2026-09-27')).toEqual(staffWeekRange('2026-10-03'))
+    })
+})
+
+// His, 17 October: publishing a week with warnings asks whether to publish
+// anyway, and lists them, since they are folded away above the roster now.
+describe('publishQuestion', () => {
+    const base = { weekStart: '2026-10-19', shiftCount: 12, hours: 64 }
+
+    it('asks plainly when nothing is wrong', () => {
+        const q = publishQuestion(base)
+        expect(q.confirmLabel).toBe('Publish the week')
+        expect(q.cancelLabel).toBe('Cancel')
+        expect(q.tone).toBe('default')
+        expect(q.message).not.toContain('Warning')
+        expect(q.details).toContainEqual({ label: 'Shifts', value: '12' })
+    })
+
+    it('lists the warnings and asks to publish anyway, without turning red', () => {
+        const q = publishQuestion({ ...base, warnings: [{ text: 'Ana is over 40 hours.' }] })
+        expect(q.message).toContain('Warning:\n• Ana is over 40 hours.')
+        expect(q.confirmLabel).toBe('Publish anyway')
+        expect(q.cancelLabel).toBe('Go back')
+        expect(q.tone).toBe('default')
+    })
+
+    it('turns red for something that has to be fixed, listed first', () => {
+        const q = publishQuestion({
+            ...base,
+            blocks: [{ text: 'Leo is under 18 and on after 22:00.' }],
+            warnings: [{ text: 'Ana is over 40 hours.' }, { text: 'Ben has no break.' }],
+        })
+        expect(q.message.indexOf('Has to be fixed')).toBeLessThan(q.message.indexOf('Warnings:'))
+        expect(q.tone).toBe('danger')
+        expect(q.dangerNote).toContain('legal limits')
+    })
+
+    it('turns red for somebody double booked', () => {
+        const q = publishQuestion({ ...base, clashCount: 2 })
+        expect(q.tone).toBe('danger')
+        expect(q.dangerNote).toBe('2 people are double booked. Check this before publishing.')
+        expect(q.confirmLabel).toBe('Publish the week')
     })
 })

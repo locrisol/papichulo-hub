@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Route, Routes } from 'react-router-dom'
-import { makeQuery, renderWithRouter, tableOf } from '@/test/helpers'
+import { makeQuery, renderWithRouter, tableOf, COST_VIEWS, costRowsOf } from '@/test/helpers'
 
 // Closing a Point Campus stock take, with one product still to count.
 // Invented products and prices.
@@ -27,7 +27,10 @@ let tables
 let failing
 const user = { id: 'u0', role: 'super_admin', full_name: 'Leandro' }
 
-vi.mock('@/lib/supabase', () => ({ supabase: new Proxy({}, { get: (_, k) => db[k] }) }))
+vi.mock('@/lib/supabase', async importOriginal => ({
+    ...(await importOriginal()),
+    supabase: new Proxy({}, { get: (_, k) => db[k] }),
+}))
 vi.mock('@/context/auth', () => ({ useAuth: () => ({ user }) }))
 
 const { default: StockTakeReviewPage } = await import('./StockTakeReviewPage')
@@ -48,7 +51,7 @@ beforeEach(() => {
             // A read that comes back with an error, the way it does on a weak
             // signal.
             if (table === failing) return makeQuery({ data: null, error: { message: 'Failed to fetch' } })
-            const q = tableOf(tables[table] || [])
+            const q = tableOf((COST_VIEWS.includes(table) ? costRowsOf(tables.product_supplier_prices) : tables[table]) || [])
             q.insert = vi.fn(row => {
                 saved.push(row)
                 return makeQuery({ data: { id: `l${saved.length}`, ...row }, error: null })
@@ -84,6 +87,31 @@ describe('a super admin counting the last product before closing', () => {
 
         await waitFor(() => expect(saved).toHaveLength(1))
         expect(saved[0]).toMatchObject({ unit_cost: 7.5, line_total: 15 })
+    })
+})
+
+// Where Point Campus keeps it is its own. A line added here used to go under
+// the product's section, so cheese kept in the freezer here went into the
+// Cold Room and was then flagged as counted in one place only.
+describe('a product kept somewhere else here', () => {
+    it("is listed and counted under Point Campus's own place", async () => {
+        tables.restaurant_kept_in = [{ restaurant_id: 'r1', product_id: 'p1', section: 'Freezer', also_in: [] }]
+        const clicker = open()
+        expect(await screen.findByText(/Freezer · KG/)).toBeInTheDocument()
+        await clicker.click(screen.getByText('Cheddar'))
+        await clicker.type(screen.getByPlaceholderText('0'), '2')
+        await clicker.click(screen.getByRole('button', { name: 'Add' }))
+        await waitFor(() => expect(saved).toHaveLength(1))
+        expect(saved[0]).toMatchObject({ product_id: 'p1', section: 'Freezer' })
+    })
+
+    it('is under its own section when Point Campus has not said', async () => {
+        const clicker = open()
+        await clicker.click(await screen.findByText('Cheddar'))
+        await clicker.type(screen.getByPlaceholderText('0'), '2')
+        await clicker.click(screen.getByRole('button', { name: 'Add' }))
+        await waitFor(() => expect(saved).toHaveLength(1))
+        expect(saved[0]).toMatchObject({ section: 'Cold Room' })
     })
 })
 
@@ -154,7 +182,7 @@ describe('something counted with no price', () => {
 })
 
 describe('a read that fails when the page opens', () => {
-    it.each(['products', 'stock_take_lines', 'product_supplier_prices', 'mix_recipes'])(
+    it.each(['products', 'stock_take_lines', 'staff_cost_prices', 'mix_recipes'])(
         'says so when %s cannot be read, rather than showing everything uncounted',
         async table => {
             failing = table

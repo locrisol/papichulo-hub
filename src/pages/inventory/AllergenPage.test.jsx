@@ -128,10 +128,25 @@ describe('a product with versions', () => {
     it('lists each version with where it comes from, and which one has no answer', async () => {
         showTortilla()
         expect(await screen.findByText('Santa Maria wrap 12"')).toBeInTheDocument()
-        expect(screen.getByText('Sysco Ireland, code 5013972')).toBeInTheDocument()
-        expect(screen.getAllByText('Bought at Point Campus')).toHaveLength(2)
+        // The supplier is a badge of its own, beside the code.
+        expect(screen.getAllByText('Sysco Ireland').length).toBeGreaterThan(0)
+        expect(screen.getByText('code 5013972')).toBeInTheDocument()
+        expect(screen.getAllByText('On the sheet at Point Campus')).toHaveLength(2)
         expect(screen.getByText('Recommended')).toBeInTheDocument()
         expect(screen.getByText('Not answered')).toBeInTheDocument()
+    })
+
+    // Since 19 October 2026 a switched off version is on no sheet, and one
+    // the restaurant has not bought is on it only as the recommended one.
+    it('says which versions are on the sheet here, and that a switched off one is on none', async () => {
+        show(TORTILLA, [], [], {
+            product_versions: [versions[0], { ...versions[1], is_active: false }],
+            version_allergens: [answered],
+            public_restaurant_versions: [],
+        })
+        expect(await screen.findByText('Santa Maria wrap 12"')).toBeInTheDocument()
+        expect(screen.getAllByText('On the sheet at Point Campus')).toHaveLength(1)
+        expect(screen.getByText('Switched off, on no sheet')).toBeInTheDocument()
     })
 
     it('says what a version with no answer means for the sheet, and can start from another', async () => {

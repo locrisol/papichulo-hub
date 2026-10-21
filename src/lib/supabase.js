@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { isWrite, saved } from '@/lib/saves'
+import { isWrite, saved, writtenTo } from '@/lib/saves'
 
 // One client for the whole app. Everything that talks to the database imports
 // this, so the session is shared and there is only one place to configure.
@@ -31,7 +31,7 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 export async function freshFetch(input, init = {}) {
     const response = await fetch(input, { ...init, cache: 'no-store' })
     const url = typeof input === 'string' ? input : input?.url
-    if (response?.ok && isWrite(url, init.method || input?.method)) saved()
+    if (response?.ok && isWrite(url, init.method || input?.method)) saved(writtenTo(url))
     return response
 }
 

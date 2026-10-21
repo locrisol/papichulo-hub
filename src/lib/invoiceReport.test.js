@@ -3,7 +3,7 @@ import {
     deliveriesFrom, priceMoves, switchesIn, usualSuggestions, recipeGaps, cameBack, stillOwed,
     newCodes, priceWeek, priceWords, decisionsFrom, reasonsOf, lineageOf, nameOf, unitWord,
     cannotCompare, usualFor, looksRenumbered, claimKey, claimActions, claimLabel, lookBackFrom,
-    outOfReason, eachWords, readFrom, notAsRecommended, waitingOnReview, notChecked, backByReason, whyNot,
+    outOfReason, eachWords, readFrom, offTheList, waitingOnReview, notChecked, backByReason, whyNot,
 } from '@/lib/invoiceReport'
 
 // The first real fortnight, cut down to what each rule needs. Sysco is s1.
@@ -467,6 +467,16 @@ describe('three in a row', () => {
         expect(s).toMatchObject({ productId: 'tor', code: '5013972', priceId: 'plain', fromPriceId: 'santa' })
     })
 
+    // Costed from the Recommended list, which the database keeps it on
+    // (19 October 2026): there is no usual one to choose.
+    it('does not ask about a product the Recommended list costs from', () => {
+        const all = deliveriesFrom([santa('2026-09-08'), plain('2026-09-10'), plain('2026-09-14'), plain('2026-09-17')])
+        const versions = [{ id: 'v-santa', product_id: 'tor', is_recommended: true, is_active: true }]
+        expect(usualSuggestions(all, { ...scope, versions })).toEqual([])
+        const off = [{ ...versions[0], is_active: false }]
+        expect(usualSuggestions(all, { ...scope, versions: off })).toHaveLength(1)
+    })
+
     it('counts deliveries, not lines', () => {
         const all = deliveriesFrom([
             santa('2026-09-08'), plain('2026-09-14', { invoiceId: 'x', number: 'x' }),
@@ -737,7 +747,7 @@ describe('the whole section', () => {
 
     it('adds up the four figures on top', () => {
         expect(section.totals).toMatchObject({
-            moves: -18.9, movesDown: 1, movesUp: 0, switches: 2.73, recipes: 0, back: 0, owedCount: 0,
+            moves: -18.9, movesDown: 1, movesUp: 0, switches: 0, offList: 0, offListCount: 0, recipes: 0, back: 0, owedCount: 0,
         })
         expect(section).toMatchObject({ checkedOn: '2026-09-25', threshold: 5 })
     })
@@ -745,8 +755,26 @@ describe('the whole section', () => {
     // A headline a kind, what kind of thing it is before the colon: his
     // choice for the mail on 26 September.
     it('says the week as a headline a kind, once, for the mail', () => {
-        expect(section.words[0]).toBe('Cheaper on the same code: Tomatoes, €18.90 less this week.')
-        expect(section.words[1]).toBe('Bought as something else: Flour Plain Wraps 12" for Flour Tortilla (Burritos), €2.73 more than the usual one.')
+        expect(section.words).toEqual(['Cheaper on the same code: Tomatoes, €18.90 less this week.'])
+    })
+
+    // The card that took the place of the two about switching (19 October
+    // 2026): with the brand's list and what recipes cost from, the plain wraps
+    // bought instead of the recommended Santa Maria ones are named.
+    it('names what was bought instead of the Recommended list', () => {
+        const versions = [
+            { id: 'v-santa', product_id: 'tor', name: 'Santa Maria wrap 12"', is_recommended: true, is_active: true },
+            { id: 'v-plain', product_id: 'tor', name: 'Plain wraps 12"', is_recommended: false, is_active: true },
+        ]
+        const withVersions = TORTILLA_PRICES.map(p => ({ ...p, version_id: `v-${p.id}` }))
+        const listed = priceWeek({
+            ...WEEK, lines, prices: withVersions, codes: TORTILLA_CODES, versions, threshold: 5, today: '2026-09-25',
+            costPrices: [{ product_id: 'tor', price_per_unit: 0.303 }],
+        })
+        expect(listed.switches).toEqual([])
+        expect(listed.offList.map(x => x.name)).toEqual(['Flour Tortilla (Burritos)'])
+        expect(listed.totals).toMatchObject({ offList: 2.73, offListCount: 1, offListDishes: 0 })
+        expect(listed.words).toContain('Not what we should be buying: Flour Tortilla (Burritos), €2.73 more than the recommended ones.')
     })
 
     it('is plain figures and words, so it can be frozen', () => {
@@ -935,6 +963,20 @@ describe('the helpers', () => {
             code({ supplier_code: 'B', replaces_code: 'A' }),
         ])
         expect(lineage('s1|C')).toEqual(['s1|C', 's1|B', 's1|A'])
+    })
+
+    // Every code of one version means its price here (19 October 2026): a
+    // number joined at the other restaurant and first met here has no
+    // replaces_code, and is still the same thing.
+    it('counts codes that mean the same price as one family', () => {
+        const lineage = lineageOf([
+            code({ supplier_code: 'A', price_id: 'pr1' }),
+            code({ supplier_code: 'B', price_id: 'pr1' }),
+            code({ supplier_code: 'C', price_id: 'pr2' }),
+            code({ supplier_code: 'D', price_id: 'pr1', ignored: true }),
+        ])
+        expect(lineage('s1|B')).toEqual(['s1|B', 's1|A'])
+        expect(lineage('s1|C')).toEqual(['s1|C'])
     })
 
     it('does not go round in circles', () => {
@@ -1191,51 +1233,90 @@ describe('readFrom', () => {
 
 // His design of 4 October, layout D: what was bought beside what the brand
 // recommends, each product once, each at its price per unit here.
-describe('not as the brand recommends', () => {
-    const SANTA = { id: 'v-santa', product_id: 'tor', name: 'Santa Maria wrap 12"', is_recommended: true, is_active: true }
-    const PLAIN = { id: 'v-plain', product_id: 'tor', name: 'Plain wraps 12"', is_recommended: false, is_active: true }
+// What was bought instead of the Recommended list (his decision 5 of 18
+// October 2026). Invented prices.
+describe('not what we should be buying', () => {
+    const SYSCO = { name: 'Sysco Ireland' }
+    const SANTA = { id: 'v-santa', product_id: 'tor', name: 'Santa Maria wrap 12"', supplier_code: '497870', is_recommended: true, is_active: true, fallback_rank: null, suppliers: SYSCO }
+    const PLAIN = { id: 'v-plain', product_id: 'tor', name: 'Plain wraps 12"', supplier_code: '5013972', is_recommended: false, is_active: true, fallback_rank: null, suppliers: SYSCO }
     const prices = [
         price({ id: 'p-santa', product_id: 'tor', version_id: 'v-santa', price_per_unit: 0.303 }),
         price({ id: 'p-plain', product_id: 'tor', version_id: 'v-plain', price_per_unit: 0.3303, is_preferred: false }),
     ]
+    const costPrices = [{ product_id: 'tor', price_per_unit: 0.303, borrowed: false }]
     const wraps = (date, cases = 1) => line({ code: '5013972', product: TORTILLA, priceId: 'p-plain', date, perCase: 33.03, units: 100, cases })
+    const scope = { ...WEEK, prices, versions: [SANTA, PLAIN], costPrices }
+    const menu = {
+        menuItems: [{ id: 'burrito', name: 'Burrito', is_active: true, category_id: 'mains' }],
+        categories: [{ id: 'mains', is_active: true }],
+        components: [{ menu_item_id: 'burrito', product_id: 'tor', quantity: 1 }],
+        products: [{ id: 'tor', is_mix: false, is_active: true }],
+    }
 
-    it('sets what was bought beside what the brand recommends, once a product', () => {
+    it('sets what was bought beside the recommended set, with what it cost over what recipes cost it at', () => {
         const all = deliveriesFrom([wraps('2026-09-14'), wraps('2026-09-17', 2)])
-        expect(notAsRecommended(all, { ...WEEK, prices, versions: [SANTA, PLAIN] })).toEqual([{
+        expect(offTheList(all, scope)).toEqual([{
+            productId: 'tor',
             name: 'Flour Tortilla (Burritos)',
             unit: 'each',
-            bought: { name: 'Plain wraps 12"', per: expect.closeTo(0.3303, 4) },
-            recommended: { name: 'Santa Maria wrap 12"', per: 0.303 },
-            others: 0,
-            cases: 3,
+            bought: [{
+                name: 'Plain wraps 12"', supplier: 'Sysco Ireland', code: '5013972',
+                cases: 3, loose: 0, money: 99.09, per: expect.closeTo(0.3303, 4), fallback: null,
+            }],
+            recommended: [{ name: 'Santa Maria wrap 12"', supplier: 'Sysco Ireland', code: '497870' }],
+            costed: 0.303,
+            borrowed: false,
+            change: 9,
+            extra: 8.19,
             money: 99.09,
+            dishes: [],
+            quiet: false,
         }])
+    })
+
+    it('names the dishes on sale the price paid pushes over the limit', () => {
+        const all = deliveriesFrom([wraps('2026-09-14')])
+        const [row] = offTheList(all, { ...scope, menu, threshold: 5 })
+        expect(row.dishes).toEqual([{ id: 'burrito', name: 'Burrito', was: 0.3, now: 0.33, rise: 9 }])
+        expect(offTheList(all, { ...scope, menu, threshold: 10 })[0].dishes).toEqual([])
+    })
+
+    // A fallback is what the list says to buy when the recommended ones are
+    // out, so it is a quiet line, unless it pushes a dish over.
+    it('says a fallback quietly, unless it pushes a dish over', () => {
+        const all = deliveriesFrom([wraps('2026-09-14')])
+        const versions = [SANTA, { ...PLAIN, fallback_rank: 1 }]
+        expect(offTheList(all, { ...scope, versions })[0]).toMatchObject({ quiet: true, bought: [{ fallback: 1 }] })
+        expect(offTheList(all, { ...scope, versions, menu, threshold: 5 })[0]).toMatchObject({ quiet: false })
+    })
+
+    it("says so when recipes cost it at the other restaurant's price", () => {
+        const all = deliveriesFrom([wraps('2026-09-14')])
+        const [row] = offTheList(all, { ...scope, costPrices: [{ ...costPrices[0], borrowed: true }] })
+        expect(row).toMatchObject({ costed: 0.303, borrowed: true })
     })
 
     it('says nothing of a recommended version, a product left free, or one with nothing recommended', () => {
         const all = deliveriesFrom([wraps('2026-09-14')])
-        expect(notAsRecommended(all, { ...WEEK, prices, versions: [SANTA, { ...PLAIN, is_recommended: true }] })).toEqual([])
+        expect(offTheList(all, { ...scope, versions: [SANTA, { ...PLAIN, is_recommended: true }] })).toEqual([])
         const free = deliveriesFrom([{ ...wraps('2026-09-14'), products: { ...TORTILLA, recommends: 'any' } }])
-        expect(notAsRecommended(free, { ...WEEK, prices, versions: [SANTA, PLAIN] })).toEqual([])
-        expect(notAsRecommended(all, { ...WEEK, prices, versions: [{ ...SANTA, is_recommended: false }, PLAIN] })).toEqual([])
+        expect(offTheList(free, scope)).toEqual([])
+        expect(offTheList(all, { ...scope, versions: [{ ...SANTA, is_recommended: false }, PLAIN] })).toEqual([])
     })
 
     it('leaves a line waiting on a review to that card', () => {
         const all = deliveriesFrom([wraps('2026-09-14')])
         const requests = [{ supplier_id: 's1', supplier_code: '5013972', answer: null }]
-        expect(notAsRecommended(all, { ...WEEK, prices, versions: [SANTA, PLAIN], requests })).toEqual([])
+        expect(offTheList(all, { ...scope, requests })).toEqual([])
     })
 
     it('only looks at the week', () => {
-        const all = deliveriesFrom([wraps('2026-09-07')])
-        expect(notAsRecommended(all, { ...WEEK, prices, versions: [SANTA, PLAIN] })).toEqual([])
+        expect(offTheList(deliveriesFrom([wraps('2026-09-07')]), scope)).toEqual([])
     })
 
-    it('has no price for the recommended one when this restaurant does not buy it', () => {
-        const all = deliveriesFrom([wraps('2026-09-14')])
-        const [row] = notAsRecommended(all, { ...WEEK, prices: [prices[1]], versions: [SANTA, PLAIN] })
-        expect(row.recommended).toEqual({ name: 'Santa Maria wrap 12"', per: null })
+    it('has nothing to compare with when nothing recommended has a price anywhere', () => {
+        const [row] = offTheList(deliveriesFrom([wraps('2026-09-14')]), { ...scope, costPrices: [] })
+        expect(row).toMatchObject({ costed: null, change: null, extra: 0 })
     })
 })
 

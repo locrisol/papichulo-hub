@@ -17,8 +17,8 @@ import CountingBar from '@/components/ui/CountingBar'
 import Notice from '@/components/ui/Notice'
 import PdfButton from '@/components/ui/PdfButton'
 import GuidePicture from '@/components/checklists/GuidePicture'
-import PhotoButton from '@/components/checklists/PhotoButton'
-import PhotoStrip from '@/components/checklists/PhotoStrip'
+import PhotoButton from '@/components/ui/PhotoButton'
+import PhotoStrip from '@/components/ui/PhotoStrip'
 import { signer } from '@/components/checklists/signPhotos'
 import useKeepPlace from '@/components/checklists/useKeepPlace'
 
@@ -604,7 +604,7 @@ export default function ChecklistRoundPage() {
                                         {elements.map(element => {
                                             const { task, subs } = element
                                             const rowProps = t => ({
-                                                key: t.id, task: t, tick: byTask.get(t.id), draft: pending[t.id], lastDone: lastDone.get(t.id),
+                                                task: t, tick: byTask.get(t.id), draft: pending[t.id], lastDone: lastDone.get(t.id),
                                                 open, restaurantId: round.restaurant_id, roundId: round.id,
                                                 needsPhoto: needsPhoto(t), saving: saving.has(t.id),
                                                 canTakeBack: byTask.has(t.id) && canTakeBack(byTask.get(t.id)),
@@ -613,7 +613,7 @@ export default function ChecklistRoundPage() {
                                                 onRemovePhoto: path => removePhoto(t, path), onError: setError,
                                                 urgent: open && isUrgent(t),
                                             })
-                                            if (!subs.length) return <TickRow {...rowProps(task)} />
+                                            if (!subs.length) return <TickRow key={task.id} {...rowProps(task)} />
                                             const subDone = subs.filter(s => byTask.has(s.id)).length
                                             const complete = elementDone(element, new Set(byTask.keys()))
                                             return (
@@ -634,7 +634,7 @@ export default function ChecklistRoundPage() {
                                                         {task.guide_photos?.length > 0 && <GuidePicture paths={task.guide_photos} name={task.name} />}
                                                     </div>
                                                     <div className="pl-4 divide-y divide-border">
-                                                        {subs.map(s => <TickRow {...rowProps(s)} />)}
+                                                        {subs.map(s => <TickRow key={s.id} {...rowProps(s)} />)}
                                                     </div>
                                                 </div>
                                             )

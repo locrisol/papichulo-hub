@@ -1,4 +1,4 @@
-import { primaryButton, rowButton, badge, cardEdge } from '@/lib/controlStyles'
+import { primaryButton, rowButton, badge, cardEdge, inactiveBadge } from '@/lib/controlStyles'
 import { stampDateTime } from '@/lib/dates'
 import { declaresAllergens } from '@/lib/products'
 import { useState, useEffect, useCallback, useRef } from 'react'
@@ -8,11 +8,13 @@ import { useRestaurant } from '@/context/restaurant'
 import { friendlyError } from '@/lib/errors'
 import { ALLERGENS, emptyAllergens } from '@/lib/allergens'
 import { allergensChanged } from '@/lib/allergensChanged'
+import { versionsUsed } from '@/lib/allergensAt'
 import AllergenPicker from '@/components/inventory/AllergenPicker'
 import BackButton from '@/components/ui/BackButton'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import Notice from '@/components/ui/Notice'
 import PageHeader from '@/components/ui/PageHeader'
+import SupplierBadge from '@/components/ui/SupplierBadge'
 
 // Tagging the 14 allergens on one product.
 //
@@ -136,15 +138,19 @@ export default function AllergenPage() {
         setLoading(false)
         return
       }
-      const here = new Set((boughtRes.data || []).map(b => b.version_id))
+      // On this restaurant's sheet: what it buys, or failing that the
+      // recommended ones, never one switched off, the same rule the sheet
+      // itself follows (lib/allergensAt).
+      const bought = new Set((boughtRes.data || []).map(b => b.version_id))
+      const onSheet = new Set(versionsUsed(list, bought).map(v => v.id))
       const shaped = list.map(v => ({
         ...v,
         answer: (answersRes.data || []).find(a => a.version_id === v.id) || null,
-        here: here.has(v.id),
+        here: onSheet.has(v.id),
       }))
       setVersions(shaped)
       // The one asked about stays chosen after a save; otherwise the first
-      // bought here, then the first recommended, then the first.
+      // on the sheet here, then the first recommended, then the first.
       const keep = shaped.find(v => v.id === kept.current)
         || shaped.find(v => v.here) || shaped.find(v => v.is_recommended) || shaped[0]
       kept.current = keep.id
@@ -269,12 +275,14 @@ export default function AllergenPage() {
                       : 'hover:bg-gray-50'}`}
                   >
                     <span className="block text-sm font-semibold text-gray-900">{v.name || product?.name}</span>
-                    <span className="block text-xs text-muted mt-0.5">
-                      {v.suppliers?.name || 'Supplier'}{v.supplier_code ? `, code ${v.supplier_code}` : ', no code'}
+                    <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted mt-1">
+                      <SupplierBadge name={v.suppliers?.name} />
+                      <span>{v.supplier_code ? `code ${v.supplier_code}` : 'no code'}</span>
                     </span>
                     <span className="flex flex-wrap gap-1.5 mt-2">
-                      {v.here && <span className={`${badge} bg-sky-100 text-sky-900`}>Bought at {activeRestaurant?.name}</span>}
+                      {v.here && <span className={`${badge} bg-sky-100 text-sky-900`}>On the sheet at {activeRestaurant?.name}</span>}
                       {v.is_recommended && <span className={`${badge} bg-green-100 text-green-800`}>Recommended</span>}
+                      {v.is_active === false && <span className={inactiveBadge}>Switched off, on no sheet</span>}
                       {!v.answer && <span className={`${badge} bg-red-600 text-white`}>Not answered</span>}
                     </span>
                   </button>

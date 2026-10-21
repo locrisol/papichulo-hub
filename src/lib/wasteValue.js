@@ -3,7 +3,7 @@ import { resolveUnitCost, calculateMixCost } from '@/lib/mixCost'
 // What a wasted product cost us.
 //
 // The unit cost comes from the same place the stock take gets it: a bought
-// product uses its preferred supplier price, and a MIX is worked out from its
+// product costs what recipes cost it at here (lib/costPrices), and a MIX is worked out from its
 // recipe, following nested MIXes down. That is already solved in mixCost, so
 // this leans on it rather than doing it again.
 //

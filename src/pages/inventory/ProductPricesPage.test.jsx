@@ -25,8 +25,15 @@ const MUSGRAVE = {
 
 let tables
 let written
+// The price form's supplier box, told apart from the Kept here box by what
+// it offers.
+const supplierBox = () => screen.getAllByRole('combobox')
+    .find(box => [...box.options].some(option => option.value === 's1'))
+
 const db = {
     from: vi.fn(table => {
+        // How many invoice lines a price has, which is all the page asks them.
+        if (table === 'invoice_lines') return makeQuery({ data: null, error: null, count: tables.invoiceLines || 0 })
         const q = tableOf(tables[table] || [])
         q.insert = vi.fn(row => {
             written.push({ table, how: 'insert', row })
@@ -38,7 +45,19 @@ const db = {
             written.push({ table, how: 'update', row })
             return makeQuery({ data: { ...(tables[table] || [])[0], ...row }, error: null })
         })
+        q.upsert = vi.fn((row, options) => {
+            written.push({ table, how: 'upsert', row, options })
+            return makeQuery({ data: null, error: null })
+        })
+        q.delete = vi.fn(() => {
+            written.push({ table, how: 'delete' })
+            return q
+        })
         return q
+    }),
+    rpc: vi.fn((name, args) => {
+        written.push({ table: name, how: 'rpc', row: args })
+        return Promise.resolve({ data: null, error: null })
     }),
 }
 
@@ -131,7 +150,7 @@ describe('typing a price', () => {
         const clicker = open()
         await clicker.click(await screen.findByRole('button', { name: '+ Add price' }))
 
-        await clicker.selectOptions(screen.getByRole('combobox'), 's1')
+        await clicker.selectOptions(supplierBox(), 's1')
         await clicker.type(box(screen, 'Supplier code'), '483508')
         await clicker.type(box(screen, 'Price per case (€)'), '11.5')
         await clicker.type(box(screen, 'Units per case (KG)'), '5')
@@ -149,7 +168,7 @@ describe('typing a price', () => {
         const clicker = open()
         await clicker.click(await screen.findByRole('button', { name: '+ Add price' }))
 
-        await clicker.selectOptions(screen.getByRole('combobox'), 's1')
+        await clicker.selectOptions(supplierBox(), 's1')
         await clicker.type(box(screen, 'Supplier code'), '483508')
         await clicker.type(box(screen, 'Price per case (€)'), '11.5')
         await clicker.type(box(screen, 'Units per case (KG)'), '5')
@@ -162,6 +181,63 @@ describe('typing a price', () => {
     })
 })
 
+// One thing under two codes is one version (19 October 2026). A new code on a
+// price the invoices already have is the same thing renumbered, joined by
+// code_update without losing the star or the allergens, or it is refused.
+describe('a new code on a price the invoices have', () => {
+    async function retype(clicker, to) {
+        tables.product_supplier_prices = [SYSCO]
+        tables.invoiceLines = 3
+        open()
+        await clicker.click((await screen.findAllByRole('button', { name: 'Edit' }))[0])
+        const dialog = within(screen.getByRole('dialog'))
+        await clicker.clear(box(dialog, 'Supplier code'))
+        await clicker.type(box(dialog, 'Supplier code'), to)
+        await clicker.click(dialog.getByRole('button', { name: 'Save changes' }))
+    }
+
+    it('asks whether it is the same thing, and joins the codes when it is', async () => {
+        await retype(userEvent.setup(), '5018758')
+        await waitFor(() => expect(written.some(w => w.how === 'rpc')).toBe(true))
+        expect(asked[0].title).toBe('Is this the same thing under a new code?')
+        expect(written.find(w => w.how === 'rpc')).toEqual({
+            table: 'code_update', how: 'rpc', row: { keep_price: 'pr1', new_code: '5018758', make_main: true },
+        })
+        // The rest of the price is saved, and its code is left to code_update.
+        await waitFor(() => expect(written.some(w => w.how === 'update')).toBe(true))
+        expect(written.find(w => w.how === 'update').row).not.toHaveProperty('supplier_code')
+    })
+
+    it('keeps the code and says why when it is not', async () => {
+        answer = false
+        await retype(userEvent.setup(), '5018758')
+        expect(await screen.findByText(/Invoices have this price under code 483508, so its code stays/)).toBeInTheDocument()
+        expect(written).toEqual([])
+    })
+
+    it('asks nothing for a price no invoice has, where the code is only a typing mistake', async () => {
+        const clicker = userEvent.setup()
+        tables.product_supplier_prices = [SYSCO]
+        open()
+        await clicker.click((await screen.findAllByRole('button', { name: 'Edit' }))[0])
+        const dialog = within(screen.getByRole('dialog'))
+        await clicker.clear(box(dialog, 'Supplier code'))
+        await clicker.type(box(dialog, 'Supplier code'), '483509')
+        await clicker.click(dialog.getByRole('button', { name: 'Save changes' }))
+        await waitFor(() => expect(written.some(w => w.how === 'update')).toBe(true))
+        expect(asked).toEqual([])
+        expect(written.find(w => w.how === 'update').row).toMatchObject({ supplier_code: '483509' })
+    })
+
+    // A code means one thing across the brand.
+    it('refuses a code another product goes by at either restaurant', async () => {
+        tables.product_versions = [{ product_id: 'p-mango', supplier_id: 's1', supplier_code: '33385' }]
+        await retype(userEvent.setup(), '33385')
+        expect(await screen.findByText('Another product already has this code with this supplier.')).toBeInTheDocument()
+        expect(written).toEqual([])
+    })
+})
+
 // His ask of 4 October: a second price is not quietly an extra one. Whoever
 // adds it says whether recipes cost from it, the way the import asks.
 describe('adding a price to a product that already has one', () => {
@@ -171,7 +247,7 @@ describe('adding a price to a product that already has one', () => {
 
     async function addMusgrave(clicker) {
         await clicker.click(await screen.findByRole('button', { name: '+ Add price' }))
-        await clicker.selectOptions(screen.getByRole('combobox'), 's2')
+        await clicker.selectOptions(supplierBox(), 's2')
         await clicker.type(field('Supplier code'), 'M-9000')
         await clicker.type(field('Price per case (€)'), '9')
         await clicker.type(field('Units per case (KG)'), '5')
@@ -212,5 +288,87 @@ describe('adding a price to a product that already has one', () => {
         await waitFor(() => expect(written.some(w => w.table === 'product_supplier_prices')).toBe(true))
         expect(asked).toEqual([])
         expect(written.find(w => w.table === 'product_supplier_prices').row.is_preferred).toBe(true)
+    })
+})
+
+// A product with a recommended set costs from the dearest of it (his decision
+// of 18 October 2026), so the page says what it costs from and offers no
+// choice: the Recommended list is where the versions are chosen.
+describe('a product costed from the Recommended list', () => {
+    const LISTED = { ...PEPPERS, recommends: 'versions' }
+    const VERSIONS = [
+        { id: 'v1', product_id: 'p1', supplier_id: 's1', supplier_code: '483508', name: 'Green Peppers 1x5 Kg', is_recommended: true, is_active: true, fallback_rank: null },
+        { id: 'v2', product_id: 'p1', supplier_id: 's2', supplier_code: 'M-4471', name: null, is_recommended: false, is_active: true, fallback_rank: null },
+    ]
+    beforeEach(() => {
+        tables.products = [LISTED]
+        tables.product_versions = VERSIONS
+        tables.product_supplier_prices = [{ ...SYSCO, version_id: 'v1' }, { ...MUSGRAVE, version_id: 'v2' }]
+        tables.cost_prices = [{ restaurant_id: 'r1', product_id: 'p1', price_per_unit: 2.3, version_id: 'v1', own_price_id: 'pr1', borrowed: false }]
+    })
+
+    it('says what recipes cost it from, and where each price stands on the list', async () => {
+        open()
+        expect(await screen.findByText(/Recipes cost it at .*from Green Peppers 1x5 Kg\./)).toBeInTheDocument()
+        expect(screen.queryAllByRole('button', { name: 'Set as preferred' })).toHaveLength(0)
+        expect(screen.getAllByText('Recommended').length).toBeGreaterThan(0)
+        expect(screen.getAllByText('Not recommended').length).toBeGreaterThan(0)
+        expect(screen.getAllByText('★ Recipes cost from this').length).toBeGreaterThan(0)
+    })
+
+    it("says when it is the other restaurant's price, never bought here", async () => {
+        tables.cost_prices = [{ ...tables.cost_prices[0], own_price_id: null, borrowed: true }]
+        open()
+        expect(await screen.findByText(/the other restaurant's price: Point Campus has not bought it yet\./)).toBeInTheDocument()
+        expect(screen.queryByText('★ Recipes cost from this')).toBeNull()
+    })
+
+    it('asks nothing about costing from a new price', async () => {
+        const clicker = userEvent.setup()
+        open()
+        await clicker.click(await screen.findByRole('button', { name: '+ Add price' }))
+        const form = within(screen.getByText('New price').parentElement)
+        await clicker.selectOptions(supplierBox(), 's2')
+        await clicker.type(box(form, 'Supplier code'), 'M-4472')
+        await clicker.type(box(form, 'Price per case (€)'), '11')
+        await clicker.type(box(form, 'Units per case (KG)'), '5')
+        await clicker.click(form.getByRole('button', { name: 'Add price' }))
+        await waitFor(() => expect(written.some(w => w.how === 'insert' && w.table === 'product_supplier_prices')).toBe(true))
+        expect(asked).toEqual([])
+    })
+})
+
+// Where Point Campus keeps it, its own and nobody else's (his decision of 18
+// October 2026). It used to be said on each version, the same at both.
+describe('where it is kept here', () => {
+    const keptBox = () => screen.findByLabelText('Kept at Point Campus in')
+
+    it("is the product's own section until Point Campus says otherwise", async () => {
+        open()
+        expect(await keptBox()).toHaveValue('Cold Room')
+    })
+
+    it("saves Point Campus's own as soon as it is changed", async () => {
+        const clicker = userEvent.setup()
+        open()
+        await clicker.selectOptions(await keptBox(), 'Freezer')
+        await clicker.click(screen.getByRole('button', { name: 'Dry' }))
+        await waitFor(() => expect(written.filter(w => w.how === 'upsert')).toHaveLength(2))
+        expect(written.at(-1)).toEqual({
+            table: 'restaurant_kept_in', how: 'upsert',
+            row: { restaurant_id: 'r1', product_id: 'p1', section: 'Freezer', also_in: ['Dry'] },
+            options: { onConflict: 'restaurant_id,product_id' },
+        })
+        expect(await screen.findByText(/Saved at/)).toBeInTheDocument()
+    })
+
+    // So it follows the product's section again if that changes.
+    it("forgets Point Campus's own once it is back to the product's", async () => {
+        tables.restaurant_kept_in = [{ restaurant_id: 'r1', product_id: 'p1', section: 'Freezer', also_in: [] }]
+        const clicker = userEvent.setup()
+        open()
+        await waitFor(async () => expect(await keptBox()).toHaveValue('Freezer'))
+        await clicker.selectOptions(await keptBox(), 'Cold Room')
+        await waitFor(() => expect(written).toContainEqual({ table: 'restaurant_kept_in', how: 'delete' }))
     })
 })

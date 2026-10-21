@@ -53,7 +53,15 @@ const db = {
             written.push({ table, how: 'delete' })
             return makeQuery({ data: null, error: null })
         })
+        q.upsert = vi.fn(row => {
+            written.push({ table, how: 'upsert', row })
+            return makeQuery({ data: null, error: null })
+        })
         return q
+    }),
+    rpc: vi.fn((name, args) => {
+        written.push({ table: name, how: 'rpc', row: args })
+        return Promise.resolve({ data: null, error: null })
     }),
 }
 
@@ -831,16 +839,17 @@ describe('a product made from a line on Review', () => {
         expect(pointed).toMatchObject({ how: 'update', row: { price_id: `new${written.indexOf(price) + 1}` } })
     })
 
-    // A price belongs to one code. One a code already means is left alone
-    // when the product is edited.
-    it('leaves a price alone when a code already means it', async () => {
+    // Only the code on the price, and only while that code means nothing yet
+    // (claimCode asks the database for a code with no price); one that
+    // already means a price is left as it is.
+    it('only ever points the code on the price at it', async () => {
         tables.supplier_codes = [{ id: 'c1', price_id: 'pr1', supplier_code: '483508' }]
         const clicker = userEvent.setup()
         const dialog = await editPeppers(clicker)
         await clicker.click(dialog.getByRole('button', { name: 'Save changes' }))
         // The dialog closes after everything the save does, the code included.
         await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
-        expect(written.filter(w => w.table === 'supplier_codes')).toHaveLength(0)
+        expect(written.filter(w => w.table === 'supplier_codes')).toEqual([{ table: 'supplier_codes', how: 'update', row: { price_id: 'pr1' } }])
     })
 
     // The page used to go back to Review anyway, and the line was still there
@@ -1068,15 +1077,126 @@ describe('the brand\'s versions on a row', () => {
         tables.product_versions = versions('v2')
         renderWithRouter(<ProductsPage />)
         expect((await screen.findAllByText('Not recommended')).length).toBeGreaterThan(0)
-        expect(screen.getAllByText('Brand: Green peppers 5 kg').length).toBeGreaterThan(0)
+        expect(screen.getAllByText('Brand:').length).toBeGreaterThan(0)
+        expect(screen.getAllByText('Green peppers 5 kg').length).toBeGreaterThan(0)
     })
 
-    it('shows the places each version it buys is kept in', async () => {
+    // The Recommended list of 19 October 2026: bought only when the
+    // recommended ones are out, which is not the same as not recommended.
+    it('says when what it buys is a fallback, numbered by where it comes', async () => {
+        tables.product_supplier_prices = [{ ...SYSCO, version_id: 'v1' }]
+        tables.product_versions = versions('v2').map(v => (v.id === 'v1' ? { ...v, fallback_rank: 3 } : v))
+        renderWithRouter(<ProductsPage />)
+        expect((await screen.findAllByText('Fallback 1')).length).toBeGreaterThan(0)
+        expect(screen.queryAllByText('Not recommended')).toHaveLength(0)
+    })
+
+    it('shows every place this restaurant keeps it in', async () => {
         tables.restaurant_kept_in = [
-            { restaurant_id: 'r1', product_id: 'p1', section: 'Cold Room', also_in: [] },
-            { restaurant_id: 'r1', product_id: 'p1', section: 'Freezer', also_in: [] },
+            { id: 'k1', restaurant_id: 'r1', product_id: 'p1', section: 'Cold Room', also_in: ['Freezer'] },
         ]
         renderWithRouter(<ProductsPage />)
         expect((await screen.findAllByText('Freezer', { selector: 'span' })).length).toBeGreaterThan(0)
+    })
+})
+
+// Cleaning, packaging and drinks start with no recommendation (his decision
+// of 18 October 2026). The database gives a new one that; a product moved
+// into them later is asked about here, by an owner only.
+describe('moving a product into Cleaning', () => {
+    async function moveToCleaning(clicker) {
+        renderWithRouter(<ProductsPage />)
+        await clicker.click((await screen.findAllByRole('button', { name: 'Edit' }))[0])
+        const dialog = within(screen.getByRole('dialog'))
+        await clicker.selectOptions(dialog.getByText('Section').parentElement.querySelector('select'), 'Cleaning')
+        await clicker.click(dialog.getByRole('button', { name: 'Save changes' }))
+    }
+    const listCleared = () => written.filter(w => w.how === 'rpc' && w.table === 'set_recommends')
+
+    it('asks an owner whether it should have no recommendation, and clears it on yes', async () => {
+        tables.products = [{ ...PEPPERS, recommends: 'versions' }]
+        const asked = []
+        ask = async options => { asked.push(options); return true }
+        await moveToCleaning(userEvent.setup())
+        await waitFor(() => expect(listCleared()).toEqual([{ table: 'set_recommends', how: 'rpc', row: { product: 'p1', mode: 'any' } }]))
+        expect(asked.map(a => a.title)).toContain('Any version?')
+        expect(written.some(w => w.table === 'products' && w.row.section === 'Cleaning')).toBe(true)
+    })
+
+    // Cleared last, so a failure leaves the price, packs and allergens saved
+    // and says the product was.
+    it('says the product was saved when clearing its list fails', async () => {
+        tables.products = [{ ...PEPPERS, recommends: 'versions' }]
+        db.rpc.mockImplementationOnce(() => Promise.resolve({ data: null, error: WEAK_SIGNAL }))
+        await moveToCleaning(userEvent.setup())
+        expect(await screen.findByText(/Green Peppers was saved, but its change to any version was not/)).toBeInTheDocument()
+    })
+
+    it('keeps the list and still saves when the owner says no', async () => {
+        tables.products = [{ ...PEPPERS, recommends: 'versions' }]
+        ask = async options => options.title !== 'Any version?'
+        await moveToCleaning(userEvent.setup())
+        await waitFor(() => expect(written.some(w => w.table === 'products' && w.row.section === 'Cleaning')).toBe(true))
+        expect(listCleared()).toEqual([])
+    })
+
+    it('asks a store manager nothing, who cannot change what the brand recommends', async () => {
+        me = { id: 'u1', role: 'store_manager' }
+        tables.products = [{ ...PEPPERS, recommends: 'versions' }]
+        const asked = []
+        ask = async options => { asked.push(options); return true }
+        await moveToCleaning(userEvent.setup())
+        await waitFor(() => expect(written.some(w => w.table === 'products' && w.row.section === 'Cleaning')).toBe(true))
+        expect(asked.map(a => a.title)).not.toContain('Any version?')
+        expect(listCleared()).toEqual([])
+    })
+})
+
+// Where Point Campus keeps it is its own (his decision of 18 October 2026),
+// so the form saves it for Point Campus and leaves the product's Also in.
+describe('where it is kept here', () => {
+    async function editAndSave(clicker, change) {
+        renderWithRouter(<ProductsPage />)
+        await clicker.click((await screen.findAllByRole('button', { name: 'Edit' }))[0])
+        const dialog = within(screen.getByRole('dialog'))
+        await change?.(dialog)
+        await clicker.click(dialog.getByRole('button', { name: 'Save changes' }))
+        await waitFor(() => expect(written.some(w => w.table === 'products' && w.how === 'update')).toBe(true))
+    }
+    const kept = () => written.filter(w => w.table === 'restaurant_kept_in')
+
+    it("saves Point Campus's own places, and not on the product", async () => {
+        const clicker = userEvent.setup()
+        await editAndSave(clicker, dialog => clicker.click(dialog.getByRole('button', { name: 'Freezer' })))
+        await waitFor(() => expect(kept()).toHaveLength(1))
+        expect(kept()[0]).toEqual({
+            table: 'restaurant_kept_in', how: 'upsert',
+            row: { restaurant_id: 'r1', product_id: 'p1', section: 'Cold Room', also_in: ['Freezer'] },
+        })
+        expect(written.find(w => w.table === 'products').row).not.toHaveProperty('also_in')
+    })
+
+    it('says nothing about where it is kept when nobody touched it', async () => {
+        await editAndSave(userEvent.setup())
+        expect(kept()).toEqual([])
+    })
+
+    it('shows where Point Campus keeps it when it has said', async () => {
+        tables.restaurant_kept_in = [{ id: 'k1', restaurant_id: 'r1', product_id: 'p1', section: 'Freezer', also_in: [] }]
+        const clicker = userEvent.setup()
+        renderWithRouter(<ProductsPage />)
+        await clicker.click((await screen.findAllByRole('button', { name: 'Edit' }))[0])
+        expect(within(screen.getByRole('dialog')).getByLabelText('Kept at Point Campus in')).toHaveValue('Freezer')
+    })
+})
+
+// The cost column is what recipes cost a product at here (cost_prices), which
+// can be the other restaurant's price when this one never bought it.
+describe('the cost of a product', () => {
+    it("is what recipes cost it at, and says when it is the other restaurant's price", async () => {
+        tables.cost_prices = [{ restaurant_id: 'r1', product_id: 'p1', price_per_unit: 2.67, version_id: 'v1', own_price_id: null, borrowed: true }]
+        renderWithRouter(<ProductsPage />)
+        expect((await screen.findAllByText("Other restaurant's price")).length).toBeGreaterThan(0)
+        expect(screen.getAllByText(/2\.67/).length).toBeGreaterThan(0)
     })
 })

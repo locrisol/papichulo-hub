@@ -254,25 +254,13 @@ export function newGroupId(random = n => crypto.getRandomValues(new Uint8Array(n
     return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
 }
 
-// Codes bought either way, put in one group.
-//
-// The green peppers come as 483508 or 5018758 depending on what Sysco has.
-// Each code keeps its own price, so nothing is moved or removed here: the two
-// code rows are given the same group, the usual one's if it already has one,
-// and a group the other one was in is folded into it, so a third or fourth code
-// joins the same group rather than starting a second.
-//
-// Nothing to do without both code rows: a usual price somebody typed with no
-// code on it has nothing to be grouped with.
-export function alternatePlan(item, fresh) {
-    if (!item?.codeRowId || !item?.usualCodeRowId || item.codeRowId === item.usualCodeRowId) return null
-    const group = item.usualGroup || item.group || fresh
-    if (!group) return null
-    return {
-        group,
-        rows: [item.codeRowId, item.usualCodeRowId],
-        fold: item.group && item.usualGroup && item.group !== item.usualGroup ? item.group : null,
-    }
+// Whether the report can offer "We buy both": the same thing bought either
+// way, depending on what the supplier has, each code keeping its own price.
+// Both need a price here, because buy_both works on the two prices: the
+// version of each joins the recommended set when either is recommended,
+// otherwise their codes are grouped as before.
+export function canBuyBoth(item) {
+    return !!item?.usualPriceId && !!item?.ownPriceId && item.ownPriceId !== item.usualPriceId
 }
 
 // Costing from what was last paid, from the weekly report.
@@ -305,55 +293,15 @@ export function costFromPaid(gap, row, { restaurantId, userId, at = null } = {})
     }
 }
 
-// The same thing under a new number.
-//
-// What "Yes, same product" does in the review, said afterwards from the
-// report: the new code takes over the price the old one had, the old code
-// lets go of it, and the new code remembers which one it replaced so the price
-// history runs on across the change. The row the new code had of its own goes,
-// with its lines moved onto the price they now mean, because a price row
-// belongs to one code and it would otherwise be a second price for the same
-// pack under the same code.
-//
-// In the order the database needs: a price row can have one code pointing at
-// it, so the old one lets go first, and the row the new code is leaving is
-// gone before the usual row takes its code.
-//
-// **The newer number is the one that carries on**, whichever of the two recipes
-// cost from. Usually the new code is the one bought instead, and it takes the
-// usual price over. Sometimes the usual price is already on the new code and
-// the one bought instead is the old number, still turning up on older
-// invoices: then the old one lets go of its own price, its lines move onto the
-// usual one, and the usual code remembers the number it replaced.
-//
-// **It refuses rather than break a chain.** A code that already replaced
-// another keeps that link, or the older number's deliveries drop out of the
-// history. And it only folds away a price that is this product's and that
-// nothing is costed from.
-export function renumberPlan(item) {
-    if (!item?.usualPriceId || !item?.codeRowId || !item?.code) return null
-    if (item.ownPriceOk === false) return null
-    const own = item.ownPriceId && item.ownPriceId !== item.usualPriceId ? item.ownPriceId : null
-    if (item.newer === false) {
-        if (!item.usualCodeRowId) return null
-        if (item.usualReplaces && item.usualReplaces !== item.code) return null
-        return {
-            moveLines: own ? { from: own, to: item.usualPriceId } : null,
-            release: item.codeRowId,
-            drop: own,
-            point: { id: item.usualCodeRowId, patch: { replaces_code: item.code } },
-            rowCode: null,
-        }
-    }
-    if (item.replaces && item.replaces !== item.usualCode) return null
-    return {
-        moveLines: own ? { from: own, to: item.usualPriceId } : null,
-        release: item.usualCodeRowId || null,
-        drop: own,
-        point: {
-            id: item.codeRowId,
-            patch: { price_id: item.usualPriceId, replaces_code: item.usualCode || null },
-        },
-        rowCode: { id: item.usualPriceId, supplier_code: item.code },
-    }
+// Whether the report can offer "They are the same": the code bought is the
+// usual one under another number. code_update does the rest in one go, at
+// every restaurant: the usual version takes the code and keeps its star,
+// allergens and pictures, and a price the code had of its own here is folded
+// in. **The newer number is the one that carries on**: an older number
+// bought instead joins as another code. Not when the code's own price here is
+// one recipes cost from, which code_update refuses as well.
+export function canJoinCodes(item) {
+    if (!item?.usualPriceId || !item?.code) return false
+    if (item.ownPriceOk === false) return false
+    return !item.usualCode || item.usualCode !== item.code
 }
