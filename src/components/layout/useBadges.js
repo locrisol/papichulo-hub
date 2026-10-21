@@ -6,6 +6,8 @@ import { badgesFrom } from '@/lib/badges'
 import { readToDecide } from '@/lib/invoiceReview'
 import { nearbyRows, waiting, PAIRING_COLUMNS } from '@/lib/nearby'
 import { onSaved } from '@/lib/saves'
+import { compareSheet, SHEET_WRITES } from '@/lib/sheetAt'
+import { onAllergensChanged } from '@/lib/allergensChanged'
 
 // How often the counts are asked again while the Hub is in view, how old a
 // count can be before moving to another page asks again, and how long after
@@ -16,6 +18,10 @@ import { onSaved } from '@/lib/saves'
 const EVERY = 5 * 60 * 1000
 const STALE = 5 * 1000
 const AFTER_SAVE = 800
+// How long the allergen sheet compared with the last print is kept before it
+// is built again, which is a dozen reads: after a write that can change it,
+// or once this is up.
+const SHEET_EVERY = 5 * 60 * 1000
 
 // The things found nearby still waiting on a Keep or a Not for us, read and
 // filtered exactly as the Calendar's banner does.
@@ -33,8 +39,12 @@ async function foundNearby(restaurant) {
 
 // The sidebar's badges for whoever is signed in, at the restaurant picked.
 //
-// One call to my_badges() for nearly everything, and two counts read the way
-// their pages read them, for managers only. Asked at sign in, when the
+// One call to my_badges() for nearly everything, and three things read the
+// way their pages read them, for managers only: the two counts, and the
+// allergen sheet as it stands against the copy kept with the last print
+// (lib/sheetAt), which only the app can build. That one is kept for five
+// minutes, and built again sooner only after a write that can change the
+// sheet (SHEET_WRITES), so counting a stock take does not rebuild it. Asked at sign in, when the
 // restaurant changes, when the tab comes back into view, every five minutes
 // while it is in view and never while hidden, on moving to another page once
 // the last count is a few seconds old, a moment after anything is saved
@@ -58,16 +68,38 @@ export function useBadges(user, restaurant, pathname) {
     const current = useRef(key)
     useEffect(() => { current.current = key }, [key])
 
+    // The sheet's lines that differ from the last print, for which restaurant,
+    // when, and a count that goes up whenever it may have changed, so an
+    // answer read before a change is not kept as fresh.
+    const sheet = useRef({ for: null, at: 0, changes: null, round: 0 })
+    const sheetMayHaveChanged = useCallback(() => {
+        sheet.current = { ...sheet.current, at: 0, round: sheet.current.round + 1 }
+    }, [])
+    useEffect(() => onAllergensChanged(sheetMayHaveChanged), [sheetMayHaveChanged])
+
+    const sheetChanges = useCallback(async () => {
+        const held = sheet.current
+        if (held.for === restaurantId && Date.now() - held.at < SHEET_EVERY) return held.changes
+        const round = held.round
+        const answer = await compareSheet(restaurantId)
+        // A failed read keeps what was there, the same as the other counts.
+        if (answer.error) return held.for === restaurantId ? held.changes : null
+        const fresh = sheet.current.round === round
+        sheet.current = { for: restaurantId, at: fresh ? Date.now() : 0, changes: answer.data.changes, round: sheet.current.round }
+        return answer.data.changes
+    }, [restaurantId])
+
     const recount = useCallback(async () => {
         if (!user?.id || !restaurantId) return
         if (running.current === key) { again.current = true; return }
         running.current = key
         again.current = false
         try {
-            const [answer, found, review] = await Promise.all([
+            const [answer, found, review, changes] = await Promise.all([
                 supabase.rpc('my_badges', { restaurant: restaurantId }),
                 manager ? foundNearby(restaurant) : Promise.resolve(0),
                 manager ? readToDecide(restaurantId) : Promise.resolve({ lines: [] }),
+                manager ? sheetChanges() : Promise.resolve(null),
             ])
             // A database without the function: no badges, nothing broken.
             if (answer.error || current.current !== key) return
@@ -76,6 +108,7 @@ export function useBadges(user, restaurant, pathname) {
                 badges: badgesFrom(answer.data, {
                     found: found ?? 0,
                     review: review.error ? 0 : (review.lines || []).length,
+                    sheet: changes,
                 }),
             })
         } finally {
@@ -88,7 +121,7 @@ export function useBadges(user, restaurant, pathname) {
                 recount()
             }
         }
-    }, [user?.id, restaurantId, manager, restaurant, key])
+    }, [user?.id, restaurantId, manager, restaurant, key, sheetChanges])
 
     // Sign in and a change of restaurant.
     useEffect(() => {
@@ -104,12 +137,13 @@ export function useBadges(user, restaurant, pathname) {
     // A moment after anything is saved, by any page.
     useEffect(() => {
         let timer = null
-        const stop = onSaved(() => {
+        const stop = onSaved(to => {
+            if (SHEET_WRITES.has(to)) sheetMayHaveChanged()
             clearTimeout(timer)
             timer = setTimeout(recount, AFTER_SAVE)
         })
         return () => { stop(); clearTimeout(timer) }
-    }, [recount])
+    }, [recount, sheetMayHaveChanged])
 
     // Back into view straight away, then every five minutes while it stays.
     useEffect(() => {

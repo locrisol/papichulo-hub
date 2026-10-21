@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase, everyRow } from '@/lib/supabase'
-import { sheetRows, everyReadArrived, productsWithARow } from '@/lib/allergenSheet'
+import { everyReadArrived, sheetGroups, sheetSnapshot, sameSheet } from '@/lib/allergenSheet'
 import { readAllergensAt } from '@/lib/allergensAt'
 import AllergenList from '@/components/allergens/AllergenList'
 import { card, primaryButton, warningNote } from '@/lib/controlStyles'
@@ -45,7 +45,9 @@ export default function PublicAllergensPage({ slugOverride }) {
   const [products, setProducts] = useState([])
   const [recipeLines, setRecipeLines] = useState([])
   const [allergens, setAllergens] = useState([])
-  const [changedAt, setChangedAt] = useState(null)
+  // The last printed sheet's lines and the day they last changed, for Last
+  // updated. Null when none was printed since the Hub began keeping them.
+  const [printed, setPrinted] = useState(null)
 
   const [expandedId, setExpandedId] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -119,11 +121,13 @@ export default function PublicAllergensPage({ slugOverride }) {
     // since been deactivated. The old policy required is_active and quietly
     // dropped exactly that product's allergens from the answer, which is the
     // one thing this page cannot get wrong.
-    const [changedRes, ...reads] = await Promise.all([
-      // When anything on the sheet last changed, from the change log, which
-      // a customer cannot read. The view of the allergens has no date on it,
-      // and this used to print today's date on every visit instead.
-      supabase.rpc('allergens_changed_at'),
+    const [printedRes, ...reads] = await Promise.all([
+      // The sheet last printed, which a customer cannot read: its lines and
+      // the day they last changed. Since 19 October 2026 the page says that
+      // day only when it says the same as the paper. It was the change log's
+      // last change to anything the sheet is made from, and before that
+      // today's date on every visit.
+      supabase.rpc('public_allergen_sheet', { restaurant: restRes.data.id }),
       everyRow(() => supabase.from('public_menu_categories').select('*').order('sort_order').order('id')),
       everyRow(() => supabase.from('public_menu_items').select('*').order('name').order('id')),
       everyRow(() => supabase.from('public_menu_item_components').select('*').order('id')),
@@ -152,7 +156,7 @@ export default function PublicAllergensPage({ slugOverride }) {
     setAllergens(allergensRes.data)
     // Not one of the reads the rows need. A date that would not come back
     // is left off the page rather than guessed, and the dishes still show.
-    setChangedAt(changedRes.error ? null : changedRes.data)
+    setPrinted(printedRes.error ? null : printedRes.data)
 
     setLoading(false)
     }, [slug])
@@ -180,32 +184,17 @@ export default function PublicAllergensPage({ slugOverride }) {
   //
   // Rows rather than menu items. Two sizes of one dish are one row, and
   // something handed over beside it gets a row of its own. Worked out in
-  // lib/allergenSheet so the printed sheet cannot come out saying anything
-  // different from this.
-  //
-  // A category can be kept off the sheet: cans and bottled water carry none
-  // of the fourteen and fill it with rows saying so. Older rows have no
-  // answer here, and no answer means shown.
-  const sheetCategories = categories.filter(c => c.on_allergen_sheet !== false)
+  // lib/allergenSheet (sheetGroups) so the printed sheet cannot come out
+  // saying anything different from this, and a category kept off the sheet
+  // is left off here too.
+  const itemsByCategory = sheetGroups({ categories, menuItems, components, products, recipeLines, allergens })
 
-  // Which products already have a row of their own anywhere on the sheet,
-  // asked once of the whole sheet. An option on a dish reaches the sheet only
-  // through one of those, and a dish with an option that has none says ask
-  // staff rather than leaving that option's allergens off every row.
-  const withARow = productsWithARow(
-    menuItems.filter(i => sheetCategories.some(c => c.id === i.category_id)),
-    components, products,
-  )
-
-  const itemsByCategory = sheetCategories
-    .map(c => ({
-      category: c,
-      rows: sheetRows(
-        menuItems.filter(i => i.category_id === c.id),
-        components, products, recipeLines, allergens, withARow,
-      ),
-    }))
-    .filter(group => group.rows.length > 0)
+  // The day the paper's lines last changed, only while this page says the
+  // same as the paper. Once anything on it has changed the date would vouch
+  // for a sheet nobody has printed, so it is left off until one is.
+  const changedAt = printed?.changed_at && sameSheet(printed.rows, sheetSnapshot(itemsByCategory))
+    ? printed.changed_at
+    : null
 
   if (loading) {
     return (
@@ -253,9 +242,10 @@ export default function PublicAllergensPage({ slugOverride }) {
         <header className="mb-6">
           <p className="text-xs font-bold text-accent-ink uppercase tracking-widest mb-1">Allergen information</p>
           <h1 className="font-serif text-2xl sm:text-3xl font-bold text-gray-900">{restaurant.name}</h1>
-          {/* The day anything on the sheet last changed, and nothing when
-              there is no such day to say. It used to fall back to today,
-              which is a freshness nobody vouched for. */}
+          {/* The day the printed sheet's lines last changed, and nothing
+              when this page no longer says the same or nothing was printed.
+              It used to fall back to today, which is a freshness nobody
+              vouched for. */}
           {changedAt && (
             <p className="text-xs text-gray-500 mt-2">Last updated: {stampDate(changedAt)}</p>
           )}

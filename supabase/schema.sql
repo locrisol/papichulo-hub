@@ -540,6 +540,30 @@ comment on column public.restaurant_kept_in.also_in is 'The other places this re
 
 create index if not exists idx_restaurant_kept_in_product on public.restaurant_kept_in (product_id);
 
+-- Every allergen sheet printed from the Hub (his decision of 18 October
+-- 2026, built 19 October), so a reprint is asked only when the sheet would
+-- really differ.
+-- One row a print. rows is the sheet as printed, one entry a line, which
+-- the app compares with the sheet as it stands. sheet_changed_at is the day
+-- those lines last changed: carried over from the print before when they are
+-- the same, which is the date on the paper and the customer page's Last
+-- updated. Written only by allergen_sheet_printed().
+create table if not exists public.allergen_sheet_prints (
+    id uuid default gen_random_uuid() not null primary key,
+    restaurant_id uuid not null references public.restaurants(id) on delete cascade,
+    printed_at timestamp with time zone default now() not null,
+    printed_by uuid references public.users(id) on delete set null,
+    rows jsonb,
+    sheet_changed_at timestamp with time zone default now() not null,
+    constraint allergen_sheet_prints_rows_a_list check (rows is null or jsonb_typeof(rows) = 'array')
+);
+
+comment on table public.allergen_sheet_prints is 'Every allergen sheet printed from the Hub, with the lines it printed, so the Hub can say which lines have changed since. Written only by allergen_sheet_printed(). Read by the managers of the restaurant; the customer page gets the latest through public_allergen_sheet().';
+comment on column public.allergen_sheet_prints.rows is 'The sheet as printed: one entry a line, with its category, its name, whether it was answered, and what it contains and may contain. Null for a print from before the Hub kept a copy.';
+comment on column public.allergen_sheet_prints.sheet_changed_at is 'When these lines last changed: the print before''s when they are the same, otherwise this print''s. The date on the paper.';
+
+create index if not exists idx_allergen_sheet_prints_latest on public.allergen_sheet_prints (restaurant_id, printed_at desc);
+
 
 -- -- The menu ----------------------------------------------------------
 --
@@ -4194,12 +4218,18 @@ comment on function public.set_aside_guard() is 'Keeps setting an invoice line a
 -- write the restaurant row, so the stamp goes through here. The restaurant is
 -- passed rather than read from the account, because the super admin prints
 -- for whichever restaurant is open; anybody else can only stamp their own.
-create or replace function public.allergen_sheet_printed(restaurant uuid) returns timestamp with time zone
+--
+-- It hands over what it printed too, kept in allergen_sheet_prints so the
+-- Hub can say which lines have changed since. Called with the restaurant
+-- alone it keeps no copy, which asks for one more print.
+create or replace function public.allergen_sheet_printed(restaurant uuid, sheet jsonb default null) returns timestamp with time zone
     language plpgsql security definer
     set search_path to 'public', 'pg_temp'
     as $$
 declare
     stamped timestamp with time zone;
+    before_rows jsonb;
+    before_changed timestamp with time zone;
 begin
     if auth.uid() is null
        or coalesce(public.get_my_role(), '') not in ('store_manager', 'owner', 'super_admin') then
@@ -4211,6 +4241,10 @@ begin
         raise exception 'That is not your restaurant';
     end if;
 
+    if sheet is not null and jsonb_typeof(sheet) <> 'array' then
+        raise exception 'The sheet has to be a list of its lines';
+    end if;
+
     update public.restaurants
        set allergen_sheet_printed_at = now()
      where id = restaurant
@@ -4220,8 +4254,38 @@ begin
         raise exception 'That restaurant does not exist';
     end if;
 
+    select p.rows, p.sheet_changed_at into before_rows, before_changed
+      from public.allergen_sheet_prints p
+     where p.restaurant_id = restaurant
+     order by p.printed_at desc, p.id desc
+     limit 1;
+
+    -- The same lines in any order are the same sheet.
+    insert into public.allergen_sheet_prints (restaurant_id, printed_at, printed_by, rows, sheet_changed_at)
+    values (restaurant, stamped, auth.uid(), sheet,
+            case when sheet is not null and before_rows is not null
+                      and (select coalesce(jsonb_agg(x order by x::text), '[]'::jsonb) from jsonb_array_elements(before_rows) x)
+                        = (select coalesce(jsonb_agg(x order by x::text), '[]'::jsonb) from jsonb_array_elements(sheet) x)
+                 then before_changed
+                 else stamped end);
+
     return stamped;
 end $$;
+
+-- The customer page's Last updated: the latest print's lines and the day
+-- they last changed, for an open restaurant. The page shows the date only
+-- when its own lines are the same.
+create or replace function public.public_allergen_sheet(restaurant uuid) returns jsonb
+    language sql stable security definer
+    set search_path to 'public', 'pg_temp'
+    as $$
+    select jsonb_build_object('rows', p.rows, 'changed_at', p.sheet_changed_at)
+      from public.allergen_sheet_prints p
+      join public.restaurants r on r.id = p.restaurant_id
+     where p.restaurant_id = restaurant and r.is_active
+     order by p.printed_at desc, p.id desc
+     limit 1
+$$;
 
 -- Everything the sidebar badges count, in one call. Security definer for two
 -- counts a person cannot read (an edited shift's real date, the allergen
@@ -4354,12 +4418,16 @@ begin
                             where s.employee_id = e.id and s.shift_date between today and this_week + 13)), '[]'::jsonb),
         'rules', (select r.roster_rules from public.restaurants r where r.id = restaurant),
 
-        -- Public allergens: whether a new printed sheet is due.
+        -- Public allergens: when the sheet was last printed, how often it is
+        -- due, and whether that print kept a copy of its lines. Whether the
+        -- sheet has changed since is the app's to work out.
         'sheet', (
             select jsonb_build_object(
                 'printed_at', r.allergen_sheet_printed_at,
                 'every_months', r.allergen_sheet_every_months,
-                'changed_at', public.allergens_changed_at())
+                'kept', coalesce((select p.rows is not null from public.allergen_sheet_prints p
+                                   where p.restaurant_id = r.id
+                                   order by p.printed_at desc, p.id desc limit 1), false))
               from public.restaurants r where r.id = restaurant),
 
         -- Dishes on sale on the allergen sheet with nothing in them.
@@ -4507,8 +4575,9 @@ $$;
 
 comment on function public.user_emails() is 'Every account''s email address, for the Users page. Security definer because the addresses live in auth.users; only an active super admin gets rows, everybody else gets none.';
 
-COMMENT ON FUNCTION "public"."allergen_sheet_printed"("restaurant" "uuid") IS 'Stamps now() as when the allergen sheet was last printed for a restaurant. Managers and owners for their own restaurant, the super admin for any. Returns the stamp.';
-COMMENT ON FUNCTION "public"."allergens_changed_at"() IS 'When anything on the allergen sheet last changed, from the change log: allergens, dishes, what is in them, their categories, recipes, and a product renamed, switched on or off, made a MIX or moved section. Not prices, VAT, quantities or notes. Null when the log holds no such change.';
+comment on function public.allergen_sheet_printed(uuid, jsonb) is 'Stamps now() as when the allergen sheet was last printed for a restaurant and keeps a copy of the lines printed. Managers and owners for their own restaurant, the super admin for any. Returns the stamp.';
+comment on function public.public_allergen_sheet(uuid) is 'The latest printed allergen sheet''s lines at an open restaurant, and the day they last changed, for the customer page. What is on the wall, so nothing more than the page itself shows.';
+COMMENT ON FUNCTION "public"."allergens_changed_at"() IS 'When anything on the allergen sheet last changed, from the change log: allergens, dishes, what is in them, their categories, recipes, and a product renamed, switched on or off, made a MIX or moved section. Not prices, VAT, quantities or notes. Null when the log holds no such change. Read by nothing since 19 October 2026, when the sheet began to be compared with the copy kept at each print; kept for the app live before that until the drops.';
 COMMENT ON FUNCTION "public"."answer_time_off"("request_id" "uuid", "answer" "text", "clear_shift_ids" "uuid"[]) IS 'Approves or declines a request for time off that is still waiting, and on approval takes off the roster those of the given shifts that are theirs and inside the dates, recording them in cleared_shifts. All in one transaction. Managers only, under their own row rules. Returns the answered row.';
 COMMENT ON FUNCTION "public"."audit_ignored_columns"() IS 'Columns the change log does not treat as a change. Housekeeping stamps only: if one of these is all that moved, nothing is written.';
 COMMENT ON FUNCTION "public"."checklist_left"("round" "uuid") IS 'How many things at the bottom of the list a round has not ticked yet, counting what is on the list now.';
@@ -4525,8 +4594,10 @@ COMMENT ON FUNCTION "public"."watch_changes"() IS 'Puts the change_log trigger o
 
 revoke all on function "public"."absence_answer_guard"() from public, anon, authenticated, service_role;
 grant execute on function "public"."absence_answer_guard"() to service_role;
-revoke all on function "public"."allergen_sheet_printed"("restaurant" "uuid") from public, anon, authenticated, service_role;
-grant execute on function "public"."allergen_sheet_printed"("restaurant" "uuid") to authenticated;
+revoke all on function public.allergen_sheet_printed(uuid, jsonb) from public, anon, authenticated, service_role;
+grant execute on function public.allergen_sheet_printed(uuid, jsonb) to authenticated;
+revoke all on function public.public_allergen_sheet(uuid) from public, anon, authenticated, service_role;
+grant execute on function public.public_allergen_sheet(uuid) to anon, authenticated;
 revoke all on function "public"."allergens_changed_at"() from public, anon, authenticated, service_role;
 grant execute on function "public"."allergens_changed_at"() to anon, authenticated;
 revoke all on function "public"."brand_choice_guard"() from public, anon, authenticated, service_role;
@@ -4797,6 +4868,18 @@ create policy restaurant_kept_in_write on public.restaurant_kept_in to authentic
 
 revoke all on table public.restaurant_kept_in from anon, authenticated, public;
 grant select, insert, update, delete on table public.restaurant_kept_in to authenticated;
+
+-- What each print said: the managers of the restaurant read it, the super
+-- admin every one. Nobody writes it but allergen_sheet_printed().
+alter table public.allergen_sheet_prints enable row level security;
+
+create policy allergen_sheet_prints_select on public.allergen_sheet_prints for select to authenticated
+    using ((select public.get_my_role()) = 'super_admin'
+           or ((select public.get_my_role()) = any (array['owner', 'store_manager'])
+               and restaurant_id = (select public.get_my_restaurant_id())));
+
+revoke all on table public.allergen_sheet_prints from anon, authenticated, public;
+grant select on table public.allergen_sheet_prints to authenticated;
 
 -- What was sent for review, and who reviews. The brand's settings are the
 -- owners' and the super admin's.
@@ -5675,6 +5758,14 @@ CREATE OR REPLACE VIEW "public"."public_restaurants" AS
 -- What a restaurant's allergen sheet is worked out from, for the customer
 -- page: the versions, their allergens, and which versions each restaurant
 -- buys. No codes, no suppliers, no prices. Since 4 October.
+--
+-- Which versions a restaurant buys (his decision of 18 October 2026, built
+-- 19 October): on an invoice there in the last 56 days, or priced there from
+-- a supplier whose invoices are not read line by line; for a product with
+-- neither, the version last bought there at any age. Never a switched off
+-- version. A document with lines is one that was read, the same rule the
+-- weekly report's "Read from" uses, and credit notes and lines set aside
+-- are not buying anything.
 create or replace view public.public_product_versions as
  select v.id, v.product_id, v.is_recommended, v.is_active
    from public.product_versions v;
@@ -5685,12 +5776,48 @@ create or replace view public.public_version_allergens as
    from public.version_allergens a;
 
 create or replace view public.public_restaurant_versions as
- select distinct p.restaurant_id, p.version_id
-   from public.product_supplier_prices p;
+with lined as (
+    select distinct i.restaurant_id, i.supplier_id
+      from public.invoices i
+     where i.invoice_date >= (now() at time zone 'Europe/Dublin')::date - 56
+       and exists (select 1 from public.invoice_lines l where l.invoice_id = i.id)
+), bought as (
+    select i.restaurant_id, v.product_id, v.id as version_id, i.invoice_date
+      from public.invoices i
+      join public.invoice_lines l on l.invoice_id = i.id
+      join public.product_supplier_prices p on p.id = l.price_id
+      join public.product_versions v on v.id = p.version_id
+     where i.document_type = 'invoice'
+       and l.decision is distinct from 'ignored'
+       and v.is_active
+), recent as (
+    select b.restaurant_id, b.product_id, b.version_id
+      from bought b
+     where b.invoice_date >= (now() at time zone 'Europe/Dublin')::date - 56
+    union
+    select p.restaurant_id, v.product_id, v.id
+      from public.product_supplier_prices p
+      join public.product_versions v on v.id = p.version_id
+      left join public.suppliers s on s.id = p.supplier_id
+     where v.is_active
+       and (coalesce(s.works_without_codes, false)
+            or not exists (select 1 from lined d
+                            where d.restaurant_id = p.restaurant_id and d.supplier_id = p.supplier_id))
+), last_bought as (
+    select b.restaurant_id, b.product_id, b.version_id
+      from (select b.*, max(b.invoice_date) over (partition by b.restaurant_id, b.product_id) as latest
+              from bought b) b
+     where b.invoice_date = b.latest
+       and not exists (select 1 from recent r
+                        where r.restaurant_id = b.restaurant_id and r.product_id = b.product_id)
+)
+select restaurant_id, version_id from recent
+union
+select restaurant_id, version_id from last_bought;
 
 comment on view public.public_product_versions is 'Each version of each product, for the customer allergen page: which product it is of, whether the brand recommends it and whether it is in use. Not the supplier, the code or the price.';
 comment on view public.public_version_allergens is 'Each version''s allergens, for the customer allergen page.';
-comment on view public.public_restaurant_versions is 'Which versions each restaurant has a price for, which is which versions its allergen sheet is built from. Not the price.';
+comment on view public.public_restaurant_versions is 'Which versions each restaurant''s allergen sheet is built from: on an invoice there in the last 56 days, or priced there from a supplier not read line by line, or for a product with neither the version last bought there. Never a switched off version. Not the price.';
 
 -- Every restaurant's, for the two views below and keep_cost_row. Nobody
 -- signed in reads it directly.

@@ -1,5 +1,6 @@
 import { shortDate } from '@/lib/dates'
 import { daysUntil, WARN_DAYS } from '@/lib/reportPeople'
+import SheetChanges from '@/components/allergens/SheetChanges'
 
 // The team's paperwork, read straight off the employee records.
 //
@@ -94,13 +95,16 @@ function Summary({ title, state, asOf, noun }) {
 
 // The printed allergen sheet, only while a new one is due. His ask of 29
 // September. The words are reprintDue's, the same the Public Allergens page
-// shows, so the report and the page cannot say it two different ways.
+// shows, so the report and the page cannot say it two different ways. Since
+// 19 October 2026 the lines that changed go under them, one to a line; a
+// report frozen before has the words alone.
 function AllergenSheet({ due }) {
     if (!due) return null
     return (
         <Line>
             <b className="text-gray-900">Allergen sheet:</b>
             <p className="text-gray-900 mt-0.5">{due.words}</p>
+            <SheetChanges changes={due.changes} more={due.more} className="text-gray-900 mt-1" />
         </Line>
     )
 }

@@ -1397,6 +1397,31 @@ describe('the allergen sheet', () => {
         expect(due.text).toContain(`  ${words}`)
     })
 
+    // Since 19 October 2026 (version 6), the lines that changed, free to
+    // wrap, and in the plain copy one to a line.
+    it('lists the lines that changed, and how many more', () => {
+        const changed = reportEmail({
+            ...base,
+            figures: {
+                ...figures,
+                paperwork: {
+                    ...figures.paperwork,
+                    allergenSheet: {
+                        reason: 'changed',
+                        words: 'Last printed 12 June. 3 lines on it have changed since then. Print a new sheet.',
+                        changes: [{ category: 'Desserts', name: 'Churros', what: 'Now contains Milk' }],
+                        more: 2,
+                    },
+                },
+            },
+        })
+        expect(changed.html).toContain('Churros (Desserts): Now contains Milk')
+        expect(changed.html).toContain('and 2 more')
+        expect(changed.text).toContain('    - Churros (Desserts): Now contains Milk')
+        expect(changed.text).toContain('    and 2 more')
+        expect(due.html).not.toContain('and 2 more')
+    })
+
     // Not due, or a report frozen before this existed.
     it('says nothing while it is not due', () => {
         const mail = reportEmail(base)

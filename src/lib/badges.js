@@ -211,10 +211,20 @@ export function badgesFrom(answer, extras = {}) {
         ? `${plural(n, 'report', 'reports')} you have not opened`
         : `${plural(n, 'report', 'reports')} to send`))
 
+    // Red only when the sheet as it stands differs from the one printed,
+    // which useBadges works out (extras.sheet, the changed lines); amber when
+    // it was never printed, printed before the Hub kept a copy, or is due by
+    // the months.
     const due = a.sheet ? reprintDue({
-        printedAt: a.sheet.printed_at, everyMonths: a.sheet.every_months, changedAt: a.sheet.changed_at, today: a.today,
+        printedAt: a.sheet.printed_at, everyMonths: a.sheet.every_months, kept: a.sheet.kept !== false,
+        changes: extras.sheet ?? null, today: a.today,
     }) : null
-    if (due) dot('/inventory/public-allergens', 'A new allergen sheet needs printing', due.reason === 'changed' ? 'urgent' : 'waiting')
+    if (due?.reason === 'changed') {
+        const n = due.changes.length
+        dot('/inventory/public-allergens', `The allergen sheet on the wall is out of date: ${plural(n, 'line', 'lines')} changed`, 'urgent')
+    } else if (due) {
+        dot('/inventory/public-allergens', 'A new allergen sheet needs printing')
+    }
 
     // What store managers sent for review, for an owner or the super admin.
     // AppLayout adds the products with no allergen answer to it.
