@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { fmtUnitCost } from '@/lib/format'
+import { fmtMoney } from '@/lib/format'
 import { shortDate, todayISO, addDays, daysBetween } from '@/lib/dates'
 import { ticks } from '@/lib/reportChart'
 import {
@@ -17,9 +17,9 @@ import { segmentTrack, segmentButton, hintClass } from '@/lib/controlStyles'
 // What is different here is what a price is. It steps rather than slopes,
 // because the price held until the day it moved. It carries a marker only where
 // a document exists, because the flat run between two invoices is inference and
-// its ends are evidence. And the thick line is not a total: it is what the Hub
-// costs from, which follows whichever supplier was preferred, so it can step on
-// a day no invoice arrived at all.
+// its ends are evidence. And the thick line is not a total: it is what recipes
+// cost it at, the price set as preferred or the dearest of the Recommended
+// list's versions, so it can step on a day no invoice arrived at all.
 
 const PAD = { left: 56, right: 78, top: 12, bottom: 28 }
 const MIN_W = 300
@@ -156,7 +156,7 @@ export default function PriceHistoryChart({ series, unit = 'unit', height = 220 
                                 x={PAD.left - 8} y={y(value) + 4}
                                 textAnchor="end" fontSize="10" fill="#6B6459"
                             >
-                                {fmtUnitCost(value)}
+                                {fmtMoney(value)}
                             </text>
                         </g>
                     ))}
@@ -245,7 +245,7 @@ export default function PriceHistoryChart({ series, unit = 'unit', height = 220 
                                         {short(line.name)}
                                     </span>
                                     <span className="font-bold tabular-nums">
-                                        {held ? fmtUnitCost(held.value) : (
+                                        {held ? fmtMoney(held.value) : (
                                             <span className="font-normal opacity-60">nothing yet</span>
                                         )}
                                     </span>

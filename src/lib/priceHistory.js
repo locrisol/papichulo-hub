@@ -104,6 +104,36 @@ export function pointsFromEvents(events) {
     return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date))
 }
 
+// Only the price recipes were costing from at the time (21 October 2026).
+// Every accepted invoice price writes an event, whether or not recipes cost
+// from its row, so one delivery of a cheaper version drew the line down to a
+// price no recipe used. A choice of row (created, by_hand, preferred_moved,
+// the same ones pricesAsAt replays) says which row it is from then on; before
+// the first one, any row counts.
+const CHOICES = new Set(['created', 'by_hand', 'preferred_moved'])
+export function costedEvents(events) {
+    let current = null
+    return (events || []).filter(e => {
+        if (CHOICES.has(e.reason)) {
+            current = e.price_id ?? current
+            return true
+        }
+        return current == null || e.price_id == null || e.price_id === current
+    })
+}
+
+// The line carried on to what recipes cost it at today (cost_prices), which a
+// change on the Recommended list, or the other restaurant's price for a
+// product never bought here, moves with no event here at all.
+export function withCostToday(points, today, cost) {
+    const per = num(cost)
+    if (!today || !(per > 0)) return points || []
+    const kept = (points || []).filter(p => p.date !== today)
+    const last = kept[kept.length - 1]
+    if (last && Math.abs(last.value - per) < 0.00005) return points || []
+    return [...kept, { date: today, value: per, reason: 'now', real: false }]
+}
+
 // Everything the chart draws, in the order it is drawn.
 //
 // At most three suppliers, the three that invoiced most recently, and the rest
@@ -111,7 +141,7 @@ export function pointsFromEvents(events) {
 // without two of them looking the same to somebody who is colour blind, and a
 // fourth line drawn in a fourth colour would be worse than a sentence saying it
 // is not on the chart.
-export function seriesFor({ lines, events, suppliers }) {
+export function seriesFor({ lines, events, suppliers, costToday = null, today = null }) {
     const points = pointsFromLines(lines)
     const named = id => (suppliers || []).find(s => s.id === id)?.name || 'A supplier'
 
@@ -124,7 +154,10 @@ export function seriesFor({ lines, events, suppliers }) {
     }))
 
     return {
-        product: { id: 'product', name: 'Cost the Hub uses', colour: PRODUCT_LINE, heavy: true, points: pointsFromEvents(events) },
+        product: {
+            id: 'product', name: 'Cost the Hub uses', colour: PRODUCT_LINE, heavy: true,
+            points: withCostToday(pointsFromEvents(costedEvents(events)), today, costToday),
+        },
         suppliers: drawn,
         // Said out loud. A cap nobody is told about reads as "that is all there
         // is", which is the one thing a chart must never imply.

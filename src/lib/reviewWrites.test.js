@@ -30,7 +30,7 @@ vi.mock('@/lib/supabase', async () => ({
     supabase: new Proxy({}, { get: (_, k) => db[k] }),
 }))
 
-const { settleRequest, addFromRequest, reviewWriter } = await import('./reviewWrites')
+const { settleRequest, addFromRequest, reviewWriter, costingOf } = await import('./reviewWrites')
 
 const INVOICE = {
     id: 'i1', invoice_number: '81774412', invoice_date: '2026-10-01', supplier_id: 's1',
@@ -293,5 +293,24 @@ describe('a new pack to cost from', () => {
         expect(await writer(product, versions).accept(row(product), true)).toBeNull()
         expect(wrote('set_cost_row', 'rpc')).toEqual([])
         expect(wrote('product_price_events', 'insert').some(w => w.payload.reason === 'preferred_moved')).toBe(false)
+    })
+})
+
+// Whether a price line is about what recipes cost from (21 October 2026).
+describe('what a price line is about', () => {
+    const row = (recommends, priceId) => ({ product: { id: 'p1', recommends }, price: { id: priceId } })
+    const versions = [{ id: 'v1', product_id: 'p1', is_recommended: true, is_active: true }]
+    const costPrices = [{ product_id: 'p1', own_price_id: 'pr1', borrowed: false }]
+
+    it('is always what recipes cost from for a product with no recommendation', () => {
+        expect(costingOf(row('any', 'pr2'), { versions, costPrices })).toEqual({ listed: false, costed: true })
+    })
+
+    it('says whether it is the version recipes cost from, for one on the Recommended list', () => {
+        expect(costingOf(row('versions', 'pr1'), { versions, costPrices })).toEqual({ listed: true, costed: true })
+        expect(costingOf(row('versions', 'pr2'), { versions, costPrices })).toEqual({ listed: true, costed: false })
+        // Costed from the other restaurant's price: no line here is it.
+        expect(costingOf(row('versions', 'pr1'), { versions, costPrices: [{ product_id: 'p1', own_price_id: null, borrowed: true }] }))
+            .toEqual({ listed: true, costed: false })
     })
 })

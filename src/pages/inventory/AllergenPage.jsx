@@ -124,15 +124,18 @@ export default function AllergenPage() {
     const list = versionsRes.data || []
     if (list.length) {
       const ids = list.map(v => v.id)
-      const [answersRes, boughtRes] = await Promise.all([
+      const [answersRes, boughtRes, codesRes] = await Promise.all([
         supabase.from('version_allergens').select('*').in('version_id', ids),
         activeRestaurant
           ? supabase.from('public_restaurant_versions').select('version_id')
             .eq('restaurant_id', activeRestaurant.id).in('version_id', ids)
           : Promise.resolve({ data: [] }),
+        // The other codes a version goes by (a code update keeps the old
+        // one), since one answer is for all of them.
+        supabase.from('version_codes').select('version_id, code').in('version_id', ids).order('code'),
       ])
       if (stale()) return
-      const failedToo = answersRes.error || boughtRes.error
+      const failedToo = answersRes.error || boughtRes.error || codesRes.error
       if (failedToo) {
         setError(friendlyError(failedToo))
         setLoading(false)
@@ -147,12 +150,16 @@ export default function AllergenPage() {
         ...v,
         answer: (answersRes.data || []).find(a => a.version_id === v.id) || null,
         here: onSheet.has(v.id),
+        otherCodes: (codesRes.data || []).filter(c => c.version_id === v.id).map(c => c.code),
       }))
       setVersions(shaped)
       // The one asked about stays chosen after a save; otherwise the first
+      // on the sheet here with no answer, which is what the red Allergens not
+      // set on Products and on a dish sends people here for, then the first
       // on the sheet here, then the first recommended, then the first.
       const keep = shaped.find(v => v.id === kept.current)
-        || shaped.find(v => v.here) || shaped.find(v => v.is_recommended) || shaped[0]
+        || shaped.find(v => v.here && !v.answer) || shaped.find(v => v.here)
+        || shaped.find(v => v.is_recommended) || shaped[0]
       kept.current = keep.id
       setChosen(keep.id)
       setValues(answersOf(keep.answer))
@@ -277,7 +284,10 @@ export default function AllergenPage() {
                     <span className="block text-sm font-semibold text-gray-900">{v.name || product?.name}</span>
                     <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted mt-1">
                       <SupplierBadge name={v.suppliers?.name} />
-                      <span>{v.supplier_code ? `code ${v.supplier_code}` : 'no code'}</span>
+                      <span>
+                        {v.supplier_code ? `code ${v.supplier_code}` : 'no code'}
+                        {v.otherCodes.length > 0 && `, also ${v.otherCodes.join(', ')}`}
+                      </span>
                     </span>
                     <span className="flex flex-wrap gap-1.5 mt-2">
                       {v.here && <span className={`${badge} bg-sky-100 text-sky-900`}>On the sheet at {activeRestaurant?.name}</span>}

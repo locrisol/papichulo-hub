@@ -631,6 +631,14 @@ maybe('what each role can see and do', () => {
             }
         })
 
+        // Which price rows a count takes packs from (011): ids only.
+        it('reads which rows a count takes packs from at their own restaurant only, and nothing of the price', async () => {
+            const { data, error } = await employee.from('count_price_rows').select('*')
+            expect(error).toBeNull()
+            expect((data || []).filter(r => r.restaurant_id !== ownRestaurantId)).toEqual([])
+            for (const row of data || []) expect(Object.keys(row).sort()).toEqual(['is_preferred', 'price_id', 'product_id', 'restaurant_id'])
+        })
+
         it('reads where things are kept at their own restaurant only, and changes none of it', async () => {
             const { data, error } = await employee.from('restaurant_kept_in').select('restaurant_id, product_id, section, also_in')
             expect(error).toBeNull()
@@ -953,6 +961,13 @@ maybe('what each role can see and do', () => {
             expect(count, 'a manager can read every restaurant through cost_choice').toBe(0)
         })
 
+        // The other restaurant's prices are behind it, and the list is an
+        // owner's to change (011).
+        it('cannot ask what a change to the Recommended list would cost', async () => {
+            const { error } = await manager.rpc('recommended_cost_preview', { product: NOBODY, versions: [] })
+            expect(error?.code, 'a store manager can see what the list would cost').toBe('42501')
+        })
+
         // Only from inside code_update, after it has checked who is asking.
         it('cannot join two versions directly', async () => {
             const { error } = await manager.rpc('join_versions', { keep: NOBODY, fold: NOBODY })
@@ -1031,6 +1046,16 @@ maybe('what each role can see and do', () => {
     })
 
     describe('owner', () => {
+        // Every restaurant open, the cost per unit and whose it is (011).
+        it('can ask what a change to the Recommended list would cost', async () => {
+            const { data, error } = await owner.rpc('recommended_cost_preview', { product: NOBODY, versions: [] })
+            expect(error).toBeNull()
+            expect((data || []).length).toBeGreaterThan(0)
+            for (const row of data || []) {
+                expect(Object.keys(row).sort()).toEqual(['borrowed_after', 'borrowed_now', 'cost_after', 'cost_now', 'restaurant_id', 'restaurant_name'])
+            }
+        })
+
         it('can see their own sales', async () => {
             const { error } = await countVisible(owner, 'sales_records')
             expect(error).toBeNull()
@@ -1415,7 +1440,7 @@ maybe('what each role can see and do', () => {
                 'menu_item_components', 'mix_recipes', 'product_allergens',
                 'product_versions', 'version_allergens', 'product_supplier_prices',
                 'product_requests', 'brand_settings', 'restaurant_kept_in', 'version_pictures', 'version_codes',
-                'cost_prices', 'staff_cost_prices', 'cost_choice', 'allergen_sheet_prints',
+                'cost_prices', 'staff_cost_prices', 'cost_choice', 'allergen_sheet_prints', 'count_price_rows',
             ]) {
                 const { count } = await countVisible(anon, table)
                 expect(count, `${table} is still readable by anybody`).toBe(0)

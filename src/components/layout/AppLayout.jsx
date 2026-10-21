@@ -12,6 +12,8 @@ import { noAllergensDeclared } from '@/lib/allergens'
 import { everyReadArrived } from '@/lib/allergenSheet'
 import { readAllergensAt } from '@/lib/allergensAt'
 import { onAllergensChanged } from '@/lib/allergensChanged'
+import { onSaved } from '@/lib/saves'
+import { SHEET_WRITES } from '@/lib/sheetAt'
 import { navBadge, navDot, menuDot } from '@/lib/controlStyles'
 import { useBadges } from '@/components/layout/useBadges'
 import { BadgesContext } from '@/context/badges'
@@ -82,8 +84,8 @@ export default function AppLayout({ children }) {
     // it is in. Forty three of them had built up by 1 October 2026 with
     // nothing anywhere saying so, and this is so that cannot happen again.
     //
-    // Products are shared by both restaurants, so it does not wait on which
-    // one is picked.
+    // At the restaurant picked, since what is answered there depends on the
+    // versions on its sheet, which are the ones it bought (lib/allergensAt).
     const [noAllergens, setNoAllergens] = useState(0)
     // The same question the sidebar asks before it shows Products at all.
     const seesProducts = can(user, PRODUCTS.roles)
@@ -101,6 +103,20 @@ export default function AppLayout({ children }) {
     // page, so without this the count stayed one too high until it did.
     const [allergensSaved, setAllergensSaved] = useState(0)
     useEffect(() => onAllergensChanged(() => setAllergensSaved(n => n + 1)), [])
+    // And a moment after anything the sheet is built from is saved, on any
+    // page. Since 19 October 2026 a restaurant's sheet is what it bought in
+    // the last 56 days, so Import invoices and Review change what is answered
+    // without touching an allergen or a catalogue page. Once for a page
+    // saving many lines at once, the way the badges wait.
+    useEffect(() => {
+        let timer = null
+        const stop = onSaved(to => {
+            if (!SHEET_WRITES.has(to)) return
+            clearTimeout(timer)
+            timer = setTimeout(() => setAllergensSaved(n => n + 1), 800)
+        })
+        return () => { stop(); clearTimeout(timer) }
+    }, [])
 
     useEffect(() => {
         let live = true

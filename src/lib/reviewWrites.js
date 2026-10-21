@@ -21,7 +21,8 @@ import { sameName } from '@/lib/products'
 import { saveKeptHere } from '@/lib/keptHere'
 import { todayISO } from '@/lib/dates'
 import { versionsWith } from '@/lib/suggestProducts'
-import { costsFromTheList } from '@/lib/recommended'
+import { costsFromTheList } from '@/lib/brandVersions'
+import { readCostPrices } from '@/lib/costPrices'
 
 // Everything Review works from at one restaurant: the lines waiting, every
 // price and code it has, the suppliers, anything we buy, and the brand's
@@ -31,7 +32,7 @@ export async function readReview(restaurantId, { withSent = false } = {}) {
     // Every price and code the restaurant has, a page at a time. Read in one
     // go, whatever sat past the thousandth row was unknown here, and a code
     // bought every week went back to Never bought before.
-    const [waiting, prices, codes, suppliers, products, versions] = await Promise.all([
+    const [waiting, prices, codes, suppliers, products, versions, costPrices] = await Promise.all([
         readToDecide(restaurantId, { withSent }),
         // With what the product recommends: a line's product is this one,
         // and one costed from the Recommended list moves no price by hand.
@@ -51,9 +52,12 @@ export async function readReview(restaurantId, { withSent = false } = {}) {
             .order('name')
             .order('id')),
         readVersions(),
+        // What recipes cost each product from here, so a price line can say
+        // whether it is about that (costingOf).
+        readCostPrices(restaurantId),
     ])
 
-    const failed = [waiting, prices, codes, suppliers, products, versions].map(r => r.error).find(Boolean)
+    const failed = [waiting, prices, codes, suppliers, products, versions, costPrices].map(r => r.error).find(Boolean)
     if (failed) return { data: null, sent: null, error: friendlyError(failed) }
 
     return {
@@ -64,10 +68,23 @@ export async function readReview(restaurantId, { withSent = false } = {}) {
             suppliers: suppliers.data || [],
             products: products.data || [],
             versions: versions.data,
+            costPrices: costPrices.data || [],
         },
         sent: waiting.sent,
         error: null,
     }
+}
+
+// What a price line on Review is about (21 October 2026). A product with a
+// recommended set costs from the dearest of it, which the database keeps in
+// line, so nothing on the line chooses that: `listed`. `costed` is whether
+// the line's own price row is the one recipes cost from now, so taking its
+// new price moves what recipes cost.
+export function costingOf(row, { versions = [], costPrices = [] } = {}) {
+    const listed = costsFromTheList(row?.product, versions)
+    if (!listed) return { listed: false, costed: true }
+    const cost = (costPrices || []).find(c => c.product_id === row.product.id)
+    return { listed: true, costed: !!cost?.own_price_id && cost.own_price_id === row.price?.id }
 }
 
 // The brand's versions still switched on, with the other codes they go by

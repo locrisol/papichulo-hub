@@ -127,13 +127,35 @@ describe('a product with versions', () => {
 
     it('lists each version with where it comes from, and which one has no answer', async () => {
         showTortilla()
-        expect(await screen.findByText('Santa Maria wrap 12"')).toBeInTheDocument()
+        expect(await screen.findByRole('button', { name: /Santa Maria wrap 12".*497870/ })).toBeInTheDocument()
         // The supplier is a badge of its own, beside the code.
         expect(screen.getAllByText('Sysco Ireland').length).toBeGreaterThan(0)
         expect(screen.getByText('code 5013972')).toBeInTheDocument()
         expect(screen.getAllByText('On the sheet at Point Campus')).toHaveLength(2)
         expect(screen.getByText('Recommended')).toBeInTheDocument()
         expect(screen.getByText('Not answered')).toBeInTheDocument()
+    })
+
+    // The red Allergens not set on Products and on a dish sends people here,
+    // so it opens on the version on the sheet that has no answer.
+    it('opens on the version on the sheet here that has no answer', async () => {
+        showTortilla()
+        const plain = await screen.findByRole('button', { name: /Plain wraps 12".*5013972/ })
+        expect(plain).toHaveAttribute('aria-pressed', 'true')
+        expect(screen.getByRole('button', { name: /Santa Maria wrap 12".*497870/ })).toHaveAttribute('aria-pressed', 'false')
+    })
+
+    // A code update keeps the old code on the version, and one answer is for
+    // both.
+    it('names the other codes a version goes by', async () => {
+        show(TORTILLA, [], [], {
+            product_versions: versions,
+            version_allergens: [answered],
+            public_restaurant_versions: [{ restaurant_id: 'r1', version_id: 'v1' }],
+            version_codes: [{ version_id: 'v1', code: '497869' }],
+        })
+        expect(await screen.findByText('code 497870, also 497869')).toBeInTheDocument()
+        expect(screen.getByText('code 5013972')).toBeInTheDocument()
     })
 
     // Since 19 October 2026 a switched off version is on no sheet, and one

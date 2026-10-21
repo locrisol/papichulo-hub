@@ -3,7 +3,7 @@ import { supabase, everyRow } from '@/lib/supabase'
 import { friendlyError } from '@/lib/errors'
 import { addDays, todayISO } from '@/lib/dates'
 import { priceWeek, lookBackFrom, DEFAULT_RECIPE_GAP } from '@/lib/invoiceReport'
-import { readCostPrices } from '@/lib/costPrices'
+import { readCostPrices, readMenuCosting } from '@/lib/costPrices'
 
 // What the invoices said about prices, read live for a report still being
 // written.
@@ -37,7 +37,7 @@ export default function usePriceWeek({ restaurantId, weekStart, threshold, enabl
         async function load() {
             const [
                 lines, credits, prices, codes, claims, documents, versions, requests, events,
-                costPrices, menuItems, categories, components, recipeLines, products,
+                costPrices, menu,
             ] = await Promise.all([
                 everyRow(() => supabase.from('invoice_lines')
                     .select('id, invoice_id, supplier_code, product_id, price_id, raw_description, pack_size, '
@@ -104,18 +104,13 @@ export default function usePriceWeek({ restaurantId, weekStart, threshold, enabl
                 // the dishes something bought off the list pushed over the
                 // restaurant's limit. See offTheList.
                 readCostPrices(restaurantId),
-                everyRow(() => supabase.from('menu_items').select('id, name, category_id, is_active').order('id')),
-                everyRow(() => supabase.from('menu_categories').select('id, is_active').order('id')),
-                everyRow(() => supabase.from('menu_item_components')
-                    .select('id, menu_item_id, product_id, quantity, choice_group, no_quantity').order('id')),
-                everyRow(() => supabase.from('mix_recipes').select('id, mix_product_id, ingredient_product_id, quantity').order('id')),
-                everyRow(() => supabase.from('products').select('id, is_mix, batch_yield, is_active').order('id')),
+                readMenuCosting(),
             ])
 
             if (!alive) return
             const failed = [
                 lines, credits, prices, codes, claims, documents, versions, requests, events,
-                costPrices, menuItems, categories, components, recipeLines, products,
+                costPrices, menu,
             ].map(r => r.error).find(Boolean)
             if (failed) { setError(friendlyError(failed)); return }
 
@@ -152,13 +147,7 @@ export default function usePriceWeek({ restaurantId, weekStart, threshold, enabl
                 requests: requests.data || [],
                 events: events.data || [],
                 costPrices: costPrices.data || [],
-                menu: {
-                    menuItems: menuItems.data || [],
-                    categories: categories.data || [],
-                    components: components.data || [],
-                    recipeLines: recipeLines.data || [],
-                    products: products.data || [],
-                },
+                menu: menu.data,
                 threshold: threshold ?? DEFAULT_RECIPE_GAP,
                 today: todayISO(),
             }))

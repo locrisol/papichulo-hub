@@ -8,7 +8,7 @@ import { shortDate, dayLabel, stampDay } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
 import { pilesOf } from '@/lib/invoiceImport'
 import { prefillLink } from '@/lib/products'
-import { readReview, rowsFor, reviewWriter } from '@/lib/reviewWrites'
+import { readReview, rowsFor, reviewWriter, costingOf } from '@/lib/reviewWrites'
 import { requestFromLine, kindWords } from '@/lib/productRequests'
 import { emailTheReview } from '@/lib/rosterMail'
 import { can, BRAND_CHOICES } from '@/lib/access'
@@ -246,6 +246,7 @@ export default function WaitingForDecision({ restaurantId, refresh: imported = 0
                                         row={row}
                                         busy={busy}
                                         keepsTheList={keepsTheList}
+                                        costing={costingOf(row, data)}
                                         sameCodeCount={sameCode(row).length}
                                         onAccept={also => run(`accept-${row.stored.id}`, () => writer.accept(row, also))}
                                         onReject={() => run(`reject-${row.stored.id}`, () => writer.reject(row))}
@@ -299,7 +300,7 @@ export default function WaitingForDecision({ restaurantId, refresh: imported = 0
 
 // One line, and what can be done about it.
 function ReviewRow({
-    row, busy, keepsTheList, sameCodeCount, onAccept, onReject, onSameProduct, onBuyBoth, onMatch, onNotStock,
+    row, busy, keepsTheList, costing, sameCodeCount, onAccept, onReject, onSameProduct, onBuyBoth, onMatch, onNotStock,
     onLeave, onSend,
 }) {
     const { line, stored, supplier, pile } = row
@@ -342,6 +343,17 @@ function ReviewRow({
                             from today is not the pack on this invoice.
                         </p>
                     )}
+                    {/* Recipes cost a product on the Recommended list from
+                        the dearest of its versions, so taking a price is not
+                        choosing what they cost from (his decision of 18
+                        October 2026). */}
+                    {costing?.listed && (
+                        <p className="text-xs text-muted mt-1">
+                            {costing.costed
+                                ? 'Recipes cost it from this version, the dearest on the Recommended list.'
+                                : 'Recipes cost it from the dearest version on the Recommended list, not this one, unless this new price makes it the dearest.'}
+                        </p>
+                    )}
                 </div>
             )}
 
@@ -366,7 +378,7 @@ function ReviewRow({
                 {pile === 'price_changed' && !row.packMoved && (
                     <>
                         <button type="button" disabled={!!busy} onClick={() => onAccept(false)} className={rowButton('good')}>
-                            Cost from the new price
+                            {costing?.listed ? 'Update the cost price' : 'Cost from the new price'}
                         </button>
                         <button type="button" disabled={!!busy} onClick={onReject} className={rowButton()}>
                             Not now
@@ -374,7 +386,18 @@ function ReviewRow({
                     </>
                 )}
 
-                {pile === 'price_changed' && row.packMoved && (
+                {pile === 'price_changed' && row.packMoved && costing?.listed && (
+                    <>
+                        <button type="button" disabled={!!busy} onClick={() => onAccept(false)} className={rowButton('good')}>
+                            Add the pack
+                        </button>
+                        <button type="button" disabled={!!busy} onClick={onReject} className={rowButton()}>
+                            Not now
+                        </button>
+                    </>
+                )}
+
+                {pile === 'price_changed' && row.packMoved && !costing?.listed && (
                     <>
                         <button type="button" disabled={!!busy} onClick={() => onAccept(true)} className={rowButton('good')}>
                             Add the pack and cost from it

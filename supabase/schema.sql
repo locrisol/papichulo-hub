@@ -4059,6 +4059,67 @@ end $$;
 
 comment on function public.set_cost_row(price uuid) is 'Makes one price the row recipes cost its product from at its restaurant, and no other, in one update. For a product with no recommendation; refused for one with a recommended set. Runs as the caller, so only those who may change that restaurant''s prices can.';
 
+-- The same rule as cost_choice, for a set that is not saved yet: the dearest
+-- of `versions` still switched on, each at the restaurant's own latest price
+-- or else the other restaurant's, not more than four times the cheapest;
+-- with none of them priced, or no set at all, the price the restaurant chose.
+create or replace function public.recommended_cost_preview(product uuid, versions uuid[])
+returns table (restaurant_id uuid, restaurant_name text, cost_now numeric, borrowed_now boolean,
+               cost_after numeric, borrowed_after boolean)
+    language plpgsql stable security definer
+    set search_path to 'public', 'pg_temp'
+    as $$
+#variable_conflict use_column
+declare
+    me text := public.get_my_role();
+begin
+    if me is distinct from 'owner' and me is distinct from 'super_admin' then
+        raise exception 'Only an owner can change the Recommended list' using errcode = '42501';
+    end if;
+    return query
+    with set_prices as (
+        select r.id as rid, v.id as version_id, own.id as own_id,
+               coalesce(own.price_per_unit, other.price_per_unit) as per
+          from public.restaurants r
+          cross join public.product_versions v
+          left join lateral (
+              select x.id, x.price_per_unit
+                from public.product_supplier_prices x
+               where x.restaurant_id = r.id and x.version_id = v.id and x.price_per_unit > 0
+               order by x.priced_at desc, x.id
+               limit 1) own on true
+          left join lateral (
+              select x.price_per_unit
+                from public.product_supplier_prices x
+               where x.restaurant_id <> r.id and x.version_id = v.id and x.price_per_unit > 0
+               order by x.priced_at desc, x.id
+               limit 1) other on true
+         where r.is_active and v.product_id = recommended_cost_preview.product
+           and v.id = any (recommended_cost_preview.versions) and v.is_active
+           and coalesce(own.price_per_unit, other.price_per_unit) is not null
+    ), from_set as (
+        select distinct on (s.rid) s.rid, s.per, s.own_id
+          from (select s.*, min(s.per) over (partition by s.rid) as cheapest from set_prices s) s
+         where s.per <= s.cheapest * 4
+         order by s.rid, s.per desc, (s.own_id is null), s.version_id
+    ), chosen as (
+        select distinct on (x.restaurant_id) x.restaurant_id as rid, x.price_per_unit as per
+          from public.product_supplier_prices x
+         where x.product_id = recommended_cost_preview.product and x.is_preferred and x.price_per_unit > 0
+         order by x.restaurant_id, x.priced_at desc, x.id
+    )
+    select r.id, r.name::text, c.price_per_unit, coalesce(c.borrowed, false),
+           coalesce(f.per, o.per), coalesce(f.own_id is null and f.rid is not null, false)
+      from public.restaurants r
+      left join public.cost_choice c on c.restaurant_id = r.id and c.product_id = recommended_cost_preview.product
+      left join from_set f on f.rid = r.id
+      left join chosen o on o.rid = r.id
+     where r.is_active
+     order by r.name;
+end $$;
+
+comment on function public.recommended_cost_preview(product uuid, versions uuid[]) is 'What recipes cost a product at, at every restaurant open, now and if its recommended set were the versions given: the cost per unit and whether it is the other restaurant''s price, nothing more. For the Recommended list before a change is saved. Owners and the super admin.';
+
 -- Every restaurant, for each product touched, after a price is added,
 -- removed or changes, a version is recommended or switched off, or a
 -- product changes what it recommends. Never after is_preferred alone, which
@@ -4597,6 +4658,8 @@ revoke all on function public.buy_both(keep_price uuid, other_price uuid) from p
 grant execute on function public.buy_both(keep_price uuid, other_price uuid) to authenticated;
 revoke all on function public.set_cost_row(price uuid) from public, anon, authenticated, service_role;
 grant execute on function public.set_cost_row(price uuid) to authenticated;
+revoke all on function public.recommended_cost_preview(product uuid, versions uuid[]) from public, anon, authenticated, service_role;
+grant execute on function public.recommended_cost_preview(product uuid, versions uuid[]) to authenticated;
 revoke all on function public.keep_cost_row(restaurant uuid, product uuid) from public, anon, authenticated, service_role;
 grant execute on function public.keep_cost_row(restaurant uuid, product uuid) to service_role;
 revoke all on function public.cost_row_follows() from public, anon, authenticated, service_role;
@@ -5868,6 +5931,21 @@ create or replace view public.staff_cost_prices as
 
 comment on view public.staff_cost_prices is 'What each product costs at your restaurant, per unit and nothing else, for the stock take and waste, which staff do. Not the supplier, the version or whose price it is.';
 
+-- The price rows whose packs a stock take count offers (011): the one
+-- recipes cost from and every own row of a recommended version. Ids only.
+create or replace view public.count_price_rows as
+ select p.restaurant_id, p.product_id, p.id as price_id, p.is_preferred
+   from public.product_supplier_prices p
+   join public.products pr on pr.id = p.product_id
+   left join public.product_versions v on v.id = p.version_id
+  where (p.is_preferred
+         or (pr.recommends = 'versions' and v.is_recommended and v.is_active))
+    and ((select public.get_my_role()) = 'super_admin'
+         or ((select public.get_my_role()) = any (array['owner', 'store_manager', 'employee'])
+             and p.restaurant_id = (select public.get_my_restaurant_id())));
+
+comment on view public.count_price_rows is 'The price rows at your restaurant whose packs a stock take count offers for each product: the one recipes cost from, and every one of a version the brand recommends, which can be on the shelf turn about. Ids only, for staff, who count.';
+
 COMMENT ON VIEW "public"."roster_published" IS 'The week as it went out to staff, at your restaurant: every published shift as it stands, and a shift changed since the week went out as it was then, from published_as. Changing a shift takes it back to a draft so the roster can say so, and without this it vanished from somebody''s week and phone until the week was published again. The note is there only for the person the shift is on and for the managers. Only shifts from nine weeks before today to nine after, by the day as it went out: the weeks My shifts opens and one more. My shifts reads this rather than roster_shifts.';
 COMMENT ON VIEW "public"."roster_asks" IS 'Which shifts at your restaurant somebody has asked about and is still waiting on, for the mark on My shifts: the shift given, the shift asked for and the status. Not who asked whom, the hours or the message, which only the two people in it and the managers read on shift_requests.';
 COMMENT ON VIEW "public"."roster_away" IS 'The days somebody is not there, with no reason attached, the hours they can still work when it is only part of a day, and the shifts a freed day left going spare. Only time off that touches the weeks from nine before today to nine after, the weeks My shifts opens and one more. The kind, the note and the hours stay on the absences table, which nobody below a manager can read. This is what the staff week greys out, and it reads Not available the same way the picture that goes to the WhatsApp group does.';
@@ -5952,6 +6030,8 @@ revoke all on public.cost_prices from anon, authenticated, public;
 revoke all on public.staff_cost_prices from anon, authenticated, public;
 grant select on public.cost_prices to authenticated;
 grant select on public.staff_cost_prices to authenticated;
+revoke all on public.count_price_rows from anon, authenticated, public;
+grant select on public.count_price_rows to authenticated;
 
 
 -- ======================================================================

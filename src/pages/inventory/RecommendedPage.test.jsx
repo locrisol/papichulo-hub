@@ -32,6 +32,8 @@ let tables
 let lines
 let written
 let rpcs
+let asked
+let preview
 let ask
 let refused
 let removed
@@ -51,7 +53,13 @@ const db = {
         })
         return q
     }),
-    rpc: vi.fn((name, args) => { rpcs.push({ name, args }); return Promise.resolve({ data: null, error: null }) }),
+    // What a change to the list would cost is asked first, and is not one of
+    // the changes, so it is kept apart (asked).
+    rpc: vi.fn((name, args) => {
+        if (name === 'recommended_cost_preview') { asked.push(args); return Promise.resolve({ data: preview, error: null }) }
+        rpcs.push({ name, args })
+        return Promise.resolve({ data: null, error: null })
+    }),
     storage: {
         from: vi.fn(() => ({
             createSignedUrls: vi.fn(() => Promise.resolve({ data: [] })),
@@ -83,6 +91,8 @@ beforeEach(() => {
     me = { id: 'u1', role: 'owner', restaurant_id: 'r1' }
     written = []
     rpcs = []
+    asked = []
+    preview = null
     refused = null
     removed = []
     ask = vi.fn(async () => true)
@@ -160,7 +170,7 @@ describe('the Recommended list', () => {
     it('says what each costs here and when it was last delivered, or that it is not bought here', async () => {
         await open()
         const peppers = productRow('Green Peppers')
-        expect(peppers.getByText(/€13\.35 a case of 5 kg · €2\.6700 a kg/)).toBeInTheDocument()
+        expect(peppers.getByText(/€13\.35 a case of 5 kg · €2\.67 a kg/)).toBeInTheDocument()
         expect(peppers.getByText(/last on an invoice 11 Oct/)).toBeInTheDocument()
         expect(peppers.getByText('Not bought here yet.')).toBeInTheDocument()
         expect(peppers.getAllByText('Sysco Ireland').length).toBeGreaterThan(0)
@@ -257,6 +267,55 @@ describe('changing a product on the list', () => {
         ask = vi.fn(async () => true)
         await userEvent.click(dialog.getByRole('radio', { name: 'Any version' }))
         await waitFor(() => expect(rpcs).toEqual([{ name: 'set_recommends', args: { product: 'p1', mode: 'any' } }]))
+    })
+
+    // Before a change to the set is saved, what it would cost (21 October
+    // 2026): the green peppers costed from the 2.67 box, the dearer of the two.
+    describe('what a change to the set would cost', () => {
+        const atPoint = after => [{
+            restaurant_id: 'r1', restaurant_name: 'Point Campus', cost_now: 2.67, borrowed_now: false,
+            cost_after: after, borrowed_after: false,
+        }]
+
+        it('asks about the set it would leave, and saves straight away when nothing costs more or less', async () => {
+            preview = atPoint(2.67)
+            const dialog = await editPeppers()
+            await userEvent.click(card(dialog, 'Order by 2pm for the next day.').getByRole('button', { name: 'Take off the list' }))
+            expect(asked).toEqual([{ product: 'p1', versions: ['a'] }])
+            expect(ask).not.toHaveBeenCalled()
+            expect(written).toEqual([{ table: 'product_versions', patch: { is_recommended: false }, id: 'b' }])
+        })
+
+        it('says the cost before and after, and the dishes, and saves nothing on No', async () => {
+            preview = atPoint(2.5944)
+            tables.cost_prices = [{ restaurant_id: 'r1', product_id: 'p1', price_per_unit: 2.67 }]
+            tables.menu_items = [{ id: 'm1', name: 'Bowl', category_id: 'c1', is_active: true }]
+            tables.menu_categories = [{ id: 'c1', is_active: true }]
+            tables.menu_item_components = [{ id: 'k1', menu_item_id: 'm1', product_id: 'p1', quantity: 1 }]
+            ask = vi.fn(async () => false)
+            const dialog = await editPeppers()
+            await userEvent.click(card(dialog, 'Order by 2pm for the next day.').getByRole('button', { name: 'Take off the list' }))
+            await waitFor(() => expect(ask).toHaveBeenCalled())
+            expect(ask).toHaveBeenCalledWith(expect.objectContaining({
+                title: 'Take it off the list?',
+                confirmLabel: 'Take off the list',
+                message: 'This changes what recipes cost Green Peppers at Point Campus.',
+                details: [{ label: 'Point Campus', value: '€2.67 to €2.59 a kg, 2.8% less' }],
+                groups: [{ title: 'Dishes at Point Campus', details: [{ label: 'Bowl', value: '€0.08 less' }] }],
+            }))
+            expect(written).toEqual([])
+        })
+
+        it('puts it with what comes off the list when any version is chosen', async () => {
+            preview = atPoint(2.5944)
+            ask = vi.fn(async () => false)
+            const dialog = await editPeppers()
+            await userEvent.click(dialog.getByRole('radio', { name: 'Any version' }))
+            await waitFor(() => expect(ask).toHaveBeenCalled())
+            expect(asked).toEqual([{ product: 'p1', versions: [] }])
+            expect(ask.mock.calls[0][0].message).toMatch(/come off the list[\s\S]*This changes what recipes cost Green Peppers at/)
+            expect(rpcs).toEqual([])
+        })
     })
 
     it('saves the buying notes on leaving the box', async () => {

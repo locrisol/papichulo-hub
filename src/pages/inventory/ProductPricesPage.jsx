@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
-import { fmtMoney, fmtUnitCost } from '@/lib/format'
+import { fmtMoney } from '@/lib/format'
 import { priceProblem, pricePayload } from '@/lib/productPrice'
 import { movePreferred, typedPriceEvent } from '@/lib/priceEvents'
 import PriceForm from '@/components/inventory/PriceForm'
@@ -24,8 +24,8 @@ import SupplierBadge from '@/components/ui/SupplierBadge'
 import KeptHerePanel from '@/components/inventory/KeptHerePanel'
 import { productsWithCode } from '@/lib/versionCodes'
 import { readCostOf } from '@/lib/costPrices'
-import { costsFromTheList, standingOf } from '@/lib/recommended'
-import { versionLabel } from '@/lib/brandVersions'
+import { standingOf } from '@/lib/recommended'
+import { costsFromTheList, versionLabel } from '@/lib/brandVersions'
 
 // Every price we can buy one product at, for the restaurant you are working in.
 //
@@ -284,8 +284,8 @@ export default function ProductPricesPage() {
             message: `Recipes and the stock take cost ${product?.name || 'this product'} from the price marked `
                 + 'preferred. Say whether this one takes its place.',
             details: [
-                { label: 'Costed from now', value: `${getSupplierName(now.supplier_id)}, ${fmtUnitCost(parseFloat(now.price_per_unit))}` },
-                { label: 'This price', value: `${getSupplierName(saved.supplier_id)}, ${fmtUnitCost(parseFloat(saved.price_per_unit))}` },
+                { label: 'Costed from now', value: `${getSupplierName(now.supplier_id)}, ${fmtMoney(parseFloat(now.price_per_unit))}` },
+                { label: 'This price', value: `${getSupplierName(saved.supplier_id)}, ${fmtMoney(parseFloat(saved.price_per_unit))}` },
             ],
             confirmLabel: 'Cost from this one',
             cancelLabel: 'Keep it as an extra price',
@@ -393,7 +393,7 @@ export default function ProductPricesPage() {
                     : 'The product keeps whichever price is preferred.',
             details: [
                 { label: 'Supplier', value: getSupplierName(price.supplier_id) },
-                { label: 'Per unit', value: fmtUnitCost(parseFloat(price.price_per_unit)) },
+                { label: 'Per unit', value: fmtMoney(parseFloat(price.price_per_unit)) },
             ],
             confirmLabel: 'Remove price',
             tone: 'danger',
@@ -470,6 +470,7 @@ export default function ProductPricesPage() {
                 restaurantId={activeRestaurant?.id}
                 product={product}
                 suppliers={suppliers}
+                cost={costRow}
                 refresh={historyVersion}
             />
 
@@ -477,7 +478,7 @@ export default function ProductPricesPage() {
                 {fromTheList ? (
                     <>
                         {costRow
-                            ? <>Recipes cost it at {fmtUnitCost(parseFloat(costRow.price_per_unit))}, from {costVersion ? versionLabel(costVersion, product) : 'a recommended version'}
+                            ? <>Recipes cost it at {fmtMoney(parseFloat(costRow.price_per_unit))}, from {costVersion ? versionLabel(costVersion, product) : 'a recommended version'}
                                 {costRow.borrowed ? `, the other restaurant's price: ${activeRestaurant?.name} has not bought it yet.` : '.'}</>
                             : 'No recommended version has a price yet, here or at the other restaurant.'}
                         {' '}It is the dearest of the versions on the Recommended list, which is where they are chosen.
@@ -539,7 +540,7 @@ export default function ProductPricesPage() {
                             <div className="flex items-baseline justify-between gap-3">
                                 <SupplierBadge name={getSupplierName(p.supplier_id)} />
                                 <span className="text-base font-semibold text-gray-900 whitespace-nowrap tabular-nums">
-                                    {fmtUnitCost(parseFloat(p.price_per_unit))}
+                                    {fmtMoney(parseFloat(p.price_per_unit))}
                                 </span>
                             </div>
                             <div className="flex items-baseline justify-between gap-3 mt-0.5">
@@ -616,7 +617,7 @@ export default function ProductPricesPage() {
                                                 : '—'}
                                         </td>
                                         <td className="px-4 py-3 font-medium text-gray-900 text-right tabular-nums">
-                                            {fmtUnitCost(parseFloat(p.price_per_unit))}
+                                            {fmtMoney(parseFloat(p.price_per_unit))}
                                         </td>
                                         <td className="px-4 py-3">
                                             {costChoice(p)}

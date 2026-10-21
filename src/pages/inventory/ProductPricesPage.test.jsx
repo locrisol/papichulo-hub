@@ -265,8 +265,8 @@ describe('adding a price to a product that already has one', () => {
             confirmLabel: 'Cost from this one',
             cancelLabel: 'Keep it as an extra price',
             details: [
-                { label: 'Costed from now', value: 'Sysco Ireland, €2.3000' },
-                { label: 'This price', value: 'Musgrave, €1.8000' },
+                { label: 'Costed from now', value: 'Sysco Ireland, €2.30' },
+                { label: 'This price', value: 'Musgrave, €1.80' },
             ],
         })
         expect(written.find(w => w.table === 'product_supplier_prices').row.is_preferred).toBeUndefined()
