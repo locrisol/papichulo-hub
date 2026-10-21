@@ -1189,3 +1189,14 @@ describe('where it is kept here', () => {
         expect(within(screen.getByRole('dialog')).getByLabelText('Kept at Point Campus in')).toHaveValue('Freezer')
     })
 })
+
+// The cost column is what recipes cost a product at here (cost_prices), which
+// can be the other restaurant's price when this one never bought it.
+describe('the cost of a product', () => {
+    it("is what recipes cost it at, and says when it is the other restaurant's price", async () => {
+        tables.cost_prices = [{ restaurant_id: 'r1', product_id: 'p1', price_per_unit: 2.67, version_id: 'v1', own_price_id: null, borrowed: true }]
+        renderWithRouter(<ProductsPage />)
+        expect((await screen.findAllByText("Other restaurant's price")).length).toBeGreaterThan(0)
+        expect(screen.getAllByText(/2\.67/).length).toBeGreaterThan(0)
+    })
+})

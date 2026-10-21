@@ -126,6 +126,15 @@ describe('resolveUnitCost', () => {
     const pricesNoLime = preferredPrices.filter(p => p.product_id !== 'p-lime')
     expect(resolveUnitCost(limeCrema, allProducts, allRecipeLines, pricesNoLime)).toBeNull()
   })
+  // A price with no figure, or nought, is no price. NaN would go into a
+  // margin and look like a number (19 October 2026).
+  it('treats a price with no figure, a figure that is not one, or nought as missing', () => {
+    for (const bad of [null, 'not a number', 0]) {
+      const prices = preferredPrices.map(p => (p.product_id === 'p-lime' ? { ...p, price_per_unit: bad } : p))
+      expect(resolveUnitCost(lime, allProducts, allRecipeLines, prices)).toBeNull()
+      expect(calculateMixCost(limeCrema, allProducts, allRecipeLines, prices)).toMatchObject({ cost: null, status: 'missing_price' })
+    }
+  })
 })
 
 describe('menuItemCost', () => {

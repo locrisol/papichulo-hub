@@ -467,6 +467,16 @@ describe('three in a row', () => {
         expect(s).toMatchObject({ productId: 'tor', code: '5013972', priceId: 'plain', fromPriceId: 'santa' })
     })
 
+    // Costed from the Recommended list, which the database keeps it on
+    // (19 October 2026): there is no usual one to choose.
+    it('does not ask about a product the Recommended list costs from', () => {
+        const all = deliveriesFrom([santa('2026-09-08'), plain('2026-09-10'), plain('2026-09-14'), plain('2026-09-17')])
+        const versions = [{ id: 'v-santa', product_id: 'tor', is_recommended: true, is_active: true }]
+        expect(usualSuggestions(all, { ...scope, versions })).toEqual([])
+        const off = [{ ...versions[0], is_active: false }]
+        expect(usualSuggestions(all, { ...scope, versions: off })).toHaveLength(1)
+    })
+
     it('counts deliveries, not lines', () => {
         const all = deliveriesFrom([
             santa('2026-09-08'), plain('2026-09-14', { invoiceId: 'x', number: 'x' }),

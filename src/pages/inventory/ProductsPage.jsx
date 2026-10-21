@@ -44,6 +44,7 @@ import VersionsModal from '@/components/inventory/VersionsModal'
 import { placesFor, recommendationAt } from '@/lib/brandVersions'
 import { ownPlaces, keptAt, saveKeptHere } from '@/lib/keptHere'
 import { productsWithCode } from '@/lib/versionCodes'
+import { readCostPrices, borrowedCost } from '@/lib/costPrices'
 import { startsWithoutRecommendation } from '@/lib/recommended'
 import SupplierBadge from '@/components/ui/SupplierBadge'
 import { can, BRAND_CHOICES } from '@/lib/access'
@@ -175,6 +176,10 @@ export default function ProductsPage() {
   // restaurant, and which versions it buys (lib/brandVersions).
   const [versions, setVersions] = useState([])
   const [kept, setKept] = useState([])
+  // What recipes cost each product at here (lib/costPrices), for the cost
+  // column. The preferred rows in prices are this restaurant's own, for the
+  // form and the packs.
+  const [costPrices, setCostPrices] = useState([])
   const [boughtHere, setBoughtHere] = useState(() => new Set())
   const [versionsOf, setVersionsOf] = useState(null)
   const [products, setProducts] = useState([])
@@ -454,7 +459,7 @@ export default function ProductsPage() {
     // What the row says about the brand's recommendations and where it is
     // kept here. A failed read leaves what was there: the row then says
     // less, rather than something wrong.
-    const [versionsRead, keptRead] = await Promise.all([
+    const [versionsRead, keptRead, costRead] = await Promise.all([
       everyRow(() => supabase.from('product_versions')
         .select('id, product_id, supplier_id, supplier_code, name, is_recommended, is_active, fallback_rank')
         .order('id')),
@@ -462,9 +467,11 @@ export default function ProductsPage() {
         .select('id, product_id, section, also_in')
         .eq('restaurant_id', activeRestaurant.id)
         .order('id')),
+      readCostPrices(activeRestaurant.id),
     ])
     if (!versionsRead.error) setVersions(versionsRead.data || [])
     if (!keptRead.error) setKept(keptRead.data || [])
+    if (!costRead.error) setCostPrices(costRead.data || [])
 
     // The packs hanging off those prices. Fetched here rather than in its own
     // effect because it is meaningless without them: a pack belongs to a price
@@ -1352,28 +1359,27 @@ export default function ProductsPage() {
   // different things about the same product.
   function rowValues(p) {
     const price = getPreferredPrice(p.id)
-    const mixResult = p.is_mix ? calculateMixCost(p, products, recipeLines, prices) : null
+    const unit = unitCostOf(p)
     return {
       supplier: p.is_mix ? 'House-made' : getSupplierName(price?.supplier_id),
       // Null means we could not work it out: a MIX with an ingredient that has
-      // no price, or a bought product with no preferred price set.
-      cost: p.is_mix
-        ? (mixResult?.cost != null ? fmtUnitCost(mixResult.cost) : null)
-        : (price ? fmtUnitCost(parseFloat(price.price_per_unit)) : null),
+      // no price, or a bought product with no price here or at the other
+      // restaurant.
+      cost: unit != null ? fmtUnitCost(unit) : null,
+      borrowed: !p.is_mix && borrowedCost(costPrices, p.id),
       weightLoss: p.weight_loss_pct > 0 ? `${p.weight_loss_pct}%` : '—',
     }
   }
 
-  // What a product is worth per unit. A MIX is costed from its recipe, a bought
-  // product from its preferred supplier price. Null when neither can be worked
+  // What a product is worth per unit: what recipes cost it at here
+  // (lib/costPrices), a MIX from its recipe and a bought product the dearest
+  // of its recommended versions or the price chosen, which can be the other
+  // restaurant's when this one never bought it. Null when it cannot be worked
   // out, which sorts to the bottom rather than pretending to be zero.
   function unitCostOf(p) {
-    if (p.is_mix) {
-      const result = calculateMixCost(p, products, recipeLines, prices)
-      return result?.cost ?? null
-    }
-    const price = getPreferredPrice(p.id)
-    return price ? parseFloat(price.price_per_unit) : null
+    if (p.is_mix) return calculateMixCost(p, products, recipeLines, costPrices).cost ?? null
+    const perUnit = Number(costPrices.find(c => c.product_id === p.id)?.price_per_unit)
+    return Number.isFinite(perUnit) && perUnit > 0 ? perUnit : null
   }
 
   // The value a column sorts on. Text comes back lowercased so the sort is not
@@ -1790,6 +1796,7 @@ export default function ProductsPage() {
                           {p.is_mix ? 'Incomplete' : 'No price set'}
                         </span>
                       )}
+                      {v.borrowed && <span className="block text-xs font-normal text-muted">Other restaurant&apos;s price</span>}
                     </dd>
                   </div>
                   <div className="flex items-baseline justify-between gap-3">
@@ -1875,7 +1882,7 @@ export default function ProductsPage() {
             <tbody>
               {filteredProducts.map((p, i) => {
                 const price = getPreferredPrice(p.id)
-                const mixResult = p.is_mix ? calculateMixCost(p, products, recipeLines, prices) : null
+                const unit = unitCostOf(p)
                 const last = i === filteredProducts.length - 1
                 return (
                   <Fragment key={p.id}>
@@ -1954,11 +1961,12 @@ export default function ProductsPage() {
                         {brandMark(p)}
                       </td>
                       <td className={`px-4 py-3 font-medium ${p.is_active ? 'text-gray-900' : 'text-muted'}`}>
-                        {p.is_mix
-                          ? (mixResult?.cost !== null
-                              ? fmtUnitCost(mixResult.cost)
-                              : <span className="text-amber-700 text-xs">Incomplete</span>)
-                          : (price ? fmtUnitCost(parseFloat(price.price_per_unit)) : '—')}
+                        {unit != null
+                          ? fmtUnitCost(unit)
+                          : (p.is_mix ? <span className="text-amber-700 text-xs">Incomplete</span> : '—')}
+                        {!p.is_mix && borrowedCost(costPrices, p.id) && (
+                          <span className="block text-xs font-normal text-muted">Other restaurant&apos;s price</span>
+                        )}
                       </td>
                       <td className={`px-4 py-3 ${p.is_active ? 'text-gray-700' : 'text-muted'}`}>
                         {p.weight_loss_pct > 0 ? `${p.weight_loss_pct}%` : '—'}

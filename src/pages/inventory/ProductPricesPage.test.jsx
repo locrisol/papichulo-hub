@@ -291,6 +291,53 @@ describe('adding a price to a product that already has one', () => {
     })
 })
 
+// A product with a recommended set costs from the dearest of it (his decision
+// of 18 October 2026), so the page says what it costs from and offers no
+// choice: the Recommended list is where the versions are chosen.
+describe('a product costed from the Recommended list', () => {
+    const LISTED = { ...PEPPERS, recommends: 'versions' }
+    const VERSIONS = [
+        { id: 'v1', product_id: 'p1', supplier_id: 's1', supplier_code: '483508', name: 'Green Peppers 1x5 Kg', is_recommended: true, is_active: true, fallback_rank: null },
+        { id: 'v2', product_id: 'p1', supplier_id: 's2', supplier_code: 'M-4471', name: null, is_recommended: false, is_active: true, fallback_rank: null },
+    ]
+    beforeEach(() => {
+        tables.products = [LISTED]
+        tables.product_versions = VERSIONS
+        tables.product_supplier_prices = [{ ...SYSCO, version_id: 'v1' }, { ...MUSGRAVE, version_id: 'v2' }]
+        tables.cost_prices = [{ restaurant_id: 'r1', product_id: 'p1', price_per_unit: 2.3, version_id: 'v1', own_price_id: 'pr1', borrowed: false }]
+    })
+
+    it('says what recipes cost it from, and where each price stands on the list', async () => {
+        open()
+        expect(await screen.findByText(/Recipes cost it at .*from Green Peppers 1x5 Kg\./)).toBeInTheDocument()
+        expect(screen.queryAllByRole('button', { name: 'Set as preferred' })).toHaveLength(0)
+        expect(screen.getAllByText('Recommended').length).toBeGreaterThan(0)
+        expect(screen.getAllByText('Not recommended').length).toBeGreaterThan(0)
+        expect(screen.getAllByText('★ Recipes cost from this').length).toBeGreaterThan(0)
+    })
+
+    it("says when it is the other restaurant's price, never bought here", async () => {
+        tables.cost_prices = [{ ...tables.cost_prices[0], own_price_id: null, borrowed: true }]
+        open()
+        expect(await screen.findByText(/the other restaurant's price: Point Campus has not bought it yet\./)).toBeInTheDocument()
+        expect(screen.queryByText('★ Recipes cost from this')).toBeNull()
+    })
+
+    it('asks nothing about costing from a new price', async () => {
+        const clicker = userEvent.setup()
+        open()
+        await clicker.click(await screen.findByRole('button', { name: '+ Add price' }))
+        const form = within(screen.getByText('New price').parentElement)
+        await clicker.selectOptions(supplierBox(), 's2')
+        await clicker.type(box(form, 'Supplier code'), 'M-4472')
+        await clicker.type(box(form, 'Price per case (€)'), '11')
+        await clicker.type(box(form, 'Units per case (KG)'), '5')
+        await clicker.click(form.getByRole('button', { name: 'Add price' }))
+        await waitFor(() => expect(written.some(w => w.how === 'insert' && w.table === 'product_supplier_prices')).toBe(true))
+        expect(asked).toEqual([])
+    })
+})
+
 // Where Point Campus keeps it, its own and nobody else's (his decision of 18
 // October 2026). It used to be said on each version, the same at both.
 describe('where it is kept here', () => {

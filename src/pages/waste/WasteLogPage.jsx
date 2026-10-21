@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
+import { readStaffCostPrices } from '@/lib/costPrices'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
 import { useNavigate } from 'react-router-dom'
@@ -131,11 +132,9 @@ export default function WasteLogPage() {
             if (rErr) { setError(friendlyError(rErr)); setLoading(false); return }
             setRecipeLines(recipes || [])
 
-            const { data: priceRows, error: prErr } = await supabase
-                .from('product_supplier_prices')
-                .select('*')
-                .eq('restaurant_id', restaurantId)
-                .eq('is_preferred', true)
+            // What each product costs here, and nothing else about the
+            // price: whose it is and from whom stay with the managers.
+            const { data: priceRows, error: prErr } = await readStaffCostPrices(restaurantId)
 
             if (prErr) { setError(friendlyError(prErr)); setLoading(false); return }
             setPrices(priceRows || [])

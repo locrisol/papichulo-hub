@@ -12,7 +12,7 @@ import PriceCountUnitsEditor from '@/components/inventory/PriceCountUnitsEditor'
 import { friendlyError } from '@/lib/errors'
 import { claimCode } from '@/lib/invoiceReview'
 import {
-    tableHeadRow, tableHeadCell, tableCard, badge, card, cardHeader, rowButton, primaryButton,
+    tableHeadRow, tableHeadCell, tableCard, badge, card, cardHeader, rowButton, primaryButton, toneBadge,
 } from '@/lib/controlStyles'
 import { useConfirm } from '@/context/confirm'
 import BackButton from '@/components/ui/BackButton'
@@ -23,6 +23,9 @@ import { useSaveOnce } from '@/components/ui/useSaveOnce'
 import SupplierBadge from '@/components/ui/SupplierBadge'
 import KeptHerePanel from '@/components/inventory/KeptHerePanel'
 import { productsWithCode } from '@/lib/versionCodes'
+import { readCostOf } from '@/lib/costPrices'
+import { standingOf } from '@/lib/recommended'
+import { versionLabel } from '@/lib/brandVersions'
 
 // Every price we can buy one product at, for the restaurant you are working in.
 //
@@ -46,6 +49,11 @@ export default function ProductPricesPage() {
     const confirm = useConfirm()
 
     const [product, setProduct] = useState(null)
+    // The product's versions and what recipes cost it at here (cost_prices).
+    // For a product with a recommended set the database chooses the row it
+    // costs from, so the page says which and offers no choice.
+    const [versions, setVersions] = useState([])
+    const [costRow, setCostRow] = useState(null)
     const [prices, setPrices] = useState([])
     const [suppliers, setSuppliers] = useState([])
     const [loading, setLoading] = useState(true)
@@ -128,6 +136,15 @@ export default function ProductPricesPage() {
 
         if (error) setError(friendlyError(error))
         else setPrices(data)
+        // Read after the prices, which may have just moved the cost.
+        const [{ data: vs }, { data: cost }] = await Promise.all([
+            supabase.from('product_versions')
+                .select('id, product_id, supplier_id, supplier_code, name, is_recommended, is_active, fallback_rank')
+                .eq('product_id', id),
+            readCostOf(activeRestaurant.id, id),
+        ])
+        setVersions(vs || [])
+        setCostRow(cost || null)
         setLoading(false)
         }, [activeRestaurant, id])
 
@@ -259,6 +276,7 @@ export default function ProductPricesPage() {
     // line comes in at a new pack (his ask, 4 October). Kept as an extra price
     // otherwise, to compare against.
     async function askToCostFrom(saved) {
+        if (fromTheList) return
         const now = prices.find(p => p.is_preferred && p.id !== saved.id)
         if (!now) return
         const yes = await confirm({
@@ -394,9 +412,11 @@ export default function ProductPricesPage() {
     async function removePrice(price) {
         const ok = await confirm({
             title: 'Remove this price?',
-            message: price.is_preferred
-                ? 'This is the preferred price, so the product will have no cost until another one is set.'
-                : 'The product keeps whichever price is preferred.',
+            message: fromTheList
+                ? 'Recipes go on costing it from the versions on the Recommended list.'
+                : price.is_preferred
+                    ? 'This is the preferred price, so the product will have no cost until another one is set.'
+                    : 'The product keeps whichever price is preferred.',
             details: [
                 { label: 'Supplier', value: getSupplierName(price.supplier_id) },
                 { label: 'Per unit', value: fmtUnitCost(parseFloat(price.price_per_unit)) },
@@ -417,6 +437,35 @@ export default function ProductPricesPage() {
 
     function getSupplierName(supplierId) {
         return suppliers.find(s => s.id === supplierId)?.name || '—'
+    }
+
+    // A product with a recommended set costs from the dearest of it (his
+    // decision of 18 October 2026), so nobody chooses its price here: the
+    // Recommended list does. A product with no recommendation keeps Set as
+    // preferred.
+    const fromTheList = product?.recommends === 'versions' && versions.some(v => v.is_recommended && v.is_active)
+    const costVersion = versions.find(v => v.id === costRow?.version_id) || null
+    const standing = price => standingOf(versions.find(v => v.id === price.version_id), product, versions)
+
+    // Where a price stands: for a product costed from the Recommended list,
+    // its place on the list and whether recipes cost from it; otherwise
+    // preferred, or the button that makes it so. A plain function, so the
+    // phone card and the table say the same.
+    function costChoice(price, buttonClass = '') {
+        if (fromTheList) {
+            const said = standing(price)
+            return (
+                <span className="inline-flex flex-wrap items-center gap-1.5">
+                    <span className={toneBadge(said?.tone === 'recommended' ? 'good' : 'plain')}>{said?.label || 'Not recommended'}</span>
+                    {costRow?.own_price_id === price.id && (
+                        <span className="text-xs font-semibold text-green-700">★ Recipes cost from this</span>
+                    )}
+                </span>
+            )
+        }
+        return price.is_preferred
+            ? <span className="text-xs font-semibold text-green-700">★ Preferred</span>
+            : <button onClick={() => setAsPreferred(price)} className={`${rowButton('good')} ${buttonClass}`}>Set as preferred</button>
     }
 
     return (
@@ -451,7 +500,17 @@ export default function ProductPricesPage() {
             />
 
             <div className="bg-blue-50 text-blue-700 text-xs rounded-lg p-3 mb-4">
-                Case and loose prices from the same supplier are kept separately. If a supplier sells both, add both, compare the cost per unit, and press Set as preferred on the one to use.
+                {fromTheList ? (
+                    <>
+                        {costRow
+                            ? <>Recipes cost it at {fmtUnitCost(parseFloat(costRow.price_per_unit))}, from {costVersion ? versionLabel(costVersion, product) : 'a recommended version'}
+                                {costRow.borrowed ? `, the other restaurant's price: ${activeRestaurant?.name} has not bought it yet.` : '.'}</>
+                            : 'No recommended version has a price yet, here or at the other restaurant.'}
+                        {' '}It is the dearest of the versions on the Recommended list, which is where they are chosen.
+                    </>
+                ) : (
+                    'Case and loose prices from the same supplier are kept separately. If a supplier sells both, add both, compare the cost per unit, and press Set as preferred on the one to use.'
+                )}
             </div>
 
             {showForm && !editingPrice && (
@@ -523,13 +582,7 @@ export default function ProductPricesPage() {
                                 {p.supplier_code || 'No supplier code'}
                             </p>
 
-                            {p.is_preferred ? (
-                                <p className="text-xs font-semibold text-green-700 mt-2">★ Preferred</p>
-                            ) : (
-                                <button onClick={() => setAsPreferred(p)} className={`${rowButton('good')} mt-2`}>
-                                    Set as preferred
-                                </button>
-                            )}
+                            <div className="mt-2">{costChoice(p)}</div>
 
                             <div className="flex flex-wrap gap-3 mt-2 pt-2 border-t border-border">
                                 <button
@@ -558,7 +611,7 @@ export default function ProductPricesPage() {
                                 <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Supplier code</th>
                                 <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Pack</th>
                                 <th className={`text-right px-4 py-3 ${tableHeadCell}`}>Cost / {product?.unit || 'Unit'}</th>
-                                <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Preferred</th>
+                                <th className={`text-left px-4 py-3 ${tableHeadCell}`}>{fromTheList ? 'Recommended list' : 'Preferred'}</th>
                                 <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Actions</th>
                             </tr>
                         </thead>
@@ -592,16 +645,7 @@ export default function ProductPricesPage() {
                                             {fmtUnitCost(parseFloat(p.price_per_unit))}
                                         </td>
                                         <td className="px-4 py-3">
-                                            {p.is_preferred ? (
-                                                <span className="text-xs font-semibold text-green-700">★ Preferred</span>
-                                            ) : (
-                                                <button
-                                                    onClick={() => setAsPreferred(p)}
-                                                    className={rowButton('good')}
-                                                >
-                                                    Set as preferred
-                                                </button>
-                                            )}
+                                            {costChoice(p)}
                                         </td>
                                         <td className="px-4 py-3">
                                             <div className="flex gap-3">

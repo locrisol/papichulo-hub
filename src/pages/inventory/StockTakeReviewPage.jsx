@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
+import { readStaffCostPrices } from '@/lib/costPrices'
 import { useAuth } from '@/context/auth'
 import { resolveUnitCost } from '@/lib/mixCost'
 import { fmtMoney, fmtQty } from '@/lib/format'
@@ -102,9 +103,7 @@ export default function StockTakeReviewPage() {
 
     // The stock take's own restaurant, for the same reason as on the count:
     // a super admin can read every restaurant's prices.
-    const { data: pricesData, error: pricesErr } = await supabase
-      .from('product_supplier_prices').select('*')
-      .eq('restaurant_id', sessionData.restaurant_id).eq('is_preferred', true)
+    const { data: pricesData, error: pricesErr } = await readStaffCostPrices(sessionData.restaurant_id)
 
     const { data: recipesData, error: recipesErr } = await supabase
       .from('mix_recipes').select('*')

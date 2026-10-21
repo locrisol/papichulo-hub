@@ -639,7 +639,7 @@ export function switchesIn(all, { weekStart, weekEnd, prices = [], codes = [], v
 // By delivery rather than by line: two lines of it on one invoice are one
 // delivery, and an invoice carrying the usual one as well breaks the run. Only
 // asked while one of the three is this week's, so it is a question about now.
-export function usualSuggestions(all, { weekStart, weekEnd, prices = [], codes = [] }) {
+export function usualSuggestions(all, { weekStart, weekEnd, prices = [], codes = [], versions = [] }) {
     const lineage = lineageOf(codes)
     const byProduct = new Map()
     for (const d of all) {
@@ -652,6 +652,12 @@ export function usualSuggestions(all, { weekStart, weekEnd, prices = [], codes =
     for (const [productId, list] of byProduct) {
         const usual = usualFor(productId, prices, codes)
         if (!usual) continue
+        // A product costed from the Recommended list has no usual one to
+        // choose: the database keeps its cost on the list (keep_cost_row, 19
+        // October 2026), and making another the usual one would fight it.
+        const recommends = list[0]?.product?.recommends
+        if (recommends !== 'any'
+            && (versions || []).some(v => v.product_id === productId && v.is_recommended && v.is_active !== false)) continue
 
         const visits = []
         for (const d of list) {
@@ -1154,7 +1160,7 @@ export function priceWeek({
     // at all (his, 7 October): only a costing still out of line is news.
     const recipes = withSince(recipeGaps(all, scope), 'recipe', prices, codes)
         .filter(r => !fixedSince(r, threshold))
-    const suggestions = withSince(usualSuggestions(all, scope), 'usual', prices, codes)
+    const suggestions = withSince(usualSuggestions(all, { ...scope, versions }), 'usual', prices, codes)
     const back = cameBack(credits, claims, { weekStart, weekEnd, invoices })
     const owed = stillOwed(claims)
     // `invoices` also carries the documents this week's claims were put

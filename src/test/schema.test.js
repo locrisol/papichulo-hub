@@ -679,3 +679,46 @@ describe('codes on versions', () => {
         expect(schema).not.toContain('supplier_codes_one_per_price')
     })
 })
+
+// What recipes cost from (step 5, 19 October 2026).
+describe('what recipes cost from', () => {
+    const view = name => {
+        const start = schema.indexOf(`create or replace view public.${name} as`)
+        expect(start, `${name} is not in schema.sql`).toBeGreaterThan(-1)
+        return schema.slice(start, schema.indexOf(';', start))
+    }
+    const fn = name => {
+        const start = schema.indexOf(`create or replace function public.${name}(`)
+        expect(start, `${name} is not in schema.sql`).toBeGreaterThan(-1)
+        return schema.slice(start, schema.indexOf('end $$;', start))
+    }
+
+    it('costs a product with a recommended set at the dearest sensible price of it, its own first', () => {
+        const body = view('cost_choice')
+        expect(body).toContain('v.is_recommended and v.is_active')
+        expect(body).toContain('order by s.restaurant_id, s.product_id, s.price_per_unit desc')
+        expect(body).toContain('s.price_per_unit <= s.cheapest * 4')
+    })
+
+    // Staff get only what their screens use (his rule of 1 October).
+    it('gives staff the cost and nothing else, and managers where it comes from', () => {
+        expect(view('staff_cost_prices')).toMatch(/select c\.restaurant_id, c\.product_id, c\.price_per_unit\s+from public\.cost_choice c/)
+        expect(view('staff_cost_prices')).toContain("'employee'")
+        expect(view('cost_prices')).toContain('c.borrowed')
+        expect(view('cost_prices')).not.toContain("'employee'")
+        for (const name of ['cost_prices', 'staff_cost_prices']) {
+            expect(view(name)).toContain('c.restaurant_id = (select public.get_my_restaurant_id())')
+            expect(schema).toContain(`grant select on public.${name} to authenticated;`)
+        }
+        expect(schema).not.toMatch(/grant select on public\.cost_choice/)
+    })
+
+    it('keeps the row recipes cost from in line, never after is_preferred alone', () => {
+        expect(fn('keep_cost_row')).toContain('c.from_set and c.own_price_id is not null')
+        const triggers = schema.match(/create trigger \w+_cost_row[^;]*;/g) || []
+        expect(triggers).toHaveLength(3)
+        for (const t of triggers) expect(t, t).not.toContain('is_preferred')
+        expect(schema).toContain('grant execute on function public.keep_cost_row(restaurant uuid, product uuid) to service_role;')
+        expect(schema).not.toMatch(/grant execute on function public\.keep_cost_row[^;]*authenticated/)
+    })
+})

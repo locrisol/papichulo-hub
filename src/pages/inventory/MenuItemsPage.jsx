@@ -2,6 +2,7 @@ import { fmtMoney, fmtPct } from '@/lib/format'
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
+import { readCostPrices } from '@/lib/costPrices'
 import { readAllergensAt } from '@/lib/allergensAt'
 import { useRestaurant } from '@/context/restaurant'
 import { useConfirm } from '@/context/confirm'
@@ -163,11 +164,7 @@ export default function MenuItemsPage() {
   // A failed read is said as one. Left empty, every dish read as Incomplete,
   // the same as a dish with a price missing.
   const fetchPrices = useCallback(async () => {
-    const { data, error: priceError } = await supabase
-      .from('product_supplier_prices')
-      .select('*')
-      .eq('restaurant_id', activeRestaurant.id)
-      .eq('is_preferred', true)
+    const { data, error: priceError } = await readCostPrices(activeRestaurant.id)
     if (priceError || !data) {
       setPricesFailed(`The prices could not be read, so costs and margins are not shown. ${friendlyError(priceError)}`.trim())
       // Not the last restaurant's either. Kept, they went on costing this
