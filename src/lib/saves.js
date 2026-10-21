@@ -10,7 +10,7 @@
 // The database functions that change something. Every other function the app
 // calls only reads, my_badges among them, which must not set off a recount of
 // itself.
-const WRITING_FUNCTIONS = ['allergen_sheet_printed', 'set_my_landing_page', 'set_recommends', 'set_fallbacks', 'code_update', 'buy_both']
+const WRITING_FUNCTIONS = ['allergen_sheet_printed', 'set_my_landing_page', 'set_recommends', 'set_fallbacks', 'code_update', 'buy_both', 'set_cost_row']
 
 // Which table or function a request to the database API was for, as
 // 'invoice_lines' or 'rpc/code_update', or null for anything else.

@@ -721,4 +721,36 @@ describe('what recipes cost from', () => {
         expect(schema).toContain('grant execute on function public.keep_cost_row(restaurant uuid, product uuid) to service_role;')
         expect(schema).not.toMatch(/grant execute on function public\.keep_cost_row[^;]*authenticated/)
     })
+
+    // Migration 010, 21 October 2026. Checked when a change is finished,
+    // because keep_cost_row moves the flag in one update that meets the new
+    // row before the old one has let go.
+    it('lets one price per product at each restaurant be the one recipes cost from', () => {
+        expect(schema).toMatch(/add constraint product_supplier_prices_one_preferred\s+exclude using btree \(restaurant_id with =, product_id with =\) where \(is_preferred\)\s+deferrable initially deferred;/)
+    })
+
+    // So nothing the app sends marks a second row first and clears the rest
+    // after, and it runs as whoever calls it, under the same row rules.
+    it('moves it by hand in one call, never for a product the Recommended list decides', () => {
+        const body = fn('set_cost_row')
+        expect(body).not.toMatch(/security definer/)
+        expect(body).toContain('set is_preferred = (id = price)')
+        expect(body).toContain("pr.recommends = 'versions'")
+        expect(schema).toContain('grant execute on function public.set_cost_row(price uuid) to authenticated;')
+        expect(schema).not.toMatch(/grant execute on function public\.set_cost_row[^;]*anon/)
+    })
+})
+
+// Step 10, 21 October 2026: what the recommended list left behind.
+describe('what is gone', () => {
+    it('keeps no places on a version, which each restaurant says for itself', () => {
+        const start = schema.indexOf('create table if not exists public.product_versions (')
+        const table = schema.slice(start, schema.indexOf(');', start))
+        expect(table).not.toMatch(/\n\s+(section|also_in)\s/)
+        expect(schema).toContain('create table if not exists public.restaurant_kept_in (')
+    })
+
+    it('has no allergens_changed_at, the date the sheet was once judged by', () => {
+        expect(schema).not.toContain('allergens_changed_at')
+    })
 })

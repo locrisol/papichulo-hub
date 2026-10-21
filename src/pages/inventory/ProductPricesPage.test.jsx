@@ -277,7 +277,9 @@ describe('adding a price to a product that already has one', () => {
         tables.product_supplier_prices = [SYSCO]
         const clicker = open()
         await addMusgrave(clicker)
-        await waitFor(() => expect(written.some(w => w.how === 'update' && w.row.is_preferred === true)).toBe(true))
+        // One call that moves it, never an update marking a second row first.
+        await waitFor(() => expect(written.some(w => w.how === 'rpc' && w.table === 'set_cost_row')).toBe(true))
+        expect(written.some(w => w.how === 'update' && w.row.is_preferred === true)).toBe(false)
         await waitFor(() => expect(events().some(e => e.reason === 'preferred_moved')).toBe(true))
     })
 

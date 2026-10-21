@@ -24,7 +24,7 @@ import SupplierBadge from '@/components/ui/SupplierBadge'
 import KeptHerePanel from '@/components/inventory/KeptHerePanel'
 import { productsWithCode } from '@/lib/versionCodes'
 import { readCostOf } from '@/lib/costPrices'
-import { standingOf } from '@/lib/recommended'
+import { costsFromTheList, standingOf } from '@/lib/recommended'
 import { versionLabel } from '@/lib/brandVersions'
 
 // Every price we can buy one product at, for the restaurant you are working in.
@@ -356,46 +356,20 @@ export default function ProductPricesPage() {
         setErrors({})
     }
 
-    // Moves the preferred flag to a different price.
+    // Moves the preferred flag to a different price, for a product with no
+    // recommendation (one with a set is costed from the Recommended list and
+    // offers no button).
     //
-    // This takes two updates, because supabase-js sends one statement at a time
-    // and there is no transaction around them. So the order matters, and it is
-    // deliberate: set the new one first, then clear the others.
-    //
-    // Doing it the other way round, clearing first, means a failure on the
-    // second update leaves the product with no preferred price at all. Its cost
-    // then reads as nothing in every place that depends on it, the menu margins,
-    // the waste value and the stock take, and nothing on screen says why.
-    //
-    // This way the worst case is two rows briefly marked preferred. The cost
-    // still resolves, it might just resolve to the old supplier until somebody
-    // presses it again, and the error message says something went wrong. A wrong
-    // price is recoverable. A missing one goes unnoticed.
-    //
-    // The clear step deliberately excludes the row we just set, so it cannot
-    // undo its own work.
-    //
-    // Doing both in one database function would remove the window entirely, and
-    // that is the proper fix if this ever actually bites.
+    // One call, set_cost_row, which moves it in a single update: the database
+    // allows one preferred price per product at each restaurant (migration
+    // 010), so the old way, the new row on and then the others off in two
+    // requests, is refused at the first. And there is never a moment with two
+    // rows marked, or none, which is what the two requests used to risk.
     async function setAsPreferred(price) {
         setError('')
 
-        const { error: e1 } = await supabase
-            .from('product_supplier_prices')
-            .update({ is_preferred: true })
-            .eq('id', price.id)
-
+        const { error: e1 } = await supabase.rpc('set_cost_row', { price: price.id })
         if (e1) { setError(friendlyError(e1)); return }
-
-        // Every other price for this product and restaurant.
-        const { error: e2 } = await supabase
-            .from('product_supplier_prices')
-            .update({ is_preferred: false })
-            .eq('product_id', id)
-            .eq('restaurant_id', activeRestaurant.id)
-            .neq('id', price.id)
-
-        if (e2) { setError(friendlyError(e2)); return }
 
         // Buying it somewhere else is the decision with no document behind
         // it, so this is the only record the chart has of it. The row it
@@ -443,7 +417,7 @@ export default function ProductPricesPage() {
     // decision of 18 October 2026), so nobody chooses its price here: the
     // Recommended list does. A product with no recommendation keeps Set as
     // preferred.
-    const fromTheList = product?.recommends === 'versions' && versions.some(v => v.is_recommended && v.is_active)
+    const fromTheList = costsFromTheList(product, versions)
     const costVersion = versions.find(v => v.id === costRow?.version_id) || null
     const standing = price => standingOf(versions.find(v => v.id === price.version_id), product, versions)
 

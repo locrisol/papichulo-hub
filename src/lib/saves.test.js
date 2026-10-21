@@ -20,12 +20,13 @@ describe('what counts as a save', () => {
     // of itself, or anything else that only reads.
     it('is a function only when the function writes', () => {
         expect(isWrite(`${API}/rpc/my_badges`, 'POST')).toBe(false)
-        expect(isWrite(`${API}/rpc/allergens_changed_at`, 'POST')).toBe(false)
+        expect(isWrite(`${API}/rpc/public_allergen_sheet`, 'POST')).toBe(false)
         expect(isWrite(`${API}/rpc/allergen_sheet_printed`, 'POST')).toBe(true)
         expect(isWrite(`${API}/rpc/set_recommends`, 'POST')).toBe(true)
         expect(isWrite(`${API}/rpc/set_fallbacks`, 'POST')).toBe(true)
         expect(isWrite(`${API}/rpc/code_update`, 'POST')).toBe(true)
         expect(isWrite(`${API}/rpc/buy_both`, 'POST')).toBe(true)
+        expect(isWrite(`${API}/rpc/set_cost_row`, 'POST')).toBe(true)
     })
 
     it('is nothing outside the database API: sign in, files, mail', () => {

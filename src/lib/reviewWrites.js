@@ -21,6 +21,7 @@ import { sameName } from '@/lib/products'
 import { saveKeptHere } from '@/lib/keptHere'
 import { todayISO } from '@/lib/dates'
 import { versionsWith } from '@/lib/suggestProducts'
+import { costsFromTheList } from '@/lib/recommended'
 
 // Everything Review works from at one restaurant: the lines waiting, every
 // price and code it has, the suppliers, anything we buy, and the brand's
@@ -32,8 +33,10 @@ export async function readReview(restaurantId, { withSent = false } = {}) {
     // bought every week went back to Never bought before.
     const [waiting, prices, codes, suppliers, products, versions] = await Promise.all([
         readToDecide(restaurantId, { withSent }),
+        // With what the product recommends: a line's product is this one,
+        // and one costed from the Recommended list moves no price by hand.
         everyRow(() => supabase.from('product_supplier_prices')
-            .select('*, products(id, name, section, unit, piece_weight)')
+            .select('*, products(id, name, section, unit, piece_weight, recommends)')
             .eq('restaurant_id', restaurantId)
             .order('id')),
         everyRow(() => supabase.from('supplier_codes').select('*').eq('restaurant_id', restaurantId).order('id')),
@@ -175,21 +178,18 @@ export function reviewWriter({ restaurantId, userId, data, rows, onSaid = () => 
         }
 
         // A second pack, and he said to cost from it. Whatever the product was
-        // costed from before stops being, whichever supplier it was, or two
-        // prices would both say they are the one.
-        if (alsoPrefer && row.packMoved) {
+        // costed from before stops being, whichever supplier it was, in one
+        // call (set_cost_row), since only one price may say it is the one. A
+        // product with a recommended set is costed from the Recommended list
+        // instead, which keep_cost_row has done already as the price went in.
+        if (alsoPrefer && row.packMoved && !costsFromTheList(row.product, data.versions)) {
             const before = data.prices.find(p => (
                 p.product_id === row.product.id && p.is_preferred && p.id !== priceId
             )) || null
             const move = movePreferred(row.product, costed, {
                 restaurantId, userId, from: before, at,
             })
-            if (move.off) {
-                await supabase.from('product_supplier_prices')
-                    .update({ is_preferred: false }).eq('id', move.off)
-            }
-            const { error: e2 } = await supabase.from('product_supplier_prices')
-                .update({ is_preferred: true }).eq('id', priceId)
+            const { error: e2 } = await supabase.rpc('set_cost_row', { price: priceId })
             if (e2) return friendlyError(e2)
             await supabase.from('product_price_events').insert(move.event)
         }
