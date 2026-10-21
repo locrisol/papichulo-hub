@@ -11,7 +11,7 @@ import {
     geohash, venuesUrl, venuesFrom, suggestions, geocodeUrl, pointFrom,
     distanceKm, walkMinutesFor, WALKABLE_MINUTES, sourceKeyFor, pointTyped,
     irishDate, stillToCome, feedError, feedProblem, emptyProblem, wholeAnswer, goneBetween,
-    endsMoved, superseded, notOverBy, refusedWords,
+    endsMoved, superseded, notOverBy, refusedWords, reviewFor,
 } from '../../supabase/functions/nearby-events/discovery'
 import {
     distanceKm as browserDistanceKm, walkMinutesFor as browserWalkMinutesFor,
@@ -91,6 +91,25 @@ describe('mapEvent', () => {
         const r = mapEvent(sample)
         expect(r.min_price).toBeNull()
         expect(r.max_price).toBeNull()
+    })
+})
+
+// His, 21 October 2026: a night somebody said is not for us stays that way
+// however often Ticketmaster lists it.
+describe('what a night the feed lists is written as', () => {
+    const existing = [
+        { ticketmaster_id: 'tm1', review: 'dismissed' },
+        { ticketmaster_id: 'tm2', review: 'trusted' },
+    ]
+
+    it('is trusted, new or already held', () => {
+        expect(reviewFor(existing, 'tm2')).toBe('trusted')
+        expect(reviewFor(existing, 'tm3')).toBe('trusted')
+        expect(reviewFor(null, 'tm3')).toBe('trusted')
+    })
+
+    it('stays not for us once somebody said so', () => {
+        expect(reviewFor(existing, 'tm1')).toBe('dismissed')
     })
 })
 

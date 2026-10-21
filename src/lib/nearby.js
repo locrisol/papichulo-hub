@@ -290,6 +290,45 @@ export function nearbyRows(events, pairings, restaurant) {
     return rows
 }
 
+// The nights somebody said are not for us, at this restaurant's places, in
+// the same shape as nearbyRows, so one can be shown again (his, 22 October
+// 2026). Only one a person hid: a reading the feed superseded is dismissed by
+// the sync, which writes no reviewed_at, and nobody chose to hide it.
+export function hiddenRows(events, pairings, restaurant) {
+    const near = byPlace(watching(pairings, restaurant))
+    return (events || [])
+        .filter(event => dismissed(event) && event.reviewed_at && near.has(event.place_id))
+        .map(event => {
+            const pairing = near.get(event.place_id)
+            const row = {
+                event,
+                place: pairing.place,
+                pairing,
+                kind: kindOf(event, pairing),
+                checked: true,
+                off: offFor(event),
+                time: event.event_time ? shortTime(event.event_time) : '',
+                ownRow: pairing.own_row === true,
+            }
+            row.title = chipWords(row, { short: true })
+            return row
+        })
+}
+
+// Who may hide a night, or show one again: a night from Ticketmaster, the
+// 3Arena's, only the super admin (his, 23 October 2026), a night read off a
+// page any manager, as Keep and Not for us already are. The database says
+// the same (feed_night_guard).
+export function canHideNight(event, user) {
+    return event?.source !== 'ticketmaster' || user?.role === 'super_admin'
+}
+
+// What a night shown again goes back to: trusted when a feed listed it, kept
+// when it was read off a page, which is what Keep would have made it.
+export function shownAgain(event) {
+    return event?.source === 'page' ? 'kept' : 'trusted'
+}
+
 // The place important enough to have a row of its own.
 //
 // What is on near a restaurant shares the Also on row with the catering and the

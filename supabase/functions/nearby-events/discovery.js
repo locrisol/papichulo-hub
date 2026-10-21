@@ -560,6 +560,18 @@ export function walkMinutesFor(km) {
 // answer that, because the capacity has to be typed and no API publishes it.
 export const WALKABLE_MINUTES = 20
 
+// What a night the feed lists is written as. A feed is the venue itself
+// saying so, which is as checked as anything gets, so it is trusted with
+// nobody asked, **except a night somebody said is not for us**, which stays
+// that way however many times the feed lists it again (his, 21 October 2026:
+// two film screenings at the Arena that had to come off everywhere, and the
+// next sync would have put them back). `existing` is what the table already
+// holds for these nights.
+export function reviewFor(existing, ticketmasterId) {
+    const held = (existing || []).find(e => e.ticketmaster_id === ticketmasterId)
+    return held?.review === 'dismissed' ? 'dismissed' : 'trusted'
+}
+
 // What to offer for each venue the search turned up, nearest first.
 export function suggestions(from, venues, radiusKm = 5) {
     return (venues || [])

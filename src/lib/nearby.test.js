@@ -6,7 +6,7 @@ import {
     placeName, chipWords, eventName, elsewhere, walkWords, hostOf, sourceWords, placeTag, whenWords,
     sinceWords, foundWords, readWords, distanceKm, walkMinutesFor, suggest, pastWalking,
     sourceKeyFor, samePlace, couldBeSamePlace, offFor, offWords, forRoster, feedWords, feedTrouble,
-    placeToFill, rosterNearby,
+    placeToFill, rosterNearby, hiddenRows, shownAgain, canHideNight,
 } from '@/lib/nearby'
 import { calendarItems } from '@/lib/diary'
 
@@ -179,6 +179,38 @@ describe('nearbyRows', () => {
     it('marks whether it has been checked', () => {
         const rows = nearbyRows(events, pairs, {})
         expect(rows.map(r => r.checked)).toEqual([true, false, true])
+    })
+})
+
+// His, 22 October 2026: a night hidden by mistake can be shown again.
+describe('the nights somebody hid', () => {
+    const hid = { ...gig, review: 'dismissed', reviewed_at: '2026-10-21T10:44:18Z' }
+
+    it('are the ones a person said are not for us, at our places, carrying where they are', () => {
+        const rows = hiddenRows([hid, gig, { ...hid, id: 'far', place_id: 'nope' }], pairs, {})
+        expect(rows.map(r => r.event.id)).toEqual(['e1'])
+        expect(rows[0].title).toBe('Kings of Leon [3Arena]')
+    })
+
+    // Dismissed by the sync because the feed covers it: nobody hid it.
+    it('leave out a reading the feed superseded', () => {
+        expect(hiddenRows([{ ...film, review: 'dismissed', reviewed_at: null }], pairs, {})).toEqual([])
+    })
+
+    // His, 23 October 2026: the 3Arena's nights are the super admin's to hide
+    // and bring back; a night read off a page is any manager's.
+    it('may be hidden and shown again by a manager only when read off a page', () => {
+        const feed = { source: 'ticketmaster' }
+        const page = { source: 'page' }
+        expect(canHideNight(feed, { role: 'super_admin' })).toBe(true)
+        expect(canHideNight(feed, { role: 'owner' })).toBe(false)
+        expect(canHideNight(feed, { role: 'store_manager' })).toBe(false)
+        expect(canHideNight(page, { role: 'store_manager' })).toBe(true)
+    })
+
+    it('go back to what they were: trusted from a feed, kept from a page', () => {
+        expect(shownAgain({ source: 'ticketmaster' })).toBe('trusted')
+        expect(shownAgain({ source: 'page' })).toBe('kept')
     })
 })
 
