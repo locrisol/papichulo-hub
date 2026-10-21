@@ -202,6 +202,7 @@ export default function WaitingForDecision({ restaurantId, refresh: imported = 0
                 <MatchLineModal
                     row={matching}
                     products={data.products}
+                    versions={data.versions}
                     onClose={() => setMatching(null)}
                     onMatch={async chosen => {
                         setMatching(null)
