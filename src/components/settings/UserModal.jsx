@@ -80,7 +80,7 @@ export default function UserModal({ person = null, email: current = '', restaura
             return
         }
         onSaved(`Invite sent to ${email.trim()}. They choose their own password from the email. The link `
-            + 'expires after an hour; after that they can use Forgot your password on the sign in screen.')
+            + 'expires after 24 hours; after that, Send the invite again on this page sends a new one.')
     }
 
     return (

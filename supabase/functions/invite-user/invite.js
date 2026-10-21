@@ -74,6 +74,17 @@ export function updateProblem({ id, fullName, email, role, restaurantId, employe
     return ''
 }
 
+// What stops the invite going again, or '' when it can: to somebody who has
+// never chosen their own password, the people Users marks "No password chosen
+// yet". `row` is their users row, already read.
+export function resendProblem(row) {
+    if (!row) return 'That account does not exist.'
+    if (row.is_test) return 'That is a test account, not a person.'
+    if (row.is_active !== true) return 'That account is switched off. Reactivate it first.'
+    if (row.password_set_at) return 'They have chosen their own password already.'
+    return ''
+}
+
 // Where the emailed link opens: the site the invite was sent from, if it looks
 // like a site. Supabase checks it against the Redirect URLs list as well.
 export function linkSite(origin) {

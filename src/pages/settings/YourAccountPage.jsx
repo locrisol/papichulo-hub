@@ -107,7 +107,7 @@ export default function YourAccountPage() {
                     )}
                     {linkSent ? (
                         <Notice tone="good">
-                            We have sent a link to {email}. It works once and expires after an hour. Once you
+                            We have sent a link to {email}. It works once and expires after 24 hours. Once you
                             have changed your password, any other phone or computer signed in as you is signed
                             out within the hour.
                         </Notice>

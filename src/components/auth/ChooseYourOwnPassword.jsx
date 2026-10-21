@@ -89,7 +89,7 @@ export default function ChooseYourOwnPassword() {
             {linkSent ? (
                 <Notice tone="good">
                     To keep your account safe we have emailed a link to {email}. Open it to choose your
-                    password. It works once and expires after an hour.
+                    password. It works once and expires after 24 hours.
                 </Notice>
             ) : (
                 <>
