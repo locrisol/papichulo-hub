@@ -52,13 +52,13 @@ describe('what was decided about a line', () => {
 
     it('says each decision in the words Review uses', () => {
         expect(said('matched')).toBe('Matched')
-        expect(said('accepted')).toBe('New price accepted')
-        expect(said('rejected')).toBe('Not now')
+        expect(said('accepted')).toBe('Price changed')
+        expect(said('rejected')).toBe('Price kept')
         expect(said('ignored')).toBe('Not stock')
     })
 
-    it('says what Not now and Not stock mean for the money', () => {
-        expect(lineDecision({ decision: 'rejected' }).note).toBe('The costing was left as it was.')
+    it('says what keeping the price and Not stock mean for the money', () => {
+        expect(lineDecision({ decision: 'rejected' }).note).toBe('What was paid still counts towards the week\'s cost.')
         expect(lineDecision({ decision: 'ignored' }).note).toBe('It still counts towards the week\'s cost.')
         expect(lineDecision({ decision: 'matched' }).note).toBeNull()
     })
