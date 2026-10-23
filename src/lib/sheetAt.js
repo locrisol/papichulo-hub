@@ -78,5 +78,5 @@ export const SHEET_WRITES = new Set([
     'menu_categories', 'menu_items', 'menu_item_components', 'mix_recipes', 'products', 'product_allergens',
     'product_versions', 'version_allergens', 'version_codes', 'product_supplier_prices', 'invoices', 'invoice_lines',
     'suppliers', 'rpc/allergen_sheet_printed', 'rpc/code_update', 'rpc/buy_both', 'rpc/set_recommends',
-    'rpc/set_fallbacks',
+    'rpc/set_fallbacks', 'rpc/merge_versions',
 ])

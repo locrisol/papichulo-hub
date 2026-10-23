@@ -1584,6 +1584,7 @@ export default function ProductsPage() {
           keepsTheList={keepsTheList}
           onClose={() => setVersionsOf(null)}
           onAddPrice={() => navigate(`/catalogue/products/${versionsOf}/prices`)}
+          onJoined={fetchPrices}
         />
       )}
       {requesting && (
