@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { calculateMixCost, resolveUnitCost, menuItemCost, costInside, deactivatedIn, missingIn, menuMargin, marginTone, MARGIN_GREEN, MARGIN_AMBER, dishRises, dishChanges } from '@/lib/mixCost'
+import { calculateMixCost, resolveUnitCost, menuItemCost, costInside, deactivatedIn, missingIn, menuMargin, marginTone, MARGIN_GREEN, MARGIN_AMBER, dishRises, dishChanges, recipesAtPaid } from '@/lib/mixCost'
 
 // --- Test fixtures shaped like real rows ---------------------------------
 
@@ -447,4 +447,74 @@ describe('the dishes a price paid pushes over', () => {
       expect(dishChanges('peppers', 3, data).map(d => d.id)).toEqual(['bowl'])
     })
   })
+})
+
+// His, 22 October 2026: the report names the recipes, dishes on sale and mix
+// recipes, 5% or more out at what was paid, and what is behind each.
+describe('recipesAtPaid', () => {
+    const menu = {
+        menuItems: [
+            { id: 'fajitas', name: 'Fajitas', is_active: true, category_id: 'mains' },
+            { id: 'nachos', name: 'Nachos', is_active: true, category_id: 'mains' },
+            { id: 'old', name: 'Off the menu', is_active: false, category_id: 'mains' },
+        ],
+        categories: [{ id: 'mains', is_active: true }],
+        components: [
+            { menu_item_id: 'fajitas', product_id: 'peppers', quantity: 0.1 },
+            { menu_item_id: 'fajitas', product_id: 'chicken', quantity: 0.2 },
+            { menu_item_id: 'nachos', product_id: 'chips', quantity: 0.15 },
+            { menu_item_id: 'nachos', product_id: 'salsa', quantity: 0.05 },
+            { menu_item_id: 'old', product_id: 'chicken', quantity: 1 },
+        ],
+        products: [
+            { id: 'peppers', name: 'Green Peppers', is_mix: false, is_active: true },
+            { id: 'chicken', name: 'Chicken Thigh', is_mix: false, is_active: true },
+            { id: 'chips', name: 'Tortilla Chips', is_mix: false, is_active: true },
+            { id: 'tomatoes', name: 'Tomatoes', is_mix: false, is_active: true },
+            { id: 'salsa', name: 'Salsa Roja', unit: 'KG', is_mix: true, batch_yield: 2, is_active: true },
+        ],
+        recipeLines: [{ id: 'r1', mix_product_id: 'salsa', ingredient_product_id: 'tomatoes', quantity: 2 }],
+        costPrices: [
+            { product_id: 'peppers', price_per_unit: 2.6 },
+            { product_id: 'chicken', price_per_unit: 6 },
+            { product_id: 'chips', price_per_unit: 4 },
+            { product_id: 'tomatoes', price_per_unit: 2 },
+        ],
+    }
+
+    it('lists a dish the threshold or more out, with the ingredient behind it', () => {
+        const off = recipesAtPaid([{ productId: 'chicken', name: 'Chicken Thigh', unit: 'a kg', paid: 7 }], menu)
+        expect(off).toEqual([{
+            kind: 'dish', id: 'fajitas', name: 'Fajitas', unit: null, was: 1.46, now: 1.66, change: 13.7,
+            because: [{ productId: 'chicken', name: 'Chicken Thigh', unit: 'a kg', costed: 6, paid: 7, effect: 0.2 }],
+        }])
+    })
+
+    it('leaves out a dish less than the threshold out', () => {
+        expect(recipesAtPaid([{ productId: 'peppers', name: 'Green Peppers', unit: 'a kg', paid: 2.87 }], menu)).toEqual([])
+    })
+
+    it('lists a mix recipe by the unit it is made in, and the dishes it goes into', () => {
+        const off = recipesAtPaid([{ productId: 'tomatoes', name: 'Tomatoes', unit: 'a kg', paid: 3 }], menu)
+        expect(off.map(r => [r.kind, r.name, r.unit, r.change])).toEqual([['mix', 'Salsa Roja', 'KG', 50], ['dish', 'Nachos', null, 7.1]])
+        expect(off[0]).toMatchObject({ was: 2, now: 3 })
+    })
+
+    it('puts the ingredient that moves a recipe most first', () => {
+        const [fajitas] = recipesAtPaid([
+            { productId: 'peppers', name: 'Green Peppers', unit: 'a kg', paid: 3.2 },
+            { productId: 'chicken', name: 'Chicken Thigh', unit: 'a kg', paid: 6.6 },
+        ], menu)
+        expect(fajitas.because.map(b => [b.name, b.effect])).toEqual([['Chicken Thigh', 0.12], ['Green Peppers', 0.06]])
+        expect(fajitas.change).toBe(12.3)
+    })
+
+    it('says a recipe costs less when what was paid is less', () => {
+        const [fajitas] = recipesAtPaid([{ productId: 'chicken', name: 'Chicken Thigh', unit: 'a kg', paid: 5 }], menu)
+        expect(fajitas.change).toBe(-13.7)
+    })
+
+    it('is nothing with nothing paid differently', () => {
+        expect(recipesAtPaid([], menu)).toEqual([])
+    })
 })

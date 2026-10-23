@@ -280,6 +280,91 @@ export function dishChanges(productId, per, {
   return out.sort((a, b) => Math.abs(b.rise) - Math.abs(a.rise) || String(a.name).localeCompare(String(b.name)))
 }
 
+// The recipes whose cost moves by `threshold` percent or more, either way,
+// when what was paid for their ingredients stands in for what recipes cost
+// them at (his, 22 October 2026: the report is to name recipes, the dishes on
+// sale and the mix recipes, 5% or more out, and not every ingredient a little
+// off). `paid` is each product paid a price recipes do not cost it at:
+// { productId, name, unit, paid }, paid a unit.
+//
+// Each recipe { kind: 'dish' | 'mix', id, name, unit, was, now, change,
+// because }: a dish's cost a portion, a mix's a unit of it (unit, KG for all
+// of them on 22 October 2026), both as recipes cost them today
+// and at what was paid, and `because` the ingredients that move it, each with
+// what recipes cost it at, what was paid and what that alone does to the
+// recipe, the most first. Switched off, or not costed both ways, is left out.
+export function recipesAtPaid(paid, {
+  threshold = 5, menuItems = [], categories = [], components = [], products = [], recipeLines = [], costPrices = [],
+} = {}) {
+  const moved = (paid || []).filter(p => p.productId && Number(p.paid) > 0)
+  if (!moved.length) return []
+  const at = list => [
+    ...(costPrices || []).filter(c => !list.some(p => p.productId === c.product_id)),
+    ...list.map(p => ({ product_id: p.productId, price_per_unit: Number(p.paid) })),
+  ]
+  const all = at(moved)
+  const costedAt = id => {
+    const row = (costPrices || []).find(c => c.product_id === id)
+    return row?.price_per_unit == null ? null : Math.round(Number(row.price_per_unit) * 10000) / 10000
+  }
+
+  // What a recipe is made of, however deep, so only the ingredients in it are
+  // tried one at a time, and a recipe with none of them is passed over.
+  const inside = (ids, seen = new Set()) => {
+    for (const id of ids) {
+      if (seen.has(id)) continue
+      seen.add(id)
+      const product = (products || []).find(p => p.id === id)
+      if (product?.is_mix) {
+        inside((recipeLines || []).filter(l => l.mix_product_id === id).map(l => l.ingredient_product_id), seen)
+      }
+    }
+    return seen
+  }
+
+  const off = new Set((categories || []).filter(c => c.is_active === false).map(c => c.id))
+  const recipes = [
+    ...(menuItems || []).filter(d => d.is_active !== false && !off.has(d.category_id)).map(d => {
+      const lines = (components || []).filter(c => c.menu_item_id === d.id)
+      return {
+        kind: 'dish', id: d.id, name: d.name, unit: null, uses: inside(lines.map(l => l.product_id)),
+        cost: prices => menuItemCost(lines, products, recipeLines, prices),
+      }
+    }),
+    ...(products || []).filter(p => p.is_mix && p.is_active !== false).map(p => ({
+      kind: 'mix', id: p.id, name: p.name, unit: p.unit || null, uses: inside([p.id]),
+      cost: prices => calculateMixCost(p, products, recipeLines, prices).cost,
+    })),
+  ]
+
+  const out = []
+  for (const recipe of recipes) {
+    const mine = moved.filter(p => recipe.uses.has(p.productId))
+    if (!mine.length) continue
+    const was = recipe.cost(costPrices)
+    if (!(was > 0)) continue
+    const now = recipe.cost(all)
+    if (now == null) continue
+    const change = Math.round(((now - was) / was) * 1000) / 10
+    if (Math.abs(change) < Number(threshold)) continue
+    const because = mine
+      .map(p => {
+        const alone = recipe.cost(at([p]))
+        return alone == null ? null : {
+          productId: p.productId, name: p.name, unit: p.unit,
+          costed: costedAt(p.productId), paid: Math.round(Number(p.paid) * 10000) / 10000,
+          effect: cents(alone - was),
+        }
+      })
+      .filter(b => b && Math.abs(b.effect) >= 0.005)
+      .sort((a, b) => Math.abs(b.effect) - Math.abs(a.effect) || String(a.name).localeCompare(String(b.name)))
+    out.push({
+      kind: recipe.kind, id: recipe.id, name: recipe.name, unit: recipe.unit, was: cents(was), now: cents(now), change, because,
+    })
+  }
+  return out.sort((a, b) => Math.abs(b.change) - Math.abs(a.change) || String(a.name).localeCompare(String(b.name)))
+}
+
 // The dishes on sale whose total cost rises by more than `threshold` percent
 // when one product costs `paid` a unit instead of what recipes cost it at
 // (his decision 5 of 18 October 2026): what buying something off the

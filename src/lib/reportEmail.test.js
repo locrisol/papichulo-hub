@@ -5,6 +5,7 @@ import {
     renewalWords, escapeLines, page, headline, overheadsToShow, backByReason,
     deliverable, isJustTheGoodbye, replyToFor, switchedOff, whatToSend, correctionSend,
     paidWords, againstWords, figureGaps as mailGaps, openActions, doneActions, platformsIn, richHtml, richWords, saidRefunds,
+    recipeOffWords,
 } from '../../supabase/functions/weekly-report-email/email'
 import { readFileSync } from 'node:fs'
 import { MAIL_WIDTH } from '@/lib/reportChartImage'
@@ -2158,6 +2159,38 @@ describe('a heavy week', () => {
         expect(light.html).toContain('Product number 0<')
         expect(more(light.html)).toEqual([])
         expect(more(light.text)).toEqual([])
+    })
+
+    // His, 22 October 2026: the recipes out of line, as the page says them.
+    it('names the recipes out of line and what is behind each, in the card and the plain text', () => {
+        const toast = {
+            kind: 'dish', id: 'toast', name: 'Avocado toast', unit: null, was: 1.83, now: 2.59, change: 41.1,
+            because: [{ productId: 'avo', name: 'Avocado', unit: 'each', costed: 0.9167, paid: 1.2939, effect: 0.75 }],
+        }
+        const salsa = {
+            kind: 'mix', id: 'salsa', name: 'Salsa Roja', unit: 'KG', was: 2, now: 3, change: 50,
+            because: ['Tomatoes', 'Onions', 'Limes', 'Coriander'].map((name, i) => ({
+                productId: `p${i}`, name, unit: 'a kg', costed: 2, paid: 3, effect: 0.5 - i / 10,
+            })),
+        }
+        expect(recipeOffWords(toast)).toBe('€1.83 a portion in recipes, €2.59 at what was paid. Because of Avocado €0.92 to €1.29 each.')
+        expect(recipeOffWords(salsa)).toBe('€2.00 a kg in recipes, €3.00 at what was paid. Because of Tomatoes €2.00 to €3.00 a kg, '
+            + 'Onions €2.00 to €3.00 a kg, Limes €2.00 to €3.00 a kg and 1 more.')
+        const sent = reportEmail({
+            ...base, sections: heavySections,
+            figures: { ...figures, prices: { ...prices, moves: [], switches: [], recipes: [], recipesOff: [salsa, toast], totals: { ...prices.totals, recipes: 2 } } },
+        })
+        expect(sent.html).toContain('Salsa Roja, mix recipe')
+        expect(sent.html).toContain('Because of Avocado €0.92 to €1.29 each.')
+        expect(sent.text).toContain('Avocado toast: +41.1%, €1.83 a portion in recipes')
+    })
+
+    it('says every recipe is within the threshold when none is out', () => {
+        const sent = reportEmail({
+            ...base, sections: heavySections,
+            figures: { ...figures, prices: { ...prices, moves: [], switches: [], recipes: [], recipesOff: [], totals: { ...prices.totals, recipes: 0 } } },
+        })
+        expect(sent.html).toContain('Every dish and mix recipe is within')
     })
 
     it('keeps the recipes in the order the Hub gives them', () => {

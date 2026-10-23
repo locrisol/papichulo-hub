@@ -1325,16 +1325,29 @@ const toneFor = n => (num(n) > 0.004 ? RED : num(n) < -0.004 ? GREEN : MUTED)
 // gives it, biggest effect first for moves and switches and furthest out first
 // for recipes, so the ones that matter most are the ones that stay.
 // "Not what we should be buying" (19 October 2026) stops at four products
-// and three dishes under each, the products with the most extra first.
-const PRICES_IN_MAIL = { moves: 8, switches: 4, recipes: 4, offList: 4, dishes: 3 }
+// and three dishes under each, the products with the most extra first. The
+// recipes out of line (22 October 2026) stop at four, three ingredients each.
+const PRICES_IN_MAIL = { moves: 8, switches: 4, recipes: 4, offList: 4, dishes: 3, because: 3 }
 
 function pricesInMail(p) {
     return {
         moves: p.moves.slice(0, PRICES_IN_MAIL.moves),
         switches: (p.switches || []).slice(0, PRICES_IN_MAIL.switches),
         recipes: p.recipes.slice(0, PRICES_IN_MAIL.recipes),
+        recipesOff: (p.recipesOff || []).slice(0, PRICES_IN_MAIL.recipes),
         offList: offListNamed(p).slice(0, PRICES_IN_MAIL.offList),
     }
+}
+
+// One recipe out of line, as the page says it: what it costs in recipes and
+// at what was paid, and the ingredients behind it, the most first.
+export function recipeOffWords(r) {
+    const per = r.kind === 'mix' ? `a ${String(r.unit || 'unit').toLowerCase()}` : 'a portion'
+    const because = (r.because || []).slice(0, PRICES_IN_MAIL.because)
+        .map(b => `${b.name} ${b.costed == null ? '' : `${money(b.costed)} to `}${money(b.paid)} ${b.unit}`)
+    const more = (r.because || []).length - because.length
+    return `${money(r.was)} ${per} in recipes, ${money(r.now)} at what was paid.`
+        + (because.length ? ` Because of ${because.join(', ')}${more > 0 ? ` and ${more} more` : ''}.` : '')
 }
 
 const offListNamed = p => (p.offList || []).filter(x => !x.quiet)
@@ -1562,7 +1575,30 @@ export function pricesSection(section, f) {
         })),
         'Everything came as the version recipes cost from.')
 
-    const recipes = priceCard('Recipes not costing what we pay', t.recipes ? String(t.recipes) : '', t.recipes ? AMBER : MUTED,
+    // The dishes and mix recipes since 22 October 2026, the ingredients on a
+    // report sent before.
+    const cannotLines = p.recipes.filter(r => r.state === 'cannot')
+    const recipes = p.recipesOff ? priceCard('Recipes not costing what we pay', t.recipes ? String(t.recipes) : '', t.recipes ? AMBER : MUTED,
+        [
+            ...cappedRows(p.recipesOff, shown.recipesOff, r => line({
+                inset: 14,
+                label: escapeHtml(r.name) + (r.kind === 'mix' ? ', mix recipe' : '') + small(escapeHtml(recipeOffWords(r))),
+                value: change(r.change),
+                tone: AMBER,
+            })),
+            ...cannotLines.map(r => line({
+                inset: 14,
+                label: escapeHtml(r.name) + small(r.why === 'units'
+                    ? 'Not compared: the price recipes use and the invoice are not counted the same way.'
+                    : r.why === 'pack'
+                        ? 'Not compared: the invoice does not say how many are in a case.'
+                        : 'Not compared: counted by weight, sold one at a time.'),
+                value: '',
+                tone: MUTED,
+            })),
+        ],
+        `Every dish and mix recipe is within ${p.threshold}% of what was last paid for its ingredients.`)
+    : priceCard('Recipes not costing what we pay', t.recipes ? String(t.recipes) : '', t.recipes ? AMBER : MUTED,
         cappedRows(p.recipes, shown.recipes, r => line({
             inset: 14,
             label: escapeHtml(r.name)
@@ -1688,7 +1724,15 @@ function pricesText(p) {
         out.push(...cappedText(p.switches, shown.switches, x => `    ${x.name}: ${x.bought}`
             + (x.cannot ? ', cannot be compared' : `, ${change(x.change)}, ${signedMoney(x.effect)}`)))
     }
-    if (p.recipes.length) {
+    if (p.recipesOff) {
+        if (p.recipesOff.length) {
+            out.push('  Recipes not costing what we pay')
+            out.push(...cappedText(p.recipesOff, shown.recipesOff, r => `    ${r.name}${r.kind === 'mix' ? ', mix recipe' : ''}: `
+                + `${change(r.change)}, ${recipeOffWords(r)}`))
+        }
+        const cannot = p.recipes.filter(r => r.state === 'cannot')
+        if (cannot.length) out.push(`  Not compared: ${cannot.map(r => r.name).join(', ')}`)
+    } else if (p.recipes.length) {
         out.push('  Recipes not costing what we pay')
         out.push(...cappedText(p.recipes, shown.recipes, r => `    ${r.name}: ` + (r.state === 'cannot'
             ? 'cannot be compared'
