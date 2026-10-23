@@ -56,7 +56,7 @@ export async function readMenuCosting() {
         everyRow(() => supabase.from('menu_item_components')
             .select('id, menu_item_id, product_id, quantity, choice_group, no_quantity').order('id')),
         everyRow(() => supabase.from('mix_recipes').select('id, mix_product_id, ingredient_product_id, quantity').order('id')),
-        everyRow(() => supabase.from('products').select('id, is_mix, batch_yield, is_active').order('id')),
+        everyRow(() => supabase.from('products').select('id, name, unit, is_mix, batch_yield, is_active').order('id')),
     ])
     const failed = reads.find(r => r.error)
     if (failed) return { data: null, error: failed.error }

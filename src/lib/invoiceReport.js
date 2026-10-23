@@ -20,12 +20,15 @@
 //                               replaced "Bought as something else" and "Not
 //                               as the brand recommends"; a report sent
 //                               before it keeps those two.
-//   Recipes not costing what    the usual version's last price against what
-//   you pay                     recipes cost the product at. On every report
-//                               until the two are within the restaurant's
-//                               own threshold, whatever was pressed in the
-//                               review: keeping the old price is "not now",
-//                               never "do not tell me".
+//   Recipes not costing what    the dishes on sale and the mix recipes that
+//   you pay                     would cost the restaurant's threshold or more
+//                               either way at what was last paid for their
+//                               ingredients (22 October 2026), each with the
+//                               ingredients behind it. On every report until
+//                               they are within it, whatever was pressed in
+//                               the review: keeping the old price is "not
+//                               now", never "do not tell me". A report sent
+//                               before lists ingredients instead.
 //   Came back, and why          every credit note, with the reason logged at
 //                               the door, what is still owed, and any claim
 //                               this week takes off for an earlier delivery
@@ -42,7 +45,7 @@
 import { num, fmtMoney, fmtQty, namesList, round2, round4 } from '@/lib/format'
 import { canJoinCodes } from '@/lib/priceEvents'
 import { pricesAsAt } from '@/lib/pricesAsAt'
-import { dishRises } from '@/lib/mixCost'
+import { dishRises, recipesAtPaid } from '@/lib/mixCost'
 import { costsFromTheList } from '@/lib/brandVersions'
 import { addDays, dayMonth, stampDay } from '@/lib/dates'
 import { samePrice, sameWords, similarWords, SAME_WORDS, byPieceWeight } from '@/lib/invoiceImport'
@@ -1213,10 +1216,20 @@ export function priceWeek({
     // ("They are the same"). The card that listed every switch is gone from
     // new reports: what was bought against the Recommended list is offList.
     const codeUpdates = withSince(switchesIn(all, { ...scope, versions }).filter(s => s.renumbered), 'switch', prices, codes)
-    // One fixed since, so recipes cost now what the week paid, is not said
-    // at all (his, 7 October): only a costing still out of line is news.
-    const recipes = withSince(recipeGaps(all, { ...scope, versions, costPrices }), 'recipe', prices, codes)
-        .filter(r => !fixedSince(r, threshold))
+    // **The recipes, not the ingredients** (his, 22 October 2026): every
+    // product paid a price recipes do not cost it at, near or far, stands in
+    // at what was paid, and the dishes and mix recipes that move the
+    // threshold or more are listed. Against today's costing, so one fixed
+    // since moves nothing and is not said at all (his, 7 October).
+    const gaps = withSince(recipeGaps(all, { ...scope, versions, costPrices, threshold: 0 }), 'recipe', prices, codes)
+    const recipesOff = recipesAtPaid(
+        gaps.filter(g => g.state !== 'cannot').map(g => ({ productId: g.productId, name: g.name, unit: g.unit, paid: g.paid })),
+        { ...menu, costPrices, threshold },
+    )
+    // The ingredients behind them, which Cost from in the decisions works
+    // on, and one that cannot be compared, said in a week it was bought.
+    const behind = new Set(recipesOff.flatMap(r => r.because.map(b => b.productId)))
+    const recipes = gaps.filter(r => (r.state === 'cannot' || behind.has(r.productId)) && !fixedSince(r, threshold))
     const suggestions = withSince(usualSuggestions(all, { ...scope, versions }), 'usual', prices, codes)
     const back = cameBack(credits, claims, { weekStart, weekEnd, invoices })
     const owed = stillOwed(claims)
@@ -1247,6 +1260,7 @@ export function priceWeek({
         moves,
         doubtful,
         switches: [],
+        recipesOff,
         recipes,
         suggestions,
         back,
@@ -1262,7 +1276,7 @@ export function priceWeek({
             offList: round2(named.reduce((t, x) => t + x.extra, 0)),
             offListCount: named.length,
             offListDishes: new Set(named.flatMap(x => x.dishes.map(d => d.id))).size,
-            recipes: recipes.filter(r => r.state !== 'cannot').length,
+            recipes: recipesOff.length,
             cannot: recipes.filter(r => r.state === 'cannot').length,
             back: round2(back.reduce((t, b) => t + b.money, 0)),
             owed: round2(owed.reduce((t, o) => t + num(o.money), 0)),
@@ -1440,12 +1454,12 @@ export function priceWords(section) {
             + '.')
     }
 
-    const off = recipes.filter(r => r.state !== 'cannot')
-    if (off.length) {
-        out.push(`Recipes out of line: ${listed(off.map(r => (
-            `${r.name} (costed ${round(r.gap)}% ${r.gap > 0 ? 'under' : 'over'} what we pay)`
-        )), 2)}.`)
-    }
+    // The recipes since 22 October 2026, the ingredients on a report sent before.
+    const off = section?.recipesOff
+        ? section.recipesOff.map(r => `${r.name} (${round(r.change)}% ${r.change > 0 ? 'more' : 'less'} at what we pay)`)
+        : recipes.filter(r => r.state !== 'cannot')
+            .map(r => `${r.name} (costed ${round(r.gap)}% ${r.gap > 0 ? 'under' : 'over'} what we pay)`)
+    if (off.length) out.push(`Recipes out of line: ${listed(off, 2)}.`)
     const cannot = recipes.filter(r => r.state === 'cannot')
     if (cannot.length) out.push(`Cannot be checked: ${listed(cannot.map(r => r.name))}.`)
 

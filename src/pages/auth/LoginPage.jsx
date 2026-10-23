@@ -87,7 +87,7 @@ export default function LoginPage() {
         {sent ? (
           <Notice tone="good">
             Check your email. If there is a Hub account for that address, a link is on its
-            way. It works once and expires after an hour. Nothing after a few minutes? Check
+            way. It works once and expires after 24 hours. Nothing after a few minutes? Check
             your spam folder, then try again.
           </Notice>
         ) : (

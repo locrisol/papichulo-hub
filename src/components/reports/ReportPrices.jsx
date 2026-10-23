@@ -120,7 +120,9 @@ export default function ReportPrices({
                     value={String(t.recipes || 0)}
                     sub={t.cannot
                         ? `and ${t.cannot} that cannot be compared`
-                        : `more than ${section.threshold}% off what we pay`}
+                        : section.recipesOff
+                            ? `${section.threshold}% or more off what we pay`
+                            : `more than ${section.threshold}% off what we pay`}
                 />
                 <Tile
                     tone={section.back.length || t.owedCount ? 'back' : 'quiet'}
@@ -141,7 +143,9 @@ export default function ReportPrices({
 
             <Moves moves={section.moves} doubtful={section.doubtful || []} />
             {!section.offList && <Switches switches={section.switches} />}
-            <Recipes recipes={section.recipes} checkedOn={section.checkedOn} threshold={section.threshold} />
+            {section.recipesOff
+                ? <RecipesOff recipes={section.recipesOff} cannot={section.recipes.filter(r => r.state === 'cannot')} checkedOn={section.checkedOn} threshold={section.threshold} />
+                : <Recipes recipes={section.recipes} checkedOn={section.checkedOn} threshold={section.threshold} />}
             <Back
                 back={section.back}
                 reasons={section.reasons}
@@ -370,6 +374,9 @@ function WeekInShort({ section }) {
     const offList = section.offList ? section.offList.filter(x => !x.quiet) : null
     const off = recipes.filter(r => r.state !== 'cannot')
     const cannot = recipes.filter(r => r.state === 'cannot')
+    const shownOff = section.recipesOff
+        ? section.recipesOff.map(r => ({ key: `${r.kind}:${r.id}`, name: r.name, change: r.change }))
+        : off.map(r => ({ key: r.productId, name: r.name, change: r.gap }))
 
     return (
         <div className="mt-4 rounded-lg border border-border overflow-hidden">
@@ -415,14 +422,16 @@ function WeekInShort({ section }) {
                 </ShortRow>
             )}
 
+            {/* The dishes and mix recipes since 22 October 2026, the
+                ingredients on a report sent before. */}
             <ShortRow
-                kind={off.length ? 'warn' : 'grey'}
+                kind={shownOff.length ? 'warn' : 'grey'}
                 label="Recipes off"
-                quiet={off.length || cannot.length ? null : `Every recipe is within ${section.threshold}% of what was paid`}
-                money={String(off.length)}
+                quiet={shownOff.length || cannot.length ? null : `Every recipe is within ${section.threshold}% of what was paid`}
+                money={String(shownOff.length)}
             >
-                {off.slice(0, CHIPS).map(r => <Chip key={r.productId} name={r.name} change={r.gap} />)}
-                {off.length > CHIPS && <More count={off.length - CHIPS} />}
+                {shownOff.slice(0, CHIPS).map(r => <Chip key={r.key} name={r.name} change={r.change} />)}
+                {shownOff.length > CHIPS && <More count={shownOff.length - CHIPS} />}
                 {cannot.map(r => <Chip key={r.productId} name={r.name} note="can't compare" tone="grey" />)}
             </ShortRow>
 
@@ -627,6 +636,52 @@ function Switches({ switches }) {
         </Card>
     )
 }
+
+// The dishes and mix recipes that would cost the restaurant's threshold or
+// more either way at what was last paid for their ingredients, with the
+// ingredients behind each (his, 22 October 2026: recipes, not every
+// ingredient a little off). A report sent before draws Recipes below.
+function RecipesOff({ recipes, cannot, checkedOn, threshold }) {
+    return (
+        <Card
+            title="Recipes not costing what we pay"
+            sub={`Checked ${checkedOn ? shortDate(checkedOn) : 'today'}, ${threshold}% or more either way. On every report until it matches.`}
+            empty={`Every dish and mix recipe is within ${threshold}% of what was last paid for its ingredients.`}
+            count={recipes.length + cannot.length}
+        >
+            {recipes.map(r => (
+                <div key={`${r.kind}:${r.id}`} className="px-3 py-2.5 border-b border-border last:border-b-0">
+                    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                        <p className="text-sm font-bold text-gray-900">
+                            {r.name}
+                            {r.kind === 'mix' && <span className={`${badge} ml-2 bg-gray-100 text-gray-700`}>Mix recipe</span>}
+                        </p>
+                        <Pill tone="warn">{pct(r.change)} at what we pay</Pill>
+                    </div>
+                    <p className="text-xs text-muted mt-0.5">
+                        {fmtMoney(r.was)} {perWord(r)} in recipes, {fmtMoney(r.now)} at what was paid
+                    </p>
+                    <ul className="mt-1.5 space-y-0.5">
+                        {r.because.map(b => (
+                            <li key={b.productId} className="text-sm text-gray-900">
+                                {b.name}: {b.costed == null ? '' : `${fmtMoney(b.costed)} to `}{fmtMoney(b.paid)} {b.unit}
+                                <span className="text-muted">, {signed(b.effect)} on the {r.kind === 'mix' ? 'recipe' : 'dish'}</span>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            ))}
+            {cannot.map(r => (
+                <p key={r.productId} className="px-3 py-2.5 text-xs text-muted border-b border-border last:border-b-0">
+                    <b className="text-gray-900">{r.name}</b> is not compared. {WHY[r.why] || WHY.weight}
+                </p>
+            ))}
+        </Card>
+    )
+}
+
+// What a recipe's cost is for: a dish's portion, a mix recipe's unit.
+const perWord = r => (r.kind === 'mix' ? `a ${String(r.unit || 'unit').toLowerCase()}` : 'a portion')
 
 function Recipes({ recipes, checkedOn, threshold }) {
     return (

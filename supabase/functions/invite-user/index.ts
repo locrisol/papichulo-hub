@@ -1,5 +1,5 @@
-// Gives somebody an account, Add account on Users, and changes one, Edit on
-// the same page. Super admin only.
+// Gives somebody an account, Add account on Users, changes one, Edit on the
+// same page, and sends the invite again. Super admin only.
 //
 // Supabase sends the invite, an email with a link to choose their own
 // password, so no password ever passes through a manager, a chat or this
@@ -15,7 +15,7 @@
 // Deploy with JWT verification on. The URL, the anon key and the service key
 // are given to every function; APP_URL is the secret the mail functions use.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { callerProblem, cleanEmail, inviteProblem, updateProblem, linkSite } from './invite.js'
+import { callerProblem, cleanEmail, inviteProblem, updateProblem, resendProblem, linkSite } from './invite.js'
 
 function serviceKey() {
     for (const name of ['SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SECRET_KEY', 'SB_SECRET_KEY']) {
@@ -109,6 +109,33 @@ async function changeAccount(admin: any, callerId: string, body: any) {
     return json({ id, emailChanged })
 }
 
+// Send the invite again, from Users (his offer of 18 October 2026: the link
+// in an invite expires, 24 hours since 22 October, and then says so). To
+// somebody who never opened it, the invite again, which Supabase sends to the
+// same account; to somebody who signed in once with a password another person
+// picked, the link to choose their own, which opens the same page.
+async function sendAgain(admin: any, body: any, site: string) {
+    const id = String(body.id || '')
+    const { data: row } = id
+        ? await admin.from('users').select('id, full_name, is_active, is_test, password_set_at').eq('id', id).maybeSingle()
+        : { data: null }
+    const wrong = resendProblem(row)
+    if (wrong) return json({ error: wrong }, 400)
+
+    const { data: account, error: readError } = await admin.auth.admin.getUserById(id)
+    if (readError || !account?.user?.email) return json({ error: 'That account could not be read. Try again.' }, 502)
+    const email = account.user.email
+    const link = site ? { redirectTo: site } : {}
+    const { error } = account.user.email_confirmed_at
+        ? await admin.auth.resetPasswordForEmail(email, link)
+        : await admin.auth.admin.inviteUserByEmail(email, { data: { full_name: row.full_name }, ...link })
+    if (error) {
+        console.error('invite-user again', error.message)
+        return json({ error: 'The invite could not be sent. Try again in a few minutes.' }, 502)
+    }
+    return json({ id, email })
+}
+
 Deno.serve(async (request) => {
     if (request.method === 'OPTIONS') return new Response('ok', { headers: CORS })
     if (request.method !== 'POST') return json({ error: 'Post only' }, 405)
@@ -139,8 +166,12 @@ Deno.serve(async (request) => {
         return json({ error: 'That request could not be read.' }, 400)
     }
 
-    // Edit on Users, on an account that exists. Everything else is an invite.
+    // Edit on Users, on an account that exists, or its invite again.
+    // Everything else is an invite.
     if (body.action === 'update') return await changeAccount(admin, user.id, body)
+    if (body.action === 'resend') {
+        return await sendAgain(admin, body, linkSite(Deno.env.get('APP_URL') || body.origin || request.headers.get('Origin')))
+    }
 
     let employee = null
     if (body.employeeId) {

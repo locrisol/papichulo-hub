@@ -3,7 +3,7 @@ import { useConfirm } from '@/context/confirm'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { canManageUser, ALL_ROLES, roleLabel } from '@/lib/access'
-import { friendlyError } from '@/lib/errors'
+import { friendlyError, functionError } from '@/lib/errors'
 import { tableHeadRow, tableCard, card, badge, inactiveBadge, rowButton, primaryButton, secondaryButton } from '@/lib/controlStyles'
 import { latestByUser, lastUsed, lastSeenWords } from '@/lib/loginEvents'
 import { stampDate } from '@/lib/dates'
@@ -124,6 +124,8 @@ export default function UsersPage() {
   const [emails, setEmails] = useState({})
   const [showFor, setShowFor] = useState(null)
   const [showEvents, setShowEvents] = useState([])
+  // Whose invite is going again, so the button cannot send it twice.
+  const [resending, setResending] = useState(null)
 
   useEffect(() => {
     fetchData()
@@ -239,6 +241,27 @@ export default function UsersPage() {
     if (!at) return 'Never'
     return lastSeenWords(at) || stampDate(at)
   }
+
+  // The invite again, to somebody who has never chosen their own password
+  // (his offer of 18 October 2026: the link in one used to last an hour). The
+  // function decides whether that is the invite or the link to choose one.
+  async function sendAgain(person) {
+    setError('')
+    setAdded('')
+    setResending(person.id)
+    const { data, error: failed } = await supabase.functions.invoke('invite-user', {
+      body: { action: 'resend', id: person.id, origin: window.location.origin },
+    })
+    setResending(null)
+    if (failed) { setError(await functionError(failed)); return }
+    if (data?.error) { setError(data.error); return }
+    setAdded(`The invite went to ${data?.email || emails[person.id] || person.full_name} again. The link in it lasts 24 hours.`)
+  }
+
+  // Only to somebody else who has never chosen a password, and is switched
+  // on. Whoever is signed in chooses theirs on Your account.
+  const canSendAgain = person => person.id !== user?.id && !person.is_test
+    && person.password_set_at === null && person.is_active
 
   function getRestaurantName(restaurantId) {
     if (!restaurantId) return '—'
@@ -383,6 +406,15 @@ export default function UsersPage() {
                     {u.is_active ? 'Deactivate' : 'Reactivate'}
                   </button>
                 )}
+                {canSendAgain(u) && (
+                  <button
+                    onClick={() => sendAgain(u)}
+                    disabled={resending === u.id}
+                    className={`${rowButton()} disabled:opacity-50`}
+                  >
+                    {resending === u.id ? 'Sending...' : 'Send the invite again'}
+                  </button>
+                )}
               </div>
             </div>
           ))}
@@ -439,6 +471,15 @@ export default function UsersPage() {
                           className={rowButton(u.is_active ? 'danger' : 'good')}
                         >
                           {u.is_active ? 'Deactivate' : 'Reactivate'}
+                        </button>
+                      )}
+                      {canSendAgain(u) && (
+                        <button
+                          onClick={() => sendAgain(u)}
+                          disabled={resending === u.id}
+                          className={`${rowButton()} disabled:opacity-50`}
+                        >
+                          {resending === u.id ? 'Sending...' : 'Send the invite again'}
                         </button>
                       )}
                     </div>

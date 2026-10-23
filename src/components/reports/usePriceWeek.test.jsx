@@ -79,6 +79,13 @@ describe('the price section for a week still being written', () => {
                 previous_per_unit: 0.9167, at: '2026-09-27T12:00:00+00:00', invoice_lines: { invoices: { invoice_date: '2026-09-22' } },
             },
         ]
+        // What recipes cost it at today, and a dish it goes into: the report
+        // names an ingredient only behind a recipe out of line (22 October).
+        tables.cost_prices = [{ restaurant_id: 'r1', product_id: 'avo', price_per_unit: 1.1, borrowed: false }]
+        tables.menu_items = [{ id: 'toast', name: 'Avocado toast', category_id: 'mains', is_active: true }]
+        tables.menu_categories = [{ id: 'mains', is_active: true }]
+        tables.menu_item_components = [{ id: 'mc1', menu_item_id: 'toast', product_id: 'avo', quantity: 2 }]
+        tables.products = [{ id: 'avo', name: 'Avocado', is_mix: false, is_active: true }]
         render(<Recipes />)
         expect(await screen.findByText('Avocado at 0.9167, 1.1 now')).toBeInTheDocument()
     })

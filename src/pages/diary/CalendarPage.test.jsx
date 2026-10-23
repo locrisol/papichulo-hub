@@ -222,13 +222,14 @@ describe('what is on near us, for an employee', () => {
         expect(db.calls.filter(t => t === 'events')).toHaveLength(1)
     })
 
-    it('still gives a manager the whole place and the waiting list', async () => {
+    // The window, the waiting list and the nights somebody hid.
+    it('still gives a manager the whole place, the waiting list and the hidden nights', async () => {
         await openAs('store_manager')
         const pairings = db.from.mock.results
             .filter((_, i) => db.from.mock.calls[i][0] === 'restaurant_places')
             .map(r => r.value.select.mock.calls[0][0])
         for (const columns of pairings) expect(columns).toContain('place:places(*)')
-        expect(db.calls.filter(t => t === 'events')).toHaveLength(2)
+        expect(db.calls.filter(t => t === 'events')).toHaveLength(3)
     })
 })
 

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 
 // Today, as the rest of the app works it out. Fixed far from the real date, so
 // a modal that asks the clock any other way says something else.
@@ -8,6 +8,9 @@ vi.mock('@/lib/dates', async importOriginal => ({
     ...(await importOriginal()),
     todayISO: () => '2030-01-02',
 }))
+
+const confirm = vi.fn(() => Promise.resolve(true))
+vi.mock('@/context/confirm', () => ({ useConfirm: () => confirm }))
 
 const { default: EventModal } = await import('@/components/forecast/EventModal')
 
@@ -118,5 +121,48 @@ describe('how long ago a reading was found', () => {
             onClose={() => {}}
         />)
         expect(screen.getByText('theccd.ie, yesterday')).toBeInTheDocument()
+    })
+})
+
+// His, 21 October 2026: two film screenings at the Arena he wanted off the
+// roster, My shifts, the calendar and the report.
+describe('saying a night on the calendar is not for us', () => {
+    const drawHide = (event, sameName = 0, canHide = true) => {
+        const onHide = vi.fn()
+        render(<EventModal row={{ event }} canEdit canHide={canHide} sameName={sameName} onRename={() => {}} onHide={onHide} onClose={() => {}} />)
+        return onHide
+    }
+
+    // His, 23 October 2026: a Ticketmaster night is the super admin's to hide.
+    it('is not offered to somebody who may not hide it', () => {
+        drawHide(FEED, 0, false)
+        expect(screen.queryByRole('button', { name: 'Not for us' })).toBeNull()
+    })
+
+    it('asks first, then takes the one night off', async () => {
+        const onHide = drawHide(FEED)
+        fireEvent.click(screen.getByRole('button', { name: 'Not for us' }))
+        await waitFor(() => expect(onHide).toHaveBeenCalledWith(FEED, false))
+        expect(confirm.mock.calls.at(-1)[0].message).toMatch(/^Pentangle on .+ comes off the roster, My shifts, the roster picture, the calendar and the weekly report/)
+    })
+
+    it('can take every date of it off at once', async () => {
+        const onHide = drawHide(FEED, 2)
+        fireEvent.click(screen.getByRole('button', { name: 'Not for us, all 2 dates' }))
+        await waitFor(() => expect(onHide).toHaveBeenCalledWith(FEED, true))
+    })
+
+    it('does nothing when the question is answered no', async () => {
+        confirm.mockImplementationOnce(() => Promise.resolve(false))
+        const onHide = drawHide(FEED)
+        fireEvent.click(screen.getByRole('button', { name: 'Not for us' }))
+        await waitFor(() => expect(confirm).toHaveBeenCalled())
+        expect(onHide).not.toHaveBeenCalled()
+    })
+
+    // A reading still waiting is answered at the top of the Calendar page.
+    it('is not offered on a reading nobody has kept yet', () => {
+        drawHide(READING)
+        expect(screen.queryByRole('button', { name: 'Not for us' })).toBeNull()
     })
 })

@@ -974,6 +974,12 @@ maybe('what each role can see and do', () => {
             expect(error?.code, 'a store manager joined two versions directly').toBe(REFUSED_BY_THE_RULES)
         })
 
+        // The brand's list is the owners' (013).
+        it('cannot say two versions are one thing', async () => {
+            const { error } = await manager.rpc('merge_versions', { keep: NOBODY, fold: NOBODY })
+            expect(error?.code, 'a store manager joined two versions').toBe('42501')
+        })
+
         // Each restaurant's own (his decision of 18 October 2026), the same
         // limit its prices have.
         it('says where things are kept at their own restaurant only', async () => {
@@ -1046,6 +1052,13 @@ maybe('what each role can see and do', () => {
     })
 
     describe('owner', () => {
+        // Past who may ask, to the check that the versions exist (013).
+        it('may say two versions are one thing', async () => {
+            const { error } = await owner.rpc('merge_versions', { keep: NOBODY, fold: NOBODY })
+            expect(error?.code, 'an owner was refused joining two versions').not.toBe('42501')
+            expect(error?.message).toBe('Pick two different versions')
+        })
+
         // Every restaurant open, the cost per unit and whose it is (011).
         it('can ask what a change to the Recommended list would cost', async () => {
             const { data, error } = await owner.rpc('recommended_cost_preview', { product: NOBODY, versions: [] })
@@ -1521,6 +1534,11 @@ maybe('what each role can see and do', () => {
             for (const [view, key, change] of views) {
                 expect(await changesRefused(anon, view, key, change), `${view} can be changed by anybody`).toBe(true)
             }
+        })
+
+        it('cannot join two versions', async () => {
+            const { error } = await anon.rpc('merge_versions', { keep: NOBODY, fold: NOBODY })
+            expect(error, 'anybody can join two versions').not.toBeNull()
         })
 
         // Since 21 October 2026, migration 010.

@@ -47,6 +47,14 @@ const section = priceWeek({
     ],
     threshold: 5,
     today: '2026-09-25',
+    // Avocado toast, the one dish: the avocados put it 41% out.
+    costPrices: [{ product_id: 'avo', price_per_unit: 0.9167 }],
+    menu: {
+        menuItems: [{ id: 'toast', name: 'Avocado toast', is_active: true, category_id: 'mains' }],
+        categories: [{ id: 'mains', is_active: true }],
+        components: [{ menu_item_id: 'toast', product_id: 'avo', quantity: 2 }],
+        products: [{ id: 'avo', name: 'Avocado', is_mix: false, is_active: true }],
+    },
 })
 
 function draw(over = {}) {
@@ -66,9 +74,35 @@ describe('prices and suppliers on the report', () => {
     })
 
     // Read as at the end of the week, and today's prices moved on since.
+    // His, 22 October 2026: the recipes, with the ingredients behind them.
+    it('names the recipes out of line and what is behind each', () => {
+        draw()
+        const card = screen.getByRole('heading', { name: 'Recipes not costing what we pay' }).closest('div.rounded-lg')
+        expect(card).toHaveTextContent('Avocado toast')
+        expect(card).toHaveTextContent('+41.1% at what we pay')
+        expect(card).toHaveTextContent('€1.83 a portion in recipes, €2.59 at what was paid')
+        expect(card).toHaveTextContent('Avocado: €0.92 to €1.29 each, +€0.75 on the dish')
+    })
+
+    it('marks a mix recipe and costs it by its unit', () => {
+        const recipesOff = [{
+            kind: 'mix', id: 'g', name: 'Guacamole', unit: 'KG', was: 4.1, now: 5.2, change: 26.8,
+            because: [{ productId: 'avo', name: 'Avocado', unit: 'each', costed: 0.9167, paid: 1.2939, effect: 1.1 }],
+        }]
+        draw({ section: { ...section, recipesOff } })
+        expect(screen.getByText('Mix recipe')).toBeInTheDocument()
+        expect(screen.getByText('€4.10 a kg in recipes, €5.20 at what was paid')).toBeInTheDocument()
+    })
+
+    it('says every recipe is within the threshold when none is out', () => {
+        draw({ section: { ...section, recipesOff: [], recipes: [] } })
+        expect(screen.getByText('Every dish and mix recipe is within 5% of what was last paid for its ingredients.')).toBeInTheDocument()
+    })
+
+    // A report sent before 22 October lists ingredients, and still reads so.
     it('says what recipes cost now and offers nothing to press for it', () => {
         const recipes = section.recipes.map(r => ({ ...r, since: { per: 1.2939, usual: true } }))
-        draw({ section: { ...section, recipes } })
+        draw({ section: { ...section, recipesOff: undefined, recipes } })
         expect(screen.getByText('Since this week, recipes cost it at €1.29 each.')).toBeInTheDocument()
         expect(screen.queryByRole('button', { name: /Cost from/ })).not.toBeInTheDocument()
         expect(screen.queryByRole('button', { name: /usually buy both/ })).not.toBeInTheDocument()

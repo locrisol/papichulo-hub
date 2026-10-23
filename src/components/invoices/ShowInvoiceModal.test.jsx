@@ -148,10 +148,10 @@ describe('what was decided', () => {
         expect(within(wraps).getByText('Tortilla Wraps')).toBeInTheDocument()
         expect(within(wraps).getByText('Version: Santa Maria 12" wraps')).toBeInTheDocument()
 
-        expect(within(tomatoes).getByText('Not now')).toBeInTheDocument()
-        expect(within(tomatoes).getByText('The costing was left as it was.')).toBeInTheDocument()
+        expect(within(tomatoes).getByText('Price kept')).toBeInTheDocument()
+        expect(within(tomatoes).getByText('What was paid still counts towards the week\'s cost.')).toBeInTheDocument()
 
-        expect(within(foil).getByText('New price accepted')).toBeInTheDocument()
+        expect(within(foil).getByText('Price changed')).toBeInTheDocument()
         expect(within(foil).getByText('Foil Containers')).toBeInTheDocument()
         expect(within(foil).queryByText(/Version:/)).toBeNull()
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { callerProblem, emailProblem, inviteProblem, updateProblem, linkSite, cleanEmail } from '../../supabase/functions/invite-user/invite'
+import { callerProblem, emailProblem, inviteProblem, updateProblem, resendProblem, linkSite, cleanEmail } from '../../supabase/functions/invite-user/invite'
 
 // The function runs with the service key, which skips every row level rule,
 // so these are the only checks there are.
@@ -73,6 +73,21 @@ describe('changing an account', () => {
         expect(updateProblem(withPerson, current, { id: 'e1', restaurant_id: 'pc', user_id: null })).toBe('')
         expect(updateProblem(withPerson, current, { id: 'e1', restaurant_id: 'pc', user_id: 'u9' })).toBe('That person already has an account.')
         expect(updateProblem(withPerson, current, { id: 'e1', restaurant_id: 'dl', user_id: null })).toBe('That person works at another restaurant.')
+    })
+})
+
+describe('sending the invite again', () => {
+    const waiting = { id: 'u7', is_active: true, is_test: false, password_set_at: null }
+
+    it('goes to somebody who has never chosen a password', () => {
+        expect(resendProblem(waiting)).toBe('')
+    })
+
+    it('never goes to anybody else', () => {
+        expect(resendProblem(null)).toBe('That account does not exist.')
+        expect(resendProblem({ ...waiting, is_test: true })).toBe('That is a test account, not a person.')
+        expect(resendProblem({ ...waiting, is_active: false })).toBe('That account is switched off. Reactivate it first.')
+        expect(resendProblem({ ...waiting, password_set_at: '2026-10-01T10:00:00Z' })).toBe('They have chosen their own password already.')
     })
 })
 

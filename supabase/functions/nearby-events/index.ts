@@ -55,7 +55,7 @@ import {
     discoveryUrl, eventsFrom, isServiceRole, roleOf,
     geocodeUrl, pointFrom, pointTyped, venuesUrl, venuesFrom, suggestions, refusalFor,
     irishDate, stillToCome, emptyProblem, feedError, feedProblem, refusedWords, goneBetween, endsMoved,
-    superseded, notOverBy,
+    superseded, notOverBy, reviewFor,
 } from './discovery.js'
 
 // Asked of OpenStreetMap once when somebody adds a restaurant. They ask for a
@@ -131,11 +131,12 @@ async function syncOne(admin: Admin, place: Place, key: string) {
         return { added: 0, total: 0, problem: emptyProblem(stillToCome(held, today)) }
     }
 
-    // To report how many are new, and to find a run of days that has to move
-    // with its show. If this is racing another sync the count may be off,
-    // which does not matter: the upsert below is what is correct.
+    // To report how many are new, to find a run of days that has to move
+    // with its show, and to leave a night somebody said is not for us that
+    // way. If this is racing another sync the count may be off, which does
+    // not matter: the upsert below is what is correct.
     const { data: existing } = await admin
-        .from('events').select('id, ticketmaster_id, event_date, ends_on')
+        .from('events').select('id, ticketmaster_id, event_date, ends_on, review')
         .in('ticketmaster_id', fetched.map(e => e.ticketmaster_id))
 
     // **Before the upsert, one row at a time.** A moved show with an end date
@@ -157,9 +158,8 @@ async function syncOne(admin: Admin, place: Place, key: string) {
                 ...e,
                 place_id: place.id,
                 source: 'ticketmaster',
-                // A feed is the venue itself saying so, which is as checked as
-                // anything gets. Only a reading off a page waits for a person.
-                review: 'trusted',
+                // Trusted, unless somebody said not for us. See reviewFor.
+                review: reviewFor(existing, e.ticketmaster_id),
                 last_seen_at: now,
             })),
             { onConflict: 'ticketmaster_id' },

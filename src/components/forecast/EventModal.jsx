@@ -1,14 +1,15 @@
 import { useState } from 'react'
 import Modal from '@/components/ui/Modal'
+import { useConfirm } from '@/context/confirm'
 import ClockField from '@/components/ui/ClockField'
 import { categoryStyle, statusNote } from '@/lib/events'
 import {
-    placeName, elsewhere, walkWords, hostOf, sinceWords, whenWords, eventName,
+    placeName, elsewhere, walkWords, hostOf, sinceWords, whenWords, eventName, LIVE,
 } from '@/lib/nearby'
 import { fullDate, todayISO, dayName } from '@/lib/dates'
 import { fmtMoney } from '@/lib/format'
 import {
-    badge, fieldClass, labelClass, secondaryButton, checkbox, checkRow, hintClass,
+    badge, fieldClass, labelClass, secondaryButton, checkbox, checkRow, hintClass, rowButton,
 } from '@/lib/controlStyles'
 
 // One thing on near us, opened from the calendar or from the list beside it.
@@ -24,7 +25,8 @@ import {
 // a name, a date and the address it was read from. Attendance and ticket
 // numbers are not in the free tier at all, so those are not missing by accident
 // and there is no point leaving a blank line for them.
-export default function EventModal({ row, canEdit = false, sameName = 0, onRename, onClose }) {
+export default function EventModal({ row, canEdit = false, canHide = false, sameName = 0, onRename, onHide, onClose }) {
+    const confirm = useConfirm()
     const event = row?.event
     // Before the early return, because a hook cannot sit behind one. The empty
     // string is never used: there is no modal to type into without an event.
@@ -44,6 +46,25 @@ export default function EventModal({ row, canEdit = false, sameName = 0, onRenam
         : 'bg-amber-50 text-amber-700'
 
     const fromAPage = event.source === 'page'
+
+    // **Not for us, on one already on the calendar** (his, 21 October 2026:
+    // two film screenings at the Arena he wanted gone from everywhere). The
+    // same answer a reading gets at the top of the page, and the sync leaves
+    // it that way when Ticketmaster lists the night again. Asked first, and
+    // only for whoever may (canHide: a Ticketmaster night is the super
+    // admin's alone). Hidden nights on the Calendar brings one back.
+    async function hide(all) {
+        const day = `${dayName(event.event_date)} ${fullDate(event.event_date)}`
+        const ok = await confirm({
+            title: 'Not for us?',
+            message: all
+                ? `All ${sameName} dates of ${eventName(event)} come off the roster, My shifts, the roster picture, the calendar and the weekly report, and stay off if they are listed again.`
+                : `${eventName(event)} on ${day} comes off the roster, My shifts, the roster picture, the calendar and the weekly report, and stays off if it is listed again.`,
+            confirmLabel: 'Not for us',
+        })
+        if (ok) onHide(event, all)
+    }
+
     const unchanged = name.trim() === eventName(event)
         && ends === (event.ends_on || '')
         && time === String(event.event_time || '').slice(0, 5)
@@ -243,6 +264,24 @@ export default function EventModal({ row, canEdit = false, sameName = 0, onRenam
                                 ? `It arrived as "${event.name}". Empty the box to put that back.`
                                 : 'Only what the roster and the calendar show. What it arrived as is kept.'}
                         </p>
+                    </div>
+                )}
+
+                {canHide && onHide && LIVE.includes(event.review) && (
+                    <div className="mt-4 pt-4 border-t border-border">
+                        <p className="text-sm text-gray-700">
+                            Nothing that brings people our way? Take it off everywhere.
+                        </p>
+                        <div className="flex flex-wrap gap-2 mt-2">
+                            <button type="button" onClick={() => hide(false)} className={rowButton()}>
+                                Not for us
+                            </button>
+                            {sameName > 1 && (
+                                <button type="button" onClick={() => hide(true)} className={rowButton()}>
+                                    Not for us, all {sameName} dates
+                                </button>
+                            )}
+                        </div>
                     </div>
                 )}
             </div>
