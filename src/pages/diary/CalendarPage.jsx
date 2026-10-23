@@ -8,14 +8,16 @@ import { friendlyError } from '@/lib/errors'
 import { syncEvents, syncIsDue, markSynced } from '@/lib/nearbySync'
 import {
     nearbyRows, waiting, eventName, headlinePlaces, placeName, PAIRING_COLUMNS, STAFF_PAIRING_COLUMNS,
+    hiddenRows, shownAgain, canHideNight,
 } from '@/lib/nearby'
 import FoundNearby from '@/components/nearby/FoundNearby'
+import HiddenNights from '@/components/nearby/HiddenNights'
 import FeedTrouble from '@/components/nearby/FeedTrouble'
 import {
     LAYERS, layerOf, calendarItems, itemsByDate, kindLabel, kindDot, atRestaurant, canChangeEntry,
 } from '@/lib/diary'
 import {
-    card, pageTitle, pageSubtitle, primaryButton, secondaryButton, segmentTrack, segmentButton,
+    card, pageTitle, pageSubtitle, primaryButton, secondaryButton, segmentTrack, segmentButton, rowButton,
 } from '@/lib/controlStyles'
 import JumpButton from '@/components/ui/JumpButton'
 import DateStepper from '@/components/ui/DateStepper'
@@ -95,6 +97,9 @@ export default function CalendarPage() {
     const [pending, setPending] = useState([])
     const [pairings, setPairings] = useState([])
     const [deciding, setDeciding] = useState(false)
+    // The nights somebody hid, for Hidden nights, and whether it is open.
+    const [hiddenEvents, setHiddenEvents] = useState([])
+    const [showHidden, setShowHidden] = useState(false)
     // How many dates carry the open listing's name at the same place. Counted
     // rather than taken from what is loaded, because a residency runs past the
     // end of whatever window is on screen and offering to rename five when
@@ -211,7 +216,7 @@ export default function CalendarPage() {
             quietly.current = false
             setError('')
 
-            const [diary, eventRes, notes, places, nearRes, pendRes] = await Promise.all([
+            const [diary, eventRes, notes, places, nearRes, pendRes, hiddenRes] = await Promise.all([
                 // Staff read the view, which leaves out where each entry is
                 // on Google and who wrote it. A manager reads the table,
                 // because Edit needs to know who wrote a private entry.
@@ -256,11 +261,22 @@ export default function CalendarPage() {
                         .or(`ends_on.gte.${today},and(ends_on.is.null,event_date.gte.${today})`)
                         .order('event_date')
                     : Promise.resolve({ data: [], error: null }),
+                // What somebody hid, from two weeks ago on, so it can be
+                // shown again: far enough back for a report still being
+                // written, and not every film turned down in September.
+                // Only a manager hides or shows.
+                canWrite
+                    ? supabase.from('events').select('*')
+                        .eq('review', 'dismissed')
+                        .not('reviewed_at', 'is', null)
+                        .gte('event_date', addDays(today, -14))
+                        .order('event_date')
+                    : Promise.resolve({ data: [], error: null }),
             ])
 
             if (!alive) return
 
-            const failed = [diary, eventRes, notes, places, nearRes, pendRes].find(r => r.error)
+            const failed = [diary, eventRes, notes, places, nearRes, pendRes, hiddenRes].find(r => r.error)
             if (failed) setError(friendlyError(failed.error))
 
             // Only this restaurant's. The policy answers whether you may
@@ -271,6 +287,7 @@ export default function CalendarPage() {
             setEvents(eventRes.data || [])
             setPairings(nearRes.data || [])
             setPending(pendRes.data || [])
+            setHiddenEvents(hiddenRes.data || [])
             setDayNotes(notes.data || [])
             setRestaurants(places.data || [])
             setLoading(false)
@@ -296,6 +313,13 @@ export default function CalendarPage() {
     const found = useMemo(
         () => waiting(nearbyRows(pending, pairings, activeRestaurant), today),
         [pending, pairings, activeRestaurant, today],
+    )
+
+    // Only the ones this person may show again: a Ticketmaster night is the
+    // super admin's (canHideNight).
+    const hiddenNights = useMemo(
+        () => hiddenRows(hiddenEvents, pairings, activeRestaurant).filter(r => canHideNight(r.event, user)),
+        [hiddenEvents, pairings, activeRestaurant, user],
     )
 
     // The switch for the one place on its own scale says its name.
@@ -475,6 +499,49 @@ export default function CalendarPage() {
         setOpenEvent(was => (was?.event && hits(was.event)
             ? { ...was, event: patch(was.event) }
             : was))
+    }
+
+    // Not for us, on one already on the calendar, from its dialog (his, 21
+    // October 2026). The same dismissal a reading gets, so it leaves the
+    // roster, My shifts, the picture, the calendar and the report, and the
+    // sync keeps it that way. all does every date of it at the same place,
+    // matched the way a rename matches them.
+    async function hide(event, all = false) {
+        const change = { review: 'dismissed', reviewed_at: new Date().toISOString(), reviewed_by: user?.id || null }
+        const where = supabase.from('events')
+        const { data, error: failed } = all
+            ? await where.update(change).eq('place_id', event.place_id).eq('name', event.name).select('id')
+            : await where.update(change).eq('id', event.id).select('id')
+        if (failed) { setError(friendlyError(failed)); return }
+        if (!data?.length) {
+            setError('That could not be saved, so it is still on the calendar.')
+            return
+        }
+        const gone = new Set(data.map(e => e.id))
+        setEvents(was => was.map(e => (gone.has(e.id) ? { ...e, ...change } : e)))
+        // Into Hidden nights straight away, the ones the calendar holds; one
+        // further out joins it at the next read.
+        setHiddenEvents(was => [
+            ...was.filter(e => !gone.has(e.id)),
+            ...events.filter(e => gone.has(e.id)).map(e => ({ ...e, ...change })),
+        ].sort((a, b) => String(a.event_date).localeCompare(String(b.event_date))))
+        setOpenEvent(null)
+    }
+
+    // Show it again, from Hidden nights (his, 22 October 2026): back to what
+    // it was before anybody hid it. See shownAgain.
+    async function showAgain(event) {
+        const change = { review: shownAgain(event), reviewed_at: new Date().toISOString(), reviewed_by: user?.id || null }
+        setDeciding(true)
+        const { data, error: failed } = await supabase.from('events').update(change).eq('id', event.id).select('id')
+        setDeciding(false)
+        if (failed) { setError(friendlyError(failed)); return }
+        if (!data?.length) {
+            setError('That could not be saved, so it is still hidden.')
+            return
+        }
+        setEvents(was => was.map(e => (e.id === event.id ? { ...e, ...change } : e)))
+        setHiddenEvents(was => was.filter(e => e.id !== event.id))
     }
 
     // Keeping one or saying no to it.
@@ -672,7 +739,15 @@ export default function CalendarPage() {
                         </button>
                     )
                 })}
+                {canWrite && hiddenNights.length > 0 && (
+                    <button type="button" onClick={() => setShowHidden(true)} className={rowButton()}>
+                        Hidden nights ({hiddenNights.length})
+                    </button>
+                )}
             </div>
+            {showHidden && (
+                <HiddenNights rows={hiddenNights} busy={deciding} onShow={showAgain} onClose={() => setShowHidden(false)} />
+            )}
 
             <div className={`${card} overflow-hidden`}>
                 {loading ? (
@@ -727,8 +802,10 @@ export default function CalendarPage() {
                 <EventModal
                     row={openEvent}
                     canEdit={canWrite}
+                    canHide={canWrite && canHideNight(openEvent.event, user)}
                     sameName={sameName}
                     onRename={rename}
+                    onHide={hide}
                     onClose={() => setOpenEvent(null)}
                 />
             )}
