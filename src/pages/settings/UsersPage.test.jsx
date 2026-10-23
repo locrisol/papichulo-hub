@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, within, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { mockSupabase } from '@/test/helpers'
@@ -148,6 +148,42 @@ describe('who has not chosen a password yet', () => {
         const row = name => screen.getAllByText(name).map(el => el.closest('tr')).find(Boolean)
         expect(row('Leandro').textContent).toContain('No password chosen yet')
         expect(row('Test Owner').textContent).not.toContain('No password chosen yet')
+    })
+})
+
+// His offer of 18 October 2026, and 24 hours a link since 22 October.
+describe('sending the invite again', () => {
+    const row = name => screen.getAllByText(name).map(el => el.closest('tr')).find(Boolean)
+    const invited = [
+        { id: 'u7', full_name: 'Maria Silva', role: 'employee', restaurant_id: 'pc', is_active: true, password_set_at: null },
+        { id: 'u8', full_name: 'Gone Away', role: 'employee', restaurant_id: 'pc', is_active: false, password_set_at: null },
+    ]
+    beforeEach(() => { USERS.push(...invited) })
+    afterEach(() => { USERS.splice(USERS.length - invited.length, invited.length) })
+
+    it('is offered to somebody else who has not chosen a password, and only them', async () => {
+        await show()
+        expect(within(row('Maria Silva')).getByRole('button', { name: 'Send the invite again' })).toBeInTheDocument()
+        for (const name of ['Leandro', 'Test Owner', 'Gone Away', 'Ana']) {
+            expect(within(row(name)).queryByRole('button', { name: 'Send the invite again' })).toBeNull()
+        }
+    })
+
+    it('goes through the function and says where it went', async () => {
+        db.functions.invoke = vi.fn(() => Promise.resolve({ data: { id: 'u7', email: 'maria@papichulo.ie' }, error: null }))
+        await show()
+        await userEvent.click(within(row('Maria Silva')).getByRole('button', { name: 'Send the invite again' }))
+        await waitFor(() => expect(db.functions.invoke).toHaveBeenCalledWith('invite-user', {
+            body: { action: 'resend', id: 'u7', origin: window.location.origin },
+        }))
+        expect(await screen.findByText('The invite went to maria@papichulo.ie again. The link in it lasts 24 hours.')).toBeInTheDocument()
+    })
+
+    it('says why when it did not go', async () => {
+        db.functions.invoke = vi.fn(() => Promise.resolve({ data: { error: 'They have chosen their own password already.' }, error: null }))
+        await show()
+        await userEvent.click(within(row('Maria Silva')).getByRole('button', { name: 'Send the invite again' }))
+        expect(await screen.findByText('They have chosen their own password already.')).toBeInTheDocument()
     })
 })
 
