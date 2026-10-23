@@ -38,10 +38,12 @@ export function inPrintedOrder(lines) {
 // What was decided about a line, in the words Review already uses for it.
 //
 //   matched    the same as last time, or matched to one of our products
-//   accepted   the new price taken into the Hub. Not "Cost from the new
-//              price", because adding a second pack and keeping the old one
-//              is an accepted price too, and recipes do not cost from it
-//   rejected   Not now: what was paid is in the week, the costing is not
+//   accepted   Change the price, or Add the pack: the price taken into the
+//              Hub. Not "costed from", because adding a second pack and
+//              keeping the old one is a price taken in too, and recipes do
+//              not cost from it
+//   rejected   Keep the price: what was paid is in the week, the price the
+//              Hub keeps is not
 //   ignored    Not stock, which Leave this one stores the same way
 //
 // Nothing decided yet is waiting for a decision, the words the sidebar and
@@ -49,8 +51,8 @@ export function inPrintedOrder(lines) {
 // lines, because they are money coming back at a price already charged.
 const DECIDED = {
     matched: { label: 'Matched', tone: 'good', note: null },
-    accepted: { label: 'New price accepted', tone: 'good', note: null },
-    rejected: { label: 'Not now', tone: 'plain', note: 'The costing was left as it was.' },
+    accepted: { label: 'Price changed', tone: 'good', note: null },
+    rejected: { label: 'Price kept', tone: 'plain', note: 'What was paid still counts towards the week\'s cost.' },
     ignored: { label: 'Not stock', tone: 'plain', note: 'It still counts towards the week\'s cost.' },
 }
 const NOTHING = { label: 'Nothing to decide', tone: 'plain', note: null }

@@ -66,7 +66,7 @@ const PILE_CARDS = [
     {
         key: 'price_changed',
         title: 'The price changed',
-        under: 'What the supplier charged is already in the week. This is only about what the Hub costs a portion at. Not now leaves the costing as it is, and the weekly report keeps saying so until the two agree.',
+        under: 'What the supplier charged is already in this week\'s costs either way. This is only about the price the Hub keeps for this code. If you keep the old price, the next delivery at the new price asks again, and the weekly report lists any recipe it puts 5% or more out.',
     },
 ]
 
@@ -298,6 +298,16 @@ export default function WaitingForDecision({ restaurantId, refresh: imported = 0
     )
 }
 
+// The price an answer leaves the Hub with, as its button says it: the case
+// price when the price row keeps one, the price a unit when it is loose.
+function priceWords(row, which) {
+    const loose = row.price?.purchase_type === 'loose' || !(row.was > 0)
+    if (which === 'new') {
+        return loose && row.perUnitNow != null ? `${fmtMoney(row.perUnitNow)} a unit` : `${fmtMoney(row.now)} a case`
+    }
+    return loose ? `${fmtMoney(row.perUnitWas)} a unit` : `${fmtMoney(row.was)} a case`
+}
+
 // One line, and what can be done about it.
 function ReviewRow({
     row, busy, keepsTheList, costing, sameCodeCount, onAccept, onReject, onSameProduct, onBuyBoth, onMatch, onNotStock,
@@ -374,14 +384,16 @@ function ReviewRow({
                 </p>
             )}
 
+            {/* Each answer names the price it leaves the Hub with (his
+                pick of 23 October 2026), so nothing is left to work out. */}
             <div className="flex flex-wrap gap-2">
                 {pile === 'price_changed' && !row.packMoved && (
                     <>
                         <button type="button" disabled={!!busy} onClick={() => onAccept(false)} className={rowButton('good')}>
-                            {costing?.listed ? 'Update the cost price' : 'Cost from the new price'}
+                            Change the price to {priceWords(row, 'new')}
                         </button>
                         <button type="button" disabled={!!busy} onClick={onReject} className={rowButton()}>
-                            Not now
+                            Keep the price at {priceWords(row, 'old')}
                         </button>
                     </>
                 )}
@@ -389,10 +401,10 @@ function ReviewRow({
                 {pile === 'price_changed' && row.packMoved && costing?.listed && (
                     <>
                         <button type="button" disabled={!!busy} onClick={() => onAccept(false)} className={rowButton('good')}>
-                            Add the pack
+                            Add the pack of {row.wantedUnits} at {fmtMoney(row.now)}
                         </button>
                         <button type="button" disabled={!!busy} onClick={onReject} className={rowButton()}>
-                            Not now
+                            Keep the price at {priceWords(row, 'old')}
                         </button>
                     </>
                 )}
@@ -400,13 +412,13 @@ function ReviewRow({
                 {pile === 'price_changed' && row.packMoved && !costing?.listed && (
                     <>
                         <button type="button" disabled={!!busy} onClick={() => onAccept(true)} className={rowButton('good')}>
-                            Add the pack and cost from it
+                            Add the pack of {row.wantedUnits} at {fmtMoney(row.now)} and cost from it
                         </button>
                         <button type="button" disabled={!!busy} onClick={() => onAccept(false)} className={rowButton()}>
-                            Add the pack, keep the old one
+                            Add the pack of {row.wantedUnits}, keep costing from the old one
                         </button>
                         <button type="button" disabled={!!busy} onClick={onReject} className={rowButton()}>
-                            Not now
+                            Keep the price at {priceWords(row, 'old')}
                         </button>
                     </>
                 )}

@@ -151,6 +151,25 @@ describe('a line the same as before', () => {
     })
 })
 
+// His pick of 23 October 2026: each answer names the price it leaves.
+describe('a price that changed', () => {
+    const RICE = {
+        id: 'rice', product_id: 'prod-rice', supplier_id: 's1', restaurant_id: 'r1', purchase_type: 'case',
+        supplier_code: '777001', price_per_case: 14.5, units_per_case: 5, price_per_unit: 2.9,
+        products: { id: 'prod-rice', name: 'Basmati Rice', section: 'Dry', unit: 'KG' },
+    }
+
+    it('says the price each answer leaves, and keeping it changes no price', async () => {
+        tables.product_supplier_prices = [RICE]
+        tables.invoice_lines = [line('l1', '777001', 'BASMATI RICE', 23.75)]
+        renderWithRouter(<Section />)
+        expect(await screen.findByRole('button', { name: 'Change the price to €23.75 a case' })).toBeInTheDocument()
+        await userEvent.click(screen.getByRole('button', { name: 'Keep the price at €14.50 a case' }))
+        await waitFor(() => expect(written.find(w => w.row?.decision === 'rejected')).toBeTruthy())
+        expect(written.some(w => w.table === 'product_supplier_prices')).toBe(false)
+    })
+})
+
 // His design of 4 October: the brand's list is the owners'. A store manager
 // says which of our products a new code is, or sends it for review, and
 // cannot set a line aside or start a product from one.
