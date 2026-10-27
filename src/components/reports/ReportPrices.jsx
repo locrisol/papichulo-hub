@@ -1,5 +1,5 @@
 import { Fragment, useState } from 'react'
-import { fmtMoney } from '@/lib/format'
+import { fmtMoney, namesList } from '@/lib/format'
 import { shortDate, dayLabel } from '@/lib/dates'
 import { CLAIM_KINDS } from '@/lib/invoiceClaims'
 import { backByReason, decisionsFrom } from '@/lib/invoiceReport'
@@ -134,6 +134,8 @@ export default function ReportPrices({
             </div>
 
             <WeekInShort section={section} />
+
+            {section.usualShop && <UsualShop shop={section.usualShop} read={section.readFrom} />}
 
             {section.offList
                 ? <OffList rows={section.offList} threshold={section.threshold} />
@@ -540,6 +542,99 @@ function ReadFrom({ words }) {
 
 function Pill({ tone, children }) {
     return <span className={`${badge} border ${PILL[tone] || PILL.grey}`}>{children}</span>
+}
+
+// What a usual week's buying costs at each week's prices, each group on its
+// own, against 8 weeks ago (the owners' ask, 27 October 2026). See usualShop.
+// Not on a report saved before it.
+//
+// "X a week at this week's prices, Y on 29 Aug" read as this week's buying
+// against an older week's, which it is not: it is the same average week priced
+// twice. So the sub says the quantities are the same and each price has a line
+// of its own (his pick, 1 November 2026).
+function UsualShop({ shop, read }) {
+    const readMoney = (read?.read || []).reduce((t, s) => t + s.money, 0)
+    const allMoney = readMoney + (read?.typed || []).reduce((t, s) => t + s.money, 0)
+    const share = allMoney > 0 ? Math.round((100 * readMoney) / allMoney) : null
+    const names = (read?.read || []).map(s => s.name)
+    const since = shortDate(shop.since)
+    return (
+        <Card
+            title="Our usual shop"
+            sub="Our average week of buying: the same quantities priced at two dates, so only prices move it"
+            empty="Nothing has been read line by line yet, so there is no shop to price."
+            count={shop.groups.length}
+        >
+            {shop.groups.map(g => (
+                <Row key={g.group}>
+                    <div className="min-w-0">
+                        <p className="text-sm font-semibold text-gray-900">{g.label}</p>
+                        <p className="text-xs text-muted">At {since} prices: {fmtMoney(g.was)}</p>
+                        <p className="text-xs text-muted">At this week's prices: {fmtMoney(g.now)}</p>
+                        <p className="text-xs text-muted">
+                            {g.products} {g.products === 1 ? 'product' : 'products'}, averaged over the last {shop.weeks} weeks
+                        </p>
+                    </div>
+                    <ShopLine series={g.series} up={g.money > 0} />
+                    <Money change={g.change} effect={g.money} under="a week" />
+                    {g.movers.length > 0 && (
+                        <p className="sm:col-span-3 text-xs text-muted">
+                            Most of it: {g.movers.map((m, i) => (
+                                <Fragment key={m.name}>
+                                    {i > 0 ? ', ' : ''}{m.name} <span className="whitespace-nowrap">{signed(m.money)}</span>
+                                </Fragment>
+                            ))}
+                        </p>
+                    )}
+                </Row>
+            ))}
+            {shop.groups.length > 0 && names.length > 0 && (
+                <p className="px-3 py-2.5 text-xs text-muted">
+                    Only invoices read line by line: {namesList(names)}
+                    {share != null && share < 100 ? `, ${share}% of this week's purchases` : ''}. The rest joins once it is read too.
+                </p>
+            )}
+        </Card>
+    )
+}
+
+// The usual shop at each week end, oldest first, one point a week.
+//
+// Never drawn closer than SHOP_SPAN of what the shop costs, top to bottom:
+// stretched to fill the box, a third of a percent looked like a cliff.
+const SHOP_SPAN = 0.04
+function ShopLine({ series, up }) {
+    if (!series?.length) return null
+    const w = 360
+    const h = 40
+    const pad = 5
+    const values = series.map(p => p[1])
+    const middle = (Math.min(...values) + Math.max(...values)) / 2
+    const half = Math.max((Math.max(...values) - Math.min(...values)) / 2, (middle * SHOP_SPAN) / 2)
+    const lo = middle - half
+    const hi = middle + half
+    const x = i => (series.length === 1 ? w / 2 : pad + (i * (w - pad * 2)) / (series.length - 1))
+    const y = v => (hi === lo ? h / 2 : pad + ((hi - v) * (h - pad * 2)) / (hi - lo))
+    const last = series.length - 1
+    return (
+        <div className="w-full max-w-[360px]">
+            <svg
+                viewBox={`0 0 ${w} ${h}`}
+                className={`block w-full h-auto ${up ? 'text-red-700' : hi === lo ? 'text-gray-500' : 'text-green-700'}`}
+                role="img"
+                aria-label={`The usual shop at each week's prices from ${shortDate(series[0][0])} to ${shortDate(series[last][0])}`}
+            >
+                <polyline points={series.map((p, i) => `${x(i)},${y(p[1])}`).join(' ')} fill="none" stroke="currentColor" strokeWidth="2" />
+                {series.map((p, i) => (
+                    <circle key={p[0]} cx={x(i)} cy={y(p[1])} r={i === last ? 4 : 2.5} fill="currentColor" />
+                ))}
+            </svg>
+            <div className="flex justify-between text-[11px] leading-tight text-muted tabular-nums">
+                <span>{shortDate(series[0][0])}</span>
+                <span>{shortDate(series[last][0])}</span>
+            </div>
+        </div>
+    )
 }
 
 function Money({ change, effect, under }) {

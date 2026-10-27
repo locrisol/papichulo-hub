@@ -153,6 +153,8 @@ function delivery(l) {
         // What the line came to on the paper, before VAT. The prices are
         // compared without VAT, so what a change was worth is too.
         cost: num(l.line_total),
+        // Food, packaging, cleaning or other, as the week's cost splits it.
+        category: l.category || null,
     }
 }
 
@@ -834,6 +836,93 @@ export function recipeGaps(all, {
 }
 
 // ---------------------------------------------------------------------------
+// Our usual shop
+// ---------------------------------------------------------------------------
+
+// **What a usual week's buying costs at each week's prices** (the owners'
+// ask, 27 October 2026: how the basket moves over the weeks, not one price at
+// a time). Their three answers: against 8 weeks ago, each group on its own,
+// and the basket always the last 12 weeks.
+//
+// The basket is what each group bought on average a week over the last
+// USUAL_WEEKS, product by product, in each product's own unit. It is priced
+// at the last price paid for each product by the end of each of the last
+// COMPARED_WEEKS weeks and this one, so only prices move the line: a busy
+// week or a big delivery changes nothing. The same basket all the way along,
+// worked out again each week.
+//
+// Only lines read off a document can say what something cost, so for now
+// this is Sysco's; any supplier read line by line joins on its own. A price
+// four times away from the one before is a pack read wrong, not a price, and
+// is passed over. A product first bought since the first week counts at its
+// first price before then, so it moves nothing it was not there for.
+//
+// Each group { group, label, now, was, money, change, series, movers,
+// products }: the basket at this week's prices and at the first week's, the
+// difference and in percent, the price at each week end oldest first, and
+// the three products that moved it most.
+export const USUAL_WEEKS = 12
+export const COMPARED_WEEKS = 8
+const SHOP_GROUPS = [['food', 'Food'], ['packaging', 'Packaging'], ['cleaning', 'Cleaning'], ['other', 'Other']]
+
+export function usualShop(all, { weekEnd, weeks = USUAL_WEEKS, compare = COMPARED_WEEKS }) {
+    const ends = Array.from({ length: compare + 1 }, (_, i) => addDays(weekEnd, -7 * (compare - i)))
+    const from = addDays(weekEnd, -7 * weeks + 1)
+    const keyOf = d => d.productId || d.key
+    const usable = d => d.date && d.date <= weekEnd && d.perUnit > 0 && !cannotCompare(d)
+
+    // Every price paid for each product, oldest first. A line passed over is
+    // left out of the basket as well: a pack read wrong is a quantity read
+    // wrong too.
+    const paid = new Map()
+    const misread = new Set()
+    for (const d of all) {
+        if (!usable(d)) continue
+        const list = paid.get(keyOf(d)) || []
+        const before = list[list.length - 1]
+        if (before && outOfReason(d.perUnit, before[1])) { misread.add(d.id); continue }
+        list.push([d.date, d.perUnit])
+        paid.set(keyOf(d), list)
+    }
+    const priceAt = (key, end) => {
+        const list = paid.get(key)
+        let per = list[0][1]
+        for (const [date, p] of list) {
+            if (date > end) break
+            per = p
+        }
+        return per
+    }
+
+    // What each group bought, product by product, over the weeks.
+    const bought = new Map()
+    for (const d of all) {
+        if (!usable(d) || d.date < from || !(d.cost > 0) || misread.has(d.id) || !paid.has(keyOf(d))) continue
+        const group = d.category || 'other'
+        const items = bought.get(group) || new Map()
+        const item = items.get(keyOf(d)) || { key: keyOf(d), name: d.product?.name || nameOf(d), quantity: 0 }
+        item.quantity += d.cost / d.perUnit
+        items.set(keyOf(d), item)
+        bought.set(group, items)
+    }
+
+    const groups = SHOP_GROUPS.filter(([group]) => bought.has(group)).map(([group, label]) => {
+        const items = [...bought.get(group).values()].map(item => ({ ...item, quantity: item.quantity / weeks }))
+        const series = ends.map(end => [end, round2(items.reduce((t, item) => t + item.quantity * priceAt(item.key, end), 0))])
+        const was = series[0][1]
+        const now = series[series.length - 1][1]
+        const movers = items
+            .map(item => ({ name: item.name, money: round2(item.quantity * (priceAt(item.key, weekEnd) - priceAt(item.key, ends[0]))) }))
+            .filter(m => Math.abs(m.money) >= 0.01)
+            .sort((a, b) => Math.abs(b.money) - Math.abs(a.money) || a.name.localeCompare(b.name))
+            .slice(0, 3)
+        return { group, label, now, was, money: round2(now - was), change: pctOf(now, was), series, movers, products: items.length }
+    })
+
+    return { weeks, compare, since: ends[0], groups }
+}
+
+// ---------------------------------------------------------------------------
 // Came back, and why
 // ---------------------------------------------------------------------------
 
@@ -1238,6 +1327,7 @@ export function priceWeek({
     const earlier = fromEarlierWeeks(claims, invoices, weekStart)
     const fresh = newCodes(all, scope)
     const read = readFrom(documents)
+    const shop = usualShop(all, { weekEnd })
     const offList = offTheList(all, { weekStart, weekEnd, prices: then, versions, costPrices, requests, menu, threshold })
     const named = offList.filter(x => !x.quiet)
     const waiting = waitingOnReview(all, requests, { weekStart, weekEnd })
@@ -1263,6 +1353,7 @@ export function priceWeek({
         recipesOff,
         recipes,
         suggestions,
+        usualShop: shop,
         back,
         owed,
         earlier,

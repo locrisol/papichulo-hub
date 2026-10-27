@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest'
+import { addDays } from '@/lib/dates'
 import {
     deliveriesFrom, priceMoves, switchesIn, usualSuggestions, recipeGaps, cameBack, stillOwed,
     newCodes, priceWeek, priceWords, decisionsFrom, reasonsOf, lineageOf, nameOf, unitWord,
     cannotCompare, usualFor, looksRenumbered, claimKey, claimActions, claimLabel, lookBackFrom,
     outOfReason, eachWords, readFrom, offTheList, waitingOnReview, notChecked, backByReason, whyNot,
+    usualShop,
 } from '@/lib/invoiceReport'
 
 // The first real fortnight, cut down to what each rule needs. Sysco is s1.
@@ -1478,5 +1480,52 @@ describe('recipes costed from the Recommended list', () => {
         const costPrices = [{ product_id: 'pep', price_per_unit: 2.8, borrowed: true }]
         expect(recipeGaps(all, { ...WEEK20, prices: old, codes, versions, costPrices, threshold: 2 })).toEqual([])
         expect(recipeGaps(all, { ...WEEK20, prices: old, codes, versions, threshold: 2 })).toHaveLength(1)
+    })
+})
+
+// The owners' ask, 27 October 2026: what a usual week's buying costs at each
+// week's prices, each group on its own, against 8 weeks ago, the basket the
+// last 12 weeks. Invented figures: a box of 6 kg of tomatoes every week,
+// €9.00 until 28 September and €10.80 after.
+describe('our usual shop', () => {
+    const END = '2026-10-24'
+    const weekly = (busy = 3) => Array.from({ length: 12 }, (_, k) => {
+        const date = addDays('2026-08-03', 7 * k)
+        return {
+            ...line({ code: 'T', product: TOMATOES, date, perCase: date >= '2026-09-28' ? 10.8 : 9, units: 6, cases: k === 4 ? busy : 1 }),
+            category: 'food',
+        }
+    })
+
+    it('prices the same basket at each week end, so only prices move it', () => {
+        const { groups, since } = usualShop(deliveriesFrom(weekly()), { weekEnd: END })
+        expect(since).toBe('2026-08-29')
+        expect(groups).toHaveLength(1)
+        expect(groups[0]).toMatchObject({ group: 'food', label: 'Food', was: 10.5, now: 12.6, money: 2.1, change: 20, products: 1 })
+        expect(groups[0].series.map(p => p[1])).toEqual([10.5, 10.5, 10.5, 10.5, 10.5, 12.6, 12.6, 12.6, 12.6])
+        expect(groups[0].movers).toEqual([{ name: 'Tomatoes', money: 2.1 }])
+    })
+
+    it('is not moved by a big delivery, only the basket is', () => {
+        const quiet = usualShop(deliveriesFrom(weekly(1)), { weekEnd: END }).groups[0]
+        expect(quiet.change).toBe(20)
+        expect(quiet.now).toBe(10.8)
+    })
+
+    it('keeps each group apart, and counts a product first bought lately at its first price', () => {
+        const foil = { id: 'foil', name: 'Foil Containers', unit: 'Units' }
+        const lines = [...weekly(), { ...line({ code: 'F', product: foil, date: '2026-10-12', perCase: 20, units: 100 }), category: 'packaging' }]
+        const groups = usualShop(deliveriesFrom(lines), { weekEnd: END }).groups
+        expect(groups.map(g => g.group)).toEqual(['food', 'packaging'])
+        expect(groups[1]).toMatchObject({ label: 'Packaging', was: 1.67, now: 1.67, money: 0, change: 0, movers: [] })
+    })
+
+    it('passes over a price four times away from the one before', () => {
+        const lines = [...weekly(), { ...line({ code: 'T', product: TOMATOES, date: '2026-10-20', perCase: 108, units: 6 }), category: 'food' }]
+        expect(usualShop(deliveriesFrom(lines), { weekEnd: END }).groups[0].now).toBe(12.6)
+    })
+
+    it('is nothing with nothing read line by line', () => {
+        expect(usualShop([], { weekEnd: END }).groups).toEqual([])
     })
 })
