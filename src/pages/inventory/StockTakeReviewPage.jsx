@@ -6,6 +6,7 @@ import { useAuth } from '@/context/auth'
 import { resolveUnitCost } from '@/lib/mixCost'
 import { fmtMoney, fmtQty } from '@/lib/format'
 import { friendlyError } from '@/lib/errors'
+import { numberField } from '@/lib/numberInput'
 import { countName } from '@/lib/products'
 import { noPrice } from '@/lib/stockTakeSummary'
 import { sectionRank, sectionColour } from '@/lib/sections'
@@ -493,8 +494,7 @@ export default function StockTakeReviewPage() {
                             <label htmlFor="review-quantity" className={labelClass}>Quantity ({product.unit})</label>
                             <input
                               id="review-quantity"
-                              type="text" inputMode="decimal" onFocus={e => e.target.select()} value={draftQty}
-                              onChange={e => setDraftQty(e.target.value.replace(/[^0-9.]/g, ''))}
+                              {...numberField({ value: draftQty, onChange: setDraftQty })}
                               placeholder="0"
                               className={fieldClass}
                             />

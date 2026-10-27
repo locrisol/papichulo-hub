@@ -8,6 +8,7 @@ import { useConfirm } from '@/context/confirm'
 import { resolveUnitCost } from '@/lib/mixCost'
 import { fmtMoney, fmtQty } from '@/lib/format'
 import { friendlyError } from '@/lib/errors'
+import { numberField } from '@/lib/numberInput'
 import { matches } from '@/lib/search'
 import { countName, compareForCount } from '@/lib/products'
 import { countedLine } from '@/lib/countedAt'
@@ -999,11 +1000,10 @@ export default function StockTakeCountPage() {
                                                                                     </label>
                                                                                     <input
                                                                                         id={`count-pack-${fmt.id}`}
-                                                                                        type="text"
-                                                                                        inputMode="decimal"
-                                                                                        onFocus={e => e.target.select()}
-                                                                                        value={draftCounts[fmt.id] || ''}
-                                                                                        onChange={e => setDraftCounts(prev => ({ ...prev, [fmt.id]: e.target.value.replace(/[^0-9.]/g, '') }))}
+                                                                                        {...numberField({
+                                                                                            value: draftCounts[fmt.id],
+                                                                                            onChange: v => setDraftCounts(prev => ({ ...prev, [fmt.id]: v })),
+                                                                                        })}
                                                                                         placeholder="0"
                                                                                         className={`${fieldBase} bg-white border-orange-200`}
                                                                                     />
@@ -1022,11 +1022,10 @@ export default function StockTakeCountPage() {
                                                                             </label>
                                                                             <input
                                                                                 id="count-loose"
-                                                                                type="text"
-                                                                                inputMode="decimal"
-                                                                                onFocus={e => e.target.select()}
-                                                                                value={draftCounts['loose'] || ''}
-                                                                                onChange={e => setDraftCounts(prev => ({ ...prev, loose: e.target.value.replace(/[^0-9.]/g, '') }))}
+                                                                                {...numberField({
+                                                                                    value: draftCounts['loose'],
+                                                                                    onChange: v => setDraftCounts(prev => ({ ...prev, loose: v })),
+                                                                                })}
                                                                                 placeholder="0"
                                                                                 className={fieldClass}
                                                                             />

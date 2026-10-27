@@ -26,10 +26,18 @@
 // which is right for a unit price the database holds to four places. Money
 // passes 2: a box that lets somebody type 8.450 and then quietly stores 8.45 is
 // a box that disagrees with itself.
+//
+// A comma is a decimal point. A phone set to a region that writes 1,5 shows a
+// comma on its number keypad and no dot at all, so dropping it turned 1,5 kg
+// into 15 kg on a stock take (an iPhone, 27 October 2026). Only when there is
+// a dot already is a comma taken as a thousands separator, as in a pasted
+// 1,234.56.
 export function cleanNumberInput(raw, { whole = false, decimals = null } = {}) {
     if (raw == null) return ''
 
-    const stripped = String(raw).replace(whole ? /[^0-9]/g : /[^0-9.]/g, '')
+    const text = String(raw)
+    const pointed = text.includes('.') ? text.replace(/,/g, '') : text.replace(/,/g, '.')
+    const stripped = pointed.replace(whole ? /[^0-9]/g : /[^0-9.]/g, '')
     if (whole) return stripped
 
     // Only the first decimal point survives.

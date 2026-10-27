@@ -9,7 +9,24 @@ describe('cleanNumberInput', () => {
     it('drops letters and symbols as they are typed', () => {
         expect(cleanNumberInput('1a2b3')).toBe('123')
         expect(cleanNumberInput('€109.04')).toBe('109.04')
-        expect(cleanNumberInput('12,50')).toBe('1250')
+    })
+
+    // An iPhone set to a region that writes 1,5 has a comma on its keypad and
+    // no dot.
+    it('takes a comma as the decimal point', () => {
+        expect(cleanNumberInput('1,5')).toBe('1.5')
+        expect(cleanNumberInput('1,')).toBe('1.')
+        expect(cleanNumberInput('12,50', { decimals: 2 })).toBe('12.50')
+        expect(cleanNumberInput('1,2,3')).toBe('1.23')
+        expect(cleanNumberInput('1.5,')).toBe('1.5')
+    })
+
+    it('takes a comma as a thousands separator when there is a dot already', () => {
+        expect(cleanNumberInput('1,234.56')).toBe('1234.56')
+    })
+
+    it('still drops a comma from a whole number', () => {
+        expect(cleanNumberInput('1,5', { whole: true })).toBe('15')
     })
 
     it('allows one decimal point and no more', () => {
