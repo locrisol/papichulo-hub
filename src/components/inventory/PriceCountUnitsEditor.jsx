@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useConfirm } from '@/context/confirm'
 import { supabase } from '@/lib/supabase'
 import { friendlyError } from '@/lib/errors'
+import { numberField } from '@/lib/numberInput'
 import { orderFormats, packsToSave } from '@/lib/countUnits'
 import { rowButton, checkbox, labelClass, fieldClass, primaryButton } from '@/lib/controlStyles'
 import ErrorBanner from '@/components/ui/ErrorBanner'
@@ -208,11 +209,7 @@ export default function PriceCountUnitsEditor({ price, unit, onClose }) {
                         {unit} per {label.trim() || 'pack'}
                     </label>
                     <input
-                        type="text"
-                        inputMode="decimal"
-                        onFocus={e => e.target.select()}
-                        value={factor}
-                        onChange={e => setFactor(e.target.value.replace(/[^0-9.]/g, ''))}
+                        {...numberField({ value: factor, onChange: setFactor })}
                         placeholder="e.g. 6"
                         className={fieldClass}
                     />

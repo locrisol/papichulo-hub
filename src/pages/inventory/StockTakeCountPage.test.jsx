@@ -102,6 +102,14 @@ describe('a super admin counting one restaurant', () => {
         expect(line).toMatchObject({ unit_cost: 7.5, line_total: 15 })
     })
 
+    // An iPhone set to a region that writes 1,5 has a comma on its keypad and
+    // no dot. The comma used to be dropped, so 1,5 kg was saved as 15 kg.
+    it('takes a comma as the decimal point', async () => {
+        setUp({ prices: [AT_POINT_CAMPUS] })
+        const line = await count(open(), 'Cheddar', 'Loose', '1,5')
+        expect(line).toMatchObject({ quantity_counted: 1.5, line_total: 11.25 })
+    })
+
     it('offers that restaurant\'s cases', async () => {
         setUp({ prices: [AT_POINT_CAMPUS, AT_DUN_LAOGHAIRE] })
         const clicker = open()
