@@ -18,7 +18,7 @@ vi.mock('@/lib/supabase', () => ({
 const { default: ShowInvoiceModal } = await import('./ShowInvoiceModal')
 
 const INVOICE = {
-    id: 'i4', supplier_id: 's1', invoice_date: '2026-10-13', total_amount: 457.46, category: 'food',
+    id: 'i4', restaurant_id: 'r1', supplier_id: 's1', invoice_date: '2026-10-13', total_amount: 457.46, category: 'food',
     invoice_number: '45690932', document_type: 'invoice', entry_method: 'parsed', credit_of_invoice_id: null,
     suppliers: { name: 'Test Supplier' },
     invoice_lines: [],
@@ -62,10 +62,14 @@ const CLAIMS = [
     { id: 'c2', invoice_line_id: 'l2', kind: 'damaged', cases: 1, units: 0, amount: 5, credited_amount: 0, status: 'void' },
 ]
 
-function answers({ lines = LINES, claims = CLAIMS, invoices = [] } = {}) {
+// The delivery charge's code was marked not stock. Nothing else was.
+const NOT_STOCK = [{ supplier_code: '900009' }]
+
+function answers({ lines = LINES, claims = CLAIMS, invoices = [], codes = NOT_STOCK } = {}) {
     db = mockSupabase({
         invoice_lines: { data: lines, error: null },
         invoice_line_claims: { data: claims, error: null },
+        supplier_codes: { data: codes, error: null },
         invoices: { data: invoices, error: null },
     })
 }
@@ -157,6 +161,25 @@ describe('what was decided', () => {
 
         expect(within(delivery).getByText('Not stock')).toBeInTheDocument()
         expect(within(sauce).getByText('Waiting for a decision')).toBeInTheDocument()
+    })
+
+    // Leave this one is stored the same way as Not stock: tomatoes bought once
+    // because the usual ones were out are left out, not Not stock.
+    it('says a line left out is left out, by the code not being marked not stock', async () => {
+        const cherry = {
+            ...LINES[2], id: 'l6', line_no: 6, supplier_code: '600006', raw_description: 'CHERRY TOMATOES',
+            decision: 'ignored', products: null, product_supplier_prices: null,
+        }
+        answers({ lines: [...LINES, cherry] })
+        renderWithRouter(<ShowInvoiceModal invoice={INVOICE} onClose={() => {}} />)
+        const rows = await tableRows()
+        expect(within(rows[3]).getByText('Not stock')).toBeInTheDocument()
+        expect(within(rows[5]).getByText('Left out')).toBeInTheDocument()
+        expect(within(rows[5]).getByText('It still counts towards the week\'s cost.')).toBeInTheDocument()
+        const codes = chainFor('supplier_codes')
+        expect(codes.eq).toHaveBeenCalledWith('restaurant_id', 'r1')
+        expect(codes.eq).toHaveBeenCalledWith('supplier_id', 's1')
+        expect(codes.eq).toHaveBeenCalledWith('ignored', true)
     })
 
     it('carries a delivery problem logged against the line, and not a cancelled one', async () => {

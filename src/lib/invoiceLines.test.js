@@ -63,6 +63,17 @@ describe('what was decided about a line', () => {
         expect(lineDecision({ decision: 'matched' }).note).toBeNull()
     })
 
+    // Leave this one is stored the same way as Not stock. Only Not stock marks
+    // the code, so that is how they are told apart.
+    it('says a line left out is left out, not Not stock', () => {
+        const notStock = new Set(['900009'])
+        expect(lineDecision({ decision: 'ignored', supplier_code: '200002' }, { notStock }).label).toBe('Left out')
+        expect(lineDecision({ decision: 'ignored', supplier_code: '200002' }, { notStock }).note)
+            .toBe('It still counts towards the week\'s cost.')
+        expect(lineDecision({ decision: 'ignored', supplier_code: '900009' }, { notStock }).label).toBe('Not stock')
+        expect(lineDecision({ decision: 'matched', supplier_code: '200002' }, { notStock }).label).toBe('Matched')
+    })
+
     it('says a line nobody has decided is waiting for a decision', () => {
         expect(said(null)).toBe('Waiting for a decision')
         expect(lineDecision({ decision: null }).tone).toBe('wait')
