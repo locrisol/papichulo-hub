@@ -120,17 +120,18 @@ describe('somebody with no account', () => {
 describe('giving part of a shift', () => {
     const pick = (label, value) => fireEvent.change(screen.getAllByLabelText(label)[0], { target: { value } })
 
-    it('will not send hours that run past the end of the shift', () => {
-        const onSend = draw()
-        fireEvent.click(screen.getByRole('button', { name: 'Part of it' }))
-        pick('From', '19:00')
-        pick('To', '23:00')
-        fireEvent.click(screen.getByRole('button', { name: /Ben Walsh/ }))
+    // His, 1 November 2026: part of a shift is part of it, so the lists offer
+    // its own hours and nothing past them. Hours outside are still turned
+    // away (windowProblem), for a shift changed after the ask.
+    const offered = label => [...screen.getAllByLabelText(label)[0].options].map(o => o.value).filter(Boolean)
 
-        expect(screen.getByText('The hours you are giving must be within the shift.')).toBeInTheDocument()
-        expect(screen.getByRole('button', { name: 'Send request' })).toBeDisabled()
-        send()
-        expect(onSend).not.toHaveBeenCalled()
+    it('offers only the hours of the shift being given', () => {
+        draw()
+        fireEvent.click(screen.getByRole('button', { name: 'Part of it' }))
+        const from = offered('From')
+        expect(from[0]).toBe('17:00')
+        expect(from[from.length - 1]).toBe('21:00')
+        expect(offered('To')).not.toContain('23:00')
     })
 
     it('sends hours inside it', () => {
@@ -146,17 +147,15 @@ describe('giving part of a shift', () => {
         }))
     })
 
-    it('checks the hours asked for back the same way', () => {
-        const onSend = draw()
+    it('offers only the hours of the shift asked for back', () => {
+        draw()
         fireEvent.click(screen.getByRole('button', { name: /Ben Walsh/ }))
         fireEvent.click(screen.getByRole('button', { name: /09:00 to 17:00/ }))
         fireEvent.click(screen.getAllByRole('button', { name: 'Part of it' })[1])
-        pick('From', '16:00')
-        pick('To', '18:00')
-
-        expect(screen.getByText('The hours you are asking for must be within the shift.')).toBeInTheDocument()
-        send()
-        expect(onSend).not.toHaveBeenCalled()
+        const from = offered('From')
+        expect(from[0]).toBe('09:00')
+        expect(from[from.length - 1]).toBe('17:00')
+        expect(from).not.toContain('18:00')
     })
 })
 

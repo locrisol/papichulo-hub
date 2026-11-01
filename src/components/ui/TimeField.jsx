@@ -22,6 +22,8 @@ import { fieldClass, compactField } from '@/lib/controlStyles'
 //
 // dayStart rotates the list rather than cutting it down: see timeOptions for
 // why a shift finishing at 02:00 means the trading day cannot be a boundary.
+// within does cut it down, for a box with no reason to offer the small hours
+// (a part day off, availability, part of a shift).
 // The narrow one, for a row that already has a day name and a remove on it:
 // opening hours, the weekly extras, an availability stretch.
 //
@@ -38,13 +40,14 @@ export default function TimeField({
     dayStart = '',
     endOfDay = false,
     free,
+    within = null,
     allowEmpty = false,
     compact = false,
     placeholder = 'Pick a time',
     className = '',
     ...rest
 }) {
-    const options = timeOptions({ value, dayStart, endOfDay, free })
+    const options = timeOptions({ value, dayStart, endOfDay, free, within })
 
     return (
         <select

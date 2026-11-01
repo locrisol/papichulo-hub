@@ -80,6 +80,31 @@ export function partWords(absence) {
     return `can work from ${shortTime(from)}`
 }
 
+// The hours somebody can still work on a part day, as minutes from the start
+// of that day, null where they did not say.
+//
+// The hour lists run two hours past closing since 1 November 2026, so "until
+// 00:30" is a real answer, and it is that night: an end at or before the start
+// is read as after midnight, and so is an end in the small hours with no
+// start, since nobody's day here starts before NIGHT_ENDS.
+export const NIGHT_ENDS = 6 * 60
+export function partWindow(absence) {
+    const from = absence?.can_work_from ? toMinutes(absence.can_work_from) : null
+    let to = absence?.can_work_to ? toMinutes(absence.can_work_to) : null
+    if (to != null && (from != null ? to <= from : to < NIGHT_ENDS)) to += 1440
+    return { from, to }
+}
+
+// Whether a part day's hours run backwards, read in the order the list
+// offers them, from dayStart (the start of the day's list) round the clock.
+// 18:00 to 00:30 is fine and 18:00 to 17:00 is not.
+export function partBackwards(canFrom, canTo, dayStart = null) {
+    if (!canFrom || !canTo) return false
+    const start = toMinutes(dayStart) >= 0 ? toMinutes(dayStart) : NIGHT_ENDS
+    const rank = time => (toMinutes(time) - start + 1440) % 1440
+    return rank(canTo) <= rank(canFrom)
+}
+
 // The hours a part day takes out, as spans on a day's timeline.
 //
 // The same shape unavailableSpans gives back for somebody's usual availability,
@@ -89,8 +114,7 @@ export function partWords(absence) {
 export function partDaySpans(absence, from, to) {
     if (!isPartDay(absence)) return []
 
-    const canFrom = absence.can_work_from ? toMinutes(absence.can_work_from) : null
-    const canTo = absence.can_work_to ? toMinutes(absence.can_work_to) : null
+    const { from: canFrom, to: canTo } = partWindow(absence)
 
     const spans = []
     if (canFrom != null && canFrom > from) spans.push([from, Math.min(canFrom, to)])
@@ -114,8 +138,9 @@ export function hitsShift(absence, shift) {
     const ends = endMinutes(shift)
     if (starts < 0 || toMinutes(shift.ends_at) < 0) return false
 
-    const canFrom = absence.can_work_from ? toMinutes(absence.can_work_from) : -Infinity
-    const canTo = absence.can_work_to ? toMinutes(absence.can_work_to) : Infinity
+    const { from, to } = partWindow(absence)
+    const canFrom = from ?? -Infinity
+    const canTo = to ?? Infinity
 
     // Anything outside the window they can work is a clash.
     return starts < canFrom || ends > canTo

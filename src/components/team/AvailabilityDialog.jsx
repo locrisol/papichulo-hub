@@ -15,6 +15,8 @@ import {
 import { todayISO, fullDate, addDays } from '@/lib/dates'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import AddButton from '@/components/ui/AddButton'
+import { aroundTheDay } from '@/lib/timeOptions'
+import { useRestaurant } from '@/context/restaurant'
 
 // When somebody can work.
 //
@@ -58,6 +60,8 @@ const STRETCH_NAMES = ['First stretch', 'Second stretch', 'Third stretch']
 
 export default function AvailabilityDialog({ employee, onClose, onChanged }) {
     const today = todayISO()
+    // Each weekday's usual hours, for the time lists. See DayRows.
+    const openingHours = useRestaurant()?.activeRestaurant?.opening_hours
 
     // The pattern in force today, not whichever column it happens to sit in. A
     // change dated last week has already taken over, and editing "the usual
@@ -198,7 +202,7 @@ export default function AvailabilityDialog({ employee, onClose, onChanged }) {
                             The roster only checks the days you set. Days left on Any time are never
                             checked, so you only need to set the days that are different.
                         </p>
-                        <DayRows rows={rows} on={nowRows} />
+                        <DayRows rows={rows} on={nowRows} hours={openingHours} />
                     </>
                 ) : !changing ? (
                     <div className="text-center py-6">
@@ -260,7 +264,7 @@ export default function AvailabilityDialog({ employee, onClose, onChanged }) {
                             </p>
                         )}
 
-                        <DayRows rows={nextRows} on={laterRows} />
+                        <DayRows rows={nextRows} on={laterRows} hours={openingHours} />
                     </>
                 )}
             </ModalSection>
@@ -301,7 +305,7 @@ export default function AvailabilityDialog({ employee, onClose, onChanged }) {
 // quietly had fewer features than the first, no copy-to-the-week and no second
 // stretch in a day, which is the sort of difference nobody notices until they
 // need the thing that is missing.
-function DayRows({ rows, on }) {
+function DayRows({ rows, on, hours }) {
     const { patch, setTime, setShape, copyRow, addWindow, removeWindow } = on
 
     return (
@@ -450,17 +454,21 @@ function DayRows({ rows, on }) {
                                             </div>
 
                                             <div className="flex items-center gap-2">
-                                                {/* The whole day, not the
-                                                    trading day: somebody saying
-                                                    they cannot start before
-                                                    06:00 is talking about their
-                                                    life, not about when we
-                                                    open. */}
+                                                {/* That weekday's usual hours
+                                                    with two either side (his,
+                                                    1 November 2026), which
+                                                    still leaves room for a
+                                                    start before the doors open
+                                                    and a late finish. A day
+                                                    with no hours gets the whole
+                                                    day, and a saved time
+                                                    outside stays in the list. */}
                                                 {shape !== 'until' && (
                                                     <div className="flex-1 min-w-0 max-w-[10rem]">
                                                         <TimeField
                                                             value={window[0]}
                                                             onChange={v => setTime(row.key, i, 'from', v)}
+                                                            within={aroundTheDay(hours?.[row.key])}
                                                             aria-label={`${row.name} from`}
                                                             compact
                                                         />
@@ -483,6 +491,7 @@ function DayRows({ rows, on }) {
                                                         <TimeField
                                                             value={window[1]}
                                                             onChange={v => setTime(row.key, i, 'to', v)}
+                                                            within={aroundTheDay(hours?.[row.key])}
                                                             endOfDay
                                                             aria-label={`${row.name} to`}
                                                             compact
