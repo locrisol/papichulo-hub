@@ -733,7 +733,10 @@ export function personPeriod({
             }
         }).filter(day => day.spans.length > 0 || day.open.length > 0 || day.notes.length > 0 || day.away)
 
-        const inWeek = w => days.reduce((t, d) => (d.week === w ? t + d.hours : t), 0)
+        // Bank holiday hours are kept out of the weeks and the total, and
+        // given on their own (his, 1 November 2026), so Week 1 plus Week 2 is
+        // still Worked.
+        const inWeek = (w, bank) => days.reduce((t, d) => (d.week === w && d.bankHoliday === bank ? t + d.hours : t), 0)
         const ofKind = kind => days.reduce((t, d) => (
             t + d.spans.reduce((n, s) => (s.kind === kind ? n + num(s.hours) : n), 0)
         ), 0)
@@ -745,17 +748,18 @@ export function personPeriod({
             return away && away.kind === kind && isPartDay(away) === part
         }).length
 
-        const week = [inWeek(0), inWeek(1)]
-        const worked = week[0] + week[1]
-        const bank = days.reduce((t, d) => t + (d.bankHoliday ? d.hours : 0), 0)
+        const week = [inWeek(0, false), inWeek(1, false)]
+        const weekBank = [inWeek(0, true), inWeek(1, true)]
 
         return {
             name: person.full_name,
             days,
             week,
-            worked,
-            normal: worked - bank,
-            bankHoliday: bank,
+            weekBank,
+            worked: week[0] + week[1],
+            bankHoliday: weekBank[0] + weekBank[1],
+            // Sundays with hours on them, a bank holiday Sunday included.
+            sundays: days.filter(d => d.hours > 0 && new Date(`${d.date}T00:00:00Z`).getUTCDay() === 0).length,
             holiday: holidayHoursInWeek(absences, person.id, dates),
             trial: ofKind('trial'),
             training: ofKind('training'),

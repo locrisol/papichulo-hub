@@ -8,8 +8,8 @@ import logo from '@/assets/PapiChuloLogoPrint.png?inline'
 // The pay period as a piece of paper, for the accountant's files.
 //
 // **It is his own spreadsheet.** Summary on top, then everybody in turn: hours
-// per week per person, a total, holiday kept out of it and bank holiday kept
-// inside it. That is the sheet he has kept by hand for years, and the whole
+// per week per person, a total, and holiday and bank holiday hours kept out of
+// it and given on their own (bank holiday since 1 November 2026, his). That is the sheet he has kept by hand for years, and the whole
 // point of putting it on paper in the same shape is that nothing has to be
 // learnt and nothing has to be explained to her.
 //
@@ -22,11 +22,13 @@ import logo from '@/assets/PapiChuloLogoPrint.png?inline'
 // one the mail is built from, and a test runs that against the function's own
 // copy so the paper and the mail cannot disagree.
 
-// The summary's five figure columns, and what they are called. Exported so a
-// test can measure the words against the width rather than somebody finding out
-// on a printed page that two of them have run into each other.
+// The summary's figure columns, what they are called and how wide each is.
+// Exported so a test can measure the words against the width rather than
+// somebody finding out on a printed page that two of them have run into each
+// other. Sundays is a count of one or two figures, so it gets less.
 export const COL_WIDTH = 24
-export const SUMMARY_HEADS = ['WEEK 1', 'WEEK 2', 'HOURS WORKED', 'BANK HOLIDAY', 'HOLIDAY']
+export const SUMMARY_HEADS = ['WEEK 1', 'WEEK 2', 'HOURS WORKED', 'BANK HOLIDAY', 'HOLIDAY', 'SUNDAYS']
+export const COL_WIDTHS = [COL_WIDTH, COL_WIDTH, COL_WIDTH, COL_WIDTH, COL_WIDTH, 16]
 export const NAME_HEAD = 'NAME'
 export const HEAD_SIZE = 6
 // Tighter than the 0.4 the other small capitals use. At 0.4, HOURS WORKED
@@ -173,7 +175,7 @@ export async function timesheetPdf({
         let need = 16
         for (const w of [0, 1]) {
             const mine = person.days.filter(day => day.week === w)
-            need += 4 + 8.5
+            need += 4 + 8.5 + (person.weekBank[w] > 0 ? 4.4 : 0)
             need += mine.length
                 ? mine.reduce((t, day) => t + (day.notes.length
                     ? 5.7 + day.notes.length * 3.4
@@ -209,15 +211,12 @@ export async function timesheetPdf({
     //
     // **The payroll can be done from this alone.** Everything after it is for
     // the question that comes back, not for the run itself.
-    // Five columns of the same width, because the headers are what set the
-    // floor and they are all about the same length. They were 24, 24, 28, 22
-    // and 18, so HOURS WORKED, BANK HOLIDAY and HOLIDAY ran into each other and
-    // the last one hung off the end of the band.
-    const COL = COL_WIDTH
-    const cols = [
-        right - COL * 5, right - COL * 4, right - COL * 3,
-        right - COL * 2, right - COL, right,
-    ]
+    // The hours columns of the same width, because the headers are what set
+    // the floor and they are all about the same length. They were 24, 24, 28,
+    // 22 and 18, so HOURS WORKED, BANK HOLIDAY and HOLIDAY ran into each other
+    // and the last one hung off the end of the band. Where each column starts,
+    // counted back from the right edge, and the right edge last.
+    const cols = COL_WIDTHS.map((_, i) => right - COL_WIDTHS.slice(i).reduce((t, w) => t + w, 0)).concat(right)
 
     // The middle of the nth figure column. Everything in the summary is centred
     // in its own column except the name, which stays left where a list of names
@@ -285,6 +284,7 @@ export async function timesheetPdf({
             fmtHours(person.week[0]), fmtHours(person.week[1]), null,
             person.bankHoliday > 0 ? fmtHours(person.bankHoliday) : '—',
             person.holiday > 0 ? fmtHours(person.holiday) : '—',
+            person.sundays > 0 ? String(person.sundays) : '—',
         ]
         figures.forEach((value, i) => {
             if (value === null) return
@@ -316,6 +316,8 @@ export async function timesheetPdf({
     pdf.setFontSize(8.5)
     pdf.setTextColor(...INK)
     pdf.text('Everybody', marginX + 2, y)
+    // No Sundays here: each person's count added across people is not a
+    // figure anybody is paid on.
     ;[fmtHours(T.week[0]), fmtHours(T.week[1]), fmtHours(T.worked), fmtHours(T.bankHoliday), fmtHours(T.holiday)]
         .forEach((value, i) => pdf.text(value, mid(i), y, { align: 'center' }))
     y += 8
@@ -326,8 +328,9 @@ export async function timesheetPdf({
     pdf.setFontSize(7)
     pdf.setTextColor(...MUTED)
     const note = `Week 1 is ${weekRange(weeks[0])}, week 2 is ${weekRange(weeks[1])}. `
-        + 'Hours worked is the two weeks added together. Bank holiday hours are included in it and '
-        + 'also shown on their own. Holiday hours are separate and not included in it. Sick days '
+        + 'Hours worked is the two weeks added together, without any hours worked on a bank holiday, '
+        + 'which are shown on their own. Holiday hours are separate and not included in it. Sundays is '
+        + 'how many Sundays each person worked. Sick days '
         + 'and unpaid leave are counted in days, as no hours are recorded for them. '
         + 'Part of a day is counted as a part day, and any hours worked that day are included in Hours worked. '
         + 'Public holiday entitlement is not calculated here. '
@@ -373,6 +376,7 @@ export async function timesheetPdf({
             ['Hours worked', fmtHours(person.worked)],
             ['Bank holiday', fmtHours(person.bankHoliday)],
             ['Holiday', fmtHours(person.holiday)],
+            ['Sundays', String(person.sundays)],
         ]) {
             pdf.setFont('helvetica', 'normal')
             pdf.setFontSize(7)
@@ -479,6 +483,14 @@ export async function timesheetPdf({
             pdf.setTextColor(...INK)
             pdf.text(`Week ${w + 1}`, marginX + 2, y + 1.4)
             pdf.text(`${fmtHours(person.week[w])} h`, right, y + 1.4, { align: 'right' })
+            // The bank holiday hours that week, kept out of the figure above.
+            if (person.weekBank[w] > 0) {
+                y += 4.4
+                pdf.setFont('helvetica', 'normal')
+                pdf.setTextColor(...rgb(BANK_LOOK.ink))
+                pdf.text('Bank holiday', marginX + 2, y + 1.4)
+                pdf.text(`${fmtHours(person.weekBank[w])} h`, right, y + 1.4, { align: 'right' })
+            }
             y += 8.5
         }
 

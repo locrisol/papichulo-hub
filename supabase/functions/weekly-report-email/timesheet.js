@@ -156,6 +156,10 @@ export const KIND_LOOK = {
 // meant to sit behind a cell.
 export const BANK_LOOK = { label: 'Bank holiday', ink: '#8A6A18', wash: '#FBF4E2' }
 
+// Sundays worked, counted under each name for the accountant (his, 1 November
+// 2026). The worked green, because a Sunday is worked time and not a state.
+export const SUNDAY_LOOK = { label: 'Sunday', ink: '#1F5C3A', wash: '#E6F1EA' }
+
 // **The two days that change what somebody is paid.** A day off and a day away
 // at something are worth drawing on the day they fall, but counting them in a
 // summary that exists to be keyed into a payroll would be noise. Sick leave and
@@ -249,7 +253,10 @@ export function personPeriod({ people = [], entries = [], absences = [], dates =
             }
         }).filter(day => day.spans.length > 0 || day.open.length > 0 || day.notes.length > 0 || day.away)
 
-        const inWeek = w => days.reduce((t, d) => (d.week === w ? t + d.hours : t), 0)
+        // Bank holiday hours are kept out of the weeks and the total, and
+        // given on their own (his, 1 November 2026), so Week 1 plus Week 2 is
+        // still Worked.
+        const inWeek = (w, bank) => days.reduce((t, d) => (d.week === w && d.bankHoliday === bank ? t + d.hours : t), 0)
         const ofKind = kind => days.reduce((t, d) => (
             t + d.spans.reduce((n, s) => (s.kind === kind ? n + num(s.hours) : n), 0)
         ), 0)
@@ -261,20 +268,22 @@ export function personPeriod({ people = [], entries = [], absences = [], dates =
             return away && away.kind === kind && partOf(away) === part
         }).length
 
-        const week = [inWeek(0), inWeek(1)]
-        const worked = week[0] + week[1]
-        const bank = days.reduce((t, d) => t + (d.bankHoliday ? d.hours : 0), 0)
+        const week = [inWeek(0, false), inWeek(1, false)]
+        const weekBank = [inWeek(0, true), inWeek(1, true)]
 
         return {
             name: person.full_name,
             days,
             week,
-            worked,
-            // His format, and the reason it is his: normal is everything that
+            weekBank,
+            // His format, and the reason it is his: worked is everything that
             // is not a bank holiday, and the bank holiday hours sit beside it
             // rather than inside it, because section 21 is applied at her end.
-            normal: worked - bank,
-            bankHoliday: bank,
+            worked: week[0] + week[1],
+            bankHoliday: weekBank[0] + weekBank[1],
+            // Sundays with hours on them, a bank holiday Sunday included. A
+            // count for her, never money (no Sunday premium, his rule).
+            sundays: days.filter(d => d.hours > 0 && new Date(`${d.date}T00:00:00Z`).getUTCDay() === 0).length,
             holiday: holidayHoursInWeek(absences, person.id, dates),
             // Worked hours either way. They stay inside the total and are said
             // again, because a person on trial may not be on the payroll at all
@@ -408,6 +417,10 @@ export function timesheetEmail({
         bankHoliday: people.reduce((t, p) => t + p.bankHoliday, 0),
         holiday: people.reduce((t, p) => t + p.holiday, 0),
     }
+    // A fortnight with a bank holiday in it has the column, worked or not, so
+    // a dash says nobody worked it rather than leaving her to wonder.
+    const bank = Array.from({ length: 14 }, (_, i) => addDays(periodStart, i)).some(d => bankHolidayOn(d))
+        || people.some(person => person.bankHoliday > 0)
 
     const subject = `${test ? '[Test] ' : ''}Hours, ${period}${restaurantName ? `, ${restaurantName}` : ''}`
 
@@ -437,18 +450,18 @@ export function timesheetEmail({
 
     ${row(`<div style="font-size:14px;line-height:1.5;color:${MUTED};padding:16px 0 0;">
         Clock in and clock out times are as the till recorded them, to the second.&#32;Worked is
-        week 1 plus week 2.&#32;Bank holiday hours are included in Worked and also shown on their
-        own.&#32;Holiday hours are separate and not included in Worked.&#32;Sick days and unpaid
-        leave are counted in days, as no hours are recorded for them.&#32;Part of a day is counted
-        as a part day, and any hours worked that day are included in Worked.&#32;Hours only, not
-        pay.
+        week 1 plus week 2, without any hours worked on a bank holiday, which are given on their
+        own.&#32;Holiday hours are separate and not included in Worked.&#32;The Sundays each
+        person worked are counted under their name.&#32;Sick days and unpaid leave are counted in
+        days, as no hours are recorded for them.&#32;Part of a day is counted as a part day, and any
+        hours worked that day are included in Worked.&#32;Hours only, not pay.
     </div>`)}
 
     ${comment ? row(`<div style="font-size:14px;line-height:1.5;color:${INK};padding:12px 14px;margin-top:14px;background:${CREAM};border-left:3px solid ${DARK};word-break:break-word;overflow-wrap:anywhere;">
         ${escapeLines(comment)}
     </div>`) : ''}
 
-    ${row(summary(people, T), 'padding-top:18px;')}
+    ${row(summary(people, T, bank), 'padding-top:18px;')}
 
     ${people.map(person => personBlock(person, weeks)).join('')}
 
@@ -510,6 +523,7 @@ const together = (n, word) => plural(n, word).replace(/ /g, '&nbsp;')
 // it does not have. These are rare, so they sit where the person is named.
 function marksFor(person) {
     const out = []
+    if (person.sundays > 0) out.push(figureMark(SUNDAY_LOOK, '', String(person.sundays), person.sundays === 1 ? 'Sunday' : 'Sundays'))
     if (person.trial > 0) out.push(figureMark(KIND_LOOK.trial, 'Trial', `${hours(person.trial)}&nbsp;h`))
     if (person.training > 0) out.push(figureMark(KIND_LOOK.training, 'Training', `${hours(person.training)}&nbsp;h`))
     if (person.sickDays > 0) out.push(figureMark(AWAY_LOOK.sick, '', together(person.sickDays, 'day'), 'sick'))
@@ -529,12 +543,11 @@ function marksFor(person) {
 // **Narrow enough for his phone, which gives the mail 307px.** A name and five
 // columns of figures came to 362px with a team's three figure totals, and a
 // mail wider than the phone is one the Gmail app scrambles from top to bottom.
-// So the Bank hol. column is only there on a fortnight somebody has bank
-// holiday hours, and only then, with one figure column more, do the two weeks
-// share a column, one above the other. Without it the two weeks side by side
-// still come to 34 characters, the same as the measured bank holiday shape.
-function summary(people, T) {
-    const bank = people.some(person => person.bankHoliday > 0)
+// So the Bank hol. column is only there on a fortnight with a bank holiday,
+// and only then, with one figure column more, do the two weeks share a
+// column, one above the other. Without it the two weeks side by side still
+// come to 34 characters, the same as the measured bank holiday shape.
+function summary(people, T, bank) {
 
     const head = label => '<th style="font-size:10px;letter-spacing:.05em;text-transform:uppercase;'
         + `color:#ffffff;background:${DARK};padding:7px 3px;text-align:right;font-weight:700;">${label}</th>`
@@ -591,6 +604,7 @@ function summary(people, T) {
 function personBlock(person, weeks) {
     const apart = [
         person.bankHoliday > 0 ? `${hours(person.bankHoliday)} on the bank holiday` : '',
+        person.sundays > 0 ? `${plural(person.sundays, 'Sunday')} worked` : '',
         person.holiday > 0 ? `${hours(person.holiday)} holiday` : '',
         person.trial > 0 ? `${hours(person.trial)} on trial shifts` : '',
         person.training > 0 ? `${hours(person.training)} training` : '',
@@ -638,6 +652,10 @@ function personBlock(person, weeks) {
                     ${hours(person.week[w])} h
                 </td>
             </tr>
+            ${person.weekBank[w] > 0 ? `<tr>
+                <td width="100%" style="padding:2px 0;font-size:13px;color:${BANK_LOOK.ink};">Bank holiday</td>
+                <td width="1%" style="padding:2px 0;text-align:right;white-space:nowrap;font-size:13px;color:${BANK_LOOK.ink};">${hours(person.weekBank[w])} h</td>
+            </tr>` : ''}
         </table>`
     }).join('')
 
@@ -729,7 +747,7 @@ function asText({ restaurantName, period, weeks, people, T, test, comment }) {
     lines.push(
         `Week 1 (${weeks[0]}) ${hours(T.week[0])}`,
         `Week 2 (${weeks[1]}) ${hours(T.week[1])}`,
-        `Worked ${hours(T.worked)}`,
+        `Worked ${hours(T.worked)} (without bank holiday hours)`,
         `Bank holiday ${hours(T.bankHoliday)}`,
         `Holiday ${hours(T.holiday)}`,
         '',
@@ -738,6 +756,7 @@ function asText({ restaurantName, period, weeks, people, T, test, comment }) {
     for (const person of people) {
         const apart = [
             person.bankHoliday > 0 ? `${hours(person.bankHoliday)} on the bank holiday` : '',
+            person.sundays > 0 ? `${plural(person.sundays, 'Sunday')} worked` : '',
             person.holiday > 0 ? `${hours(person.holiday)} holiday` : '',
             person.trial > 0 ? `${hours(person.trial)} on trial shifts` : '',
             person.training > 0 ? `${hours(person.training)} training` : '',
@@ -776,6 +795,7 @@ function asText({ restaurantName, period, weeks, people, T, test, comment }) {
                 }
             }
             lines.push(`    Week ${w + 1} ${hours(person.week[w])} h`)
+            if (person.weekBank[w] > 0) lines.push(`    Bank holiday ${hours(person.weekBank[w])} h`)
         }
         lines.push('')
     }

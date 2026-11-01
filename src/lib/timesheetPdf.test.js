@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest'
 import {
-    timesheetPdf, COL_WIDTH, SUMMARY_HEADS, NAME_HEAD, HEAD_SIZE, HEAD_SPACING,
+    timesheetPdf, COL_WIDTHS, SUMMARY_HEADS, NAME_HEAD, HEAD_SIZE, HEAD_SPACING,
 } from '@/lib/timesheetPdf'
 import { personPeriod } from '@/lib/timesheet'
 import { periodDates } from '@/lib/payPeriod'
@@ -103,7 +103,11 @@ describe('the summary headings fit their own columns', () => {
         expect(NAME_HEAD).toBe('NAME')
     })
 
-    it.each(SUMMARY_HEADS)('%s', async label => {
+    it('has a width for every heading', () => {
+        expect(COL_WIDTHS).toHaveLength(SUMMARY_HEADS.length)
+    })
+
+    it.each(SUMMARY_HEADS.map((label, i) => [label, COL_WIDTHS[i]]))('%s', async (label, column) => {
         const JsPDF = (await import('jspdf')).default
         const pdf = new JsPDF({ unit: 'mm', format: 'a4' })
         pdf.setFont('helvetica', 'bold')
@@ -113,7 +117,7 @@ describe('the summary headings fit their own columns', () => {
         const width = pdf.getTextWidth(label) + label.length * HEAD_SPACING
         // Two millimetres of padding on the right, and a millimetre of air on
         // the left so two headings never touch.
-        expect(width).toBeLessThan(COL_WIDTH - 3)
+        expect(width).toBeLessThan(column - 3)
     })
 })
 

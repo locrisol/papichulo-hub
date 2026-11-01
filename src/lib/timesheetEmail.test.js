@@ -42,28 +42,52 @@ const period = (over = {}) => personPeriod({
 })
 
 describe('the figures, worked out here rather than trusted', () => {
+    // Worked leaves the bank holiday out (his, 1 November 2026): 8.13 on the
+    // Sunday and 6.00 the week after, the 5.25 on the Monday given apart.
     it('adds a person up from their own rows', () => {
         const [first] = period()
         expect(first.name).toBe('Aoife')
-        expect(first.worked).toBeCloseTo(19.38, 2)
+        expect(first.worked).toBeCloseTo(14.13, 2)
     })
 
     // One amount gets paid, but when something is queried she still needs to
     // know which week the hours fell in.
     it('keeps the two weeks apart', () => {
         const [first] = period()
-        expect(first.week[0]).toBeCloseTo(13.38, 2)
+        expect(first.week[0]).toBeCloseTo(8.13, 2)
         expect(first.week[1]).toBeCloseTo(6.00, 2)
         expect(first.week[0] + first.week[1]).toBeCloseTo(first.worked, 2)
     })
 
-    // His format: normal is everything that is not a bank holiday, and the
+    // His format: worked is everything that is not a bank holiday, and the
     // bank holiday hours sit beside it rather than inside it, because section
     // 21 is applied at the accountant's end and not here.
-    it('holds the bank holiday hours apart from the rest', () => {
+    it('holds the bank holiday hours apart from the rest, week by week', () => {
         const [first] = period()
         expect(first.bankHoliday).toBeCloseTo(5.25, 2)
-        expect(first.normal).toBeCloseTo(14.13, 2)
+        expect(first.weekBank[0]).toBeCloseTo(5.25, 2)
+        expect(first.weekBank[1]).toBe(0)
+    })
+
+    // His, 1 November 2026: how many Sundays, for the accountant. Aoife's
+    // 25 October is one; nobody worked the 1st.
+    it('counts the Sundays somebody worked', () => {
+        const [first, second] = period()
+        expect(first.sundays).toBe(1)
+        expect(second.sundays).toBe(0)
+    })
+
+    it('counts a bank holiday that falls on a Sunday as a Sunday', () => {
+        const christmas = Array.from({ length: 14 }, (_, i) => addDays('2033-12-18', i))
+        const [only] = personPeriod({
+            people: [aoife],
+            entries: [shift({ employee_id: 'e1', work_date: '2033-12-25', starts_at: '10:00:00', ends_at: '14:00:00', hours: 4 })],
+            absences: [],
+            dates: christmas,
+        })
+        expect(only.sundays).toBe(1)
+        expect(only.bankHoliday).toBe(4)
+        expect(only.worked).toBe(0)
     })
 
     it('leaves out somebody who did nothing at all', () => {
@@ -161,7 +185,7 @@ describe('going home sick part way through a day', () => {
         const [first] = personPeriod({ people: [aoife], entries, absences: homeSick(), dates: DATES })
         expect(first.sickDays).toBe(0)
         expect(first.sickParts).toBe(1)
-        expect(first.worked).toBeCloseTo(19.38, 2)
+        expect(first.worked).toBeCloseTo(14.13, 2)
     })
 
     it('marks the day it happened, beside the times', () => {
@@ -474,8 +498,26 @@ describe('the mail itself', () => {
     it('puts week one over week two on a bank holiday fortnight', () => {
         const html = built().html
         expect(html).toContain('Week&nbsp;1<br />Week&nbsp;2')
-        expect(html).toMatch(/>13\.38<br \/>6\.00</)
+        expect(html).toMatch(/>8\.13<br \/>6\.00</)
         expect(html).toContain('Everybody')
+    })
+
+    it('says the Sundays under the name and in the line under the band', () => {
+        const html = built().html
+        expect(html).toContain('<span style="white-space:nowrap;">1</span>&#32;Sunday</span>')
+        expect(html).toContain('1 Sunday worked')
+        expect(built().text).toContain('1 Sunday worked')
+    })
+
+    it('gives the bank holiday hours under the week they fell in', () => {
+        const mail = built()
+        expect(mail.html).toMatch(/>Bank holiday<\/td>/)
+        expect(mail.text).toContain('    Bank holiday 5.25 h')
+    })
+
+    it('says Worked leaves the bank holiday out', () => {
+        expect(built().html).toContain('without any hours worked on a bank holiday')
+        expect(built().html).not.toContain('Bank holiday hours are included in Worked')
     })
 
     it('escapes whatever somebody typed', () => {
@@ -570,8 +612,10 @@ describe('the mail itself', () => {
     })
 
     it('adds the period up across everybody', () => {
-        // 8.13 + 5.25 + 6.00 worked by one, 4.34 by the other.
-        expect(built().text).toContain('Worked 23.72')
+        // 8.13 + 6.00 worked by one, 4.34 by the other, and the 5.25 on the
+        // bank holiday given apart.
+        expect(built().text).toContain('Worked 18.47 (without bank holiday hours)')
+        expect(built().text).toContain('Bank holiday 5.25')
     })
 
     it('draws a day off sick rather than leaving a hole', () => {
@@ -651,16 +695,24 @@ describe('the summary fits a phone', () => {
         }),
     }).html
 
-    // Off the bank holiday, so nobody has bank holiday hours.
+    // Off the bank holiday, so nobody has bank holiday hours, and a fortnight
+    // later, so there is no bank holiday in it at all.
     const offTheDay = rows => rows.map(e => ({ ...e, work_date: e.work_date === '2026-10-26' ? '2026-10-27' : e.work_date }))
+    const LATER = '2026-11-08'
+    const later = rows => rows.map(e => ({ ...e, work_date: addDays(e.work_date, 14) }))
 
-    it('leaves the bank holiday column out when nobody has bank holiday hours', () => {
-        const plain = mail(offTheDay(entries))
+    it('leaves the bank holiday column out on a fortnight with no bank holiday', () => {
+        const plain = mail(later(entries), LATER)
         expect(plain).not.toContain('Bank hol.')
     })
 
+    // A dash says nobody worked it, rather than leaving her to wonder.
+    it('keeps the column on a bank holiday fortnight even when nobody worked it', () => {
+        expect(mail(offTheDay(entries))).toContain('Bank hol.')
+    })
+
     it('keeps the two weeks side by side when there is no bank holiday column', () => {
-        const plain = mail(offTheDay(entries))
+        const plain = mail(later(entries), LATER)
         expect(headCells(plain)).toHaveLength(5)
         expect(plain).toContain('Week&nbsp;1</th>')
         expect(plain).toContain('Week&nbsp;2</th>')
@@ -690,7 +742,7 @@ describe('the summary fits a phone', () => {
 
     // The other shape: no bank holiday, so the two weeks get a column each.
     it('is never more than 34 characters across without a bank holiday', () => {
-        const html = mail(offTheDay([...trained, ...busy]))
+        const html = mail(later([...trained, ...busy]), LATER)
         expect(html).not.toContain('Bank hol.')
         expect(html).toContain('Training&#32;<span style="white-space:nowrap;">12.50&nbsp;h</span>')
         const widest = across(html)
