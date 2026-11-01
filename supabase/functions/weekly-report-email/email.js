@@ -620,74 +620,85 @@ const ON_EDGE = {
     meeting: '#2563EB', maintenance: '#64748B', other: '#94A3B8',
 }
 
-// A change against the usual day, "+17%" or "−37%", in green or red.
-function changeHtml(change) {
-    if (change == null) return ''
-    const pct = Math.round(change * 100)
-    const colour = pct >= 0 ? GREEN : RED
-    return `<span style="color:${colour};font-weight:700;">${pct > 0 ? '+' : pct < 0 ? '−' : ''}${Math.abs(pct)}%</span>`
-}
-
 // What was on each day of the week, under the sales and costs (his, 17
-// October): the owners want to see how the sales relate to events. A line for
-// each day, its takings against a usual day of that name, and underneath
-// everything that was on. Worked out in the app and frozen with the figures,
-// words and all, so nothing here works anything out.
+// October). Since 1 November only what was on: how many shows, then each day
+// that had something, with its shows, the other events nearby, the diary
+// (catering and the like) and the office orders. No takings against a usual
+// day, no week row and no show nights sentence: the mail is to say what was
+// on, not whether sales went up or down (his, to keep it simple). The Hub page
+// still has all of that.
 //
-// The events go under the figures on lines of their own, never beside the
-// money, so nothing long sits in a row with a figure that cannot wrap.
+// Drawn from the frozen lines alone, words and all, so every report already
+// sent draws the same way and nothing here works anything out but a count.
 //
-// Every cell says its colour, the same as line() does. The first render left
-// it out and the days came out white: a colour set further up the message
-// reaches anything that does not set its own.
-function whatWasOn(w) {
+// The events go on lines of their own, never beside anything that cannot
+// wrap. Every cell says its colour, the same as line() does: a colour set
+// further up the message reaches anything that does not set its own.
+export function whatWasOn(w) {
     if (!w?.days?.length) return ''
+    const days = w.days.filter(d => d.on?.length)
 
     const day = d => {
-        const figure = d.closed
-            ? `<span style="color:${RED};">Closed</span>`
-            : d.net == null ? `<span style="color:${MUTED};font-weight:400;">No sales entered</span>` : money(d.net)
-        const usual = !d.closed && d.net != null
-            ? (d.usual != null
-                ? `<div style="margin-top:1px;font-size:12.5px;color:${MUTED};">Usual ${escapeHtml(d.weekday)} ${money(d.usual)}&nbsp;&middot;&#32;${changeHtml(d.change)}</div>`
-                : `<div style="margin-top:1px;font-size:12.5px;color:${MUTED};">Not enough weeks yet to say what is usual</div>`)
-            : ''
         const lines = d.on.map(o => (o.tone === 'also'
             ? `<div style="margin-top:4px;font-size:12.5px;line-height:1.4;color:${MUTED};${BREAKS}">${escapeHtml(o.text)}</div>`
             : `<div style="margin-top:4px;padding-left:8px;border-left:3px solid ${ON_EDGE[o.tone] || ON_EDGE.other};font-size:12.5px;line-height:1.4;color:${INK};${BREAKS}">${escapeHtml(o.text)}</div>`))
-        // Where the listings would have been, before the diary and Also on.
-        if (d.nothingNearby && !d.closed) {
-            lines.unshift(`<div style="margin-top:4px;font-size:12.5px;color:${MUTED};">Nothing on nearby</div>`)
-        }
+        const closed = d.closed
+            ? `<td width="1%" align="right" style="font-size:13px;color:${RED};white-space:nowrap;padding-left:12px;">Closed</td>`
+            : ''
         return `<tr><td style="padding:9px 0;border-bottom:1px solid ${BORDER};">
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-                <td width="100%" style="font-size:14px;font-weight:700;color:${INK};">${escapeHtml(shortDay(d.date))}</td>
-                <td width="1%" align="right" style="font-size:14px;font-weight:700;color:${INK};white-space:nowrap;padding-left:12px;">${figure}</td>
+                <td width="100%" style="font-size:14px;font-weight:700;color:${INK};">${escapeHtml(shortDay(d.date))}</td>${closed}
             </tr></table>
-            ${usual}${lines.join('')}
+            ${lines.join('')}
         </td></tr>`
     }
 
-    const week = w.week?.usual != null
-        ? `<tr><td style="padding:10px;background:${CREAM};border-top:2px solid ${DARK};">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-                <td width="100%" style="font-size:14px;font-weight:700;color:${INK};">The week</td>
-                <td width="1%" align="right" style="font-size:14px;font-weight:700;color:${INK};white-space:nowrap;padding-left:12px;">${money(w.week.net)}</td>
-            </tr></table>
-            <div style="margin-top:1px;font-size:12.5px;color:${MUTED};">A usual week ${money(w.week.usual)}&nbsp;&middot;&#32;${changeHtml(w.week.comparedNet / w.week.usual - 1)}</div>
-        </td></tr>`
-        : ''
+    const top = `<tr><td style="padding:10px 0 8px;border-bottom:1px solid ${BORDER};font-size:14px;font-weight:700;color:${INK};${BREAKS}">${escapeHtml(showsWords(w))}</td></tr>`
+    const rows = days.length
+        ? days.map(day).join('')
+        : `<tr><td style="padding:9px 0;font-size:13px;line-height:1.5;color:${MUTED};">Nothing else was on: no events nearby, no catering and no office orders.</td></tr>`
 
     return `<tr><td style="padding:22px ${SIDE}px 0;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
             <tr><td style="background:${BAND};border-bottom:1px solid ${BORDER};padding:9px 10px;font-size:11.5px;
                 font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:${DARK};">What was on</td></tr>
-            ${w.days.map(day).join('')}
-            ${week}
+            ${top}
+            ${rows}
         </table>
     </td></tr>`
-        + note(`Usual is the middle of the same day over the ${w.usualWeeks || 8} weeks before, so one very busy or very quiet day does not move it.`)
-        + (w.showsWords ? note(w.showsWords) : '')
+}
+
+// How many shows there were, by place: "4 shows at the 3Arena". A show is a
+// line from a place with a row of its own on the roster, written "3Arena,
+// 18:30 · The name" (lib/whatWasOn), so the place is what comes before the
+// time or the dot.
+export function showsWords(w) {
+    const at = new Map()
+    for (const d of w?.days || []) {
+        for (const o of d.on || []) {
+            if (o.tone !== 'show') continue
+            const place = String(o.text).split(' · ')[0].replace(/, \d{1,2}:\d{2}$/, '').trim()
+            at.set(place, (at.get(place) || 0) + 1)
+        }
+    }
+    if (!at.size) return 'No shows this week'
+    const said = [...at].map(([place, n], i) => (i === 0
+        ? `${n} ${n === 1 ? 'show' : 'shows'} at the ${place}`
+        : `${n} at the ${place}`))
+    return said.length === 1 ? said[0] : `${said.slice(0, -1).join(', ')} and ${said[said.length - 1]}`
+}
+
+// The same, as lines for the plain text part.
+export function whatWasOnText(w) {
+    if (!w?.days?.length) return []
+    const days = w.days.filter(d => d.on?.length)
+    const out = [`  What was on: ${showsWords(w)}`]
+    if (!days.length) out.push('    Nothing else was on: no events nearby, no catering and no office orders.')
+    for (const d of days) {
+        out.push(`    ${shortDay(d.date)}${d.closed ? ', closed' : ''}`)
+        for (const o of d.on) out.push(`      ${o.text}`)
+    }
+    return out
 }
 
 function profitAndLoss(section, f, charts) {
@@ -1981,6 +1992,7 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
             out.push(share('Labour', f.labour, f.labourPct))
             out.push(share('Packaging and cleaning', f.packaging, f.packagingPct))
             out.push(share('Cost of sales', f.costOfSales, f.costOfSalesPct))
+            out.push(...whatWasOnText(f.whatWasOn))
         } else if (section.key === 'profit_loss') {
             const shown = overheadsToShow(of(section, 'overhead'))
             for (const item of shown.lines) {
