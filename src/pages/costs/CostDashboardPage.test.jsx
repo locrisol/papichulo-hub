@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest'
 import { screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { renderWithRouter, tableOf } from '@/test/helpers'
 import { reportFigures } from '@/lib/weeklyReport'
 
@@ -51,11 +52,26 @@ vi.mock('@/context/restaurant', () => ({
 
 const { default: CostDashboardPage } = await import('./CostDashboardPage')
 
-// Only the date is fixed, so the page opens on that week; every timer runs as
-// normal.
+// Only the date is fixed, a week after the one under test, because the page
+// opens on last week; every timer runs as normal.
 beforeAll(() => {
     vi.useFakeTimers({ toFake: ['Date'] })
-    vi.setSystemTime(new Date('2026-09-16T12:00:00'))
+    vi.setSystemTime(new Date('2026-09-23T12:00:00'))
+})
+
+// His, 1 November 2026: the same as the Timesheet. A week's costs are read
+// once it has finished.
+describe('the week it opens on', () => {
+    it('opens on last week and says so on the button', async () => {
+        renderWithRouter(<CostDashboardPage />)
+        await screen.findByText('Gross profit')
+        expect(screen.getAllByText('13 Sept to 19 Sept').length).toBeGreaterThan(0)
+        expect(screen.getByRole('button', { name: 'Last week' })).toBeInTheDocument()
+        expect(screen.queryByText(/Week in progress/)).toBeNull()
+
+        await userEvent.click(screen.getByRole('button', { name: 'Previous week' }))
+        expect(await screen.findByRole('button', { name: 'Go to last week' })).toBeInTheDocument()
+    })
 })
 afterAll(() => vi.useRealTimers())
 

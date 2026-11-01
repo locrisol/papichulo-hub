@@ -6,7 +6,7 @@ import { useRestaurant } from '@/context/restaurant'
 import { useRecountBadges } from '@/context/badges'
 import { friendlyError } from '@/lib/errors'
 import { can, RESTAURANT_CONFIG } from '@/lib/access'
-import { todayISO, weekStartOf, weekDates, addDays, shortDate, fullDate, toISODate } from '@/lib/dates'
+import { weekStartOf, weekDates, addDays, shortDate, fullDate, toISODate, lastWeekStart } from '@/lib/dates'
 import { periodOf } from '@/lib/payPeriod'
 import { fmtMoney } from '@/lib/format'
 import { settleTime, noLength } from '@/lib/clock'
@@ -58,10 +58,6 @@ const VIEWS = [
     { id: 'week', label: 'Week' },
     { id: 'day', label: 'Day', phoneLabel: 'All days' },
 ]
-
-// Where this screen lives. Not this week: a timesheet is filled in once the
-// week has finished and the till's report for it exists.
-const lastWeekStart = () => addDays(weekStartOf(todayISO()), -7)
 
 // A start and a finish at the same time read as 24 hours, so it is never
 // saved. See noLength.
