@@ -367,6 +367,40 @@ describe('changing a time the till gave', () => {
         })
     })
 
+    // His, on Alfredo's Monday 26 October 2026: clocked out by mistake and
+    // back in, the two shifts made one and the second left with nothing in
+    // it. It stays in the table, so a second import cannot bring it back, but
+    // it leaves the cell, and its comment shows with the other one.
+    it('draws no boxes for a till shift emptied beside one that stands', async () => {
+        rows.timesheet_entries = [
+            { ...off_the_till, ends_at: '17:22:19', source: 'corrected', note: 'Stayed to close the store' },
+            { ...off_the_till, id: 't2', starts_at: null, ends_at: null, source: 'corrected', note: 'Clock out by mistake earlier' },
+        ]
+        render(<TimesheetPage />)
+        await waitFor(() => expect(screen.getAllByText('Clock out by mistake earlier').length).toBeGreaterThan(0))
+        expect(screen.getAllByText('Stayed to close the store').length).toBeGreaterThan(0)
+        expect(boxes()).toHaveLength(14)
+        expect(screen.getByRole('button', { name: '+ another' })).toBeInTheDocument()
+    })
+
+    it('takes the pair away once both its times are rubbed out', async () => {
+        rows.timesheet_entries = [
+            off_the_till,
+            { ...off_the_till, id: 't2', starts_at: '18:00:00', ends_at: '19:00:00' },
+        ]
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes()).toHaveLength(16))
+
+        await userEvent.clear(boxes()[2])
+        await userEvent.tab()
+        await userEvent.clear(boxes()[3])
+        await userEvent.tab()
+
+        await waitFor(() => expect(boxes()).toHaveLength(14))
+        expect(deleted).toHaveLength(0)
+        expect(rows.timesheet_entries[1]).toMatchObject({ id: 't2', starts_at: null, ends_at: null })
+    })
+
     it('deletes a row somebody typed, because no report disagrees with it', async () => {
         rows.timesheet_entries = [{ ...off_the_till, source: 'typed' }]
         render(<TimesheetPage />)

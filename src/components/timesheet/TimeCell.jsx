@@ -1,5 +1,5 @@
 import { maskTime, settleTime, shortClock } from '@/lib/clock'
-import { kindOf, cellColour } from '@/lib/timesheet'
+import { kindOf, cellColour, spansToDraw } from '@/lib/timesheet'
 import { kindLabel as absenceLabel, takesHours } from '@/lib/absences'
 import { removeButton } from '@/lib/controlStyles'
 
@@ -109,9 +109,10 @@ export default function TimeCell({
         )
     }
 
-    // An empty day still gets one pair, so it can be typed into.
-    const spans = entries.length ? entries : [{ id: null, starts_at: '', ends_at: '' }]
-    const full = entries.length > 0 && entries.every(e => e.starts_at && e.ends_at)
+    // An empty day still gets one pair, so it can be typed into, and a shift
+    // somebody emptied draws none of its own. See spansToDraw.
+    const spans = spansToDraw(entries)
+    const full = entries.length > 0 && spans.every(e => e.starts_at && e.ends_at)
 
     return (
         <div>
@@ -211,7 +212,7 @@ function Box({ entry, field, at, suggest, canEdit, muted, onType, onSettle, onSt
 // cell with a text box in it stops being a grid.
 function UnderLine({ cell, unplanned, canEdit, onOpen }) {
     const bits = []
-    const first = cell.entries[0]
+    const first = cell.entries.find(e => e.starts_at) || cell.entries[0]
 
     // A clock in with no clock out, said in place of the roster line rather
     // than beside it: until there is an end, how it compares with the plan is
@@ -232,7 +233,15 @@ function UnderLine({ cell, unplanned, canEdit, onOpen }) {
     // thing on the screen he wrote himself, on its own line with a mark down
     // the side of it, which is also what stops a sentence reading as though it
     // were part of the rostered times in front of it.
-    const note = cell.entries.map(e => e.note).filter(Boolean)[0]
+    //
+    // Every comment on the day, each on its own line. Only the first used to
+    // show, so the one on a shift somebody emptied was there for the
+    // accountant and nowhere on this screen. A shift with times first, so the
+    // comment about the one that stands reads before the one about why the
+    // other went.
+    const notes = [...cell.entries]
+        .sort((a, b) => Number(Boolean(b.starts_at)) - Number(Boolean(a.starts_at)))
+        .map(e => e.note).filter(Boolean)
 
     const kind = cell.entries.find(e => e.kind !== 'worked')
     if (kind) bits.unshift(kindOf(kind.kind).label)
@@ -256,7 +265,7 @@ function UnderLine({ cell, unplanned, canEdit, onOpen }) {
     // is waiting for, and **the reason is the other way of answering it**: the
     // block has always said "times or a reason" and there was no way to give
     // the second one unless it was a holiday or a sick day.
-    if (!bits.length && !note) {
+    if (!bits.length && !notes.length) {
         const wanted = first?.starts_at || cell.unanswered
         if (!canEdit || !wanted) return null
         return (
@@ -287,11 +296,11 @@ function UnderLine({ cell, unplanned, canEdit, onOpen }) {
                     {bits.join(' · ')}
                 </span>
             )}
-            {note && (
-                <span className="block text-[0.62rem] italic text-gray-600 break-words leading-snug mt-0.5 pl-1.5 border-l-2 border-accent/50">
+            {notes.map((note, i) => (
+                <span key={i} className="block text-[0.62rem] italic text-gray-600 break-words leading-snug mt-0.5 pl-1.5 border-l-2 border-accent/50">
                     {note}
                 </span>
-            )}
+            ))}
         </>
     )
 

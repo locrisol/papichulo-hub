@@ -276,7 +276,11 @@ export default function TimesheetDay({
                     ) : mine.map(({ row, cell }, n) => {
                         const off = cell.absence ? absenceKind(cell.absence.kind) : null
                         // A day somebody wrote a comment on instead of times.
-                        const said = cell.entries.find(e => !e.starts_at && e.note)
+                        // Not the comment on a shift emptied beside one that
+                        // stands: that one is about the shift, and drawn here
+                        // it sat on top of the bar.
+                        const said = !cell.entries.some(e => e.starts_at)
+                            && cell.entries.find(e => e.note)
                         // No shift to draw: not rostered and no clock time.
                         // A whole day off, a comment, or nothing at all. The
                         // row is as tall as what it says rather than as tall
