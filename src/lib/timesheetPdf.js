@@ -1,4 +1,5 @@
-import { AWAY_LOOK, KIND_LOOK, BANK_LOOK, COUNTED_DAYS, awayWords } from '@/lib/timesheet'
+import { AWAY_LOOK, KIND_LOOK, BANK_LOOK, PERMISSION_LOOK, COUNTED_DAYS, awayWords } from '@/lib/timesheet'
+import { PERMISSION_STATES } from '@/lib/workRules'
 import { periodWords } from '@/lib/payPeriod'
 import { addDays, weekRange, stampDateTime, WEEKDAY_NAMES } from '@/lib/dates'
 import { fmtHours } from '@/lib/roster'
@@ -63,7 +64,7 @@ function clock(time) {
 }
 
 export async function timesheetPdf({
-    restaurant, periodStart, people = [], at = new Date(), save = true,
+    restaurant, periodStart, people = [], at = new Date(), save = true, permissions = null, today = null,
 }) {
     const JsPDF = await loadJsPdf()
     const pdf = new JsPDF({ unit: 'mm', format: 'a4' })
@@ -348,6 +349,63 @@ export async function timesheetPdf({
         keyX += drawMark(look, null, keyX, y) + 1.5
     }
     y += 9
+
+    // ---- permission to work -----------------------------------------------
+    //
+    // Everybody employed on the day it goes, the same grouped list as the mail
+    // (his, 1 November 2026): worst first, a line each saying why, and the
+    // people who are fine as one line of names.
+    if (permissions) {
+        const dated = iso => {
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+            return `${Number(iso.slice(8, 10))} ${months[Number(iso.slice(5, 7)) - 1]} ${iso.slice(0, 4)}`
+        }
+        room(14)
+        pdf.setFont('helvetica', 'bold')
+        pdf.setFontSize(6)
+        pdf.setTextColor(...MUTED)
+        pdf.text(`PERMISSION TO WORK, ON ${dated(today).toUpperCase()}`, marginX, y, { charSpace: 0.4 })
+        y += 5
+
+        const groups = Object.keys(PERMISSION_STATES)
+            .sort((a, b) => PERMISSION_STATES[a].order - PERMISSION_STATES[b].order)
+            .map(state => [state, permissions.filter(p => p.state === state)])
+            .filter(([, them]) => them.length)
+        for (const [state, them] of groups) {
+            room(10)
+            drawMark(PERMISSION_LOOK[state], `${PERMISSION_STATES[state].label} (${them.length})`, marginX + 2, y)
+            y += 5.4
+            if (state === 'ok') {
+                pdf.setFont('helvetica', 'normal')
+                pdf.setFontSize(8)
+                pdf.setTextColor(...INK)
+                for (const words of pdf.splitTextToSize(them.map(p => p.name).join(', '), right - marginX - 4)) {
+                    room(5)
+                    pdf.text(words, marginX + 2, y)
+                    y += 3.8
+                }
+                y += 2
+                continue
+            }
+            for (const p of them) {
+                room(8)
+                pdf.setFont('helvetica', 'bold')
+                pdf.setFontSize(8)
+                pdf.setTextColor(...INK)
+                pdf.text(p.name, marginX + 2, y)
+                pdf.setFont('helvetica', 'normal')
+                pdf.setFontSize(7.5)
+                pdf.setTextColor(...MUTED)
+                const lines = pdf.splitTextToSize(p.words, right - marginX - 48)
+                lines.forEach((words, i) => pdf.text(words, marginX + 48, y + i * 3.4))
+                y += 5.4 + (lines.length - 1) * 3.4
+                pdf.setDrawColor(...LINE)
+                pdf.setLineWidth(0.15)
+                pdf.line(marginX + 2, y - 3.4, right, y - 3.4)
+            }
+        }
+        y += 6
+    }
 
     // ---- everybody, day by day --------------------------------------------
     for (const person of people) {

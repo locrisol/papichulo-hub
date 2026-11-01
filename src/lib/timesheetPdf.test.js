@@ -5,6 +5,7 @@ import {
 } from '@/lib/timesheetPdf'
 import { personPeriod } from '@/lib/timesheet'
 import { periodDates } from '@/lib/payPeriod'
+import { permissionList } from '@/lib/workRules'
 
 // Proof that it builds at all.
 //
@@ -194,5 +195,22 @@ describe('a person is kept in one piece', () => {
         const doc = await timesheetPdf({ restaurant, periodStart: PERIOD, people: [huge], save: false })
         const all = Array.from({ length: doc.getNumberOfPages() }, (_, i) => drawnOn(doc, i + 1)).join('')
         expect(all).toContain('continued')
+    })
+})
+
+// His, 1 November 2026: everybody's permission to work, grouped, on the paper.
+describe('permission to work on the paper', () => {
+    it('builds with the list on it, every state included', async () => {
+        const permissions = permissionList([
+            { full_name: 'Aoife Byrne', work_permission: 'unrestricted' },
+            { full_name: 'Cathal Nolan', work_permission: 'stamp2', work_permission_expires: '2026-10-01', permission_renewal_applied: '2026-09-20' },
+            { full_name: 'Dara Walsh', work_permission: 'stamp2', work_permission_expires: '2026-10-01' },
+            { full_name: 'Eimear Ryan', work_permission: 'stamp1g', work_permission_expires: '2026-12-10' },
+            { full_name: 'Fionn Kelly', work_permission: '' },
+        ], '2026-11-01')
+        const pdf = await timesheetPdf({
+            restaurant: { name: 'Point Campus' }, periodStart: PERIOD, people, permissions, today: '2026-11-01', save: false,
+        })
+        expect(pdf.getNumberOfPages()).toBeGreaterThan(0)
     })
 })

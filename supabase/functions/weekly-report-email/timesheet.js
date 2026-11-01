@@ -160,6 +160,17 @@ export const BANK_LOOK = { label: 'Bank holiday', ink: '#8A6A18', wash: '#FBF4E2
 // 2026). The worked green, because a Sunday is worked time and not a state.
 export const SUNDAY_LOOK = { label: 'Sunday', ink: '#1F5C3A', wash: '#E6F1EA' }
 
+// Where somebody stands on permission to work, in four colours: green may
+// work, amber needs something doing (a renewal waiting or due), red may not,
+// slate nobody knows. Copied from the app with the other marks.
+export const PERMISSION_LOOK = {
+    ok: { ink: '#1F7A4C', wash: '#E8F4EC' },
+    waiting: { ink: '#8A5300', wash: '#FDF1DC' },
+    soon: { ink: '#8A5300', wash: '#FDF1DC' },
+    not: { ink: '#B91C1C', wash: '#FDECEC' },
+    unknown: { ink: '#475569', wash: '#EDF1F5' },
+}
+
 // **The two days that change what somebody is paid.** A day off and a day away
 // at something are worth drawing on the day they fall, but counting them in a
 // summary that exists to be keyed into a payroll would be noise. Sick leave and
@@ -398,12 +409,97 @@ function daysBetween(from, to) {
     return Math.round((b - a) / 86400000) + 1
 }
 
+// Today in Ireland, as a date. The function runs on UTC, and between midnight
+// and one in the summer that is still yesterday.
+export function dublinToday(now = new Date()) {
+    return new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Europe/Dublin', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(now)
+}
+
+// ---------------------------------------------------------------------------
+// Permission to work, for everybody (his, 1 November 2026)
+// ---------------------------------------------------------------------------
+//
+// A copy of permissionState and permissionWords in lib/workRules.js, which
+// this folder cannot import. A test runs both over the same people and wants
+// the same answer, the same as the fortnight and the bank holidays.
+
+export const RENEW_SOON_DAYS = 60
+export const DEFAULT_GRACE = { on: true, weeks: 12, afterBlocks: false }
+
+export const PERMISSION_STATES = {
+    not: { label: 'Not OK to work', order: 0 },
+    waiting: { label: 'Waiting on a renewal', order: 1 },
+    soon: { label: 'Renew soon', order: 2 },
+    unknown: { label: 'Not recorded', order: 3 },
+    ok: { label: 'OK to work', order: 4 },
+}
+
+// One of five, with what it was worked out from. See the app's copy for what
+// each means.
+export function permissionState(employee, today, grace = DEFAULT_GRACE) {
+    const stamp = employee?.work_permission || ''
+    const expires = employee?.work_permission_expires || null
+    const applied = employee?.permission_renewal_applied || null
+    const base = { stamp, expires, applied, ranOut: Boolean(expires && expires < today) }
+
+    if (!stamp) return { ...base, state: 'unknown' }
+    if (stamp === 'stamp2a') return { ...base, state: 'not' }
+    if (stamp === 'unrestricted') return { ...base, state: 'ok' }
+    if (!expires) return { ...base, state: 'unknown' }
+
+    if (!base.ranOut) {
+        if (daysBetween(today, expires) - 1 > RENEW_SOON_DAYS) return { ...base, state: 'ok' }
+        return { ...base, state: applied ? 'waiting' : 'soon' }
+    }
+
+    // The grace, as graceFor in the app has it: applied before it ran out, or
+    // on the day, and for so many weeks after.
+    if (!grace?.on || !applied) return { ...base, state: 'not', tooLate: false }
+    if (applied > expires) return { ...base, state: 'not', tooLate: true }
+    const weeks = grace.weeks ?? 12
+    const until = addDays(expires, weeks * 7)
+    if (today > until) return { ...base, state: grace.afterBlocks ? 'not' : 'waiting', until, lapsed: weeks }
+    return { ...base, state: 'waiting', until }
+}
+
+const STAMP_WORDS = {
+    unrestricted: 'No restriction', stamp2: 'Stamp 2', stamp2a: 'Stamp 2A', stamp1: 'Stamp 1', stamp1g: 'Stamp 1G',
+}
+const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const dated = date => `${Number(date.slice(8, 10))} ${SHORT_MONTHS[Number(date.slice(5, 7)) - 1]} ${date.slice(0, 4)}`
+
+export function permissionWords(p) {
+    const stamp = STAMP_WORDS[p.stamp] || ''
+    if (!p.stamp) return 'No permission recorded'
+    if (p.stamp === 'stamp2a') return 'Stamp 2A, no permission to work'
+    if (p.stamp === 'unrestricted') return stamp
+    if (!p.expires) return `${stamp}, no expiry date recorded`
+    const parts = [stamp, `${p.ranOut ? 'ran out' : p.state === 'ok' ? 'until' : 'runs out'} ${dated(p.expires)}`]
+    if (p.applied) parts.push(`renewal applied ${dated(p.applied)}${p.tooLate ? ', after it ran out' : ''}`)
+    else if (p.state !== 'ok') parts.push('no renewal applied for')
+    if (p.lapsed) parts.push(`past the ${p.lapsed} weeks on ${dated(p.until)}`)
+    else if (p.until) parts.push(`may work until ${dated(p.until)}`)
+    return parts.join(', ')
+}
+
+// Everybody employed on the day, worst first and then in the team's order (a
+// sort keeps the order of what it does not move), each with why.
+export function permissionList(team = [], today, grace = DEFAULT_GRACE) {
+    return team
+        .filter(p => (!p.ended_on || p.ended_on >= today) && (!p.started_on || p.started_on <= today))
+        .map(p => ({ name: p.full_name, ...permissionState(p, today, grace) }))
+        .sort((a, b) => PERMISSION_STATES[a.state].order - PERMISSION_STATES[b.state].order)
+        .map(p => ({ ...p, words: permissionWords(p) }))
+}
+
 // ---------------------------------------------------------------------------
 // The mail
 // ---------------------------------------------------------------------------
 
 export function timesheetEmail({
-    restaurantName, periodStart, people = [], test = false, comment = '',
+    restaurantName, periodStart, people = [], test = false, comment = '', permissions = null, today = null,
 }) {
     const period = periodWords(periodStart)
     const weeks = [weekWords(periodStart), weekWords(addDays(periodStart, 7))]
@@ -463,6 +559,8 @@ export function timesheetEmail({
 
     ${row(summary(people, T, bank), 'padding-top:18px;')}
 
+    ${permissions ? row(permissionsBlock(permissions, today)) : ''}
+
     ${people.map(person => personBlock(person, weeks)).join('')}
 
     ${row(legend(), 'padding-top:20px;')}
@@ -476,7 +574,7 @@ export function timesheetEmail({
 </td></tr>
 </table>`, { subject, preheader: period }))
 
-    return { subject, html, text: asText({ restaurantName, period, weeks, people, T, test, comment }) }
+    return { subject, html, text: asText({ restaurantName, period, weeks, people, T, test, comment, permissions, today }) }
 }
 
 function notice(ink, background, title, words) {
@@ -548,7 +646,6 @@ function marksFor(person) {
 // column, one above the other. Without it the two weeks side by side still
 // come to 34 characters, the same as the measured bank holiday shape.
 function summary(people, T, bank) {
-
     const head = label => '<th style="font-size:10px;letter-spacing:.05em;text-transform:uppercase;'
         + `color:#ffffff;background:${DARK};padding:7px 3px;text-align:right;font-weight:700;">${label}</th>`
 
@@ -594,6 +691,44 @@ function summary(people, T, bank) {
             ${bank ? last(hours(T.bankHoliday)) : ''}${last(hours(T.holiday))}
         </tr>
     </table>`
+}
+
+// Where somebody stands, as a mark that may break between its words: "Waiting
+// on a renewal" in one piece would hold a phone's mail wider than it is.
+function stateMark(state, words = PERMISSION_STATES[state].label) {
+    const look = PERMISSION_LOOK[state]
+    return '<span style="display:inline-block;font-size:10px;font-weight:700;letter-spacing:.04em;'
+        + 'text-transform:uppercase;padding:1px 5px;border-radius:3px;'
+        + `background:${look.wash};color:${look.ink};">${escapeHtml(words)}</span>`
+}
+
+// Permission to work, for everybody employed on the day it goes (his, 1
+// November 2026, the grouped one of three drawings). Worst first, each group
+// in its colour with a count, a line each saying why; everybody who is fine
+// in one line of names at the end, so the people who need something are what
+// she sees, and a fortnight where all is well is one short green line.
+function permissionsBlock(list, today) {
+    const groups = permissionGroups(list)
+    return `<div style="font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:${MUTED};padding:22px 0 6px;">
+        Permission to work, on ${escapeHtml(dated(today))}
+    </div>` + groups.map(([state, them]) => {
+        const title = `<div style="padding:10px 0 4px;">${stateMark(state, `${PERMISSION_STATES[state].label} (${them.length})`)}</div>`
+        if (state === 'ok') {
+            return title + `<div style="font-size:13px;line-height:1.5;color:${INK};padding-bottom:6px;">${them.map(p => escapeHtml(p.name)).join(', ')}</div>`
+        }
+        return title + them.map(p => `<div style="padding:6px 0;border-bottom:1px solid ${BORDER};">
+            <span style="font-size:13px;font-weight:700;color:${INK};">${escapeHtml(p.name)}</span>
+            <div style="font-size:12.5px;line-height:1.45;color:${MUTED};padding-top:2px;">${escapeHtml(p.words)}</div>
+        </div>`).join('')
+    }).join('')
+}
+
+// The list in its groups, worst first, leaving out a group with nobody in it.
+function permissionGroups(list) {
+    return Object.keys(PERMISSION_STATES)
+        .sort((a, b) => PERMISSION_STATES[a].order - PERMISSION_STATES[b].order)
+        .map(state => [state, list.filter(p => p.state === state)])
+        .filter(([, them]) => them.length)
 }
 
 // One person: a band with their name and what the period came to, then their
@@ -738,7 +873,7 @@ const typed = text => String(text ?? '').split(/\r?\n/).map(line => line.trimEnd
 // The plain text half, for a reader that will not draw the other one. It says
 // the same things in the same order: anybody reading this instead of the HTML
 // should not be told less.
-function asText({ restaurantName, period, weeks, people, T, test, comment }) {
+function asText({ restaurantName, period, weeks, people, T, test, comment, permissions, today }) {
     const lines = []
     if (test) lines.push('[Test] Sending this test does not mark the pay period as sent.', '')
     lines.push(`${restaurantName || 'Papi Chulo'}, hours, ${period}`, 'Pay period, two weeks', '')
@@ -752,6 +887,16 @@ function asText({ restaurantName, period, weeks, people, T, test, comment }) {
         `Holiday ${hours(T.holiday)}`,
         '',
     )
+
+    if (permissions) {
+        lines.push(`Permission to work, on ${dated(today)}`)
+        for (const [state, them] of permissionGroups(permissions)) {
+            const label = `${PERMISSION_STATES[state].label} (${them.length})`
+            if (state === 'ok') lines.push(`  ${label}: ${them.map(p => p.name).join(', ')}`)
+            else lines.push(`  ${label}`, ...them.map(p => `    ${p.name}: ${p.words}`))
+        }
+        lines.push('')
+    }
 
     for (const person of people) {
         const apart = [

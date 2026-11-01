@@ -3,6 +3,7 @@ import {
     timesheetEmail, personPeriod, holidayHoursInWeek, bankHolidays, bankHolidayOn,
     clock, hours, dayWords, weekWords, periodWords, addDays, hoursPdfPath,
     AWAY_LOOK, KIND_LOOK, BANK_LOOK, COUNTED_DAYS, awayWords,
+    permissionState, permissionWords, permissionList, PERMISSION_STATES, PERMISSION_LOOK, dublinToday,
 } from '../../supabase/functions/weekly-report-email/timesheet'
 import { heldNotice } from '../../supabase/functions/weekly-report-email/email'
 import { readFileSync } from 'node:fs'
@@ -11,8 +12,12 @@ import { ABSENCE_KINDS } from '@/lib/absences'
 import {
     KINDS, personPeriod as appPersonPeriod,
     AWAY_LOOK as appAway, KIND_LOOK as appKind, BANK_LOOK as appBank,
-    COUNTED_DAYS as appCounted, awayWords as appAwayWords,
+    COUNTED_DAYS as appCounted, awayWords as appAwayWords, PERMISSION_LOOK as appPermissionLook,
 } from '@/lib/timesheet'
+import {
+    permissionState as appPermissionState, permissionWords as appPermissionWords,
+    permissionList as appPermissionList, PERMISSION_STATES as appStates,
+} from '@/lib/workRules'
 
 // The pay period the design was drawn against: Sunday 25 October to Saturday
 // 7 November 2026, which holds the October bank holiday on its first Monday.
@@ -855,5 +860,162 @@ describe('where the hours PDF is read from', () => {
         const source = readFileSync('supabase/functions/weekly-report-email/index.ts', 'utf8')
         expect(source).toContain('.download(pdfPath)')
         expect(source).not.toMatch(/\.download\(attachment\)/)
+    })
+})
+
+// His, 1 November 2026: where everybody stands on permission to work, in the
+// hours mail and on the paper. Worked out in the app for the PDF and in the
+// function for the mail, so the two copies are run over the same people.
+describe('permission to work', () => {
+    const TODAY = '2026-11-01'
+    const stamp2 = over => ({ work_permission: 'stamp2', ...over })
+    const CASES = [
+        ['nothing recorded', {}],
+        ['no restriction', { work_permission: 'unrestricted' }],
+        ['Stamp 2A', { work_permission: 'stamp2a', work_permission_expires: '2027-01-01' }],
+        ['no expiry date', stamp2({})],
+        ['good for months', stamp2({ work_permission_expires: '2027-06-30' })],
+        ['61 days to go', stamp2({ work_permission_expires: addDays(TODAY, 61) })],
+        ['60 days to go', stamp2({ work_permission_expires: addDays(TODAY, 60) })],
+        ['runs out today', stamp2({ work_permission_expires: TODAY })],
+        ['runs out soon, nothing applied', stamp2({ work_permission_expires: '2026-11-20' })],
+        ['runs out soon, applied', stamp2({ work_permission_expires: '2026-11-20', permission_renewal_applied: '2026-10-30' })],
+        ['ran out, nothing applied', stamp2({ work_permission_expires: '2026-10-01' })],
+        ['ran out, applied in time', stamp2({ work_permission_expires: '2026-10-01', permission_renewal_applied: '2026-09-20' })],
+        ['ran out, applied on the day', stamp2({ work_permission_expires: '2026-10-01', permission_renewal_applied: '2026-10-01' })],
+        ['ran out, applied late', stamp2({ work_permission_expires: '2026-10-01', permission_renewal_applied: '2026-10-05' })],
+        ['ran out past the grace', stamp2({ work_permission_expires: '2026-07-01', permission_renewal_applied: '2026-06-20' })],
+    ]
+    const GRACES = [
+        undefined,
+        { on: true, weeks: 12, afterBlocks: true },
+        { on: false, weeks: 12, afterBlocks: false },
+        { on: true, weeks: 20, afterBlocks: false },
+    ]
+
+    it.each(CASES)('comes out the same on both sides: %s', (_, employee) => {
+        for (const grace of GRACES) {
+            const theirs = permissionState(employee, TODAY, grace)
+            expect(theirs).toEqual(appPermissionState(employee, TODAY, grace))
+            expect(permissionWords(theirs)).toBe(appPermissionWords(theirs))
+        }
+    })
+
+    it('has the same states, in the same order, in the same colours', () => {
+        expect(PERMISSION_STATES).toEqual(appStates)
+        expect(PERMISSION_LOOK).toEqual(appPermissionLook)
+    })
+
+    const said = employee => {
+        const p = appPermissionState(employee, TODAY)
+        return [p.state, appPermissionWords(p)]
+    }
+
+    it('says who may work and until when', () => {
+        expect(said({ work_permission: 'unrestricted' })).toEqual(['ok', 'No restriction'])
+        expect(said(stamp2({ work_permission_expires: '2027-06-30' }))).toEqual(['ok', 'Stamp 2, until 30 Jun 2027'])
+    })
+
+    it('asks for a renewal within 60 days, and waits on one applied for', () => {
+        expect(said(stamp2({ work_permission_expires: '2026-11-20' })))
+            .toEqual(['soon', 'Stamp 2, runs out 20 Nov 2026, no renewal applied for'])
+        expect(said(stamp2({ work_permission_expires: '2026-11-20', permission_renewal_applied: '2026-10-30' })))
+            .toEqual(['waiting', 'Stamp 2, runs out 20 Nov 2026, renewal applied 30 Oct 2026'])
+    })
+
+    // The Irish rule: applied before it ran out, twelve weeks to keep working.
+    it('lets somebody who applied in time keep working for the grace', () => {
+        expect(said(stamp2({ work_permission_expires: '2026-10-01', permission_renewal_applied: '2026-09-20' })))
+            .toEqual(['waiting', 'Stamp 2, ran out 1 Oct 2026, renewal applied 20 Sep 2026, may work until 24 Dec 2026'])
+    })
+
+    it('says not OK when nothing was applied for, or it was applied for late', () => {
+        expect(said(stamp2({ work_permission_expires: '2026-10-01' })))
+            .toEqual(['not', 'Stamp 2, ran out 1 Oct 2026, no renewal applied for'])
+        expect(said(stamp2({ work_permission_expires: '2026-10-01', permission_renewal_applied: '2026-10-05' })))
+            .toEqual(['not', 'Stamp 2, ran out 1 Oct 2026, renewal applied 5 Oct 2026, after it ran out'])
+        expect(said({ work_permission: 'stamp2a' })).toEqual(['not', 'Stamp 2A, no permission to work'])
+    })
+
+    // Past the twelve weeks the app does not decide (permission-and-
+    // availability): it waits, unless the restaurant has chosen to block.
+    it('keeps waiting past the grace unless the restaurant blocks', () => {
+        const late = stamp2({ work_permission_expires: '2026-07-01', permission_renewal_applied: '2026-06-20' })
+        expect(said(late)).toEqual(['waiting', 'Stamp 2, ran out 1 Jul 2026, renewal applied 20 Jun 2026, past the 12 weeks on 23 Sep 2026'])
+        expect(appPermissionState(late, TODAY, { on: true, weeks: 12, afterBlocks: true }).state).toBe('not')
+    })
+
+    it('says when nothing is recorded', () => {
+        expect(said({})).toEqual(['unknown', 'No permission recorded'])
+        expect(said(stamp2({}))).toEqual(['unknown', 'Stamp 2, no expiry date recorded'])
+    })
+
+    const TEAM = [
+        { id: 'e1', full_name: 'Aoife', work_permission: 'unrestricted' },
+        { id: 'e2', full_name: 'Cathal', ...stamp2({ work_permission_expires: '2026-10-01', permission_renewal_applied: '2026-09-20' }) },
+        { id: 'e3', full_name: 'Dara', ...stamp2({ work_permission_expires: '2026-10-01' }) },
+        { id: 'e4', full_name: 'Eimear', work_permission: 'unrestricted' },
+        { id: 'e5', full_name: 'Left in September', work_permission: '', ended_on: '2026-09-30' },
+        { id: 'e6', full_name: 'Starts next week', work_permission: '', started_on: '2026-11-08' },
+    ]
+
+    it('lists everybody employed on the day, worst first, the same on both sides', () => {
+        const list = permissionList(TEAM, TODAY)
+        expect(list).toEqual(appPermissionList(TEAM, TODAY))
+        expect(list.map(p => [p.name, p.state])).toEqual([
+            ['Dara', 'not'], ['Cathal', 'waiting'], ['Aoife', 'ok'], ['Eimear', 'ok'],
+        ])
+    })
+
+    const mail = (over = {}) => timesheetEmail({
+        restaurantName: 'Point Campus',
+        periodStart: PERIOD,
+        people: period(),
+        permissions: permissionList(TEAM, TODAY),
+        today: TODAY,
+        ...over,
+    })
+
+    it('goes in the mail in groups, worst first, the fine ones in one line', () => {
+        const html = mail().html
+        expect(html).toContain('Permission to work, on 1 Nov 2026')
+        expect(html.indexOf('Not OK to work (1)')).toBeLessThan(html.indexOf('Waiting on a renewal (1)'))
+        expect(html.indexOf('Waiting on a renewal (1)')).toBeLessThan(html.indexOf('OK to work (2)'))
+        expect(html).toContain('Stamp 2, ran out 1 Oct 2026, no renewal applied for')
+        expect(html).toContain('Aoife, Eimear')
+        expect(html).not.toContain('Left in September')
+        expect(html).not.toContain('Starts next week')
+    })
+
+    it('goes in the plain text the same way', () => {
+        const text = mail().text
+        expect(text).toContain('Permission to work, on 1 Nov 2026')
+        expect(text).toContain('  Not OK to work (1)\n    Dara: Stamp 2, ran out 1 Oct 2026, no renewal applied for')
+        expect(text).toContain('  OK to work (2): Aoife, Eimear')
+    })
+
+    it('still says nothing about the roster or money', () => {
+        const { html, text } = mail()
+        expect(html).not.toMatch(/roster|rostered|scheduled/i)
+        expect(text).not.toMatch(/roster|rostered|scheduled/i)
+        expect(html).not.toMatch(/€|EUR/)
+    })
+
+    it('is left out when there is no list', () => {
+        expect(mail({ permissions: null }).html).not.toContain('Permission to work')
+    })
+
+    it('reads the permissions and the restaurant\'s grace in the function', () => {
+        const source = readFileSync('supabase/functions/weekly-report-email/index.ts', 'utf8')
+        const team = /from\('employees'\)\s*\.select\('([^']*)'\)/.exec(source)
+        expect(team?.[1]).toContain('work_permission, work_permission_expires, permission_renewal_applied')
+        expect(source).toMatch(/timesheet_recipients, roster_rules/)
+    })
+
+    // The function runs on UTC. Half eleven at night on 1 July is the 2nd in
+    // Ireland, and half eleven on 1 December is still the 1st.
+    it('takes today as it is in Ireland', () => {
+        expect(dublinToday(new Date('2026-07-01T23:30:00Z'))).toBe('2026-07-02')
+        expect(dublinToday(new Date('2026-12-01T23:30:00Z'))).toBe('2026-12-01')
     })
 })

@@ -168,6 +168,88 @@ export function permissionFor(value) {
     return WORK_PERMISSIONS.find(p => p.value === (value || '')) || WORK_PERMISSIONS[0]
 }
 
+// Within this many days of running out, a permission nobody has applied to
+// renew is said before it runs out rather than after.
+export const RENEW_SOON_DAYS = 60
+
+// The five answers, worst first, the order the hours mail and PDF list them.
+export const PERMISSION_STATES = {
+    not: { label: 'Not OK to work', order: 0 },
+    waiting: { label: 'Waiting on a renewal', order: 1 },
+    soon: { label: 'Renew soon', order: 2 },
+    unknown: { label: 'Not recorded', order: 3 },
+    ok: { label: 'OK to work', order: 4 },
+}
+
+// Where somebody stands on the day the hours go to the accountant (his, 1
+// November 2026):
+//
+//   ok       may work: nothing needed, or good beyond RENEW_SOON_DAYS
+//   soon     runs out within RENEW_SOON_DAYS, no renewal applied for
+//   waiting  a renewal applied for in time: still valid, or inside the
+//            grace, or past it while the restaurant only warns (graceFor)
+//   not      ran out with no renewal, applied too late, past the grace where
+//            the restaurant blocks, or Stamp 2A
+//   unknown  nothing recorded, or no date on one that runs out
+//
+// Against the day rather than a week, because it is said once, on the day it
+// is sent. The hours mail's folder has a copy, held to this by a test.
+export function permissionState(employee, today, grace = DEFAULT_RULES.permissionGrace) {
+    const stamp = employee?.work_permission || ''
+    const expires = employee?.work_permission_expires || null
+    const applied = employee?.permission_renewal_applied || null
+    const base = { stamp, expires, applied, ranOut: Boolean(expires && expires < today) }
+
+    if (!stamp) return { ...base, state: 'unknown' }
+    if (stamp === 'stamp2a') return { ...base, state: 'not' }
+    if (!permissionFor(stamp).expires) return { ...base, state: 'ok' }
+    if (!expires) return { ...base, state: 'unknown' }
+
+    if (!base.ranOut) {
+        if (daysBetween(today, expires) > RENEW_SOON_DAYS) return { ...base, state: 'ok' }
+        return { ...base, state: applied ? 'waiting' : 'soon' }
+    }
+
+    const covered = graceFor(employee, today, { permissionGrace: grace })
+    if (covered.covered) return { ...base, state: 'waiting', until: covered.until }
+    if (covered.lapsed) {
+        return { ...base, state: grace?.afterBlocks ? 'not' : 'waiting', until: covered.until, lapsed: covered.weeks }
+    }
+    return { ...base, state: 'not', tooLate: Boolean(covered.tooLate) }
+}
+
+const STAMP_WORDS = {
+    unrestricted: 'No restriction', stamp2: 'Stamp 2', stamp2a: 'Stamp 2A', stamp1: 'Stamp 1', stamp1g: 'Stamp 1G',
+}
+const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const dated = date => `${Number(date.slice(8, 10))} ${SHORT_MONTHS[Number(date.slice(5, 7)) - 1]} ${date.slice(0, 4)}`
+
+// What permissionState found, in a line: "Stamp 2, ran out 23 Aug 2026,
+// renewal applied 20 Aug 2026, may work until 15 Nov 2026".
+export function permissionWords(p) {
+    const stamp = STAMP_WORDS[p.stamp] || ''
+    if (!p.stamp) return 'No permission recorded'
+    if (p.stamp === 'stamp2a') return 'Stamp 2A, no permission to work'
+    if (p.stamp === 'unrestricted') return stamp
+    if (!p.expires) return `${stamp}, no expiry date recorded`
+    const parts = [stamp, `${p.ranOut ? 'ran out' : p.state === 'ok' ? 'until' : 'runs out'} ${dated(p.expires)}`]
+    if (p.applied) parts.push(`renewal applied ${dated(p.applied)}${p.tooLate ? ', after it ran out' : ''}`)
+    else if (p.state !== 'ok') parts.push('no renewal applied for')
+    if (p.lapsed) parts.push(`past the ${p.lapsed} weeks on ${dated(p.until)}`)
+    else if (p.until) parts.push(`may work until ${dated(p.until)}`)
+    return parts.join(', ')
+}
+
+// Everybody employed on the day, worst first and then in the team's order (a
+// sort keeps the order of what it does not move), each with why.
+export function permissionList(team = [], today, grace = DEFAULT_RULES.permissionGrace) {
+    return team
+        .filter(p => (!p.ended_on || p.ended_on >= today) && (!p.started_on || p.started_on <= today))
+        .map(p => ({ name: p.full_name, ...permissionState(p, today, grace) }))
+        .sort((a, b) => PERMISSION_STATES[a.state].order - PERMISSION_STATES[b.state].order)
+        .map(p => ({ ...p, words: permissionWords(p) }))
+}
+
 // Is this date inside one of the periods a student may work full time?
 //
 // A period given as 12-15 to 01-15 runs across the new year, so it is inside if

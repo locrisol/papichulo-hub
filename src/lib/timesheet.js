@@ -664,6 +664,17 @@ export const KIND_LOOK = {
 // sit behind a cell.
 export const BANK_LOOK = { label: 'Bank holiday', ink: '#8A6A18', wash: '#FBF4E2' }
 
+// Where somebody stands on permission to work, in four colours: green may
+// work, amber needs something doing (a renewal waiting or due), red may not,
+// slate nobody knows. The hours mail has a copy.
+export const PERMISSION_LOOK = {
+    ok: { ink: '#1F7A4C', wash: '#E8F4EC' },
+    waiting: { ink: '#8A5300', wash: '#FDF1DC' },
+    soon: { ink: '#8A5300', wash: '#FDF1DC' },
+    not: { ink: '#B91C1C', wash: '#FDECEC' },
+    unknown: { ink: '#475569', wash: '#EDF1F5' },
+}
+
 // The two days that change what somebody is paid. A day off and a day away at
 // something are worth drawing where they fall, but counting them in a summary
 // meant to be keyed into a payroll would be noise.
