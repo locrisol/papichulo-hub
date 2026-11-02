@@ -3,7 +3,8 @@ import { Link, useLocation } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { useConfirm } from '@/context/confirm'
-import { fmtMoney } from '@/lib/format'
+import { fmtMoney, fmtQty } from '@/lib/format'
+import { unitWords } from '@/lib/countUnits'
 import { shortDate, dayLabel, stampDay } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
 import { pilesOf } from '@/lib/invoiceImport'
@@ -299,13 +300,21 @@ export default function WaitingForDecision({ restaurantId, refresh: imported = 0
 }
 
 // The price an answer leaves the Hub with, as its button says it: the case
-// price when the price row keeps one, the price a unit when it is loose.
+// price when the price row keeps one, the price a kg, litre or unit when it is
+// loose.
 function priceWords(row, which) {
     const loose = row.price?.purchase_type === 'loose' || !(row.was > 0)
+    const per = unitWords(row.product?.unit, 1)
     if (which === 'new') {
-        return loose && row.perUnitNow != null ? `${fmtMoney(row.perUnitNow)} a unit` : `${fmtMoney(row.now)} a case`
+        return loose && row.perUnitNow != null ? `${fmtMoney(row.perUnitNow)} a ${per}` : `${fmtMoney(row.now)} a case`
     }
-    return loose ? `${fmtMoney(row.perUnitWas)} a unit` : `${fmtMoney(row.was)} a case`
+    return loose ? `${fmtMoney(row.perUnitWas)} a ${per}` : `${fmtMoney(row.was)} a case`
+}
+
+// A pack in the product's own unit, as a note or a button says it: "15 kg",
+// "12 units".
+function amountWords(units, unit) {
+    return `${fmtQty(units)} ${unitWords(unit, units)}`
 }
 
 // One line, and what can be done about it.
@@ -315,6 +324,12 @@ function ReviewRow({
 }) {
     const { line, stored, supplier, pile } = row
     const doc = stored.invoices
+    const unit = row.product?.unit
+    // A pack the Hub has no price for yet, in the words the invoice uses:
+    // bought by the case, a case, and a single one a pack.
+    const packWord = line.cases > 0 ? 'case' : 'pack'
+    const newPack = row.packMoved ? amountWords(row.wantedUnits, unit) : null
+    const oldPack = row.packMoved ? amountWords(row.price.units_per_case, unit) : null
 
     return (
         <div className="border border-border rounded-lg p-3">
@@ -335,22 +350,34 @@ function ReviewRow({
 
             {pile === 'price_changed' && (
                 <div className="mb-3">
-                    <p className="text-sm text-gray-900">
-                        <span className="tabular-nums">{fmtMoney(row.was)}</span>
-                        {' to '}
-                        <span className="tabular-nums font-bold">{fmtMoney(row.now)}</span>
-                        {row.perUnitNow != null && (
-                            <span className="text-muted">
-                                {' '}({fmtMoney(row.perUnitWas)} to {fmtMoney(row.perUnitNow)} a unit)
-                            </span>
-                        )}
-                    </p>
-                    {row.packMoved && (
-                        <p className="text-xs text-amber-800 mt-1">
-                            <strong className="font-bold">The pack changed as well.</strong>{' '}
-                            {row.price.units_per_case} to {row.wantedUnits} in a case, so this is a
-                            second price rather than a change to the one we have. The pack we cost
-                            from today is not the pack on this invoice.
+                    {/* Another pack is compared a kg, litre or unit at a
+                        time: a case of three bags against one bag's price is
+                        not a price that went up. Nor is it a pack the
+                        supplier changed, only one the Hub has no price for
+                        yet (the rice, 28 October 2026). */}
+                    {row.packMoved ? (
+                        <>
+                            <p className="text-sm text-gray-900">
+                                <span className="tabular-nums">{fmtMoney(row.perUnitWas)}</span>
+                                {' to '}
+                                <span className="tabular-nums font-bold">{fmtMoney(row.perUnitNow)}</span>
+                                {` a ${unitWords(unit, 1)}`}
+                            </p>
+                            <p className="text-xs text-muted mt-1">
+                                This {packWord} is {newPack} at {fmtMoney(row.now)}. The Hub only has a price
+                                for {oldPack}, {fmtMoney(row.was)}, so adding this one keeps both prices.
+                            </p>
+                        </>
+                    ) : (
+                        <p className="text-sm text-gray-900">
+                            <span className="tabular-nums">{fmtMoney(row.was)}</span>
+                            {' to '}
+                            <span className="tabular-nums font-bold">{fmtMoney(row.now)}</span>
+                            {row.perUnitNow != null && (
+                                <span className="text-muted">
+                                    {' '}({fmtMoney(row.perUnitWas)} to {fmtMoney(row.perUnitNow)} a {unitWords(unit, 1)})
+                                </span>
+                            )}
                         </p>
                     )}
                     {/* Recipes cost a product on the Recommended list from
@@ -401,10 +428,10 @@ function ReviewRow({
                 {pile === 'price_changed' && row.packMoved && costing?.listed && (
                     <>
                         <button type="button" disabled={!!busy} onClick={() => onAccept(false)} className={rowButton('good')}>
-                            Add the pack of {row.wantedUnits} at {fmtMoney(row.now)}
+                            Add the {packWord} of {newPack} at {fmtMoney(row.now)}
                         </button>
                         <button type="button" disabled={!!busy} onClick={onReject} className={rowButton()}>
-                            Keep the price at {priceWords(row, 'old')}
+                            Keep only the price for {oldPack}, {fmtMoney(row.was)}
                         </button>
                     </>
                 )}
@@ -412,13 +439,13 @@ function ReviewRow({
                 {pile === 'price_changed' && row.packMoved && !costing?.listed && (
                     <>
                         <button type="button" disabled={!!busy} onClick={() => onAccept(true)} className={rowButton('good')}>
-                            Add the pack of {row.wantedUnits} at {fmtMoney(row.now)} and cost from it
+                            Add the {packWord} of {newPack} at {fmtMoney(row.now)} and cost from it
                         </button>
                         <button type="button" disabled={!!busy} onClick={() => onAccept(false)} className={rowButton()}>
-                            Add the pack of {row.wantedUnits}, keep costing from the old one
+                            Add the {packWord} of {newPack}, keep costing from the {oldPack}
                         </button>
                         <button type="button" disabled={!!busy} onClick={onReject} className={rowButton()}>
-                            Keep the price at {priceWords(row, 'old')}
+                            Keep only the price for {oldPack}, {fmtMoney(row.was)}
                         </button>
                     </>
                 )}

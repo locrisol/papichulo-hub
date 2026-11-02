@@ -39,6 +39,7 @@ const qty = v => (v == null ? '' : fmtQty(v))
 export default function ShowInvoiceModal({ invoice, onClose }) {
     const [lines, setLines] = useState(null)
     const [claims, setClaims] = useState([])
+    const [notStock, setNotStock] = useState(null)
     const [creditOf, setCreditOf] = useState(null)
     const [error, setError] = useState('')
     const credit = invoice.document_type === 'credit'
@@ -48,7 +49,7 @@ export default function ShowInvoiceModal({ invoice, onClose }) {
         let alive = true
 
         async function load() {
-            const [read, logged, against] = await Promise.all([
+            const [read, logged, marked, against] = await Promise.all([
                 supabase.from('invoice_lines')
                     .select(LINE_COLUMNS)
                     .eq('invoice_id', invoice.id)
@@ -56,6 +57,13 @@ export default function ShowInvoiceModal({ invoice, onClose }) {
                 supabase.from('invoice_line_claims')
                     .select(CLAIM_COLUMNS)
                     .eq('invoice_id', invoice.id),
+                // This supplier's codes marked not stock here, which is how a
+                // line set aside as Not stock is told from one left out.
+                supabase.from('supplier_codes')
+                    .select('supplier_code')
+                    .eq('restaurant_id', invoice.restaurant_id)
+                    .eq('supplier_id', invoice.supplier_id)
+                    .eq('ignored', true),
                 // Which invoice a credit note is for, by its number. The page
                 // only has the id, and that invoice can be in any week.
                 creditOfId
@@ -66,16 +74,17 @@ export default function ShowInvoiceModal({ invoice, onClose }) {
                     : Promise.resolve({ data: null, error: null }),
             ])
             if (!alive) return
-            const failed = read.error || logged.error || against.error
+            const failed = read.error || logged.error || marked.error || against.error
             if (failed) { setError(friendlyError(failed)); return }
             setLines(inPrintedOrder(read.data))
             setClaims(logged.data || [])
+            setNotStock(new Set((marked.data || []).map(c => c.supplier_code)))
             setCreditOf(against.data || null)
         }
 
         load()
         return () => { alive = false }
-    }, [invoice.id, creditOfId])
+    }, [invoice.id, invoice.restaurant_id, invoice.supplier_id, creditOfId])
 
     const problems = claimsByLine(claims)
     const wholeDocument = claimsOnNoLine(claims)
@@ -172,7 +181,7 @@ export default function ShowInvoiceModal({ invoice, onClose }) {
                                         <div className="col-span-2">
                                             <dt className="text-xs text-muted">Decision</dt>
                                             <dd className="mt-0.5">
-                                                <Decision line={line} credit={credit} problems={problems.get(line.id) || []} />
+                                                <Decision line={line} credit={credit} notStock={notStock} problems={problems.get(line.id) || []} />
                                             </dd>
                                         </div>
                                     </dl>
@@ -209,7 +218,7 @@ export default function ShowInvoiceModal({ invoice, onClose }) {
                                             <td className="px-2 py-2 text-right text-gray-900 tabular-nums whitespace-nowrap"><Vat line={line} /></td>
                                             <td className="px-2 py-2"><CountedAs category={line.category} /></td>
                                             <td className="px-2 py-2 min-w-[9rem]">
-                                                <Decision line={line} credit={credit} problems={problems.get(line.id) || []} />
+                                                <Decision line={line} credit={credit} notStock={notStock} problems={problems.get(line.id) || []} />
                                             </td>
                                         </tr>
                                     ))}
@@ -279,8 +288,8 @@ function CountedAs({ category }) {
 
 // What was decided, which of our products and version it is matched to, and
 // any delivery problem logged against it.
-function Decision({ line, credit, problems }) {
-    const said = lineDecision(line, { credit })
+function Decision({ line, credit, notStock, problems }) {
+    const said = lineDecision(line, { credit, notStock })
     const match = matchedTo(line)
     return (
         <div className="space-y-1">

@@ -1673,11 +1673,50 @@ export function pricesSection(section, f) {
     // has to know which suppliers were only a typed total. Absent on anything
     // frozen before it existed.
     return heading(section.title, section.number)
+        + usualShopCard(p)
         + brandCards(p, shown)
         + moves + switches + recipes + back
         + fresh
         + note(`Recipes checked on ${fmtDate(p.checkedOn)}. Prices are without VAT, as printed on the invoices.`)
         + comments(sectionComments(section))
+}
+
+// Our usual shop, short (his pick of three drawings, 1 November 2026: the full
+// card on the Hub, the short one here). Once at the top that it is the same
+// quantities priced at two dates, then each group with its change on the
+// right and both prices on one line. How many products and what moved it
+// most stay on the Hub. Nothing on a report frozen before it existed.
+function usualShopCard(p) {
+    const shop = p.usualShop
+    if (!shop?.groups?.length) return ''
+    const since = dayMonth(shop.since)
+    const sub = `<tr><td colspan="2" style="padding:9px 14px;border-bottom:1px solid ${BORDER};font-size:13px;`
+        + `line-height:1.5;color:${MUTED};${BREAKS}">${escapeHtml(SHOP_WORDS)}</td></tr>`
+    const rows = shop.groups.map(g => headedRow({
+        name: escapeHtml(g.label),
+        value: `${change(g.change)}<br />${signedMoney(g.money)} a week`,
+        tone: toneFor(g.money),
+        facts: `<div style="margin-top:3px;font-size:13px;line-height:1.5;color:${MUTED};">${escapeHtml(bothPrices(g, since))}</div>`,
+    }))
+    return priceCard('Our usual shop', '', MUTED, [sub, ...rows], '')
+}
+
+const SHOP_WORDS = 'Our average week of buying: the same quantities priced at two dates, so only prices move it.'
+
+// The two prices of one group, for the card and the plain text alike.
+const bothPrices = (g, since) => `At ${since} prices: ${money(g.was)} · At this week's: ${money(g.now)}`
+
+function usualShopText(p) {
+    const shop = p?.usualShop
+    if (!shop?.groups?.length) return []
+    const since = dayMonth(shop.since)
+    return [
+        `  Our usual shop. ${SHOP_WORDS}`,
+        ...shop.groups.flatMap(g => [
+            `    ${g.label}: ${change(g.change)}, ${signedMoney(g.money)} a week`,
+            `      ${bothPrices(g, since)}`,
+        ]),
+    ]
 }
 
 // The credit notes under each reason, biggest reason first, each with the
@@ -1765,7 +1804,9 @@ function pricesText(p) {
         out.push('  From an earlier week')
         for (const e of p.earlier) out.push(`    ${e.what}: ${money(e.money)}, ${e.label}, from the delivery in the week of ${dayMonth(e.delivered)}`)
     }
-    return out
+    // First, as on the page, and added after the line saying nothing moved,
+    // which is about this week's prices and still true beside it.
+    return [...usualShopText(p), ...out]
 }
 
 // ---------------------------------------------------------------------------
