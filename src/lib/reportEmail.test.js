@@ -5,7 +5,7 @@ import {
     renewalWords, escapeLines, page, headline, overheadsToShow, backByReason,
     deliverable, isJustTheGoodbye, replyToFor, switchedOff, whatToSend, correctionSend,
     paidWords, againstWords, figureGaps as mailGaps, openActions, doneActions, platformsIn, richHtml, richWords, saidRefunds,
-    recipeOffWords,
+    recipeOffWords, whatWasOn, showsWords,
 } from '../../supabase/functions/weekly-report-email/email'
 import { readFileSync } from 'node:fs'
 import { MAIL_WIDTH } from '@/lib/reportChartImage'
@@ -2391,29 +2391,61 @@ describe('actions done this week in the mail', () => {
     })
 })
 
-// His, 17 October: what was on each day, under the sales and costs.
+// His, 17 October: what was on each day, under the sales and costs. And his
+// of 1 November: only what was on, no sales up or down.
 describe('what was on', () => {
-    const html = reportEmail(base).html
+    const mail = reportEmail(base)
+    const part = whatWasOn(base.figures.whatWasOn)
 
-    it('gives each day its takings against a usual day, and what was on under it', () => {
-        expect(html).toContain('What was on')
-        expect(html).toContain('Usual Monday €1,708.69')
-        expect(html).toMatch(/\+26%/)
-        expect(html).toContain('3Arena, 18:30 · The Pussycat Dolls')
-        expect(html).toContain('Also on: 11:30 Lunch Team, 12:10 Feedr')
+    it('says how many shows, then what was on each day', () => {
+        expect(mail.html).toContain('What was on')
+        expect(part).toContain('1 show at the 3Arena')
+        expect(part).toContain('Mon 5 Oct')
+        expect(part).toContain('3Arena, 18:30 · The Pussycat Dolls')
+        expect(part).toContain('Catering · Ancestry, 11:30')
+        expect(part).toContain('Also on: 11:30 Lunch Team, 12:10 Feedr')
     })
 
-    it('says a closed day, a day with no sales, and a day with no usual yet', () => {
-        expect(html).toContain('>Closed</span>')
-        expect(html).toContain('No sales entered')
-        expect(html).toContain('Not enough weeks yet to say what is usual')
-        expect(html).toContain('Nothing on nearby')
+    it('says nothing about whether sales went up or down', () => {
+        // The words, not the markup, which has widths in percent.
+        expect(part.replace(/<[^>]+>/g, ' ')).not.toMatch(/€|%|usual/i)
+        expect(mail.html).not.toContain('Usual is the middle of the same day')
+        expect(mail.html).not.toContain('days with a show at the 3Arena took')
+        expect(mail.html).not.toContain('A usual week')
     })
 
-    it('says what usual means, and how show nights have gone', () => {
-        expect(html).toContain('Usual is the middle of the same day over the 8 weeks before')
-        expect(html).toContain('days with a show at the 3Arena took 29% more')
-        expect(html).toContain('A usual week €1,708.69')
+    it('leaves out a day with nothing on', () => {
+        expect(part).not.toContain('Sun 4 Oct')
+        expect(part).not.toContain('Tue 6 Oct')
+        expect(part).not.toContain('Nothing on nearby')
+    })
+
+    it('still says a closed day that had something on', () => {
+        const closed = { days: [{ date: '2026-12-25', closed: true, on: [{ tone: 'show', text: '3Arena, 19:00 · A Christmas show' }] }] }
+        expect(whatWasOn(closed)).toContain('Closed')
+    })
+
+    it('counts the shows at each place with a row of its own, and nothing else', () => {
+        const week = {
+            days: [
+                { on: [{ tone: 'show', text: '3Arena, 18:30 · One' }, { tone: 'show', text: '3Arena · Two' }, { tone: 'nearby', text: 'Odeon, 11:00 · A film' }] },
+                { on: [{ tone: 'show', text: 'Pavilion, 20:00 · Three' }, { tone: 'catering', text: 'Catering · Ancestry, 11:30' }] },
+            ],
+        }
+        expect(showsWords(week)).toBe('2 shows at the 3Arena and 1 at the Pavilion')
+        expect(showsWords({ days: [{ on: [{ tone: 'nearby', text: 'Odeon · A film' }] }] })).toBe('No shows this week')
+    })
+
+    it('says so when nothing at all was on', () => {
+        const quiet = whatWasOn({ days: [{ date: '2026-10-05', on: [] }] })
+        expect(quiet).toContain('No shows this week')
+        expect(quiet).toContain('Nothing else was on: no events nearby, no catering and no office orders.')
+    })
+
+    it('goes in the plain text as well', () => {
+        expect(mail.text).toContain('  What was on: 1 show at the 3Arena')
+        expect(mail.text).toContain('    Mon 5 Oct')
+        expect(mail.text).toContain('      Catering · Ancestry, 11:30')
     })
 
     it('is left out of a report frozen before it existed', () => {
