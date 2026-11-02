@@ -5,7 +5,7 @@ import {
     AWAY_LOOK, KIND_LOOK, BANK_LOOK, COUNTED_DAYS, awayWords,
     permissionState, permissionWords, permissionList, PERMISSION_STATES, PERMISSION_LOOK, dublinToday,
 } from '../../supabase/functions/weekly-report-email/timesheet'
-import { heldNotice } from '../../supabase/functions/weekly-report-email/email'
+import { heldNotice, page } from '../../supabase/functions/weekly-report-email/email'
 import { readFileSync } from 'node:fs'
 import { bankHolidays as appBankHolidays } from '@/lib/bankHolidays'
 import { ABSENCE_KINDS } from '@/lib/absences'
@@ -467,6 +467,33 @@ describe('the mail itself', () => {
         expect(built().text).not.toContain('PDF attached')
     })
 
+    // His, 2 November 2026: fine on the phone, too small on a computer. The
+    // sizes on the elements stay the phone's, since the phone sets the floor,
+    // and a wide screen takes bigger ones from the head.
+    it('is bigger on a computer and the same on a phone', () => {
+        const sick = [{ employee_id: 'e1', kind: 'sick', status: 'approved', starts_on: '2026-10-28', ends_on: '2026-10-28' }]
+        const html = built({
+            people: period({ absences: sick }),
+            test: true, comment: 'A note', paper: true,
+            permissions: [{ name: 'Dara', state: 'not', words: 'Stamp 2A, no permission to work' }, { name: 'Aoife', state: 'ok', words: 'No restriction' }],
+            today: '2026-11-02',
+        }).html
+        const sheet = html.match(/<\/title>(?:<!--[\s\S]*?-->)?<style>(@media screen and \(min-width:600px\)\{[^<]*\})<\/style><\/head>/)?.[1]
+        expect(sheet).toBeTruthy()
+        // Every class the sheet sizes is on something in the mail.
+        const classes = [...new Set(sheet.match(/\.ts-[a-z0-9]+/g).map(c => c.slice(1)))]
+        expect(classes.length).toBeGreaterThan(10)
+        for (const name of classes) expect(html).toContain(`class="${name}"`)
+        // And the phone's own sizes are still written on them.
+        expect(html).toMatch(/class="ts-intro" style="font-size:14px;/)
+        expect(html).toMatch(/class="ts-th" style="font-size:9px;/)
+        expect(html).toMatch(/class="ts-cell" style="[^"]*font-size:13px;/)
+    })
+
+    it('leaves the sheet out of a page that has none', () => {
+        expect(page('<p>x</p>')).not.toMatch(/<style>@media/)
+    })
+
     // The send knows whether there is a PDF, and the mail is only right about
     // where the days went if it is told.
     it('is told by the send whether the PDF is on it', () => {
@@ -613,7 +640,7 @@ describe('the mail itself', () => {
     // wider than a phone the same way a figure that cannot wrap does.
     it('lets a long typed word break', () => {
         const url = 'https://example.test/' + 'a'.repeat(99)
-        const cell = built({ comment: url }).html.match(new RegExp(`<div style="([^"]*)"> ?${url} ?</div>`))
+        const cell = built({ comment: url }).html.match(new RegExp(`<div (?:class="[^"]*" )?style="([^"]*)"> ?${url} ?</div>`))
         expect(cell).not.toBeNull()
         expect(cell[1]).toContain('word-break:break-word;')
         expect(cell[1]).toContain('overflow-wrap:anywhere;')
@@ -761,7 +788,7 @@ describe('the summary fits a phone', () => {
 
     it('lets a mark break between its words and its figure', () => {
         const html = mail(trained)
-        const marks = [...summaryOf(html).matchAll(/<span style="display:inline-block;([^"]*)">/g)].map(m => m[1])
+        const marks = [...summaryOf(html).matchAll(/<span (?:class="[^"]*" )?style="display:inline-block;([^"]*)">/g)].map(m => m[1])
         expect(marks.length).toBeGreaterThan(0)
         for (const style of marks) expect(style).not.toContain('white-space:nowrap')
     })
@@ -980,8 +1007,8 @@ describe('permission to work', () => {
     })
 
     it('goes in the mail in groups, worst first, the fine ones in one line', () => {
-        const html = mail().html
-        expect(html).toContain('Permission to work, on 1 Nov 2026')
+        const html = mail().html.replace(/<[^>]*>/g, '').replace(/&#32;/g, ' ')
+        expect(html).toContain('Permission to workEverybody employed on 1 November 2026')
         expect(html.indexOf('Not OK to work (1)')).toBeLessThan(html.indexOf('Waiting on a renewal (1)'))
         expect(html.indexOf('Waiting on a renewal (1)')).toBeLessThan(html.indexOf('OK to work (2)'))
         expect(html).toContain('Stamp 2, ran out 1 Oct 2026, no renewal applied for')
@@ -992,7 +1019,7 @@ describe('permission to work', () => {
 
     it('goes in the plain text the same way', () => {
         const text = mail().text
-        expect(text).toContain('Permission to work, on 1 Nov 2026')
+        expect(text).toContain('Permission to work, everybody employed on 1 November 2026')
         expect(text).toContain('  Not OK to work (1)\n    Dara: Stamp 2, ran out 1 Oct 2026, no renewal applied for')
         expect(text).toContain('  OK to work (2): Aoife, Eimear')
     })
