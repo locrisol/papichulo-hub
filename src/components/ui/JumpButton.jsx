@@ -2,13 +2,13 @@ import { jumpButton, jumpLabel } from '@/lib/controlStyles'
 
 // The button that goes back to where a screen lives. "This week" when you are
 // already on it, "Go to current week" when you are not, and the same pair for a
-// day, a month, or the timesheet's last week.
+// day, a month, or last week on the timesheet and the cost dashboard.
 //
 // It is a component rather than two loose helpers for one reason, and it is
 // not tidiness. The two labels are different lengths, so a button that shrinks
 // to fit is a different width in each state. On the cost dashboard, the
 // calendar and the week extras it sits between the two stepper arrows, so
-// pressing back grows the label from "This week" to "Go to current week", the
+// pressing back grows the label from "Last week" to "Go to last week", the
 // row grows with it, and the arrow that was under the pointer has moved. Going
 // back four weeks is four presses in four different places.
 //

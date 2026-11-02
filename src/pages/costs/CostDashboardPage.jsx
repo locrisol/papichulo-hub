@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
 import { fmtMoney, num, fmtPct, namesList } from '@/lib/format'
-import { todayISO, weekStartOf, weekDates, shortDate, addDays, DAY_NAMES } from '@/lib/dates'
+import { todayISO, weekStartOf, weekDates, shortDate, addDays, DAY_NAMES, lastWeekStart } from '@/lib/dates'
 import { resolveTarget, statusFor, targetInForce } from '@/lib/costTargets'
 import { reportFigures } from '@/lib/weeklyReport'
 import { fromEarlierWeeks } from '@/lib/invoiceClaims'
@@ -142,7 +142,10 @@ export default function CostDashboardPage() {
 
     const isManager = can(user, RESTAURANT_CONFIG)
 
-    const [weekStart, setWeekStart] = useState(weekStartOf(todayISO()))
+    // Last week, the same as the Timesheet (his, 1 November 2026). A week's
+    // costs are read once it has finished; the one still running is only part
+    // of a week, and is one press of the arrow away.
+    const [weekStart, setWeekStart] = useState(lastWeekStart)
     const [pickerDate, setPickerDate] = useState(weekStart)
 
     // Kept as rows, because the day by day list needs the sales, and because
@@ -380,8 +383,9 @@ export default function CostDashboardPage() {
                         weekStart={weekStart}
                         jump={
                             <JumpButton
-                                isCurrent={isThisWeek}
-                                onClick={() => goToWeek(weekStartOf(todayISO()))}
+                                isCurrent={weekStart === lastWeekStart()}
+                                unit="lastWeek"
+                                onClick={() => goToWeek(lastWeekStart())}
                             />
                         }
                     />
