@@ -229,31 +229,7 @@ describe('going home sick part way through a day', () => {
         })
         expect(mail.html).toContain('1&nbsp;part&nbsp;day</span>&#32;sick')
         expect(mail.html).not.toContain('1&nbsp;day</span>&#32;sick')
-        expect(mail.html).toMatch(/>Off sick<\/span>&#32;<span[^>]*>part of the day<\/span>/)
-        expect(mail.text).toContain('off sick, part of the day')
-    })
-
-    // A mark cannot break. "At the other restaurant, part of the day" in one
-    // piece is wider than his phone gives the mail, and one line too wide is
-    // what makes the Gmail app shrink every box in it.
-    it('never makes a mark longer than the longest label', () => {
-        const looks = [...Object.values(AWAY_LOOK), ...Object.values(KIND_LOOK), BANK_LOOK]
-        const longest = Math.max(...looks.map(look => look.label.length))
-        const mail = timesheetEmail({
-            restaurantName: 'Point Campus',
-            periodStart: PERIOD,
-            people: personPeriod({
-                people: [aoife], entries, dates: DATES,
-                absences: [...homeSick(), {
-                    employee_id: 'e1', kind: 'lent', status: 'approved',
-                    starts_on: '2026-10-29', ends_on: '2026-10-29', can_work_from: '15:00:00',
-                }],
-            }),
-        })
-        const marks = [...mail.html.matchAll(/<span style="display:inline-block;[^"]*">([^<]*)<\/span>/g)]
-            .map(found => found[1])
-        expect(marks).toContain('At the other restaurant')
-        for (const words of marks) expect(words.length).toBeLessThanOrEqual(longest)
+        expect(mail.text).toContain('1 part day off sick')
     })
 
     // The parity test hands both copies the same rows, so it cannot see this:
@@ -281,15 +257,6 @@ describe('a clock in with no clock out', () => {
         expect(day.hours).toBe(0)
     })
 
-    it('says so in the mail', () => {
-        const mail = timesheetEmail({
-            restaurantName: 'Point Campus',
-            periodStart: PERIOD,
-            people: personPeriod({ people: [aoife], entries: [...entries, ...half], absences: [], dates: DATES }),
-        })
-        expect(mail.html).toContain('Clock in 09:00:00, no clock out')
-        expect(mail.text).toContain('clock in 09:00:00, no clock out')
-    })
 })
 
 describe('a trial and a training day', () => {
@@ -481,18 +448,43 @@ describe('the mail itself', () => {
         expect(mail.text).not.toMatch(/roster|rostered|scheduled/i)
     })
 
-    it('carries the times to the second', () => {
-        expect(built().html).toContain('09:26:07')
-        expect(built().text).toContain('17:34:05')
+    // His, 2 November 2026: the mail does not need the breakdown, only the
+    // PDF. The times, his comments and a clock in with no clock out are all
+    // on the PDF's days (timesheetPdf.test).
+    it('leaves each person\'s days to the PDF', () => {
+        const half = [shift({ employee_id: 'e1', work_date: '2026-10-28', starts_at: '09:00:00', ends_at: null, hours: null })]
+        const mail = built({ people: period({ entries: [...entries, ...half] }), paper: true })
+        for (const part of [mail.html, mail.text]) {
+            expect(part).not.toContain('09:26:07')
+            expect(part).not.toContain('Stayed to close, fridge delivery late')
+            expect(part).not.toContain('no clock out')
+            expect(part).toContain("Each person's days, with the clock times and comments, are in the PDF attached.")
+        }
     })
 
-    it('carries his comment as typed', () => {
-        expect(built().html).toContain('Stayed to close, fridge delivery late')
-        expect(built().text).toContain('Stayed to close, fridge delivery late')
+    it('only says the days are in the PDF when there is one', () => {
+        expect(built().html).not.toContain('PDF attached')
+        expect(built().text).not.toContain('PDF attached')
     })
 
-    it('names the bank holiday on the day it falls', () => {
-        expect(built().html).toContain('Bank holiday')
+    // The send knows whether there is a PDF, and the mail is only right about
+    // where the days went if it is told.
+    it('is told by the send whether the PDF is on it', () => {
+        const source = readFileSync('supabase/functions/weekly-report-email/index.ts', 'utf8')
+        expect(source).toMatch(/timesheetEmail\(\{[\s\S]*?paper: Boolean\(attachment\),[\s\S]*?\}\)/)
+    })
+
+    // His pick of three, 2 November 2026: the two things the table cannot say.
+    it('says the weeks and what Worked leaves out, and nothing more', () => {
+        const top = built().html.match(/padding:16px 0 0;">([^<]*)<\/div>/)
+        expect(top?.[1].replace(/&#32;/g, ' ').trim()).toBe(
+            'Week 1 is 25 to 31 October and week 2 is 1 to 7 November. Bank holiday and holiday hours are not in Worked.',
+        )
+        expect(built().html).toContain('Sent from the Papi Chulo Hub.&#32;Hours only, not pay.')
+    })
+
+    it('names the week of the bank holiday in its heading', () => {
+        expect(built().html).toContain('Bank hol.<br />Week&nbsp;1</th>')
     })
 
     it('says it is a pay period of two weeks', () => {
@@ -507,22 +499,40 @@ describe('the mail itself', () => {
         expect(html).toContain('Everybody')
     })
 
-    it('says the Sundays under the name and in the line under the band', () => {
+    // A column of their own at the end, as in the PDF (his, 2 November 2026),
+    // with no total: a count added across people is paid on by nobody.
+    it('counts the Sundays in a column of their own', () => {
         const html = built().html
-        expect(html).toContain('<span style="white-space:nowrap;">1</span>&#32;Sunday</span>')
-        expect(html).toContain('1 Sunday worked')
+        expect(html).toContain('>Sun&shy;days</th></tr>')
+        expect(html).toMatch(/>\s*Aoife\s*<\/td>(?:(?!<\/tr>)[\s\S])*>1<\/td><\/tr>/)
+        expect(html).not.toContain('Sunday</span>')
         expect(built().text).toContain('1 Sunday worked')
     })
 
-    it('gives the bank holiday hours under the week they fell in', () => {
-        const mail = built()
-        expect(mail.html).toMatch(/>Bank holiday<\/td>/)
-        expect(mail.text).toContain('    Bank holiday 5.25 h')
+    it('says which week the bank holiday hours fell in', () => {
+        const text = built().text
+        expect(text).toContain('Bank holiday 5.25 (week 1)')
+        expect(text).toContain('5.25 on the bank holiday (week 1)')
     })
 
-    it('says Worked leaves the bank holiday out', () => {
-        expect(built().html).toContain('without any hours worked on a bank holiday')
-        expect(built().html).not.toContain('Bank holiday hours are included in Worked')
+    // Christmas 2027 is a Saturday, so St Stephen's Day opens the next week.
+    it('puts the bank holiday hours one above the other when each week has one', () => {
+        const XMAS = '2027-12-19'
+        const mail = timesheetEmail({
+            restaurantName: 'Point Campus',
+            periodStart: XMAS,
+            people: personPeriod({
+                people: [aoife], absences: [],
+                dates: Array.from({ length: 14 }, (_, i) => addDays(XMAS, i)),
+                entries: [
+                    shift({ employee_id: 'e1', work_date: '2027-12-25', starts_at: '10:00:00', ends_at: '15:00:00', hours: 5 }),
+                    shift({ employee_id: 'e1', work_date: '2027-12-26', starts_at: '10:00:00', ends_at: '16:00:00', hours: 6 }),
+                ],
+            }),
+        })
+        expect(mail.html).toContain('>Bank hol.</th>')
+        expect(mail.html).toContain('>5.00<br />6.00</td>')
+        expect(mail.text).toContain('Bank holiday 11.00 (week 1 5.00, week 2 6.00)')
     })
 
     it('escapes whatever somebody typed', () => {
@@ -544,13 +554,13 @@ describe('the mail itself', () => {
         }
     })
 
-    // A phone lays a table out at the width of its widest unbreakable thing.
-    // width="100%" on the name is what stops it being the name, and the figure
-    // columns are width="1%" and nowrap so they are as narrow as a figure.
-    it('lets the name column take the leftover width and pins the figures', () => {
+    // On a computer the figures sat in a heap on the right (his, 2 November
+    // 2026). Each figure column asks for an even share now, and a share never
+    // holds a phone wider than its figures. A width in pixels would.
+    it('spreads the figure columns across the width', () => {
         const html = built().html
-        expect(html).toContain('width="100%"')
-        expect(html).toContain('width="1%"')
+        expect(html.match(/<th width="14%"/g)).toHaveLength(5)
+        expect(html).toContain('<th width="30%"')
         expect(html).not.toMatch(/width="\d{3}"/)
     })
 
@@ -575,7 +585,7 @@ describe('the mail itself', () => {
     // own font.
     it('names the font on every table inside the card', () => {
         const tables = built().html.match(/<table[^>]*>/g).slice(1)
-        expect(tables.length).toBeGreaterThan(3)
+        expect(tables.length).toBeGreaterThan(1)
         for (const table of tables) expect(table).toContain('font-family:')
     })
 
@@ -597,13 +607,6 @@ describe('the mail itself', () => {
         const mail = built({ comment: 'Two corrections \r\nin week two' })
         expect(mail.html).toContain('Two corrections<br />in week two')
         expect(mail.text).toContain('Two corrections\nin week two')
-    })
-
-    it('keeps the line breaks in a comment on a day', () => {
-        const said = [{ employee_id: 'e1', work_date: '2026-10-28', note: 'Swapped late \nwith Cathal' }]
-        const mail = built({ people: period({ entries: [...entries, ...said] }) })
-        expect(mail.html).toContain('Swapped late<br />with Cathal')
-        expect(mail.text).toContain('      Swapped late\n      with Cathal')
     })
 
     // A pasted link is one word that cannot break, and it would hold the mail
@@ -635,17 +638,16 @@ describe('the mail itself', () => {
                 }],
             }),
         })
-        expect(mail.html).toContain('Off sick')
         expect(mail.html).toContain('1&nbsp;day</span>&#32;sick')
-        expect(mail.text).toContain('off sick')
+        expect(mail.text).toContain('1 day off sick')
     })
 })
 
 // His phone gives the mail 307px, and a mail any wider is one the Gmail app
 // scrambles from top to bottom. A name and five columns of figures came to
 // 362px with a team's three figure totals. The bank holiday column only comes
-// when somebody has bank holiday hours, and only then do the two weeks share a
-// column.
+// on a fortnight with a bank holiday, and only then do the two weeks share a
+// column. The headings that are wider than their figures may break.
 describe('the summary fits a phone', () => {
     const summaryOf = html => {
         const at = html.indexOf('>Name</th>')
@@ -659,7 +661,7 @@ describe('the summary fits a phone', () => {
         const lines = inner
             .replace(/<span style="white-space:nowrap;">([^<]*)<\/span>/g, (_, words) => words.replace(/ /g, '&nbsp;'))
             .replace(/<br \/>|<div[^>]*>|<\/div>/g, '\n')
-            .replace(/&#32;/g, ' ')
+            .replace(/&#32;|&shy;/g, ' ')
             .replace(/<[^>]*>/g, '')
             .replace(/&nbsp;/g, '_')
             .replace(/&[a-z0-9#]+;/gi, 'x')
@@ -718,7 +720,7 @@ describe('the summary fits a phone', () => {
 
     it('keeps the two weeks side by side when there is no bank holiday column', () => {
         const plain = mail(later(entries), LATER)
-        expect(headCells(plain)).toHaveLength(5)
+        expect(headCells(plain)).toHaveLength(6)
         expect(plain).toContain('Week&nbsp;1</th>')
         expect(plain).toContain('Week&nbsp;2</th>')
         expect(plain).not.toContain('Week&nbsp;1<br />Week&nbsp;2')
@@ -726,34 +728,35 @@ describe('the summary fits a phone', () => {
 
     it('has the bank holiday column on a fortnight with bank holiday hours', () => {
         const html = mail(entries)
-        expect(headCells(html)).toHaveLength(5)
+        expect(headCells(html)).toHaveLength(6)
         expect(html).toContain('Bank hol.')
     })
 
-    // Measured in headless Chrome, 34 characters across came to 300px with
-    // Training marks, a bank holiday and three figure totals, against the
-    // 307px his phone gives. The report's own rule is the model: sixteen
+    // Measured in headless Chrome on 2 November 2026, with Training marks, a
+    // bank holiday, three figure totals and the Sundays column, these two
+    // fortnights came to 288px against the 307px his phone gives, and to 35
+    // characters across. The report's own rule is the model: sixteen
     // characters for one figure that cannot wrap.
-    it('is never more than 34 characters across', () => {
+    it('is never more than 35 characters across', () => {
         const html = mail([...trained, ...busy])
         expect(html).toContain('Bank hol.')
         expect(html).toContain('Training&#32;<span style="white-space:nowrap;">12.50&nbsp;h</span>')
         const widest = across(html)
         // Found something before saying anything about what was found.
-        expect(widest).toHaveLength(5)
+        expect(widest).toHaveLength(6)
         expect(Math.min(...widest)).toBeGreaterThan(0)
-        expect(widest.reduce((t, n) => t + n, 0)).toBeLessThanOrEqual(34)
+        expect(widest.reduce((t, n) => t + n, 0)).toBeLessThanOrEqual(35)
     })
 
     // The other shape: no bank holiday, so the two weeks get a column each.
-    it('is never more than 34 characters across without a bank holiday', () => {
+    it('is never more than 35 characters across without a bank holiday', () => {
         const html = mail(later([...trained, ...busy]), LATER)
         expect(html).not.toContain('Bank hol.')
         expect(html).toContain('Training&#32;<span style="white-space:nowrap;">12.50&nbsp;h</span>')
         const widest = across(html)
-        expect(widest).toHaveLength(5)
+        expect(widest).toHaveLength(6)
         expect(Math.min(...widest)).toBeGreaterThan(0)
-        expect(widest.reduce((t, n) => t + n, 0)).toBeLessThanOrEqual(34)
+        expect(widest.reduce((t, n) => t + n, 0)).toBeLessThanOrEqual(35)
     })
 
     it('lets a mark break between its words and its figure', () => {

@@ -687,6 +687,9 @@ async function sendTimesheet({
         test: Boolean(test),
         permissions: permissionList(team || [], today, restaurant?.roster_rules?.permissionGrace || DEFAULT_GRACE),
         today,
+        // Each person's days are only in the PDF now, and the mail says so
+        // when there is one.
+        paper: Boolean(attachment),
     })
 
     // **The paper the browser drew, fetched with the service role.**
