@@ -3,7 +3,7 @@
 // Two jobs: stand a component up inside the providers the app always gives it,
 // and answer for the database without touching it.
 
-import { render } from '@testing-library/react'
+import { render, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { vi } from 'vitest'
 
@@ -108,6 +108,20 @@ export function mockSupabase(tables = {}) {
 }
 
 // ── Rendering ────────────────────────────────────────────────────────────────
+
+// The page coming back into view, again and again until `check` passes.
+//
+// A screen listens for focus from an effect, and when the machine is busy
+// React runs that effect a moment after the words a test waited for are on
+// screen. A single focus sent in that moment is heard by nobody, and the test
+// waits out its five seconds: that is how a stock take test failed the checks
+// on GitHub after a merge on 2 November 2026, with nothing wrong in the page.
+export async function comeBackUntil(check) {
+    await waitFor(() => {
+        window.dispatchEvent(new Event('focus'))
+        check()
+    })
+}
 
 // Anything with a Link or a useParams in it needs a router, and a component
 // that does not is unharmed by having one.

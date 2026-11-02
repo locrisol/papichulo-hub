@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Route, Routes } from 'react-router-dom'
-import { makeQuery, mockSupabase, renderWithRouter } from '@/test/helpers'
+import { makeQuery, mockSupabase, renderWithRouter, comeBackUntil } from '@/test/helpers'
 
 // Working through a round on the phone: tick, untick, Submit, and what can
 // never be changed. Invented list and people.
@@ -271,8 +271,7 @@ describe('several people on one list', () => {
         open()
         expect(await screen.findByText('1 of 3 done')).toBeInTheDocument()
         saved.push(CIARA)
-        window.dispatchEvent(new Event('focus'))
-        expect(await screen.findByText(/Done by Ciara/)).toBeInTheDocument()
+        await comeBackUntil(() => expect(screen.getByText(/Done by Ciara/)).toBeInTheDocument())
         expect(screen.getByText('2 of 3 done')).toBeInTheDocument()
     })
 

@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Route, Routes } from 'react-router-dom'
-import { heldQuery, makeQuery, renderWithRouter, tableOf, COST_VIEWS, costRowsOf } from '@/test/helpers'
+import { heldQuery, makeQuery, renderWithRouter, tableOf, COST_VIEWS, costRowsOf, comeBackUntil } from '@/test/helpers'
 
 // Counting a Point Campus stock take. Invented products and prices.
 
@@ -174,9 +174,7 @@ describe('somebody else counting at the same time', () => {
         expect(await screen.findByText('0/1 products counted')).toBeInTheDocument()
 
         tables.stock_take_lines.push(theirs)
-        fireEvent(window, new Event('focus'))
-
-        expect(await screen.findByText('1/1 products counted')).toBeInTheDocument()
+        await comeBackUntil(() => expect(screen.getByText('1/1 products counted')).toBeInTheDocument())
     })
 
     it('takes what they counted off Uncounted only', async () => {
@@ -272,9 +270,7 @@ describe('a count closed while somebody is counting', () => {
         // What the database gives an employee once it is closed.
         tables.stock_takes = []
         tables.stock_take_lines = []
-        fireEvent(window, new Event('focus'))
-
-        expect(await screen.findByText('This stock take is closed, so the entries cannot be changed.')).toBeInTheDocument()
+        await comeBackUntil(() => expect(screen.getByText('This stock take is closed, so the entries cannot be changed.')).toBeInTheDocument())
         expect(screen.getByText('1/1 products counted')).toBeInTheDocument()
     })
 })
