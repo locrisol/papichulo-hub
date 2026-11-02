@@ -24,7 +24,8 @@
 // **His comments go out as typed.** They are the one thing on the week he wrote
 // himself, and they are why he asked for this mail at all: "why this goes
 // beyond the real time, why this is shorter". Nothing is added to them and
-// nothing is inferred from them.
+// nothing is inferred from them. Since 2 November 2026 they go in the PDF
+// attached, with each person's days, and the mail is the summary alone.
 
 import { tidy, escapeHtml, escapeLines, page, WIDTH, SIDE } from './email.js'
 
@@ -102,7 +103,8 @@ export function periodWords(periodStart) {
     return `${left} to ${to.getUTCDate()} ${MONTHS[to.getUTCMonth()]} ${to.getUTCFullYear()}`
 }
 
-export function weekWords(weekStart) {
+// The year is left off where the title above already says it.
+export function weekWords(weekStart, { year = true } = {}) {
     const from = new Date(`${String(weekStart).slice(0, 10)}T00:00:00Z`)
     if (isNaN(from.getTime())) return String(weekStart ?? '')
     const to = new Date(from.getTime() + 6 * 86400000)
@@ -110,7 +112,7 @@ export function weekWords(weekStart) {
     const left = same
         ? `${from.getUTCDate()}`
         : `${from.getUTCDate()} ${MONTHS[from.getUTCMonth()]}`
-    return `${left} to ${to.getUTCDate()} ${MONTHS[to.getUTCMonth()]} ${to.getUTCFullYear()}`
+    return `${left} to ${to.getUTCDate()} ${MONTHS[to.getUTCMonth()]}${year ? ` ${to.getUTCFullYear()}` : ''}`
 }
 
 const row = (inner, extra = '') =>
@@ -500,6 +502,7 @@ export function permissionList(team = [], today, grace = DEFAULT_GRACE) {
 
 export function timesheetEmail({
     restaurantName, periodStart, people = [], test = false, comment = '', permissions = null, today = null,
+    paper = false,
 }) {
     const period = periodWords(periodStart)
     const weeks = [weekWords(periodStart), weekWords(addDays(periodStart, 7))]
@@ -510,13 +513,21 @@ export function timesheetEmail({
             people.reduce((t, p) => t + p.week[1], 0),
         ],
         worked: people.reduce((t, p) => t + p.worked, 0),
+        weekBank: [
+            people.reduce((t, p) => t + p.weekBank[0], 0),
+            people.reduce((t, p) => t + p.weekBank[1], 0),
+        ],
         bankHoliday: people.reduce((t, p) => t + p.bankHoliday, 0),
         holiday: people.reduce((t, p) => t + p.holiday, 0),
     }
-    // A fortnight with a bank holiday in it has the column, worked or not, so
-    // a dash says nobody worked it rather than leaving her to wonder.
-    const bank = Array.from({ length: 14 }, (_, i) => addDays(periodStart, i)).some(d => bankHolidayOn(d))
-        || people.some(person => person.bankHoliday > 0)
+    // The weeks with a bank holiday in them, so the column can say which week
+    // its hours fell in (his, 2 November 2026). A fortnight with one has the
+    // column, worked or not, so a dash says nobody worked it rather than
+    // leaving her to wonder.
+    const bankWeeks = [0, 1].filter(w => (
+        Array.from({ length: 7 }, (_, i) => addDays(periodStart, w * 7 + i)).some(d => bankHolidayOn(d))
+        || people.some(person => person.weekBank[w] > 0)
+    ))
 
     const subject = `${test ? '[Test] ' : ''}Hours, ${period}${restaurantName ? `, ${restaurantName}` : ''}`
 
@@ -545,28 +556,22 @@ export function timesheetEmail({
     </td></tr>
 
     ${row(`<div style="font-size:14px;line-height:1.5;color:${MUTED};padding:16px 0 0;">
-        Clock in and clock out times are as the till recorded them, to the second.&#32;Worked is
-        week 1 plus week 2, without any hours worked on a bank holiday, which are given on their
-        own.&#32;Holiday hours are separate and not included in Worked.&#32;The Sundays each
-        person worked are counted under their name.&#32;Sick days and unpaid leave are counted in
-        days, as no hours are recorded for them.&#32;Part of a day is counted as a part day, and any
-        hours worked that day are included in Worked.&#32;Hours only, not pay.
+        Week 1 is ${escapeHtml(weekWords(periodStart, { year: false }))} and week 2 is
+        ${escapeHtml(weekWords(addDays(periodStart, 7), { year: false }))}.&#32;Bank holiday and
+        holiday hours are not in Worked.${paper ? `&#32;Each person's days, with the clock times and
+        comments, are in the PDF attached.` : ''}
     </div>`)}
 
     ${comment ? row(`<div style="font-size:14px;line-height:1.5;color:${INK};padding:12px 14px;margin-top:14px;background:${CREAM};border-left:3px solid ${DARK};word-break:break-word;overflow-wrap:anywhere;">
         ${escapeLines(comment)}
     </div>`) : ''}
 
-    ${row(summary(people, T, bank), 'padding-top:18px;')}
+    ${row(summary(people, T, bankWeeks), 'padding-top:18px;')}
 
     ${permissions ? row(permissionsBlock(permissions, today)) : ''}
 
-    ${people.map(person => personBlock(person, weeks)).join('')}
-
-    ${row(legend(), 'padding-top:20px;')}
-
-    ${row(`<div style="border-top:1px solid ${BORDER};margin-top:16px;padding:14px 0 20px;font-size:12px;line-height:1.5;color:${MUTED};">
-        Sent from the Papi Chulo Hub.&#32;Holiday hours are the hours booked, split evenly across
+    ${row(`<div style="border-top:1px solid ${BORDER};margin-top:22px;padding:14px 0 20px;font-size:12px;line-height:1.5;color:${MUTED};">
+        Sent from the Papi Chulo Hub.&#32;Hours only, not pay.&#32;Holiday hours are the hours booked, split evenly across
         the days of the holiday.&#32;Public holiday entitlement is not calculated here.
     </div>`)}
 
@@ -574,7 +579,7 @@ export function timesheetEmail({
 </td></tr>
 </table>`, { subject, preheader: period }))
 
-    return { subject, html, text: asText({ restaurantName, period, weeks, people, T, test, comment, permissions, today }) }
+    return { subject, html, text: asText({ restaurantName, period, weeks, people, T, test, comment, permissions, today, paper }) }
 }
 
 function notice(ink, background, title, words) {
@@ -584,16 +589,6 @@ function notice(ink, background, title, words) {
         </span>
         <span style="font-size:13px;color:${ink};">&#32;${escapeHtml(words)}</span>
     </td></tr>`
-}
-
-// One mark, used everywhere: a word in a colour, on a pale ground of the same
-// colour. See AWAY_LOOK for why it is a pair rather than the single colour the
-// screen uses.
-function mark(look, words) {
-    return '<span style="display:inline-block;font-size:10px;font-weight:700;letter-spacing:.04em;'
-        + 'text-transform:uppercase;padding:1px 5px;border-radius:3px;'
-        + `background:${look.wash};color:${look.ink};white-space:nowrap;">`
-        + `${escapeHtml(words || look.label)}</span>`
 }
 
 // The same mark with a figure in it, allowed to break between the words and
@@ -614,14 +609,12 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`
 // A count and what it counts, kept together: "1 part day" never splits.
 const together = (n, word) => plural(n, word).replace(/ /g, '&nbsp;')
 
-// What goes under a person's name: everything that is not hours.
+// What goes under a person's name: everything that is not hours or Sundays.
 //
-// Not a column of its own. The table already carries five figures and a name,
-// and on a phone a sixth number column would floor the whole table at a width
-// it does not have. These are rare, so they sit where the person is named.
+// Not columns of their own: they are rare, and on a phone every column more
+// floors the whole table at a width it does not have.
 function marksFor(person) {
     const out = []
-    if (person.sundays > 0) out.push(figureMark(SUNDAY_LOOK, '', String(person.sundays), person.sundays === 1 ? 'Sunday' : 'Sundays'))
     if (person.trial > 0) out.push(figureMark(KIND_LOOK.trial, 'Trial', `${hours(person.trial)}&nbsp;h`))
     if (person.training > 0) out.push(figureMark(KIND_LOOK.training, 'Training', `${hours(person.training)}&nbsp;h`))
     if (person.sickDays > 0) out.push(figureMark(AWAY_LOOK.sick, '', together(person.sickDays, 'day'), 'sick'))
@@ -633,62 +626,95 @@ function marksFor(person) {
         : ''
 }
 
-// The whole team in one table, before anybody reads a single day.
+// What each figure column is washed in, so two columns side by side are never
+// the same colour (his, 2 November 2026). The colours the Timesheet screen and
+// the PDF use: the weeks cream, Worked green, the bank holiday amber, holiday
+// blue. Two weeks apart take two creams, a pair that is still two columns.
+const WASH = {
+    week: [CREAM, '#EEEAE1'],
+    worked: '#E6F1EA',
+    bank: BANK_LOOK.wash,
+    holiday: AWAY_LOOK.holiday.wash,
+    sundays: '#ffffff',
+}
+
+// The share of the width each figure column asks for, and the name has the
+// rest. See summary.
+const SHARE = 14
+
+// The whole team in one table. **The payroll can be done from this alone**,
+// and each person's days are in the PDF (his, 2 November 2026: the mail does
+// not need them).
 //
-// **The payroll can be done from this alone.** Everything below it is for the
-// question that comes back, not for the run itself.
+// **Spread on a computer.** Every figure column used to be as narrow as its
+// figure, with the name taking the rest, so on a computer the figures sat in
+// a heap on the right. Each one asks for an even share now. A share is a
+// wish, not a floor: on a phone a column still comes down to its figure.
 //
-// **Narrow enough for his phone, which gives the mail 307px.** A name and five
-// columns of figures came to 362px with a team's three figure totals, and a
-// mail wider than the phone is one the Gmail app scrambles from top to bottom.
-// So the Bank hol. column is only there on a fortnight with a bank holiday,
-// and only then, with one figure column more, do the two weeks share a
-// column, one above the other. Without it the two weeks side by side still
-// come to 34 characters, the same as the measured bank holiday shape.
-function summary(people, T, bank) {
-    const head = label => '<th style="font-size:10px;letter-spacing:.05em;text-transform:uppercase;'
-        + `color:#ffffff;background:${DARK};padding:7px 3px;text-align:right;font-weight:700;">${label}</th>`
+// **Narrow enough for his phone, which gives the mail 307px.** A mail any
+// wider is one the Gmail app scrambles from top to bottom. So the Bank hol.
+// column is only there on a fortnight with a bank holiday, and only then do
+// the two weeks share a column, one above the other. The headings are what
+// floor most columns, which is why they are small and may break.
+function summary(people, T, bankWeeks) {
+    const bank = bankWeeks.length > 0
+    const head = (label, wash) => `<th width="${SHARE}%" style="font-size:9px;letter-spacing:.03em;`
+        + `text-transform:uppercase;color:#ffffff;background:${DARK};border-bottom:3px solid ${wash};`
+        + `padding:7px 2px;text-align:center;font-weight:700;">${label}</th>`
 
     const weekHeads = bank
-        ? head('Week&nbsp;1<br />Week&nbsp;2')
-        : head('Week&nbsp;1') + head('Week&nbsp;2')
+        ? head('Week&nbsp;1<br />Week&nbsp;2', WASH.week[0])
+        : head('Week&nbsp;1', WASH.week[0]) + head('Week&nbsp;2', WASH.week[1])
     const weekCells = (cell, [one, two], weight) => (bank
-        ? cell(`${hours(one)}<br />${hours(two)}`, weight)
-        : cell(hours(one), weight) + cell(hours(two), weight))
+        ? cell(`${hours(one)}<br />${hours(two)}`, WASH.week[0], weight)
+        : cell(hours(one), WASH.week[0], weight) + cell(hours(two), WASH.week[1], weight))
 
-    // width="1%" and nowrap are one thing: as narrow as the figure, and the
-    // figure never breaks. width="100%" on the name is what stops it wrapping,
-    // because a table shares its surplus rather than handing it to whichever
-    // column asked to be small.
-    const fig = (value, weight = '400') => '<td width="1%" style="padding:7px 3px;'
-        + `border-bottom:1px solid ${BORDER};text-align:right;white-space:nowrap;`
+    // The bank holiday says which week it fell in. With one in the fortnight,
+    // which is nearly always, the heading names the week; with one in each,
+    // the hours sit one above the other like the weeks beside them.
+    const bankHead = bankWeeks.length === 1
+        ? `Bank hol.<br />Week&nbsp;${bankWeeks[0] + 1}`
+        : 'Bank hol.'
+    const dash = value => (value > 0 ? hours(value) : '&mdash;')
+    const bankValue = split => (bankWeeks.length === 2
+        ? `${dash(split[0])}<br />${dash(split[1])}`
+        : dash(split[0] + split[1]))
+
+    // nowrap so a figure never breaks, and centred in its column the way the
+    // PDF has them.
+    const fig = (value, wash, weight = '400') => `<td width="${SHARE}%" style="padding:7px 2px;`
+        + `background:${wash};border-bottom:1px solid ${BORDER};text-align:center;white-space:nowrap;`
         + `font-size:13px;font-weight:${weight};">${value}</td>`
+    const name = `${100 - SHARE * 5}%`
 
     const rows = people.map(person => `<tr>
-        <td width="100%" style="padding:7px 3px 7px 6px;border-bottom:1px solid ${BORDER};font-size:13px;font-weight:600;">
+        <td width="${name}" style="padding:7px 3px 7px 6px;border-bottom:1px solid ${BORDER};font-size:13px;font-weight:600;">
             ${escapeHtml(person.name)}${marksFor(person)}
         </td>
         ${weekCells(fig, person.week)}
-        ${fig(hours(person.worked), '700')}
-        ${bank ? fig(person.bankHoliday > 0 ? hours(person.bankHoliday) : '&mdash;') : ''}
-        ${fig(person.holiday > 0 ? hours(person.holiday) : '&mdash;')}
+        ${fig(hours(person.worked), WASH.worked, '700')}
+        ${bank ? fig(bankValue(person.weekBank), WASH.bank) : ''}
+        ${fig(dash(person.holiday), WASH.holiday)}
+        ${fig(person.sundays > 0 ? String(person.sundays) : '&mdash;', WASH.sundays)}
     </tr>`).join('')
 
-    const last = (value, weight = '700') => '<td width="1%" style="padding:8px 3px;'
-        + `border-top:2px solid ${DARK};text-align:right;white-space:nowrap;`
+    const last = (value, wash, weight = '700') => `<td width="${SHARE}%" style="padding:8px 2px;`
+        + `background:${wash};border-top:2px solid ${DARK};text-align:center;white-space:nowrap;`
         + `font-size:13px;font-weight:${weight};">${value}</td>`
 
+    // No Sundays on the last line: each person's count added across people is
+    // not a figure anybody is paid on. The PDF leaves it out too.
     return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
         style="border-collapse:collapse;font-family:${FONT};">
         <tr>
-            <th width="100%" style="font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#ffffff;background:${DARK};padding:7px 3px 7px 6px;text-align:left;font-weight:700;">Name</th>
-            ${weekHeads}${head('Worked')}${bank ? head('Bank hol.') : ''}${head('Holiday')}
+            <th width="${name}" style="font-size:9px;letter-spacing:.03em;text-transform:uppercase;color:#ffffff;background:${DARK};padding:7px 3px 7px 6px;text-align:left;font-weight:700;">Name</th>
+            ${weekHeads}${head('Worked', WASH.worked)}${bank ? head(bankHead, WASH.bank) : ''}${head('Holi&shy;day', WASH.holiday)}${head('Sun&shy;days', WASH.sundays)}
         </tr>
         ${rows}
         <tr>
-            <td width="100%" style="padding:8px 3px 8px 6px;border-top:2px solid ${DARK};font-size:13px;font-weight:700;">Everybody</td>
-            ${weekCells(last, T.week, '400')}${last(hours(T.worked))}
-            ${bank ? last(hours(T.bankHoliday)) : ''}${last(hours(T.holiday))}
+            <td width="${name}" style="padding:8px 3px 8px 6px;border-top:2px solid ${DARK};font-size:13px;font-weight:700;">Everybody</td>
+            ${weekCells(last, T.week, '400')}${last(hours(T.worked), WASH.worked)}
+            ${bank ? last(bankValue(T.weekBank), WASH.bank) : ''}${last(hours(T.holiday), WASH.holiday)}${last('', WASH.sundays)}
         </tr>
     </table>`
 }
@@ -731,149 +757,21 @@ function permissionGroups(list) {
         .filter(([, them]) => them.length)
 }
 
-// One person: a band with their name and what the period came to, then their
-// fourteen days split at the week.
-//
-// **The band runs the full width of the card**, past the side padding, which is
-// the whole reason it reads as a line between one person and the next.
-function personBlock(person, weeks) {
-    const apart = [
-        person.bankHoliday > 0 ? `${hours(person.bankHoliday)} on the bank holiday` : '',
-        person.sundays > 0 ? `${plural(person.sundays, 'Sunday')} worked` : '',
-        person.holiday > 0 ? `${hours(person.holiday)} holiday` : '',
-        person.trial > 0 ? `${hours(person.trial)} on trial shifts` : '',
-        person.training > 0 ? `${hours(person.training)} training` : '',
-        person.sickDays > 0 ? `${plural(person.sickDays, 'day')} off sick` : '',
-        person.sickParts > 0 ? `${plural(person.sickParts, 'part day')} off sick` : '',
-        person.unpaidDays > 0 ? `${plural(person.unpaidDays, 'day')} unpaid` : '',
-        person.unpaidParts > 0 ? `${plural(person.unpaidParts, 'part day')} unpaid` : '',
-    ].filter(Boolean).join(' &middot; ')
-
-    const band = `<tr><td style="background:${DARK};padding:10px ${SIDE}px;">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="font-family:${FONT};">
-            <tr>
-                <td width="100%" style="font-size:15px;font-weight:700;color:#ffffff;">
-                    ${escapeHtml(person.name)}
-                </td>
-                <td width="1%" style="text-align:right;white-space:nowrap;font-size:15px;font-weight:700;color:#ffffff;">
-                    ${hours(person.worked)} h
-                </td>
-            </tr>
-            <tr><td colspan="2" style="font-size:11px;color:#A9C0B2;padding-top:3px;">
-                Week 1 ${hours(person.week[0])}&#32;&middot;&#32;Week 2 ${hours(person.week[1])}${apart ? `&#32;&middot;&#32;${apart}` : ''}
-            </td></tr>
-        </table>
-    </td></tr>`
-
-    const halves = [0, 1].map(w => {
-        const mine = person.days.filter(day => day.week === w)
-        const lines = mine.length
-            ? mine.map(day => dayLine(day)).join('')
-            : `<tr><td width="100%" style="padding:7px 0;border-top:1px solid ${BORDER};font-size:13px;color:${MUTED};">
-                Nothing worked this week
-            </td><td width="1%"></td></tr>`
-
-        return `<div style="font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:${MUTED};padding:14px 0 2px;">
-            Week ${w + 1}&#32;&middot;&#32;${escapeHtml(weeks[w])}
-        </div>
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-            style="border-collapse:collapse;font-family:${FONT};">
-            ${lines}
-            <tr>
-                <td width="100%" style="padding:7px 0 2px;border-top:1px solid ${DARK};font-size:13px;font-weight:700;">
-                    Week ${w + 1}
-                </td>
-                <td width="1%" style="padding:7px 0 2px;border-top:1px solid ${DARK};text-align:right;white-space:nowrap;font-size:13px;font-weight:700;">
-                    ${hours(person.week[w])} h
-                </td>
-            </tr>
-            ${person.weekBank[w] > 0 ? `<tr>
-                <td width="100%" style="padding:2px 0;font-size:13px;color:${BANK_LOOK.ink};">Bank holiday</td>
-                <td width="1%" style="padding:2px 0;text-align:right;white-space:nowrap;font-size:13px;color:${BANK_LOOK.ink};">${hours(person.weekBank[w])} h</td>
-            </tr>` : ''}
-        </table>`
-    }).join('')
-
-    return band + row(`<div style="padding-bottom:16px;">${halves}</div>`)
-}
-
-// One day. This is the one that used to vanish: no times, no comment, and the
-// filter threw the whole row away.
-function dayLine(day) {
-    const times = day.spans.map(span => {
-        const kind = span.kind && span.kind !== 'worked' && KIND_LOOK[span.kind]
-            ? `&#32;${mark(KIND_LOOK[span.kind])}`
-            : ''
-        return `<div style="font-size:13px;color:${INK};white-space:nowrap;">
-            ${escapeHtml(clock(span.starts_at))} to ${escapeHtml(clock(span.ends_at))}${kind}
-        </div>`
-    }).join('') + day.open.map(at => (
-        // Said rather than left out, and allowed to wrap: it is a sentence,
-        // and a line that cannot break is what makes a phone shrink the mail.
-        `<div style="font-size:13px;color:${INK};">
-            Clock in ${escapeHtml(clock(at))}, no clock out
-        </div>`
-    )).join('')
-
-    // A day that has times and is also one of the two counted kinds says so
-    // under the times, on its own line so it never widens the row on a phone.
-    // Without it the summary counted a day nobody could find.
-    const counted = times && day.away && COUNTED_DAYS.includes(day.away) ? awayLine(day) : ''
-
-    const body = (times && times + counted)
-        || (day.away && AWAY_LOOK[day.away]
-            ? awayLine(day)
-            : `<div style="font-size:13px;color:${MUTED};">Nothing worked</div>`)
-
-    // His own words, under the times they belong to and marked as his.
-    const said = day.notes.map(words => (
-        `<div style="font-size:13px;line-height:1.45;color:${INK};padding:4px 0 0 10px;border-left:3px solid ${BORDER};margin-top:4px;word-break:break-word;overflow-wrap:anywhere;">
-            ${escapeLines(words)}
-        </div>`
-    )).join('')
-
-    return `<tr>
-        <td width="100%" style="padding:7px 0;border-top:1px solid ${BORDER};vertical-align:top;">
-            <div style="font-size:13px;font-weight:600;color:${INK};">
-                ${escapeHtml(dayWords(day.date))}${day.bankHoliday ? `&#32;${mark(BANK_LOOK)}` : ''}
-            </div>
-            ${body}
-            ${said}
-        </td>
-        <td width="1%" style="padding:7px 0 7px 12px;border-top:1px solid ${BORDER};text-align:right;vertical-align:top;white-space:nowrap;font-size:13px;font-weight:600;color:${INK};">
-            ${day.hours > 0 ? `${hours(day.hours)} h` : ''}
-        </td>
-    </tr>`
-}
-
-// The mark for a day away. A part day says so after the mark rather than
-// inside it: a mark cannot break, and "At the other restaurant, part of the
-// day" in one piece is wider than a phone gives the mail.
-function awayLine(day) {
-    const part = day.part
-        ? `&#32;<span style="font-size:13px;color:${INK};">part of the day</span>`
-        : ''
-    return `<div style="padding-top:2px;">${mark(AWAY_LOOK[day.away])}${part}</div>`
-}
-
-// What every colour means, once, at the bottom.
-function legend() {
-    const looks = [
-        BANK_LOOK, AWAY_LOOK.holiday, AWAY_LOOK.sick, AWAY_LOOK.unpaid,
-        KIND_LOOK.trial, KIND_LOOK.training,
-    ]
-    return `<div style="border-top:1px solid ${BORDER};padding-top:12px;line-height:2.1;">
-        ${looks.map(look => mark(look)).join('&#32;')}
-    </div>`
-}
-
 // Typed text a line at a time, with nothing left at the end of a line.
 const typed = text => String(text ?? '').split(/\r?\n/).map(line => line.trimEnd())
+
+// Which week bank holiday hours fell in, for the plain text: "(week 2)", or
+// both weeks' share when each had one.
+function bankWhen(split) {
+    const weeks = [0, 1].filter(w => split[w] > 0)
+    if (weeks.length === 2) return ` (week 1 ${hours(split[0])}, week 2 ${hours(split[1])})`
+    return weeks.length ? ` (week ${weeks[0] + 1})` : ''
+}
 
 // The plain text half, for a reader that will not draw the other one. It says
 // the same things in the same order: anybody reading this instead of the HTML
 // should not be told less.
-function asText({ restaurantName, period, weeks, people, T, test, comment, permissions, today }) {
+function asText({ restaurantName, period, weeks, people, T, test, comment, permissions, today, paper }) {
     const lines = []
     if (test) lines.push('[Test] Sending this test does not mark the pay period as sent.', '')
     lines.push(`${restaurantName || 'Papi Chulo'}, hours, ${period}`, 'Pay period, two weeks', '')
@@ -883,10 +781,30 @@ function asText({ restaurantName, period, weeks, people, T, test, comment, permi
         `Week 1 (${weeks[0]}) ${hours(T.week[0])}`,
         `Week 2 (${weeks[1]}) ${hours(T.week[1])}`,
         `Worked ${hours(T.worked)} (without bank holiday hours)`,
-        `Bank holiday ${hours(T.bankHoliday)}`,
+        `Bank holiday ${hours(T.bankHoliday)}${bankWhen(T.weekBank)}`,
         `Holiday ${hours(T.holiday)}`,
         '',
     )
+
+    for (const person of people) {
+        const apart = [
+            person.bankHoliday > 0 ? `${hours(person.bankHoliday)} on the bank holiday${bankWhen(person.weekBank)}` : '',
+            person.holiday > 0 ? `${hours(person.holiday)} holiday` : '',
+            person.sundays > 0 ? `${plural(person.sundays, 'Sunday')} worked` : '',
+            person.trial > 0 ? `${hours(person.trial)} on trial shifts` : '',
+            person.training > 0 ? `${hours(person.training)} training` : '',
+            person.sickDays > 0 ? `${plural(person.sickDays, 'day')} off sick` : '',
+            person.sickParts > 0 ? `${plural(person.sickParts, 'part day')} off sick` : '',
+            person.unpaidDays > 0 ? `${plural(person.unpaidDays, 'day')} unpaid` : '',
+            person.unpaidParts > 0 ? `${plural(person.unpaidParts, 'part day')} unpaid` : '',
+        ].filter(Boolean).join(', ')
+
+        lines.push(
+            `${person.name}: worked ${hours(person.worked)} h (week 1 ${hours(person.week[0])}, week 2 ${hours(person.week[1])})`,
+            ...(apart ? [`  ${apart}`] : []),
+        )
+    }
+    lines.push('')
 
     if (permissions) {
         lines.push(`Permission to work, on ${dated(today)}`)
@@ -898,53 +816,7 @@ function asText({ restaurantName, period, weeks, people, T, test, comment, permi
         lines.push('')
     }
 
-    for (const person of people) {
-        const apart = [
-            person.bankHoliday > 0 ? `${hours(person.bankHoliday)} on the bank holiday` : '',
-            person.sundays > 0 ? `${plural(person.sundays, 'Sunday')} worked` : '',
-            person.holiday > 0 ? `${hours(person.holiday)} holiday` : '',
-            person.trial > 0 ? `${hours(person.trial)} on trial shifts` : '',
-            person.training > 0 ? `${hours(person.training)} training` : '',
-            person.sickDays > 0 ? `${plural(person.sickDays, 'day')} off sick` : '',
-            person.sickParts > 0 ? `${plural(person.sickParts, 'part day')} off sick` : '',
-            person.unpaidDays > 0 ? `${plural(person.unpaidDays, 'day')} unpaid` : '',
-            person.unpaidParts > 0 ? `${plural(person.unpaidParts, 'part day')} unpaid` : '',
-        ].filter(Boolean).join(', ')
-
-        lines.push(`${person.name}: ${hours(person.worked)} h${apart ? ` (${apart})` : ''}`)
-
-        for (const w of [0, 1]) {
-            lines.push(`  Week ${w + 1}, ${weeks[w]}`)
-            const mine = person.days.filter(day => day.week === w)
-            if (!mine.length) lines.push('    nothing worked this week')
-
-            for (const day of mine) {
-                const head = `    ${dayWords(day.date)}${day.bankHoliday ? ' (bank holiday)' : ''}`
-                const timed = day.spans.length + day.open.length
-                if (!timed) {
-                    const away = day.away && AWAY_LOOK[day.away]
-                    lines.push(`${head}: ${away ? awayWords(day).toLowerCase() : 'nothing worked'}`)
-                }
-                for (const span of day.spans) {
-                    const kind = span.kind && KIND_LOOK[span.kind]
-                        ? ` (${KIND_LOOK[span.kind].label.toLowerCase()})`
-                        : ''
-                    lines.push(`${head}: ${clock(span.starts_at)} to ${clock(span.ends_at)}${kind}  ${hours(span.hours)} h`)
-                }
-                for (const at of day.open) lines.push(`${head}: clock in ${clock(at)}, no clock out`)
-                if (timed && COUNTED_DAYS.includes(day.away)) {
-                    lines.push(`      ${awayWords(day).toLowerCase()}`)
-                }
-                for (const words of day.notes) {
-                    for (const line of typed(words)) lines.push(line ? `      ${line}` : '')
-                }
-            }
-            lines.push(`    Week ${w + 1} ${hours(person.week[w])} h`)
-            if (person.weekBank[w] > 0) lines.push(`    Bank holiday ${hours(person.weekBank[w])} h`)
-        }
-        lines.push('')
-    }
-
-    lines.push('Hours only, not pay. Times are as the till recorded them.')
+    if (paper) lines.push("Each person's days, with the clock times and comments, are in the PDF attached.")
+    lines.push('Hours only, not pay.')
     return lines.join('\n')
 }
