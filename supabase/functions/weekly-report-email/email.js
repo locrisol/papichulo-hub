@@ -1838,9 +1838,13 @@ function changeWords(change) {
 //
 // heldNotice finds the <body> tag and puts its band straight after it, so the
 // body tag has to stay a plain one.
+//
+// `style` is a stylesheet for the head, for a mail that wants one. Every size
+// is still written on the element itself, so an app that drops the sheet
+// gets the mail exactly as it was.
 const PREVIEW_FILLER = '&#847;&zwnj;&nbsp;'.repeat(80)
 
-export function page(inner, { subject = '', preheader = '' } = {}) {
+export function page(inner, { subject = '', preheader = '', style = '' } = {}) {
     return `<!doctype html><html lang="en"><head><meta charset="utf-8" />`
         + `<meta name="viewport" content="width=device-width,initial-scale=1" />`
         + `<meta name="x-apple-disable-message-reformatting" />`
@@ -1852,6 +1856,7 @@ export function page(inner, { subject = '', preheader = '' } = {}) {
         // font down into a table, so it is told once here. Every other mail
         // app reads the font off the frame round the report. See FONT.
         + `<!--[if mso]><style>body,table,td,div,p,span,a{font-family:'Segoe UI',Arial,sans-serif !important;}</style><![endif]-->`
+        + (style ? `<style>${style}</style>` : '')
         + `</head>`
         + `<body style="margin:0;padding:0;background:${CREAM};font-family:${FONT};">`
         + (preheader

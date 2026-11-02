@@ -115,6 +115,28 @@ export function weekWords(weekStart, { year = true } = {}) {
     return `${left} to ${to.getUTCDate()} ${MONTHS[to.getUTCMonth()]}${year ? ` ${to.getUTCFullYear()}` : ''}`
 }
 
+// **Bigger on a computer** (his, 2 November 2026: "on the phone the size of
+// the text is ok, but on the computer everything seems too small to read").
+// The sizes written on each element are the phone's, and the phone is what
+// sets the floor: his gives the mail 307px and a mail any wider is one the
+// Gmail app scrambles. So nothing there changes, and a screen 600px or wider
+// takes these instead. Gmail, Apple Mail and Outlook on the web read a sheet in
+// the head; an app that does not simply shows the phone's sizes.
+const WIDE = '@media screen and (min-width:600px){'
+    + '.ts-kicker{font-size:14px !important}'
+    + '.ts-title{font-size:28px !important}'
+    + '.ts-sub{font-size:15px !important}'
+    + '.ts-intro,.ts-comment{font-size:17px !important}'
+    + '.ts-th{font-size:12px !important;padding-top:10px !important;padding-bottom:10px !important}'
+    + '.ts-cell{font-size:16px !important;padding-top:11px !important;padding-bottom:11px !important}'
+    + '.ts-mark{font-size:12px !important}'
+    + '.ts-h2{font-size:24px !important}'
+    + '.ts-h2sub,.ts-group,.ts-who,.ts-names{font-size:16px !important}'
+    + '.ts-why{font-size:15px !important}'
+    + '.ts-foot{font-size:14px !important}'
+    + '.ts-notice{font-size:16px !important}'
+    + '}'
+
 const row = (inner, extra = '') =>
     `<tr><td style="padding:0 ${SIDE}px;${extra}">${inner}</td></tr>`
 
@@ -544,25 +566,25 @@ export function timesheetEmail({
     ${test ? notice('#9A4A26', '#F6ECE6', 'Test', 'The hours below are real, but sending this test does not mark the pay period as sent.') : ''}
 
     <tr><td style="background:${DARK};padding:20px ${SIDE}px;">
-        <div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#A9C0B2;">
+        <div class="ts-kicker" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#A9C0B2;">
             ${escapeHtml(restaurantName || 'Papi Chulo')}
         </div>
-        <div style="font-size:22px;font-weight:700;color:#ffffff;padding-top:4px;">
+        <div class="ts-title" style="font-size:22px;font-weight:700;color:#ffffff;padding-top:4px;">
             Hours, ${escapeHtml(period)}
         </div>
-        <div style="font-size:12px;color:#A9C0B2;padding-top:3px;">
+        <div class="ts-sub" style="font-size:12px;color:#A9C0B2;padding-top:3px;">
             Pay period, two weeks
         </div>
     </td></tr>
 
-    ${row(`<div style="font-size:14px;line-height:1.5;color:${MUTED};padding:16px 0 0;">
+    ${row(`<div class="ts-intro" style="font-size:14px;line-height:1.5;color:${MUTED};padding:16px 0 0;">
         Week 1 is ${escapeHtml(weekWords(periodStart, { year: false }))} and week 2 is
         ${escapeHtml(weekWords(addDays(periodStart, 7), { year: false }))}.&#32;Bank holiday and
         holiday hours are not in Worked.${paper ? `&#32;Each person's days, with the clock times and
         comments, are in the PDF attached.` : ''}
     </div>`)}
 
-    ${comment ? row(`<div style="font-size:14px;line-height:1.5;color:${INK};padding:12px 14px;margin-top:14px;background:${CREAM};border-left:3px solid ${DARK};word-break:break-word;overflow-wrap:anywhere;">
+    ${comment ? row(`<div class="ts-comment" style="font-size:14px;line-height:1.5;color:${INK};padding:12px 14px;margin-top:14px;background:${CREAM};border-left:3px solid ${DARK};word-break:break-word;overflow-wrap:anywhere;">
         ${escapeLines(comment)}
     </div>`) : ''}
 
@@ -570,14 +592,14 @@ export function timesheetEmail({
 
     ${permissions ? row(permissionsBlock(permissions, today)) : ''}
 
-    ${row(`<div style="border-top:1px solid ${BORDER};margin-top:22px;padding:14px 0 20px;font-size:12px;line-height:1.5;color:${MUTED};">
+    ${row(`<div class="ts-foot" style="border-top:1px solid ${BORDER};margin-top:22px;padding:14px 0 20px;font-size:12px;line-height:1.5;color:${MUTED};">
         Sent from the Papi Chulo Hub.&#32;Hours only, not pay.&#32;Holiday hours are the hours booked, split evenly across
         the days of the holiday.&#32;Public holiday entitlement is not calculated here.
     </div>`)}
 
 </table>
 </td></tr>
-</table>`, { subject, preheader: period }))
+</table>`, { subject, preheader: period, style: WIDE }))
 
     return { subject, html, text: asText({ restaurantName, period, weeks, people, T, test, comment, permissions, today, paper }) }
 }
@@ -587,7 +609,7 @@ function notice(ink, background, title, words) {
         <span style="font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:${ink};">
             ${escapeHtml(title)}
         </span>
-        <span style="font-size:13px;color:${ink};">&#32;${escapeHtml(words)}</span>
+        <span class="ts-notice" style="font-size:13px;color:${ink};">&#32;${escapeHtml(words)}</span>
     </td></tr>`
 }
 
@@ -595,7 +617,7 @@ function notice(ink, background, title, words) {
 // the figure. "Training 12.50 h" in one piece set the width of the name column
 // in the summary, and with it the narrowest the whole mail could go.
 function figureMark(look, before, figure, after = '') {
-    return '<span style="display:inline-block;font-size:10px;font-weight:700;letter-spacing:.04em;'
+    return '<span class="ts-mark" style="display:inline-block;font-size:10px;font-weight:700;letter-spacing:.04em;'
         + 'text-transform:uppercase;padding:1px 5px;border-radius:3px;'
         + `background:${look.wash};color:${look.ink};">`
         + (before ? `${escapeHtml(before)}&#32;` : '')
@@ -658,7 +680,7 @@ const SHARE = 14
 // floor most columns, which is why they are small and may break.
 function summary(people, T, bankWeeks) {
     const bank = bankWeeks.length > 0
-    const head = (label, wash) => `<th width="${SHARE}%" style="font-size:9px;letter-spacing:.03em;`
+    const head = (label, wash) => `<th width="${SHARE}%" class="ts-th" style="font-size:9px;letter-spacing:.03em;`
         + `text-transform:uppercase;color:#ffffff;background:${DARK};border-bottom:3px solid ${wash};`
         + `padding:7px 2px;text-align:center;font-weight:700;">${label}</th>`
 
@@ -682,13 +704,13 @@ function summary(people, T, bankWeeks) {
 
     // nowrap so a figure never breaks, and centred in its column the way the
     // PDF has them.
-    const fig = (value, wash, weight = '400') => `<td width="${SHARE}%" style="padding:7px 2px;`
+    const fig = (value, wash, weight = '400') => `<td width="${SHARE}%" class="ts-cell" style="padding:7px 2px;`
         + `background:${wash};border-bottom:1px solid ${BORDER};text-align:center;white-space:nowrap;`
         + `font-size:13px;font-weight:${weight};">${value}</td>`
     const name = `${100 - SHARE * 5}%`
 
     const rows = people.map(person => `<tr>
-        <td width="${name}" style="padding:7px 3px 7px 6px;border-bottom:1px solid ${BORDER};font-size:13px;font-weight:600;">
+        <td width="${name}" class="ts-cell" style="padding:7px 3px 7px 6px;border-bottom:1px solid ${BORDER};font-size:13px;font-weight:600;">
             ${escapeHtml(person.name)}${marksFor(person)}
         </td>
         ${weekCells(fig, person.week)}
@@ -698,7 +720,7 @@ function summary(people, T, bankWeeks) {
         ${fig(person.sundays > 0 ? String(person.sundays) : '&mdash;', WASH.sundays)}
     </tr>`).join('')
 
-    const last = (value, wash, weight = '700') => `<td width="${SHARE}%" style="padding:8px 2px;`
+    const last = (value, wash, weight = '700') => `<td width="${SHARE}%" class="ts-cell" style="padding:8px 2px;`
         + `background:${wash};border-top:2px solid ${DARK};text-align:center;white-space:nowrap;`
         + `font-size:13px;font-weight:${weight};">${value}</td>`
 
@@ -707,45 +729,54 @@ function summary(people, T, bankWeeks) {
     return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
         style="border-collapse:collapse;font-family:${FONT};">
         <tr>
-            <th width="${name}" style="font-size:9px;letter-spacing:.03em;text-transform:uppercase;color:#ffffff;background:${DARK};padding:7px 3px 7px 6px;text-align:left;font-weight:700;">Name</th>
+            <th width="${name}" class="ts-th" style="font-size:9px;letter-spacing:.03em;text-transform:uppercase;color:#ffffff;background:${DARK};padding:7px 3px 7px 6px;text-align:left;font-weight:700;">Name</th>
             ${weekHeads}${head('Worked', WASH.worked)}${bank ? head(bankHead, WASH.bank) : ''}${head('Holi&shy;day', WASH.holiday)}${head('Sun&shy;days', WASH.sundays)}
         </tr>
         ${rows}
         <tr>
-            <td width="${name}" style="padding:8px 3px 8px 6px;border-top:2px solid ${DARK};font-size:13px;font-weight:700;">Everybody</td>
+            <td width="${name}" class="ts-cell" style="padding:8px 3px 8px 6px;border-top:2px solid ${DARK};font-size:13px;font-weight:700;">Everybody</td>
             ${weekCells(last, T.week, '400')}${last(hours(T.worked), WASH.worked)}
             ${bank ? last(bankValue(T.weekBank), WASH.bank) : ''}${last(hours(T.holiday), WASH.holiday)}${last('', WASH.sundays)}
         </tr>
     </table>`
 }
 
-// Where somebody stands, as a mark that may break between its words: "Waiting
-// on a renewal" in one piece would hold a phone's mail wider than it is.
-function stateMark(state, words = PERMISSION_STATES[state].label) {
-    const look = PERMISSION_LOOK[state]
-    return '<span style="display:inline-block;font-size:10px;font-weight:700;letter-spacing:.04em;'
-        + 'text-transform:uppercase;padding:1px 5px;border-radius:3px;'
-        + `background:${look.wash};color:${look.ink};">${escapeHtml(words)}</span>`
-}
+// A border a step darker than each permission colour's wash. Solid, because
+// classic Outlook drops a see-through colour.
+const PERMISSION_EDGE = { ok: '#BFE0CB', waiting: '#EED5A6', soon: '#EED5A6', not: '#F1C2C2', unknown: '#CBD5E1' }
+
+const longDated = date => `${Number(date.slice(8, 10))} ${MONTHS[Number(date.slice(5, 7)) - 1]} ${date.slice(0, 4)}`
 
 // Permission to work, for everybody employed on the day it goes (his, 1
-// November 2026, the grouped one of three drawings). Worst first, each group
-// in its colour with a count, a line each saying why; everybody who is fine
-// in one line of names at the end, so the people who need something are what
-// she sees, and a fortnight where all is well is one short green line.
+// November 2026, grouped, worst first). Everybody who is fine is one line of
+// names at the end, so the people who need something are what she sees.
+//
+// **A section of its own** (his pick of three, 2 November 2026): a heavy
+// rule and a heading the size of a section, so it no longer reads as the
+// table's small print, and each group a card with its colour along the top.
 function permissionsBlock(list, today) {
-    const groups = permissionGroups(list)
-    return `<div style="font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:${MUTED};padding:22px 0 6px;">
-        Permission to work, on ${escapeHtml(dated(today))}
-    </div>` + groups.map(([state, them]) => {
-        const title = `<div style="padding:10px 0 4px;">${stateMark(state, `${PERMISSION_STATES[state].label} (${them.length})`)}</div>`
-        if (state === 'ok') {
-            return title + `<div style="font-size:13px;line-height:1.5;color:${INK};padding-bottom:6px;">${them.map(p => escapeHtml(p.name)).join(', ')}</div>`
-        }
-        return title + them.map(p => `<div style="padding:6px 0;border-bottom:1px solid ${BORDER};">
-            <span style="font-size:13px;font-weight:700;color:${INK};">${escapeHtml(p.name)}</span>
-            <div style="font-size:12.5px;line-height:1.45;color:${MUTED};padding-top:2px;">${escapeHtml(p.words)}</div>
-        </div>`).join('')
+    const person = p => `<tr><td style="padding:8px 12px;border-top:1px solid ${BORDER};">
+        <div class="ts-who" style="font-size:13px;font-weight:700;color:${INK};">${escapeHtml(p.name)}</div>
+        <div class="ts-why" style="font-size:12.5px;line-height:1.45;color:${MUTED};padding-top:2px;">${escapeHtml(p.words)}</div>
+    </td></tr>`
+    const names = them => `<tr><td class="ts-names" style="padding:8px 12px;border-top:1px solid ${BORDER};font-size:13px;line-height:1.5;color:${INK};">
+        ${them.map(p => escapeHtml(p.name)).join(', ')}
+    </td></tr>`
+
+    const head = `<div style="border-top:2px solid ${DARK};margin-top:30px;padding-top:16px;">
+        <div class="ts-h2" style="font-size:18px;font-weight:700;color:${INK};">Permission to work</div>
+        <div class="ts-h2sub" style="font-size:13px;color:${MUTED};padding-top:2px;">Everybody employed on ${escapeHtml(longDated(today))}</div>
+    </div>`
+
+    return head + permissionGroups(list).map(([state, them]) => {
+        const look = PERMISSION_LOOK[state]
+        return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+            style="border-collapse:separate;font-family:${FONT};margin-top:12px;border:1px solid ${PERMISSION_EDGE[state]};border-radius:6px;overflow:hidden;">
+            <tr><td class="ts-group" style="background:${look.wash};padding:8px 12px;font-size:13px;font-weight:700;color:${look.ink};">
+                ${escapeHtml(PERMISSION_STATES[state].label)}&#32;<span style="font-weight:400;">(${them.length})</span>
+            </td></tr>
+            ${state === 'ok' ? names(them) : them.map(person).join('')}
+        </table>`
     }).join('')
 }
 
@@ -807,7 +838,7 @@ function asText({ restaurantName, period, weeks, people, T, test, comment, permi
     lines.push('')
 
     if (permissions) {
-        lines.push(`Permission to work, on ${dated(today)}`)
+        lines.push(`Permission to work, everybody employed on ${longDated(today)}`)
         for (const [state, them] of permissionGroups(permissions)) {
             const label = `${PERMISSION_STATES[state].label} (${them.length})`
             if (state === 'ok') lines.push(`  ${label}: ${them.map(p => p.name).join(', ')}`)
