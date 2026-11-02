@@ -1,7 +1,7 @@
 import { fullDate } from '@/lib/dates'
 import { fmtHours } from '@/lib/roster'
 import { shortClock, maskTime, settleTime } from '@/lib/clock'
-import { STATE_KEYS, kindOf, cellColour } from '@/lib/timesheet'
+import { STATE_KEYS, kindOf, cellColour, spansToDraw, cameFromTill } from '@/lib/timesheet'
 import { kindLabel as absenceLabel, takesHours, kindOf as absenceKind } from '@/lib/absences'
 import { numberField } from '@/lib/numberInput'
 import { BANK_HOLIDAY_INK } from '@/lib/bankHolidays'
@@ -21,9 +21,10 @@ export default function DayEditModal({
 }) {
     if (!person || !cell) return null
 
-    const spans = cell.entries.length
-        ? cell.entries
-        : [{ id: null, starts_at: '', ends_at: '' }]
+    // A shift somebody emptied has no boxes here either (see spansToDraw), but
+    // its comment still goes to the accountant, so it keeps a box of its own.
+    const spans = spansToDraw(cell.entries)
+    const emptied = cell.entries.filter(e => !spans.includes(e))
 
     return (
         <Modal title={person.full_name} onClose={onClose} width="max-w-sm">
@@ -151,7 +152,27 @@ export default function DayEditModal({
                             </div>
                         ))}
 
-                        {canEdit && cell.entries.length > 0 && cell.entries.every(e => e.starts_at && e.ends_at) && (
+                        {emptied.map(entry => (
+                            <div key={entry.id} className="mb-4">
+                                <label className={labelClass} htmlFor={`note-${entry.id}`}>
+                                    {cameFromTill(entry)
+                                        ? 'Why a shift was taken out, for the accountant'
+                                        : 'Why, for the accountant'}
+                                </label>
+                                <AutoTextarea
+                                    key={entry.id}
+                                    id={`note-${entry.id}`}
+                                    rows={2}
+                                    disabled={!canEdit}
+                                    className={fieldClass}
+                                    placeholder="Clocked out by mistake and back in..."
+                                    defaultValue={entry.note || ''}
+                                    onBlur={e => onNote(entry, e.target.value)}
+                                />
+                            </div>
+                        ))}
+
+                        {canEdit && cell.entries.length > 0 && spans.every(e => e.starts_at && e.ends_at) && (
                             <button type="button" onClick={onAdd} className={rowButton()}>
                                 Another shift this day
                             </button>

@@ -58,6 +58,27 @@ export function cameFromTill(entry) {
     return entry?.source === 'import' || entry?.source === 'corrected'
 }
 
+// A saved row with both times rubbed out. A till shift emptied that way stays
+// in the table, so a second import cannot put it back and the comment saying
+// why has somewhere to live, but on a day that still has a shift it is not a
+// pair of empty boxes (his, on Alfredo's Monday 26 October 2026: clocked out
+// by mistake, back in, the two shifts made one and the second left empty).
+//
+// Null and not just empty: a box being typed holds '' until it is left, and
+// a pair that vanished under the cursor would never be saved.
+export function takenOut(entry) {
+    return Boolean(entry?.id) && entry.starts_at == null && entry.ends_at == null
+}
+
+// The pairs of boxes a day draws. A row with no times only when it is all the
+// day has, so typing into it fills that row rather than starting another, and
+// an empty day still gets one pair to type into.
+export function spansToDraw(entries) {
+    const drawn = entries.filter(e => !takenOut(e))
+    if (drawn.length) return drawn
+    return entries.length ? [entries[0]] : [{ id: null, starts_at: '', ends_at: '' }]
+}
+
 export function kindOf(value) {
     return KINDS.find(k => k.value === value) || KINDS[0]
 }

@@ -3,7 +3,7 @@ import {
     KINDS, STATE_KEYS, kindOf, kindLabel, cellColour, rateFor, dayCell,
     personWeek, weekTotals, labourPercent,
     unanswered, importVerdict, summarise, planImport, ASK_ABOVE_SECONDS,
-    planDrift, driftsFor, NOTICEABLE_MINUTES, ROW_BANDS,
+    planDrift, driftsFor, NOTICEABLE_MINUTES, ROW_BANDS, takenOut, spansToDraw,
 } from '@/lib/timesheet'
 
 // The week of Sunday 25 to Saturday 31 October 2026, which holds the October
@@ -995,5 +995,37 @@ describe('driftsFor', () => {
 
     it('says not rostered when there is no plan at all', () => {
         expect(driftsFor([span('x', '09:00', '17:00')], []).get('x')).toEqual({ planned: false, drift: null, group: null })
+    })
+})
+
+// Alfredo's Monday, 26 October 2026: two till shifts because he clocked out by
+// mistake, made into one, and the second one emptied. It stays in the table
+// and draws no boxes.
+describe('the pairs of boxes a day draws', () => {
+    const stands = shift({ id: 't1', starts_at: '09:16:08', ends_at: '17:22:19', source: 'corrected' })
+    const emptied = shift({ id: 't2', starts_at: null, ends_at: null, source: 'corrected', note: 'Clock out by mistake earlier' })
+
+    it('knows a saved row with both times rubbed out', () => {
+        expect(takenOut(emptied)).toBe(true)
+        expect(takenOut(stands)).toBe(false)
+    })
+
+    // A box being typed holds '' until it is left. Taking the pair away then
+    // would take the box from under the cursor before anything was saved.
+    it('does not count a pair still being typed, or one not saved yet', () => {
+        expect(takenOut({ ...stands, starts_at: '', ends_at: '' })).toBe(false)
+        expect(takenOut({ id: null, starts_at: '', ends_at: '' })).toBe(false)
+    })
+
+    it('leaves the emptied shift out beside one that stands', () => {
+        expect(spansToDraw([emptied, stands])).toEqual([stands])
+    })
+
+    it('still offers the emptied row when it is all the day has, so typing fills it', () => {
+        expect(spansToDraw([emptied])).toEqual([emptied])
+    })
+
+    it('gives an empty day one pair to type into', () => {
+        expect(spansToDraw([])).toEqual([{ id: null, starts_at: '', ends_at: '' }])
     })
 })

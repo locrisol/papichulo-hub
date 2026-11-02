@@ -389,7 +389,9 @@ export default function TimesheetPage() {
                 // that was wrong, and throwing the sentence away with them
                 // would lose the only thing on that row anybody wrote.
                 if (entry.note || cameFromTill(entry)) {
-                    return save(entry.id, { starts_at: null, ends_at: null, ...changedByHand(entry) })
+                    // The box lets go of its copy once the row is back, so
+                    // the emptied pair can leave the cell (see spansToDraw).
+                    return save(entry.id, { starts_at: null, ends_at: null, ...changedByHand(entry) }, field)
                 }
                 return remove(entry)
             }

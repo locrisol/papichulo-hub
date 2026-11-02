@@ -390,4 +390,18 @@ describe('how far off the plan it was', () => {
         })
         expect(screen.getByText('“swapped with somebody”')).toBeInTheDocument()
     })
+
+    // Alfredo's Monday, 26 October 2026: the comment on the shift that was
+    // emptied is about that shift, and it used to be drawn across the bar of
+    // the one left standing.
+    it('does not draw the comment of an emptied shift over the one that stands', () => {
+        day({
+            shifts: [rostered],
+            entries: [
+                { ...worked, source: 'corrected', note: 'Stayed to close the store' },
+                { id: 't3', employee_id: 'e1', work_date: DAY, starts_at: null, ends_at: null, kind: 'worked', source: 'corrected', note: 'Clock out by mistake earlier' },
+            ],
+        })
+        expect(screen.queryByText('“Clock out by mistake earlier”')).not.toBeInTheDocument()
+    })
 })
