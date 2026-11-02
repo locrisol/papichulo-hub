@@ -1,4 +1,4 @@
-import { toMinutes, toTime } from '@/lib/roster'
+import { toMinutes, toTime, closeMinutes } from '@/lib/roster'
 
 // The times a person can pick, every quarter of an hour.
 //
@@ -67,23 +67,40 @@ function grid() {
 // rather than being taken out: a shift sometimes has to be built across hours
 // somebody would rather not do, and a picker that hides them makes that
 // impossible instead of merely deliberate.
-export function timeOptions({ value = '', dayStart = '', endOfDay = false, free } = {}) {
-    const from = toMinutes(dayStart)
-    const opening = from >= 0 ? Math.floor(from / STEP) * STEP : 0
-    // Wrapped, so a store opening at 00:30 starts its list at 22:30 the night
-    // before rather than at a negative number.
-    const start = from >= 0 ? ((opening - LEAD_IN) % DAY + DAY) % DAY : 0
+//
+// within trims, where rotating would still offer the small hours to somebody
+// with no reason to pick one (his, 1 November 2026: a part day off offered
+// 02:00, 03:00 and 04:00). Only the quarter hours from within.from to
+// within.to, running on past midnight when the end is the earlier time.
+// Whatever is saved stays in the list even when it falls outside, after the
+// rest, for the same reason an odd time does.
+export function timeOptions({ value = '', dayStart = '', endOfDay = false, free, within = null } = {}) {
+    const lo = toMinutes(within?.from)
+    const span = lo >= 0 && toMinutes(within?.to) >= 0 ? ((toMinutes(within.to) - lo) % DAY + DAY) % DAY : 0
 
-    const minutes = grid().map(m => (m + start) % DAY)
+    let minutes
+    let start
+    if (span > 0) {
+        start = lo
+        minutes = []
+        for (let off = (STEP - (lo % STEP)) % STEP; off <= span; off += STEP) minutes.push((lo + off) % DAY)
+    } else {
+        const from = toMinutes(dayStart)
+        const opening = from >= 0 ? Math.floor(from / STEP) * STEP : 0
+        // Wrapped, so a store opening at 00:30 starts its list at 22:30 the
+        // night before rather than at a negative number.
+        start = from >= 0 ? ((opening - LEAD_IN) % DAY + DAY) % DAY : 0
+        minutes = grid().map(m => (m + start) % DAY)
+    }
 
     // Sorted back into the order they are shown in, so an odd saved time lands
     // where it belongs rather than at the end.
     const rank = m => ((m - start) % DAY + DAY) % DAY
 
     const current = toMinutes(value)
-    const odd = current >= 0 && current % STEP !== 0 && value !== END_OF_DAY
+    const listed = current >= 0 && value !== END_OF_DAY && minutes.includes(current)
 
-    if (odd) {
+    if (current >= 0 && value !== END_OF_DAY && !listed) {
         minutes.push(current)
         minutes.sort((a, b) => rank(a) - rank(b))
     }
@@ -104,4 +121,17 @@ export function timeOptions({ value = '', dayStart = '', endOfDay = false, free 
     if (endOfDay) options.push({ value: END_OF_DAY, label: label(END_OF_DAY), free: true })
 
     return options
+}
+
+// A day's hours with LEAD_IN either side, as within for timeOptions: from two
+// hours before opening to two hours after closing (his, 1 November 2026, the
+// same lead in the roster's list has). A close at or before the open is that
+// night, so a late finish runs on past midnight. Nothing on a day with no
+// hours, or when the margins would go all the way round the clock, and the
+// list is the whole day as before.
+export function aroundTheDay(dayHours) {
+    const open = toMinutes(dayHours?.open)
+    const close = closeMinutes(dayHours)
+    if (open < 0 || close < 0 || close - open + 2 * LEAD_IN >= DAY) return null
+    return { from: toTime(open - LEAD_IN), to: toTime(close + LEAD_IN) }
 }
