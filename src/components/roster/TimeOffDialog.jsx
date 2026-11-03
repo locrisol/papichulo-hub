@@ -16,7 +16,10 @@ import {
     ABSENCE_KINDS, kindOf, kindLabel, takesHours, sortAbsences, absenceRange,
     absenceDays, absenceProblem, overlappingAbsence,
 } from '@/lib/absences'
-import { shiftsHit, asCleared, isPartDay, partWords } from '@/lib/timeOff'
+import { shiftsHit, asCleared, isPartDay, partWords, partBackwards } from '@/lib/timeOff'
+import { aroundTheDay } from '@/lib/timeOptions'
+import { useRestaurant } from '@/context/restaurant'
+import useDayHours from '@/components/roster/useDayHours'
 import { shortTime } from '@/lib/roster'
 
 // The days somebody is not there.
@@ -112,10 +115,18 @@ export default function TimeOffDialog({
     }
 
     const change = (field, value) => setForm(f => ({ ...f, [field]: value }))
+
+    // A part day's hours offered from two hours before that day's opening to
+    // two after its closing (his, 1 November 2026), the restaurant on screen
+    // being the one the dialog is about.
+    const activeRestaurant = useRestaurant()?.activeRestaurant
+    const oneDay = form.startsOn && (!form.endsOn || form.endsOn === form.startsOn) ? form.startsOn : null
+    const within = aroundTheDay(useDayHours(activeRestaurant?.id === restaurantId ? activeRestaurant : null, oneDay))
+
     // The one thing absenceProblem cannot know about, since it has never had to
     // think about hours. An end before a start is the only way to get these two
     // wrong; leaving both empty is a whole day and is the ordinary case.
-    const hoursProblem = form.canFrom && form.canTo && form.canTo <= form.canFrom
+    const hoursProblem = partBackwards(form.canFrom, form.canTo, within?.from)
         ? 'The end is before the start.'
         : null
     const problem = absenceProblem({ ...form, employeeId }) || hoursProblem
@@ -354,7 +365,8 @@ export default function TimeOffDialog({
                                         value={form.canFrom}
                                         onChange={v => change("canFrom", v)}
                                         allowEmpty
-                                        placeholder="From opening"
+                                        within={within}
+                                        placeholder="Opening"
                                         aria-label="Can work from"
                                         />
                                     <span className="text-xs text-muted flex-shrink-0">to</span>
@@ -362,7 +374,8 @@ export default function TimeOffDialog({
                                         value={form.canTo}
                                         onChange={v => change("canTo", v)}
                                         allowEmpty
-                                        placeholder="Until closing"
+                                        within={within}
+                                        placeholder="Closing"
                                         aria-label="Can work until"
                                         />
                                 </div>

@@ -24,7 +24,8 @@
 // **His comments go out as typed.** They are the one thing on the week he wrote
 // himself, and they are why he asked for this mail at all: "why this goes
 // beyond the real time, why this is shorter". Nothing is added to them and
-// nothing is inferred from them.
+// nothing is inferred from them. Since 2 November 2026 they go in the PDF
+// attached, with each person's days, and the mail is the summary alone.
 
 import { tidy, escapeHtml, escapeLines, page, WIDTH, SIDE } from './email.js'
 
@@ -102,7 +103,8 @@ export function periodWords(periodStart) {
     return `${left} to ${to.getUTCDate()} ${MONTHS[to.getUTCMonth()]} ${to.getUTCFullYear()}`
 }
 
-export function weekWords(weekStart) {
+// The year is left off where the title above already says it.
+export function weekWords(weekStart, { year = true } = {}) {
     const from = new Date(`${String(weekStart).slice(0, 10)}T00:00:00Z`)
     if (isNaN(from.getTime())) return String(weekStart ?? '')
     const to = new Date(from.getTime() + 6 * 86400000)
@@ -110,8 +112,30 @@ export function weekWords(weekStart) {
     const left = same
         ? `${from.getUTCDate()}`
         : `${from.getUTCDate()} ${MONTHS[from.getUTCMonth()]}`
-    return `${left} to ${to.getUTCDate()} ${MONTHS[to.getUTCMonth()]} ${to.getUTCFullYear()}`
+    return `${left} to ${to.getUTCDate()} ${MONTHS[to.getUTCMonth()]}${year ? ` ${to.getUTCFullYear()}` : ''}`
 }
+
+// **Bigger on a computer** (his, 2 November 2026: "on the phone the size of
+// the text is ok, but on the computer everything seems too small to read").
+// The sizes written on each element are the phone's, and the phone is what
+// sets the floor: his gives the mail 307px and a mail any wider is one the
+// Gmail app scrambles. So nothing there changes, and a screen 600px or wider
+// takes these instead. Gmail, Apple Mail and Outlook on the web read a sheet in
+// the head; an app that does not simply shows the phone's sizes.
+const WIDE = '@media screen and (min-width:600px){'
+    + '.ts-kicker{font-size:14px !important}'
+    + '.ts-title{font-size:28px !important}'
+    + '.ts-sub{font-size:15px !important}'
+    + '.ts-intro,.ts-comment{font-size:17px !important}'
+    + '.ts-th{font-size:12px !important;padding-top:10px !important;padding-bottom:10px !important}'
+    + '.ts-cell{font-size:16px !important;padding-top:11px !important;padding-bottom:11px !important}'
+    + '.ts-mark{font-size:12px !important}'
+    + '.ts-h2{font-size:24px !important}'
+    + '.ts-h2sub,.ts-group,.ts-who,.ts-names{font-size:16px !important}'
+    + '.ts-why{font-size:15px !important}'
+    + '.ts-foot{font-size:14px !important}'
+    + '.ts-notice{font-size:16px !important}'
+    + '}'
 
 const row = (inner, extra = '') =>
     `<tr><td style="padding:0 ${SIDE}px;${extra}">${inner}</td></tr>`
@@ -155,6 +179,21 @@ export const KIND_LOOK = {
 // The wash is the app's own BANK_HOLIDAY_WASH, which is already a pale ground
 // meant to sit behind a cell.
 export const BANK_LOOK = { label: 'Bank holiday', ink: '#8A6A18', wash: '#FBF4E2' }
+
+// Sundays worked, counted under each name for the accountant (his, 1 November
+// 2026). The worked green, because a Sunday is worked time and not a state.
+export const SUNDAY_LOOK = { label: 'Sunday', ink: '#1F5C3A', wash: '#E6F1EA' }
+
+// Where somebody stands on permission to work, in four colours: green may
+// work, amber needs something doing (a renewal waiting or due), red may not,
+// slate nobody knows. Copied from the app with the other marks.
+export const PERMISSION_LOOK = {
+    ok: { ink: '#1F7A4C', wash: '#E8F4EC' },
+    waiting: { ink: '#8A5300', wash: '#FDF1DC' },
+    soon: { ink: '#8A5300', wash: '#FDF1DC' },
+    not: { ink: '#B91C1C', wash: '#FDECEC' },
+    unknown: { ink: '#475569', wash: '#EDF1F5' },
+}
 
 // **The two days that change what somebody is paid.** A day off and a day away
 // at something are worth drawing on the day they fall, but counting them in a
@@ -249,7 +288,10 @@ export function personPeriod({ people = [], entries = [], absences = [], dates =
             }
         }).filter(day => day.spans.length > 0 || day.open.length > 0 || day.notes.length > 0 || day.away)
 
-        const inWeek = w => days.reduce((t, d) => (d.week === w ? t + d.hours : t), 0)
+        // Bank holiday hours are kept out of the weeks and the total, and
+        // given on their own (his, 1 November 2026), so Week 1 plus Week 2 is
+        // still Worked.
+        const inWeek = (w, bank) => days.reduce((t, d) => (d.week === w && d.bankHoliday === bank ? t + d.hours : t), 0)
         const ofKind = kind => days.reduce((t, d) => (
             t + d.spans.reduce((n, s) => (s.kind === kind ? n + num(s.hours) : n), 0)
         ), 0)
@@ -261,20 +303,22 @@ export function personPeriod({ people = [], entries = [], absences = [], dates =
             return away && away.kind === kind && partOf(away) === part
         }).length
 
-        const week = [inWeek(0), inWeek(1)]
-        const worked = week[0] + week[1]
-        const bank = days.reduce((t, d) => t + (d.bankHoliday ? d.hours : 0), 0)
+        const week = [inWeek(0, false), inWeek(1, false)]
+        const weekBank = [inWeek(0, true), inWeek(1, true)]
 
         return {
             name: person.full_name,
             days,
             week,
-            worked,
-            // His format, and the reason it is his: normal is everything that
+            weekBank,
+            // His format, and the reason it is his: worked is everything that
             // is not a bank holiday, and the bank holiday hours sit beside it
             // rather than inside it, because section 21 is applied at her end.
-            normal: worked - bank,
-            bankHoliday: bank,
+            worked: week[0] + week[1],
+            bankHoliday: weekBank[0] + weekBank[1],
+            // Sundays with hours on them, a bank holiday Sunday included. A
+            // count for her, never money (no Sunday premium, his rule).
+            sundays: days.filter(d => d.hours > 0 && new Date(`${d.date}T00:00:00Z`).getUTCDay() === 0).length,
             holiday: holidayHoursInWeek(absences, person.id, dates),
             // Worked hours either way. They stay inside the total and are said
             // again, because a person on trial may not be on the payroll at all
@@ -389,12 +433,98 @@ function daysBetween(from, to) {
     return Math.round((b - a) / 86400000) + 1
 }
 
+// Today in Ireland, as a date. The function runs on UTC, and between midnight
+// and one in the summer that is still yesterday.
+export function dublinToday(now = new Date()) {
+    return new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Europe/Dublin', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(now)
+}
+
+// ---------------------------------------------------------------------------
+// Permission to work, for everybody (his, 1 November 2026)
+// ---------------------------------------------------------------------------
+//
+// A copy of permissionState and permissionWords in lib/workRules.js, which
+// this folder cannot import. A test runs both over the same people and wants
+// the same answer, the same as the fortnight and the bank holidays.
+
+export const RENEW_SOON_DAYS = 60
+export const DEFAULT_GRACE = { on: true, weeks: 12, afterBlocks: false }
+
+export const PERMISSION_STATES = {
+    not: { label: 'Not OK to work', order: 0 },
+    waiting: { label: 'Waiting on a renewal', order: 1 },
+    soon: { label: 'Renew soon', order: 2 },
+    unknown: { label: 'Not recorded', order: 3 },
+    ok: { label: 'OK to work', order: 4 },
+}
+
+// One of five, with what it was worked out from. See the app's copy for what
+// each means.
+export function permissionState(employee, today, grace = DEFAULT_GRACE) {
+    const stamp = employee?.work_permission || ''
+    const expires = employee?.work_permission_expires || null
+    const applied = employee?.permission_renewal_applied || null
+    const base = { stamp, expires, applied, ranOut: Boolean(expires && expires < today) }
+
+    if (!stamp) return { ...base, state: 'unknown' }
+    if (stamp === 'stamp2a') return { ...base, state: 'not' }
+    if (stamp === 'unrestricted') return { ...base, state: 'ok' }
+    if (!expires) return { ...base, state: 'unknown' }
+
+    if (!base.ranOut) {
+        if (daysBetween(today, expires) - 1 > RENEW_SOON_DAYS) return { ...base, state: 'ok' }
+        return { ...base, state: applied ? 'waiting' : 'soon' }
+    }
+
+    // The grace, as graceFor in the app has it: applied before it ran out, or
+    // on the day, and for so many weeks after.
+    if (!grace?.on || !applied) return { ...base, state: 'not', tooLate: false }
+    if (applied > expires) return { ...base, state: 'not', tooLate: true }
+    const weeks = grace.weeks ?? 12
+    const until = addDays(expires, weeks * 7)
+    if (today > until) return { ...base, state: grace.afterBlocks ? 'not' : 'waiting', until, lapsed: weeks }
+    return { ...base, state: 'waiting', until }
+}
+
+const STAMP_WORDS = {
+    unrestricted: 'No restriction', stamp2: 'Stamp 2', stamp2a: 'Stamp 2A', stamp1: 'Stamp 1', stamp1g: 'Stamp 1G',
+}
+const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const dated = date => `${Number(date.slice(8, 10))} ${SHORT_MONTHS[Number(date.slice(5, 7)) - 1]} ${date.slice(0, 4)}`
+
+export function permissionWords(p) {
+    const stamp = STAMP_WORDS[p.stamp] || ''
+    if (!p.stamp) return 'No permission recorded'
+    if (p.stamp === 'stamp2a') return 'Stamp 2A, no permission to work'
+    if (p.stamp === 'unrestricted') return stamp
+    if (!p.expires) return `${stamp}, no expiry date recorded`
+    const parts = [stamp, `${p.ranOut ? 'ran out' : p.state === 'ok' ? 'until' : 'runs out'} ${dated(p.expires)}`]
+    if (p.applied) parts.push(`renewal applied ${dated(p.applied)}${p.tooLate ? ', after it ran out' : ''}`)
+    else if (p.state !== 'ok') parts.push('no renewal applied for')
+    if (p.lapsed) parts.push(`past the ${p.lapsed} weeks on ${dated(p.until)}`)
+    else if (p.until) parts.push(`may work until ${dated(p.until)}`)
+    return parts.join(', ')
+}
+
+// Everybody employed on the day, worst first and then in the team's order (a
+// sort keeps the order of what it does not move), each with why.
+export function permissionList(team = [], today, grace = DEFAULT_GRACE) {
+    return team
+        .filter(p => (!p.ended_on || p.ended_on >= today) && (!p.started_on || p.started_on <= today))
+        .map(p => ({ name: p.full_name, ...permissionState(p, today, grace) }))
+        .sort((a, b) => PERMISSION_STATES[a.state].order - PERMISSION_STATES[b.state].order)
+        .map(p => ({ ...p, words: permissionWords(p) }))
+}
+
 // ---------------------------------------------------------------------------
 // The mail
 // ---------------------------------------------------------------------------
 
 export function timesheetEmail({
-    restaurantName, periodStart, people = [], test = false, comment = '',
+    restaurantName, periodStart, people = [], test = false, comment = '', permissions = null, today = null,
+    paper = false,
 }) {
     const period = periodWords(periodStart)
     const weeks = [weekWords(periodStart), weekWords(addDays(periodStart, 7))]
@@ -405,9 +535,21 @@ export function timesheetEmail({
             people.reduce((t, p) => t + p.week[1], 0),
         ],
         worked: people.reduce((t, p) => t + p.worked, 0),
+        weekBank: [
+            people.reduce((t, p) => t + p.weekBank[0], 0),
+            people.reduce((t, p) => t + p.weekBank[1], 0),
+        ],
         bankHoliday: people.reduce((t, p) => t + p.bankHoliday, 0),
         holiday: people.reduce((t, p) => t + p.holiday, 0),
     }
+    // The weeks with a bank holiday in them, so the column can say which week
+    // its hours fell in (his, 2 November 2026). A fortnight with one has the
+    // column, worked or not, so a dash says nobody worked it rather than
+    // leaving her to wonder.
+    const bankWeeks = [0, 1].filter(w => (
+        Array.from({ length: 7 }, (_, i) => addDays(periodStart, w * 7 + i)).some(d => bankHolidayOn(d))
+        || people.some(person => person.weekBank[w] > 0)
+    ))
 
     const subject = `${test ? '[Test] ' : ''}Hours, ${period}${restaurantName ? `, ${restaurantName}` : ''}`
 
@@ -424,46 +566,42 @@ export function timesheetEmail({
     ${test ? notice('#9A4A26', '#F6ECE6', 'Test', 'The hours below are real, but sending this test does not mark the pay period as sent.') : ''}
 
     <tr><td style="background:${DARK};padding:20px ${SIDE}px;">
-        <div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#A9C0B2;">
+        <div class="ts-kicker" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#A9C0B2;">
             ${escapeHtml(restaurantName || 'Papi Chulo')}
         </div>
-        <div style="font-size:22px;font-weight:700;color:#ffffff;padding-top:4px;">
+        <div class="ts-title" style="font-size:22px;font-weight:700;color:#ffffff;padding-top:4px;">
             Hours, ${escapeHtml(period)}
         </div>
-        <div style="font-size:12px;color:#A9C0B2;padding-top:3px;">
+        <div class="ts-sub" style="font-size:12px;color:#A9C0B2;padding-top:3px;">
             Pay period, two weeks
         </div>
     </td></tr>
 
-    ${row(`<div style="font-size:14px;line-height:1.5;color:${MUTED};padding:16px 0 0;">
-        Clock in and clock out times are as the till recorded them, to the second.&#32;Worked is
-        week 1 plus week 2.&#32;Bank holiday hours are included in Worked and also shown on their
-        own.&#32;Holiday hours are separate and not included in Worked.&#32;Sick days and unpaid
-        leave are counted in days, as no hours are recorded for them.&#32;Part of a day is counted
-        as a part day, and any hours worked that day are included in Worked.&#32;Hours only, not
-        pay.
+    ${row(`<div class="ts-intro" style="font-size:14px;line-height:1.5;color:${MUTED};padding:16px 0 0;">
+        Week 1 is ${escapeHtml(weekWords(periodStart, { year: false }))} and week 2 is
+        ${escapeHtml(weekWords(addDays(periodStart, 7), { year: false }))}.&#32;Bank holiday and
+        holiday hours are not in Worked.${paper ? `&#32;Each person's days, with the clock times and
+        comments, are in the PDF attached.` : ''}
     </div>`)}
 
-    ${comment ? row(`<div style="font-size:14px;line-height:1.5;color:${INK};padding:12px 14px;margin-top:14px;background:${CREAM};border-left:3px solid ${DARK};word-break:break-word;overflow-wrap:anywhere;">
+    ${comment ? row(`<div class="ts-comment" style="font-size:14px;line-height:1.5;color:${INK};padding:12px 14px;margin-top:14px;background:${CREAM};border-left:3px solid ${DARK};word-break:break-word;overflow-wrap:anywhere;">
         ${escapeLines(comment)}
     </div>`) : ''}
 
-    ${row(summary(people, T), 'padding-top:18px;')}
+    ${row(summary(people, T, bankWeeks), 'padding-top:18px;')}
 
-    ${people.map(person => personBlock(person, weeks)).join('')}
+    ${permissions ? row(permissionsBlock(permissions, today)) : ''}
 
-    ${row(legend(), 'padding-top:20px;')}
-
-    ${row(`<div style="border-top:1px solid ${BORDER};margin-top:16px;padding:14px 0 20px;font-size:12px;line-height:1.5;color:${MUTED};">
-        Sent from the Papi Chulo Hub.&#32;Holiday hours are the hours booked, split evenly across
+    ${row(`<div class="ts-foot" style="border-top:1px solid ${BORDER};margin-top:22px;padding:14px 0 20px;font-size:12px;line-height:1.5;color:${MUTED};">
+        Sent from the Papi Chulo Hub.&#32;Hours only, not pay.&#32;Holiday hours are the hours booked, split evenly across
         the days of the holiday.&#32;Public holiday entitlement is not calculated here.
     </div>`)}
 
 </table>
 </td></tr>
-</table>`, { subject, preheader: period }))
+</table>`, { subject, preheader: period, style: WIDE }))
 
-    return { subject, html, text: asText({ restaurantName, period, weeks, people, T, test, comment }) }
+    return { subject, html, text: asText({ restaurantName, period, weeks, people, T, test, comment, permissions, today, paper }) }
 }
 
 function notice(ink, background, title, words) {
@@ -471,25 +609,15 @@ function notice(ink, background, title, words) {
         <span style="font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:${ink};">
             ${escapeHtml(title)}
         </span>
-        <span style="font-size:13px;color:${ink};">&#32;${escapeHtml(words)}</span>
+        <span class="ts-notice" style="font-size:13px;color:${ink};">&#32;${escapeHtml(words)}</span>
     </td></tr>`
-}
-
-// One mark, used everywhere: a word in a colour, on a pale ground of the same
-// colour. See AWAY_LOOK for why it is a pair rather than the single colour the
-// screen uses.
-function mark(look, words) {
-    return '<span style="display:inline-block;font-size:10px;font-weight:700;letter-spacing:.04em;'
-        + 'text-transform:uppercase;padding:1px 5px;border-radius:3px;'
-        + `background:${look.wash};color:${look.ink};white-space:nowrap;">`
-        + `${escapeHtml(words || look.label)}</span>`
 }
 
 // The same mark with a figure in it, allowed to break between the words and
 // the figure. "Training 12.50 h" in one piece set the width of the name column
 // in the summary, and with it the narrowest the whole mail could go.
 function figureMark(look, before, figure, after = '') {
-    return '<span style="display:inline-block;font-size:10px;font-weight:700;letter-spacing:.04em;'
+    return '<span class="ts-mark" style="display:inline-block;font-size:10px;font-weight:700;letter-spacing:.04em;'
         + 'text-transform:uppercase;padding:1px 5px;border-radius:3px;'
         + `background:${look.wash};color:${look.ink};">`
         + (before ? `${escapeHtml(before)}&#32;` : '')
@@ -503,11 +631,10 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`
 // A count and what it counts, kept together: "1 part day" never splits.
 const together = (n, word) => plural(n, word).replace(/ /g, '&nbsp;')
 
-// What goes under a person's name: everything that is not hours.
+// What goes under a person's name: everything that is not hours or Sundays.
 //
-// Not a column of its own. The table already carries five figures and a name,
-// and on a phone a sixth number column would floor the whole table at a width
-// it does not have. These are rare, so they sit where the person is named.
+// Not columns of their own: they are rare, and on a phone every column more
+// floors the whole table at a width it does not have.
 function marksFor(person) {
     const out = []
     if (person.trial > 0) out.push(figureMark(KIND_LOOK.trial, 'Trial', `${hours(person.trial)}&nbsp;h`))
@@ -521,206 +648,161 @@ function marksFor(person) {
         : ''
 }
 
-// The whole team in one table, before anybody reads a single day.
-//
-// **The payroll can be done from this alone.** Everything below it is for the
-// question that comes back, not for the run itself.
-//
-// **Narrow enough for his phone, which gives the mail 307px.** A name and five
-// columns of figures came to 362px with a team's three figure totals, and a
-// mail wider than the phone is one the Gmail app scrambles from top to bottom.
-// So the Bank hol. column is only there on a fortnight somebody has bank
-// holiday hours, and only then, with one figure column more, do the two weeks
-// share a column, one above the other. Without it the two weeks side by side
-// still come to 34 characters, the same as the measured bank holiday shape.
-function summary(people, T) {
-    const bank = people.some(person => person.bankHoliday > 0)
+// What each figure column is washed in, so two columns side by side are never
+// the same colour (his, 2 November 2026). The colours the Timesheet screen and
+// the PDF use: the weeks cream, Worked green, the bank holiday amber, holiday
+// blue. Two weeks apart take two creams, a pair that is still two columns.
+const WASH = {
+    week: [CREAM, '#EEEAE1'],
+    worked: '#E6F1EA',
+    bank: BANK_LOOK.wash,
+    holiday: AWAY_LOOK.holiday.wash,
+    sundays: '#ffffff',
+}
 
-    const head = label => '<th style="font-size:10px;letter-spacing:.05em;text-transform:uppercase;'
-        + `color:#ffffff;background:${DARK};padding:7px 3px;text-align:right;font-weight:700;">${label}</th>`
+// The share of the width each figure column asks for, and the name has the
+// rest. See summary.
+const SHARE = 14
+
+// The whole team in one table. **The payroll can be done from this alone**,
+// and each person's days are in the PDF (his, 2 November 2026: the mail does
+// not need them).
+//
+// **Spread on a computer.** Every figure column used to be as narrow as its
+// figure, with the name taking the rest, so on a computer the figures sat in
+// a heap on the right. Each one asks for an even share now. A share is a
+// wish, not a floor: on a phone a column still comes down to its figure.
+//
+// **Narrow enough for his phone, which gives the mail 307px.** A mail any
+// wider is one the Gmail app scrambles from top to bottom. So the Bank hol.
+// column is only there on a fortnight with a bank holiday, and only then do
+// the two weeks share a column, one above the other. The headings are what
+// floor most columns, which is why they are small and may break.
+function summary(people, T, bankWeeks) {
+    const bank = bankWeeks.length > 0
+    const head = (label, wash) => `<th width="${SHARE}%" class="ts-th" style="font-size:9px;letter-spacing:.03em;`
+        + `text-transform:uppercase;color:#ffffff;background:${DARK};border-bottom:3px solid ${wash};`
+        + `padding:7px 2px;text-align:center;font-weight:700;">${label}</th>`
 
     const weekHeads = bank
-        ? head('Week&nbsp;1<br />Week&nbsp;2')
-        : head('Week&nbsp;1') + head('Week&nbsp;2')
+        ? head('Week&nbsp;1<br />Week&nbsp;2', WASH.week[0])
+        : head('Week&nbsp;1', WASH.week[0]) + head('Week&nbsp;2', WASH.week[1])
     const weekCells = (cell, [one, two], weight) => (bank
-        ? cell(`${hours(one)}<br />${hours(two)}`, weight)
-        : cell(hours(one), weight) + cell(hours(two), weight))
+        ? cell(`${hours(one)}<br />${hours(two)}`, WASH.week[0], weight)
+        : cell(hours(one), WASH.week[0], weight) + cell(hours(two), WASH.week[1], weight))
 
-    // width="1%" and nowrap are one thing: as narrow as the figure, and the
-    // figure never breaks. width="100%" on the name is what stops it wrapping,
-    // because a table shares its surplus rather than handing it to whichever
-    // column asked to be small.
-    const fig = (value, weight = '400') => '<td width="1%" style="padding:7px 3px;'
-        + `border-bottom:1px solid ${BORDER};text-align:right;white-space:nowrap;`
+    // The bank holiday says which week it fell in. With one in the fortnight,
+    // which is nearly always, the heading names the week; with one in each,
+    // the hours sit one above the other like the weeks beside them.
+    const bankHead = bankWeeks.length === 1
+        ? `Bank hol.<br />Week&nbsp;${bankWeeks[0] + 1}`
+        : 'Bank hol.'
+    const dash = value => (value > 0 ? hours(value) : '&mdash;')
+    const bankValue = split => (bankWeeks.length === 2
+        ? `${dash(split[0])}<br />${dash(split[1])}`
+        : dash(split[0] + split[1]))
+
+    // nowrap so a figure never breaks, and centred in its column the way the
+    // PDF has them.
+    const fig = (value, wash, weight = '400') => `<td width="${SHARE}%" class="ts-cell" style="padding:7px 2px;`
+        + `background:${wash};border-bottom:1px solid ${BORDER};text-align:center;white-space:nowrap;`
         + `font-size:13px;font-weight:${weight};">${value}</td>`
+    const name = `${100 - SHARE * 5}%`
 
     const rows = people.map(person => `<tr>
-        <td width="100%" style="padding:7px 3px 7px 6px;border-bottom:1px solid ${BORDER};font-size:13px;font-weight:600;">
+        <td width="${name}" class="ts-cell" style="padding:7px 3px 7px 6px;border-bottom:1px solid ${BORDER};font-size:13px;font-weight:600;">
             ${escapeHtml(person.name)}${marksFor(person)}
         </td>
         ${weekCells(fig, person.week)}
-        ${fig(hours(person.worked), '700')}
-        ${bank ? fig(person.bankHoliday > 0 ? hours(person.bankHoliday) : '&mdash;') : ''}
-        ${fig(person.holiday > 0 ? hours(person.holiday) : '&mdash;')}
+        ${fig(hours(person.worked), WASH.worked, '700')}
+        ${bank ? fig(bankValue(person.weekBank), WASH.bank) : ''}
+        ${fig(dash(person.holiday), WASH.holiday)}
+        ${fig(person.sundays > 0 ? String(person.sundays) : '&mdash;', WASH.sundays)}
     </tr>`).join('')
 
-    const last = (value, weight = '700') => '<td width="1%" style="padding:8px 3px;'
-        + `border-top:2px solid ${DARK};text-align:right;white-space:nowrap;`
+    const last = (value, wash, weight = '700') => `<td width="${SHARE}%" class="ts-cell" style="padding:8px 2px;`
+        + `background:${wash};border-top:2px solid ${DARK};text-align:center;white-space:nowrap;`
         + `font-size:13px;font-weight:${weight};">${value}</td>`
 
+    // No Sundays on the last line: each person's count added across people is
+    // not a figure anybody is paid on. The PDF leaves it out too.
     return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
         style="border-collapse:collapse;font-family:${FONT};">
         <tr>
-            <th width="100%" style="font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#ffffff;background:${DARK};padding:7px 3px 7px 6px;text-align:left;font-weight:700;">Name</th>
-            ${weekHeads}${head('Worked')}${bank ? head('Bank hol.') : ''}${head('Holiday')}
+            <th width="${name}" class="ts-th" style="font-size:9px;letter-spacing:.03em;text-transform:uppercase;color:#ffffff;background:${DARK};padding:7px 3px 7px 6px;text-align:left;font-weight:700;">Name</th>
+            ${weekHeads}${head('Worked', WASH.worked)}${bank ? head(bankHead, WASH.bank) : ''}${head('Holi&shy;day', WASH.holiday)}${head('Sun&shy;days', WASH.sundays)}
         </tr>
         ${rows}
         <tr>
-            <td width="100%" style="padding:8px 3px 8px 6px;border-top:2px solid ${DARK};font-size:13px;font-weight:700;">Everybody</td>
-            ${weekCells(last, T.week, '400')}${last(hours(T.worked))}
-            ${bank ? last(hours(T.bankHoliday)) : ''}${last(hours(T.holiday))}
+            <td width="${name}" class="ts-cell" style="padding:8px 3px 8px 6px;border-top:2px solid ${DARK};font-size:13px;font-weight:700;">Everybody</td>
+            ${weekCells(last, T.week, '400')}${last(hours(T.worked), WASH.worked)}
+            ${bank ? last(bankValue(T.weekBank), WASH.bank) : ''}${last(hours(T.holiday), WASH.holiday)}${last('', WASH.sundays)}
         </tr>
     </table>`
 }
 
-// One person: a band with their name and what the period came to, then their
-// fourteen days split at the week.
-//
-// **The band runs the full width of the card**, past the side padding, which is
-// the whole reason it reads as a line between one person and the next.
-function personBlock(person, weeks) {
-    const apart = [
-        person.bankHoliday > 0 ? `${hours(person.bankHoliday)} on the bank holiday` : '',
-        person.holiday > 0 ? `${hours(person.holiday)} holiday` : '',
-        person.trial > 0 ? `${hours(person.trial)} on trial shifts` : '',
-        person.training > 0 ? `${hours(person.training)} training` : '',
-        person.sickDays > 0 ? `${plural(person.sickDays, 'day')} off sick` : '',
-        person.sickParts > 0 ? `${plural(person.sickParts, 'part day')} off sick` : '',
-        person.unpaidDays > 0 ? `${plural(person.unpaidDays, 'day')} unpaid` : '',
-        person.unpaidParts > 0 ? `${plural(person.unpaidParts, 'part day')} unpaid` : '',
-    ].filter(Boolean).join(' &middot; ')
+// A border a step darker than each permission colour's wash. Solid, because
+// classic Outlook drops a see-through colour.
+const PERMISSION_EDGE = { ok: '#BFE0CB', waiting: '#EED5A6', soon: '#EED5A6', not: '#F1C2C2', unknown: '#CBD5E1' }
 
-    const band = `<tr><td style="background:${DARK};padding:10px ${SIDE}px;">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="font-family:${FONT};">
-            <tr>
-                <td width="100%" style="font-size:15px;font-weight:700;color:#ffffff;">
-                    ${escapeHtml(person.name)}
-                </td>
-                <td width="1%" style="text-align:right;white-space:nowrap;font-size:15px;font-weight:700;color:#ffffff;">
-                    ${hours(person.worked)} h
-                </td>
-            </tr>
-            <tr><td colspan="2" style="font-size:11px;color:#A9C0B2;padding-top:3px;">
-                Week 1 ${hours(person.week[0])}&#32;&middot;&#32;Week 2 ${hours(person.week[1])}${apart ? `&#32;&middot;&#32;${apart}` : ''}
-            </td></tr>
-        </table>
+const longDated = date => `${Number(date.slice(8, 10))} ${MONTHS[Number(date.slice(5, 7)) - 1]} ${date.slice(0, 4)}`
+
+// Permission to work, for everybody employed on the day it goes (his, 1
+// November 2026, grouped, worst first). Everybody who is fine is one line of
+// names at the end, so the people who need something are what she sees.
+//
+// **A section of its own** (his pick of three, 2 November 2026): a heavy
+// rule and a heading the size of a section, so it no longer reads as the
+// table's small print, and each group a card with its colour along the top.
+function permissionsBlock(list, today) {
+    const person = p => `<tr><td style="padding:8px 12px;border-top:1px solid ${BORDER};">
+        <div class="ts-who" style="font-size:13px;font-weight:700;color:${INK};">${escapeHtml(p.name)}</div>
+        <div class="ts-why" style="font-size:12.5px;line-height:1.45;color:${MUTED};padding-top:2px;">${escapeHtml(p.words)}</div>
+    </td></tr>`
+    const names = them => `<tr><td class="ts-names" style="padding:8px 12px;border-top:1px solid ${BORDER};font-size:13px;line-height:1.5;color:${INK};">
+        ${them.map(p => escapeHtml(p.name)).join(', ')}
     </td></tr>`
 
-    const halves = [0, 1].map(w => {
-        const mine = person.days.filter(day => day.week === w)
-        const lines = mine.length
-            ? mine.map(day => dayLine(day)).join('')
-            : `<tr><td width="100%" style="padding:7px 0;border-top:1px solid ${BORDER};font-size:13px;color:${MUTED};">
-                Nothing worked this week
-            </td><td width="1%"></td></tr>`
+    const head = `<div style="border-top:2px solid ${DARK};margin-top:30px;padding-top:16px;">
+        <div class="ts-h2" style="font-size:18px;font-weight:700;color:${INK};">Permission to work</div>
+        <div class="ts-h2sub" style="font-size:13px;color:${MUTED};padding-top:2px;">Everybody employed on ${escapeHtml(longDated(today))}</div>
+    </div>`
 
-        return `<div style="font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:${MUTED};padding:14px 0 2px;">
-            Week ${w + 1}&#32;&middot;&#32;${escapeHtml(weeks[w])}
-        </div>
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-            style="border-collapse:collapse;font-family:${FONT};">
-            ${lines}
-            <tr>
-                <td width="100%" style="padding:7px 0 2px;border-top:1px solid ${DARK};font-size:13px;font-weight:700;">
-                    Week ${w + 1}
-                </td>
-                <td width="1%" style="padding:7px 0 2px;border-top:1px solid ${DARK};text-align:right;white-space:nowrap;font-size:13px;font-weight:700;">
-                    ${hours(person.week[w])} h
-                </td>
-            </tr>
+    return head + permissionGroups(list).map(([state, them]) => {
+        const look = PERMISSION_LOOK[state]
+        return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+            style="border-collapse:separate;font-family:${FONT};margin-top:12px;border:1px solid ${PERMISSION_EDGE[state]};border-radius:6px;overflow:hidden;">
+            <tr><td class="ts-group" style="background:${look.wash};padding:8px 12px;font-size:13px;font-weight:700;color:${look.ink};">
+                ${escapeHtml(PERMISSION_STATES[state].label)}&#32;<span style="font-weight:400;">(${them.length})</span>
+            </td></tr>
+            ${state === 'ok' ? names(them) : them.map(person).join('')}
         </table>`
     }).join('')
-
-    return band + row(`<div style="padding-bottom:16px;">${halves}</div>`)
 }
 
-// One day. This is the one that used to vanish: no times, no comment, and the
-// filter threw the whole row away.
-function dayLine(day) {
-    const times = day.spans.map(span => {
-        const kind = span.kind && span.kind !== 'worked' && KIND_LOOK[span.kind]
-            ? `&#32;${mark(KIND_LOOK[span.kind])}`
-            : ''
-        return `<div style="font-size:13px;color:${INK};white-space:nowrap;">
-            ${escapeHtml(clock(span.starts_at))} to ${escapeHtml(clock(span.ends_at))}${kind}
-        </div>`
-    }).join('') + day.open.map(at => (
-        // Said rather than left out, and allowed to wrap: it is a sentence,
-        // and a line that cannot break is what makes a phone shrink the mail.
-        `<div style="font-size:13px;color:${INK};">
-            Clock in ${escapeHtml(clock(at))}, no clock out
-        </div>`
-    )).join('')
-
-    // A day that has times and is also one of the two counted kinds says so
-    // under the times, on its own line so it never widens the row on a phone.
-    // Without it the summary counted a day nobody could find.
-    const counted = times && day.away && COUNTED_DAYS.includes(day.away) ? awayLine(day) : ''
-
-    const body = (times && times + counted)
-        || (day.away && AWAY_LOOK[day.away]
-            ? awayLine(day)
-            : `<div style="font-size:13px;color:${MUTED};">Nothing worked</div>`)
-
-    // His own words, under the times they belong to and marked as his.
-    const said = day.notes.map(words => (
-        `<div style="font-size:13px;line-height:1.45;color:${INK};padding:4px 0 0 10px;border-left:3px solid ${BORDER};margin-top:4px;word-break:break-word;overflow-wrap:anywhere;">
-            ${escapeLines(words)}
-        </div>`
-    )).join('')
-
-    return `<tr>
-        <td width="100%" style="padding:7px 0;border-top:1px solid ${BORDER};vertical-align:top;">
-            <div style="font-size:13px;font-weight:600;color:${INK};">
-                ${escapeHtml(dayWords(day.date))}${day.bankHoliday ? `&#32;${mark(BANK_LOOK)}` : ''}
-            </div>
-            ${body}
-            ${said}
-        </td>
-        <td width="1%" style="padding:7px 0 7px 12px;border-top:1px solid ${BORDER};text-align:right;vertical-align:top;white-space:nowrap;font-size:13px;font-weight:600;color:${INK};">
-            ${day.hours > 0 ? `${hours(day.hours)} h` : ''}
-        </td>
-    </tr>`
-}
-
-// The mark for a day away. A part day says so after the mark rather than
-// inside it: a mark cannot break, and "At the other restaurant, part of the
-// day" in one piece is wider than a phone gives the mail.
-function awayLine(day) {
-    const part = day.part
-        ? `&#32;<span style="font-size:13px;color:${INK};">part of the day</span>`
-        : ''
-    return `<div style="padding-top:2px;">${mark(AWAY_LOOK[day.away])}${part}</div>`
-}
-
-// What every colour means, once, at the bottom.
-function legend() {
-    const looks = [
-        BANK_LOOK, AWAY_LOOK.holiday, AWAY_LOOK.sick, AWAY_LOOK.unpaid,
-        KIND_LOOK.trial, KIND_LOOK.training,
-    ]
-    return `<div style="border-top:1px solid ${BORDER};padding-top:12px;line-height:2.1;">
-        ${looks.map(look => mark(look)).join('&#32;')}
-    </div>`
+// The list in its groups, worst first, leaving out a group with nobody in it.
+function permissionGroups(list) {
+    return Object.keys(PERMISSION_STATES)
+        .sort((a, b) => PERMISSION_STATES[a].order - PERMISSION_STATES[b].order)
+        .map(state => [state, list.filter(p => p.state === state)])
+        .filter(([, them]) => them.length)
 }
 
 // Typed text a line at a time, with nothing left at the end of a line.
 const typed = text => String(text ?? '').split(/\r?\n/).map(line => line.trimEnd())
 
+// Which week bank holiday hours fell in, for the plain text: "(week 2)", or
+// both weeks' share when each had one.
+function bankWhen(split) {
+    const weeks = [0, 1].filter(w => split[w] > 0)
+    if (weeks.length === 2) return ` (week 1 ${hours(split[0])}, week 2 ${hours(split[1])})`
+    return weeks.length ? ` (week ${weeks[0] + 1})` : ''
+}
+
 // The plain text half, for a reader that will not draw the other one. It says
 // the same things in the same order: anybody reading this instead of the HTML
 // should not be told less.
-function asText({ restaurantName, period, weeks, people, T, test, comment }) {
+function asText({ restaurantName, period, weeks, people, T, test, comment, permissions, today, paper }) {
     const lines = []
     if (test) lines.push('[Test] Sending this test does not mark the pay period as sent.', '')
     lines.push(`${restaurantName || 'Papi Chulo'}, hours, ${period}`, 'Pay period, two weeks', '')
@@ -729,16 +811,17 @@ function asText({ restaurantName, period, weeks, people, T, test, comment }) {
     lines.push(
         `Week 1 (${weeks[0]}) ${hours(T.week[0])}`,
         `Week 2 (${weeks[1]}) ${hours(T.week[1])}`,
-        `Worked ${hours(T.worked)}`,
-        `Bank holiday ${hours(T.bankHoliday)}`,
+        `Worked ${hours(T.worked)} (without bank holiday hours)`,
+        `Bank holiday ${hours(T.bankHoliday)}${bankWhen(T.weekBank)}`,
         `Holiday ${hours(T.holiday)}`,
         '',
     )
 
     for (const person of people) {
         const apart = [
-            person.bankHoliday > 0 ? `${hours(person.bankHoliday)} on the bank holiday` : '',
+            person.bankHoliday > 0 ? `${hours(person.bankHoliday)} on the bank holiday${bankWhen(person.weekBank)}` : '',
             person.holiday > 0 ? `${hours(person.holiday)} holiday` : '',
+            person.sundays > 0 ? `${plural(person.sundays, 'Sunday')} worked` : '',
             person.trial > 0 ? `${hours(person.trial)} on trial shifts` : '',
             person.training > 0 ? `${hours(person.training)} training` : '',
             person.sickDays > 0 ? `${plural(person.sickDays, 'day')} off sick` : '',
@@ -747,39 +830,24 @@ function asText({ restaurantName, period, weeks, people, T, test, comment }) {
             person.unpaidParts > 0 ? `${plural(person.unpaidParts, 'part day')} unpaid` : '',
         ].filter(Boolean).join(', ')
 
-        lines.push(`${person.name}: ${hours(person.worked)} h${apart ? ` (${apart})` : ''}`)
+        lines.push(
+            `${person.name}: worked ${hours(person.worked)} h (week 1 ${hours(person.week[0])}, week 2 ${hours(person.week[1])})`,
+            ...(apart ? [`  ${apart}`] : []),
+        )
+    }
+    lines.push('')
 
-        for (const w of [0, 1]) {
-            lines.push(`  Week ${w + 1}, ${weeks[w]}`)
-            const mine = person.days.filter(day => day.week === w)
-            if (!mine.length) lines.push('    nothing worked this week')
-
-            for (const day of mine) {
-                const head = `    ${dayWords(day.date)}${day.bankHoliday ? ' (bank holiday)' : ''}`
-                const timed = day.spans.length + day.open.length
-                if (!timed) {
-                    const away = day.away && AWAY_LOOK[day.away]
-                    lines.push(`${head}: ${away ? awayWords(day).toLowerCase() : 'nothing worked'}`)
-                }
-                for (const span of day.spans) {
-                    const kind = span.kind && KIND_LOOK[span.kind]
-                        ? ` (${KIND_LOOK[span.kind].label.toLowerCase()})`
-                        : ''
-                    lines.push(`${head}: ${clock(span.starts_at)} to ${clock(span.ends_at)}${kind}  ${hours(span.hours)} h`)
-                }
-                for (const at of day.open) lines.push(`${head}: clock in ${clock(at)}, no clock out`)
-                if (timed && COUNTED_DAYS.includes(day.away)) {
-                    lines.push(`      ${awayWords(day).toLowerCase()}`)
-                }
-                for (const words of day.notes) {
-                    for (const line of typed(words)) lines.push(line ? `      ${line}` : '')
-                }
-            }
-            lines.push(`    Week ${w + 1} ${hours(person.week[w])} h`)
+    if (permissions) {
+        lines.push(`Permission to work, everybody employed on ${longDated(today)}`)
+        for (const [state, them] of permissionGroups(permissions)) {
+            const label = `${PERMISSION_STATES[state].label} (${them.length})`
+            if (state === 'ok') lines.push(`  ${label}: ${them.map(p => p.name).join(', ')}`)
+            else lines.push(`  ${label}`, ...them.map(p => `    ${p.name}: ${p.words}`))
         }
         lines.push('')
     }
 
-    lines.push('Hours only, not pay. Times are as the till recorded them.')
+    if (paper) lines.push("Each person's days, with the clock times and comments, are in the PDF attached.")
+    lines.push('Hours only, not pay.')
     return lines.join('\n')
 }

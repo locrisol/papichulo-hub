@@ -3,16 +3,21 @@ import {
     timesheetEmail, personPeriod, holidayHoursInWeek, bankHolidays, bankHolidayOn,
     clock, hours, dayWords, weekWords, periodWords, addDays, hoursPdfPath,
     AWAY_LOOK, KIND_LOOK, BANK_LOOK, COUNTED_DAYS, awayWords,
+    permissionState, permissionWords, permissionList, PERMISSION_STATES, PERMISSION_LOOK, dublinToday,
 } from '../../supabase/functions/weekly-report-email/timesheet'
-import { heldNotice } from '../../supabase/functions/weekly-report-email/email'
+import { heldNotice, page } from '../../supabase/functions/weekly-report-email/email'
 import { readFileSync } from 'node:fs'
 import { bankHolidays as appBankHolidays } from '@/lib/bankHolidays'
 import { ABSENCE_KINDS } from '@/lib/absences'
 import {
     KINDS, personPeriod as appPersonPeriod,
     AWAY_LOOK as appAway, KIND_LOOK as appKind, BANK_LOOK as appBank,
-    COUNTED_DAYS as appCounted, awayWords as appAwayWords,
+    COUNTED_DAYS as appCounted, awayWords as appAwayWords, PERMISSION_LOOK as appPermissionLook,
 } from '@/lib/timesheet'
+import {
+    permissionState as appPermissionState, permissionWords as appPermissionWords,
+    permissionList as appPermissionList, PERMISSION_STATES as appStates,
+} from '@/lib/workRules'
 
 // The pay period the design was drawn against: Sunday 25 October to Saturday
 // 7 November 2026, which holds the October bank holiday on its first Monday.
@@ -42,28 +47,52 @@ const period = (over = {}) => personPeriod({
 })
 
 describe('the figures, worked out here rather than trusted', () => {
+    // Worked leaves the bank holiday out (his, 1 November 2026): 8.13 on the
+    // Sunday and 6.00 the week after, the 5.25 on the Monday given apart.
     it('adds a person up from their own rows', () => {
         const [first] = period()
         expect(first.name).toBe('Aoife')
-        expect(first.worked).toBeCloseTo(19.38, 2)
+        expect(first.worked).toBeCloseTo(14.13, 2)
     })
 
     // One amount gets paid, but when something is queried she still needs to
     // know which week the hours fell in.
     it('keeps the two weeks apart', () => {
         const [first] = period()
-        expect(first.week[0]).toBeCloseTo(13.38, 2)
+        expect(first.week[0]).toBeCloseTo(8.13, 2)
         expect(first.week[1]).toBeCloseTo(6.00, 2)
         expect(first.week[0] + first.week[1]).toBeCloseTo(first.worked, 2)
     })
 
-    // His format: normal is everything that is not a bank holiday, and the
+    // His format: worked is everything that is not a bank holiday, and the
     // bank holiday hours sit beside it rather than inside it, because section
     // 21 is applied at the accountant's end and not here.
-    it('holds the bank holiday hours apart from the rest', () => {
+    it('holds the bank holiday hours apart from the rest, week by week', () => {
         const [first] = period()
         expect(first.bankHoliday).toBeCloseTo(5.25, 2)
-        expect(first.normal).toBeCloseTo(14.13, 2)
+        expect(first.weekBank[0]).toBeCloseTo(5.25, 2)
+        expect(first.weekBank[1]).toBe(0)
+    })
+
+    // His, 1 November 2026: how many Sundays, for the accountant. Aoife's
+    // 25 October is one; nobody worked the 1st.
+    it('counts the Sundays somebody worked', () => {
+        const [first, second] = period()
+        expect(first.sundays).toBe(1)
+        expect(second.sundays).toBe(0)
+    })
+
+    it('counts a bank holiday that falls on a Sunday as a Sunday', () => {
+        const christmas = Array.from({ length: 14 }, (_, i) => addDays('2033-12-18', i))
+        const [only] = personPeriod({
+            people: [aoife],
+            entries: [shift({ employee_id: 'e1', work_date: '2033-12-25', starts_at: '10:00:00', ends_at: '14:00:00', hours: 4 })],
+            absences: [],
+            dates: christmas,
+        })
+        expect(only.sundays).toBe(1)
+        expect(only.bankHoliday).toBe(4)
+        expect(only.worked).toBe(0)
     })
 
     it('leaves out somebody who did nothing at all', () => {
@@ -161,7 +190,7 @@ describe('going home sick part way through a day', () => {
         const [first] = personPeriod({ people: [aoife], entries, absences: homeSick(), dates: DATES })
         expect(first.sickDays).toBe(0)
         expect(first.sickParts).toBe(1)
-        expect(first.worked).toBeCloseTo(19.38, 2)
+        expect(first.worked).toBeCloseTo(14.13, 2)
     })
 
     it('marks the day it happened, beside the times', () => {
@@ -200,31 +229,7 @@ describe('going home sick part way through a day', () => {
         })
         expect(mail.html).toContain('1&nbsp;part&nbsp;day</span>&#32;sick')
         expect(mail.html).not.toContain('1&nbsp;day</span>&#32;sick')
-        expect(mail.html).toMatch(/>Off sick<\/span>&#32;<span[^>]*>part of the day<\/span>/)
-        expect(mail.text).toContain('off sick, part of the day')
-    })
-
-    // A mark cannot break. "At the other restaurant, part of the day" in one
-    // piece is wider than his phone gives the mail, and one line too wide is
-    // what makes the Gmail app shrink every box in it.
-    it('never makes a mark longer than the longest label', () => {
-        const looks = [...Object.values(AWAY_LOOK), ...Object.values(KIND_LOOK), BANK_LOOK]
-        const longest = Math.max(...looks.map(look => look.label.length))
-        const mail = timesheetEmail({
-            restaurantName: 'Point Campus',
-            periodStart: PERIOD,
-            people: personPeriod({
-                people: [aoife], entries, dates: DATES,
-                absences: [...homeSick(), {
-                    employee_id: 'e1', kind: 'lent', status: 'approved',
-                    starts_on: '2026-10-29', ends_on: '2026-10-29', can_work_from: '15:00:00',
-                }],
-            }),
-        })
-        const marks = [...mail.html.matchAll(/<span style="display:inline-block;[^"]*">([^<]*)<\/span>/g)]
-            .map(found => found[1])
-        expect(marks).toContain('At the other restaurant')
-        for (const words of marks) expect(words.length).toBeLessThanOrEqual(longest)
+        expect(mail.text).toContain('1 part day off sick')
     })
 
     // The parity test hands both copies the same rows, so it cannot see this:
@@ -252,15 +257,6 @@ describe('a clock in with no clock out', () => {
         expect(day.hours).toBe(0)
     })
 
-    it('says so in the mail', () => {
-        const mail = timesheetEmail({
-            restaurantName: 'Point Campus',
-            periodStart: PERIOD,
-            people: personPeriod({ people: [aoife], entries: [...entries, ...half], absences: [], dates: DATES }),
-        })
-        expect(mail.html).toContain('Clock in 09:00:00, no clock out')
-        expect(mail.text).toContain('clock in 09:00:00, no clock out')
-    })
 })
 
 describe('a trial and a training day', () => {
@@ -452,18 +448,70 @@ describe('the mail itself', () => {
         expect(mail.text).not.toMatch(/roster|rostered|scheduled/i)
     })
 
-    it('carries the times to the second', () => {
-        expect(built().html).toContain('09:26:07')
-        expect(built().text).toContain('17:34:05')
+    // His, 2 November 2026: the mail does not need the breakdown, only the
+    // PDF. The times, his comments and a clock in with no clock out are all
+    // on the PDF's days (timesheetPdf.test).
+    it('leaves each person\'s days to the PDF', () => {
+        const half = [shift({ employee_id: 'e1', work_date: '2026-10-28', starts_at: '09:00:00', ends_at: null, hours: null })]
+        const mail = built({ people: period({ entries: [...entries, ...half] }), paper: true })
+        for (const part of [mail.html, mail.text]) {
+            expect(part).not.toContain('09:26:07')
+            expect(part).not.toContain('Stayed to close, fridge delivery late')
+            expect(part).not.toContain('no clock out')
+            expect(part).toContain("Each person's days, with the clock times and comments, are in the PDF attached.")
+        }
     })
 
-    it('carries his comment as typed', () => {
-        expect(built().html).toContain('Stayed to close, fridge delivery late')
-        expect(built().text).toContain('Stayed to close, fridge delivery late')
+    it('only says the days are in the PDF when there is one', () => {
+        expect(built().html).not.toContain('PDF attached')
+        expect(built().text).not.toContain('PDF attached')
     })
 
-    it('names the bank holiday on the day it falls', () => {
-        expect(built().html).toContain('Bank holiday')
+    // His, 2 November 2026: fine on the phone, too small on a computer. The
+    // sizes on the elements stay the phone's, since the phone sets the floor,
+    // and a wide screen takes bigger ones from the head.
+    it('is bigger on a computer and the same on a phone', () => {
+        const sick = [{ employee_id: 'e1', kind: 'sick', status: 'approved', starts_on: '2026-10-28', ends_on: '2026-10-28' }]
+        const html = built({
+            people: period({ absences: sick }),
+            test: true, comment: 'A note', paper: true,
+            permissions: [{ name: 'Dara', state: 'not', words: 'Stamp 2A, no permission to work' }, { name: 'Aoife', state: 'ok', words: 'No restriction' }],
+            today: '2026-11-02',
+        }).html
+        const sheet = html.match(/<\/title>(?:<!--[\s\S]*?-->)?<style>(@media screen and \(min-width:600px\)\{[^<]*\})<\/style><\/head>/)?.[1]
+        expect(sheet).toBeTruthy()
+        // Every class the sheet sizes is on something in the mail.
+        const classes = [...new Set(sheet.match(/\.ts-[a-z0-9]+/g).map(c => c.slice(1)))]
+        expect(classes.length).toBeGreaterThan(10)
+        for (const name of classes) expect(html).toContain(`class="${name}"`)
+        // And the phone's own sizes are still written on them.
+        expect(html).toMatch(/class="ts-intro" style="font-size:14px;/)
+        expect(html).toMatch(/class="ts-th" style="font-size:9px;/)
+        expect(html).toMatch(/class="ts-cell" style="[^"]*font-size:13px;/)
+    })
+
+    it('leaves the sheet out of a page that has none', () => {
+        expect(page('<p>x</p>')).not.toMatch(/<style>@media/)
+    })
+
+    // The send knows whether there is a PDF, and the mail is only right about
+    // where the days went if it is told.
+    it('is told by the send whether the PDF is on it', () => {
+        const source = readFileSync('supabase/functions/weekly-report-email/index.ts', 'utf8')
+        expect(source).toMatch(/timesheetEmail\(\{[\s\S]*?paper: Boolean\(attachment\),[\s\S]*?\}\)/)
+    })
+
+    // His pick of three, 2 November 2026: the two things the table cannot say.
+    it('says the weeks and what Worked leaves out, and nothing more', () => {
+        const top = built().html.match(/padding:16px 0 0;">([^<]*)<\/div>/)
+        expect(top?.[1].replace(/&#32;/g, ' ').trim()).toBe(
+            'Week 1 is 25 to 31 October and week 2 is 1 to 7 November. Bank holiday and holiday hours are not in Worked.',
+        )
+        expect(built().html).toContain('Sent from the Papi Chulo Hub.&#32;Hours only, not pay.')
+    })
+
+    it('names the week of the bank holiday in its heading', () => {
+        expect(built().html).toContain('Bank hol.<br />Week&nbsp;1</th>')
     })
 
     it('says it is a pay period of two weeks', () => {
@@ -474,8 +522,44 @@ describe('the mail itself', () => {
     it('puts week one over week two on a bank holiday fortnight', () => {
         const html = built().html
         expect(html).toContain('Week&nbsp;1<br />Week&nbsp;2')
-        expect(html).toMatch(/>13\.38<br \/>6\.00</)
+        expect(html).toMatch(/>8\.13<br \/>6\.00</)
         expect(html).toContain('Everybody')
+    })
+
+    // A column of their own at the end, as in the PDF (his, 2 November 2026),
+    // with no total: a count added across people is paid on by nobody.
+    it('counts the Sundays in a column of their own', () => {
+        const html = built().html
+        expect(html).toContain('>Sun&shy;days</th></tr>')
+        expect(html).toMatch(/>\s*Aoife\s*<\/td>(?:(?!<\/tr>)[\s\S])*>1<\/td><\/tr>/)
+        expect(html).not.toContain('Sunday</span>')
+        expect(built().text).toContain('1 Sunday worked')
+    })
+
+    it('says which week the bank holiday hours fell in', () => {
+        const text = built().text
+        expect(text).toContain('Bank holiday 5.25 (week 1)')
+        expect(text).toContain('5.25 on the bank holiday (week 1)')
+    })
+
+    // Christmas 2027 is a Saturday, so St Stephen's Day opens the next week.
+    it('puts the bank holiday hours one above the other when each week has one', () => {
+        const XMAS = '2027-12-19'
+        const mail = timesheetEmail({
+            restaurantName: 'Point Campus',
+            periodStart: XMAS,
+            people: personPeriod({
+                people: [aoife], absences: [],
+                dates: Array.from({ length: 14 }, (_, i) => addDays(XMAS, i)),
+                entries: [
+                    shift({ employee_id: 'e1', work_date: '2027-12-25', starts_at: '10:00:00', ends_at: '15:00:00', hours: 5 }),
+                    shift({ employee_id: 'e1', work_date: '2027-12-26', starts_at: '10:00:00', ends_at: '16:00:00', hours: 6 }),
+                ],
+            }),
+        })
+        expect(mail.html).toContain('>Bank hol.</th>')
+        expect(mail.html).toContain('>5.00<br />6.00</td>')
+        expect(mail.text).toContain('Bank holiday 11.00 (week 1 5.00, week 2 6.00)')
     })
 
     it('escapes whatever somebody typed', () => {
@@ -497,13 +581,13 @@ describe('the mail itself', () => {
         }
     })
 
-    // A phone lays a table out at the width of its widest unbreakable thing.
-    // width="100%" on the name is what stops it being the name, and the figure
-    // columns are width="1%" and nowrap so they are as narrow as a figure.
-    it('lets the name column take the leftover width and pins the figures', () => {
+    // On a computer the figures sat in a heap on the right (his, 2 November
+    // 2026). Each figure column asks for an even share now, and a share never
+    // holds a phone wider than its figures. A width in pixels would.
+    it('spreads the figure columns across the width', () => {
         const html = built().html
-        expect(html).toContain('width="100%"')
-        expect(html).toContain('width="1%"')
+        expect(html.match(/<th width="14%"/g)).toHaveLength(5)
+        expect(html).toContain('<th width="30%"')
         expect(html).not.toMatch(/width="\d{3}"/)
     })
 
@@ -528,7 +612,7 @@ describe('the mail itself', () => {
     // own font.
     it('names the font on every table inside the card', () => {
         const tables = built().html.match(/<table[^>]*>/g).slice(1)
-        expect(tables.length).toBeGreaterThan(3)
+        expect(tables.length).toBeGreaterThan(1)
         for (const table of tables) expect(table).toContain('font-family:')
     })
 
@@ -552,26 +636,21 @@ describe('the mail itself', () => {
         expect(mail.text).toContain('Two corrections\nin week two')
     })
 
-    it('keeps the line breaks in a comment on a day', () => {
-        const said = [{ employee_id: 'e1', work_date: '2026-10-28', note: 'Swapped late \nwith Cathal' }]
-        const mail = built({ people: period({ entries: [...entries, ...said] }) })
-        expect(mail.html).toContain('Swapped late<br />with Cathal')
-        expect(mail.text).toContain('      Swapped late\n      with Cathal')
-    })
-
     // A pasted link is one word that cannot break, and it would hold the mail
     // wider than a phone the same way a figure that cannot wrap does.
     it('lets a long typed word break', () => {
         const url = 'https://example.test/' + 'a'.repeat(99)
-        const cell = built({ comment: url }).html.match(new RegExp(`<div style="([^"]*)"> ?${url} ?</div>`))
+        const cell = built({ comment: url }).html.match(new RegExp(`<div (?:class="[^"]*" )?style="([^"]*)"> ?${url} ?</div>`))
         expect(cell).not.toBeNull()
         expect(cell[1]).toContain('word-break:break-word;')
         expect(cell[1]).toContain('overflow-wrap:anywhere;')
     })
 
     it('adds the period up across everybody', () => {
-        // 8.13 + 5.25 + 6.00 worked by one, 4.34 by the other.
-        expect(built().text).toContain('Worked 23.72')
+        // 8.13 + 6.00 worked by one, 4.34 by the other, and the 5.25 on the
+        // bank holiday given apart.
+        expect(built().text).toContain('Worked 18.47 (without bank holiday hours)')
+        expect(built().text).toContain('Bank holiday 5.25')
     })
 
     it('draws a day off sick rather than leaving a hole', () => {
@@ -586,17 +665,16 @@ describe('the mail itself', () => {
                 }],
             }),
         })
-        expect(mail.html).toContain('Off sick')
         expect(mail.html).toContain('1&nbsp;day</span>&#32;sick')
-        expect(mail.text).toContain('off sick')
+        expect(mail.text).toContain('1 day off sick')
     })
 })
 
 // His phone gives the mail 307px, and a mail any wider is one the Gmail app
 // scrambles from top to bottom. A name and five columns of figures came to
 // 362px with a team's three figure totals. The bank holiday column only comes
-// when somebody has bank holiday hours, and only then do the two weeks share a
-// column.
+// on a fortnight with a bank holiday, and only then do the two weeks share a
+// column. The headings that are wider than their figures may break.
 describe('the summary fits a phone', () => {
     const summaryOf = html => {
         const at = html.indexOf('>Name</th>')
@@ -610,7 +688,7 @@ describe('the summary fits a phone', () => {
         const lines = inner
             .replace(/<span style="white-space:nowrap;">([^<]*)<\/span>/g, (_, words) => words.replace(/ /g, '&nbsp;'))
             .replace(/<br \/>|<div[^>]*>|<\/div>/g, '\n')
-            .replace(/&#32;/g, ' ')
+            .replace(/&#32;|&shy;/g, ' ')
             .replace(/<[^>]*>/g, '')
             .replace(/&nbsp;/g, '_')
             .replace(/&[a-z0-9#]+;/gi, 'x')
@@ -651,17 +729,25 @@ describe('the summary fits a phone', () => {
         }),
     }).html
 
-    // Off the bank holiday, so nobody has bank holiday hours.
+    // Off the bank holiday, so nobody has bank holiday hours, and a fortnight
+    // later, so there is no bank holiday in it at all.
     const offTheDay = rows => rows.map(e => ({ ...e, work_date: e.work_date === '2026-10-26' ? '2026-10-27' : e.work_date }))
+    const LATER = '2026-11-08'
+    const later = rows => rows.map(e => ({ ...e, work_date: addDays(e.work_date, 14) }))
 
-    it('leaves the bank holiday column out when nobody has bank holiday hours', () => {
-        const plain = mail(offTheDay(entries))
+    it('leaves the bank holiday column out on a fortnight with no bank holiday', () => {
+        const plain = mail(later(entries), LATER)
         expect(plain).not.toContain('Bank hol.')
     })
 
+    // A dash says nobody worked it, rather than leaving her to wonder.
+    it('keeps the column on a bank holiday fortnight even when nobody worked it', () => {
+        expect(mail(offTheDay(entries))).toContain('Bank hol.')
+    })
+
     it('keeps the two weeks side by side when there is no bank holiday column', () => {
-        const plain = mail(offTheDay(entries))
-        expect(headCells(plain)).toHaveLength(5)
+        const plain = mail(later(entries), LATER)
+        expect(headCells(plain)).toHaveLength(6)
         expect(plain).toContain('Week&nbsp;1</th>')
         expect(plain).toContain('Week&nbsp;2</th>')
         expect(plain).not.toContain('Week&nbsp;1<br />Week&nbsp;2')
@@ -669,39 +755,40 @@ describe('the summary fits a phone', () => {
 
     it('has the bank holiday column on a fortnight with bank holiday hours', () => {
         const html = mail(entries)
-        expect(headCells(html)).toHaveLength(5)
+        expect(headCells(html)).toHaveLength(6)
         expect(html).toContain('Bank hol.')
     })
 
-    // Measured in headless Chrome, 34 characters across came to 300px with
-    // Training marks, a bank holiday and three figure totals, against the
-    // 307px his phone gives. The report's own rule is the model: sixteen
+    // Measured in headless Chrome on 2 November 2026, with Training marks, a
+    // bank holiday, three figure totals and the Sundays column, these two
+    // fortnights came to 288px against the 307px his phone gives, and to 35
+    // characters across. The report's own rule is the model: sixteen
     // characters for one figure that cannot wrap.
-    it('is never more than 34 characters across', () => {
+    it('is never more than 35 characters across', () => {
         const html = mail([...trained, ...busy])
         expect(html).toContain('Bank hol.')
         expect(html).toContain('Training&#32;<span style="white-space:nowrap;">12.50&nbsp;h</span>')
         const widest = across(html)
         // Found something before saying anything about what was found.
-        expect(widest).toHaveLength(5)
+        expect(widest).toHaveLength(6)
         expect(Math.min(...widest)).toBeGreaterThan(0)
-        expect(widest.reduce((t, n) => t + n, 0)).toBeLessThanOrEqual(34)
+        expect(widest.reduce((t, n) => t + n, 0)).toBeLessThanOrEqual(35)
     })
 
     // The other shape: no bank holiday, so the two weeks get a column each.
-    it('is never more than 34 characters across without a bank holiday', () => {
-        const html = mail(offTheDay([...trained, ...busy]))
+    it('is never more than 35 characters across without a bank holiday', () => {
+        const html = mail(later([...trained, ...busy]), LATER)
         expect(html).not.toContain('Bank hol.')
         expect(html).toContain('Training&#32;<span style="white-space:nowrap;">12.50&nbsp;h</span>')
         const widest = across(html)
-        expect(widest).toHaveLength(5)
+        expect(widest).toHaveLength(6)
         expect(Math.min(...widest)).toBeGreaterThan(0)
-        expect(widest.reduce((t, n) => t + n, 0)).toBeLessThanOrEqual(34)
+        expect(widest.reduce((t, n) => t + n, 0)).toBeLessThanOrEqual(35)
     })
 
     it('lets a mark break between its words and its figure', () => {
         const html = mail(trained)
-        const marks = [...summaryOf(html).matchAll(/<span style="display:inline-block;([^"]*)">/g)].map(m => m[1])
+        const marks = [...summaryOf(html).matchAll(/<span (?:class="[^"]*" )?style="display:inline-block;([^"]*)">/g)].map(m => m[1])
         expect(marks.length).toBeGreaterThan(0)
         for (const style of marks) expect(style).not.toContain('white-space:nowrap')
     })
@@ -803,5 +890,162 @@ describe('where the hours PDF is read from', () => {
         const source = readFileSync('supabase/functions/weekly-report-email/index.ts', 'utf8')
         expect(source).toContain('.download(pdfPath)')
         expect(source).not.toMatch(/\.download\(attachment\)/)
+    })
+})
+
+// His, 1 November 2026: where everybody stands on permission to work, in the
+// hours mail and on the paper. Worked out in the app for the PDF and in the
+// function for the mail, so the two copies are run over the same people.
+describe('permission to work', () => {
+    const TODAY = '2026-11-01'
+    const stamp2 = over => ({ work_permission: 'stamp2', ...over })
+    const CASES = [
+        ['nothing recorded', {}],
+        ['no restriction', { work_permission: 'unrestricted' }],
+        ['Stamp 2A', { work_permission: 'stamp2a', work_permission_expires: '2027-01-01' }],
+        ['no expiry date', stamp2({})],
+        ['good for months', stamp2({ work_permission_expires: '2027-06-30' })],
+        ['61 days to go', stamp2({ work_permission_expires: addDays(TODAY, 61) })],
+        ['60 days to go', stamp2({ work_permission_expires: addDays(TODAY, 60) })],
+        ['runs out today', stamp2({ work_permission_expires: TODAY })],
+        ['runs out soon, nothing applied', stamp2({ work_permission_expires: '2026-11-20' })],
+        ['runs out soon, applied', stamp2({ work_permission_expires: '2026-11-20', permission_renewal_applied: '2026-10-30' })],
+        ['ran out, nothing applied', stamp2({ work_permission_expires: '2026-10-01' })],
+        ['ran out, applied in time', stamp2({ work_permission_expires: '2026-10-01', permission_renewal_applied: '2026-09-20' })],
+        ['ran out, applied on the day', stamp2({ work_permission_expires: '2026-10-01', permission_renewal_applied: '2026-10-01' })],
+        ['ran out, applied late', stamp2({ work_permission_expires: '2026-10-01', permission_renewal_applied: '2026-10-05' })],
+        ['ran out past the grace', stamp2({ work_permission_expires: '2026-07-01', permission_renewal_applied: '2026-06-20' })],
+    ]
+    const GRACES = [
+        undefined,
+        { on: true, weeks: 12, afterBlocks: true },
+        { on: false, weeks: 12, afterBlocks: false },
+        { on: true, weeks: 20, afterBlocks: false },
+    ]
+
+    it.each(CASES)('comes out the same on both sides: %s', (_, employee) => {
+        for (const grace of GRACES) {
+            const theirs = permissionState(employee, TODAY, grace)
+            expect(theirs).toEqual(appPermissionState(employee, TODAY, grace))
+            expect(permissionWords(theirs)).toBe(appPermissionWords(theirs))
+        }
+    })
+
+    it('has the same states, in the same order, in the same colours', () => {
+        expect(PERMISSION_STATES).toEqual(appStates)
+        expect(PERMISSION_LOOK).toEqual(appPermissionLook)
+    })
+
+    const said = employee => {
+        const p = appPermissionState(employee, TODAY)
+        return [p.state, appPermissionWords(p)]
+    }
+
+    it('says who may work and until when', () => {
+        expect(said({ work_permission: 'unrestricted' })).toEqual(['ok', 'No restriction'])
+        expect(said(stamp2({ work_permission_expires: '2027-06-30' }))).toEqual(['ok', 'Stamp 2, until 30 Jun 2027'])
+    })
+
+    it('asks for a renewal within 60 days, and waits on one applied for', () => {
+        expect(said(stamp2({ work_permission_expires: '2026-11-20' })))
+            .toEqual(['soon', 'Stamp 2, runs out 20 Nov 2026, no renewal applied for'])
+        expect(said(stamp2({ work_permission_expires: '2026-11-20', permission_renewal_applied: '2026-10-30' })))
+            .toEqual(['waiting', 'Stamp 2, runs out 20 Nov 2026, renewal applied 30 Oct 2026'])
+    })
+
+    // The Irish rule: applied before it ran out, twelve weeks to keep working.
+    it('lets somebody who applied in time keep working for the grace', () => {
+        expect(said(stamp2({ work_permission_expires: '2026-10-01', permission_renewal_applied: '2026-09-20' })))
+            .toEqual(['waiting', 'Stamp 2, ran out 1 Oct 2026, renewal applied 20 Sep 2026, may work until 24 Dec 2026'])
+    })
+
+    it('says not OK when nothing was applied for, or it was applied for late', () => {
+        expect(said(stamp2({ work_permission_expires: '2026-10-01' })))
+            .toEqual(['not', 'Stamp 2, ran out 1 Oct 2026, no renewal applied for'])
+        expect(said(stamp2({ work_permission_expires: '2026-10-01', permission_renewal_applied: '2026-10-05' })))
+            .toEqual(['not', 'Stamp 2, ran out 1 Oct 2026, renewal applied 5 Oct 2026, after it ran out'])
+        expect(said({ work_permission: 'stamp2a' })).toEqual(['not', 'Stamp 2A, no permission to work'])
+    })
+
+    // Past the twelve weeks the app does not decide (permission-and-
+    // availability): it waits, unless the restaurant has chosen to block.
+    it('keeps waiting past the grace unless the restaurant blocks', () => {
+        const late = stamp2({ work_permission_expires: '2026-07-01', permission_renewal_applied: '2026-06-20' })
+        expect(said(late)).toEqual(['waiting', 'Stamp 2, ran out 1 Jul 2026, renewal applied 20 Jun 2026, past the 12 weeks on 23 Sep 2026'])
+        expect(appPermissionState(late, TODAY, { on: true, weeks: 12, afterBlocks: true }).state).toBe('not')
+    })
+
+    it('says when nothing is recorded', () => {
+        expect(said({})).toEqual(['unknown', 'No permission recorded'])
+        expect(said(stamp2({}))).toEqual(['unknown', 'Stamp 2, no expiry date recorded'])
+    })
+
+    const TEAM = [
+        { id: 'e1', full_name: 'Aoife', work_permission: 'unrestricted' },
+        { id: 'e2', full_name: 'Cathal', ...stamp2({ work_permission_expires: '2026-10-01', permission_renewal_applied: '2026-09-20' }) },
+        { id: 'e3', full_name: 'Dara', ...stamp2({ work_permission_expires: '2026-10-01' }) },
+        { id: 'e4', full_name: 'Eimear', work_permission: 'unrestricted' },
+        { id: 'e5', full_name: 'Left in September', work_permission: '', ended_on: '2026-09-30' },
+        { id: 'e6', full_name: 'Starts next week', work_permission: '', started_on: '2026-11-08' },
+    ]
+
+    it('lists everybody employed on the day, worst first, the same on both sides', () => {
+        const list = permissionList(TEAM, TODAY)
+        expect(list).toEqual(appPermissionList(TEAM, TODAY))
+        expect(list.map(p => [p.name, p.state])).toEqual([
+            ['Dara', 'not'], ['Cathal', 'waiting'], ['Aoife', 'ok'], ['Eimear', 'ok'],
+        ])
+    })
+
+    const mail = (over = {}) => timesheetEmail({
+        restaurantName: 'Point Campus',
+        periodStart: PERIOD,
+        people: period(),
+        permissions: permissionList(TEAM, TODAY),
+        today: TODAY,
+        ...over,
+    })
+
+    it('goes in the mail in groups, worst first, the fine ones in one line', () => {
+        const html = mail().html.replace(/<[^>]*>/g, '').replace(/&#32;/g, ' ')
+        expect(html).toContain('Permission to workEverybody employed on 1 November 2026')
+        expect(html.indexOf('Not OK to work (1)')).toBeLessThan(html.indexOf('Waiting on a renewal (1)'))
+        expect(html.indexOf('Waiting on a renewal (1)')).toBeLessThan(html.indexOf('OK to work (2)'))
+        expect(html).toContain('Stamp 2, ran out 1 Oct 2026, no renewal applied for')
+        expect(html).toContain('Aoife, Eimear')
+        expect(html).not.toContain('Left in September')
+        expect(html).not.toContain('Starts next week')
+    })
+
+    it('goes in the plain text the same way', () => {
+        const text = mail().text
+        expect(text).toContain('Permission to work, everybody employed on 1 November 2026')
+        expect(text).toContain('  Not OK to work (1)\n    Dara: Stamp 2, ran out 1 Oct 2026, no renewal applied for')
+        expect(text).toContain('  OK to work (2): Aoife, Eimear')
+    })
+
+    it('still says nothing about the roster or money', () => {
+        const { html, text } = mail()
+        expect(html).not.toMatch(/roster|rostered|scheduled/i)
+        expect(text).not.toMatch(/roster|rostered|scheduled/i)
+        expect(html).not.toMatch(/€|EUR/)
+    })
+
+    it('is left out when there is no list', () => {
+        expect(mail({ permissions: null }).html).not.toContain('Permission to work')
+    })
+
+    it('reads the permissions and the restaurant\'s grace in the function', () => {
+        const source = readFileSync('supabase/functions/weekly-report-email/index.ts', 'utf8')
+        const team = /from\('employees'\)\s*\.select\('([^']*)'\)/.exec(source)
+        expect(team?.[1]).toContain('work_permission, work_permission_expires, permission_renewal_applied')
+        expect(source).toMatch(/timesheet_recipients, roster_rules/)
+    })
+
+    // The function runs on UTC. Half eleven at night on 1 July is the 2nd in
+    // Ireland, and half eleven on 1 December is still the 1st.
+    it('takes today as it is in Ireland', () => {
+        expect(dublinToday(new Date('2026-07-01T23:30:00Z'))).toBe('2026-07-02')
+        expect(dublinToday(new Date('2026-12-01T23:30:00Z'))).toBe('2026-12-01')
     })
 })

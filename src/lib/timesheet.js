@@ -58,6 +58,27 @@ export function cameFromTill(entry) {
     return entry?.source === 'import' || entry?.source === 'corrected'
 }
 
+// A saved row with both times rubbed out. A till shift emptied that way stays
+// in the table, so a second import cannot put it back and the comment saying
+// why has somewhere to live, but on a day that still has a shift it is not a
+// pair of empty boxes (his, on Alfredo's Monday 26 October 2026: clocked out
+// by mistake, back in, the two shifts made one and the second left empty).
+//
+// Null and not just empty: a box being typed holds '' until it is left, and
+// a pair that vanished under the cursor would never be saved.
+export function takenOut(entry) {
+    return Boolean(entry?.id) && entry.starts_at == null && entry.ends_at == null
+}
+
+// The pairs of boxes a day draws. A row with no times only when it is all the
+// day has, so typing into it fills that row rather than starting another, and
+// an empty day still gets one pair to type into.
+export function spansToDraw(entries) {
+    const drawn = entries.filter(e => !takenOut(e))
+    if (drawn.length) return drawn
+    return entries.length ? [entries[0]] : [{ id: null, starts_at: '', ends_at: '' }]
+}
+
 export function kindOf(value) {
     return KINDS.find(k => k.value === value) || KINDS[0]
 }
@@ -664,6 +685,17 @@ export const KIND_LOOK = {
 // sit behind a cell.
 export const BANK_LOOK = { label: 'Bank holiday', ink: '#8A6A18', wash: '#FBF4E2' }
 
+// Where somebody stands on permission to work, in four colours: green may
+// work, amber needs something doing (a renewal waiting or due), red may not,
+// slate nobody knows. The hours mail has a copy.
+export const PERMISSION_LOOK = {
+    ok: { ink: '#1F7A4C', wash: '#E8F4EC' },
+    waiting: { ink: '#8A5300', wash: '#FDF1DC' },
+    soon: { ink: '#8A5300', wash: '#FDF1DC' },
+    not: { ink: '#B91C1C', wash: '#FDECEC' },
+    unknown: { ink: '#475569', wash: '#EDF1F5' },
+}
+
 // The two days that change what somebody is paid. A day off and a day away at
 // something are worth drawing where they fall, but counting them in a summary
 // meant to be keyed into a payroll would be noise.
@@ -733,7 +765,10 @@ export function personPeriod({
             }
         }).filter(day => day.spans.length > 0 || day.open.length > 0 || day.notes.length > 0 || day.away)
 
-        const inWeek = w => days.reduce((t, d) => (d.week === w ? t + d.hours : t), 0)
+        // Bank holiday hours are kept out of the weeks and the total, and
+        // given on their own (his, 1 November 2026), so Week 1 plus Week 2 is
+        // still Worked.
+        const inWeek = (w, bank) => days.reduce((t, d) => (d.week === w && d.bankHoliday === bank ? t + d.hours : t), 0)
         const ofKind = kind => days.reduce((t, d) => (
             t + d.spans.reduce((n, s) => (s.kind === kind ? n + num(s.hours) : n), 0)
         ), 0)
@@ -745,17 +780,18 @@ export function personPeriod({
             return away && away.kind === kind && isPartDay(away) === part
         }).length
 
-        const week = [inWeek(0), inWeek(1)]
-        const worked = week[0] + week[1]
-        const bank = days.reduce((t, d) => t + (d.bankHoliday ? d.hours : 0), 0)
+        const week = [inWeek(0, false), inWeek(1, false)]
+        const weekBank = [inWeek(0, true), inWeek(1, true)]
 
         return {
             name: person.full_name,
             days,
             week,
-            worked,
-            normal: worked - bank,
-            bankHoliday: bank,
+            weekBank,
+            worked: week[0] + week[1],
+            bankHoliday: weekBank[0] + weekBank[1],
+            // Sundays with hours on them, a bank holiday Sunday included.
+            sundays: days.filter(d => d.hours > 0 && new Date(`${d.date}T00:00:00Z`).getUTCDay() === 0).length,
             holiday: holidayHoursInWeek(absences, person.id, dates),
             trial: ofKind('trial'),
             training: ofKind('training'),

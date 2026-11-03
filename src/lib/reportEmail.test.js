@@ -5,7 +5,7 @@ import {
     renewalWords, escapeLines, page, headline, overheadsToShow, backByReason,
     deliverable, isJustTheGoodbye, replyToFor, switchedOff, whatToSend, correctionSend,
     paidWords, againstWords, figureGaps as mailGaps, openActions, doneActions, platformsIn, richHtml, richWords, saidRefunds,
-    recipeOffWords,
+    recipeOffWords, whatWasOn, showsWords,
 } from '../../supabase/functions/weekly-report-email/email'
 import { readFileSync } from 'node:fs'
 import { MAIL_WIDTH } from '@/lib/reportChartImage'
@@ -2099,6 +2099,21 @@ describe('a heavy week', () => {
     const mail = reportEmail({ ...base, sections: heavySections, figures: { ...figures, prices, cleaning } })
     const more = text => [...text.matchAll(/and (\d+) more, on the Hub/g)].map(m => Number(m[1]))
 
+    // Our usual shop on top of all that (1 November 2026): all four groups.
+    it('stays under the size Gmail cuts off at with our usual shop on it as well', () => {
+        const usualShop = {
+            weeks: 12, compare: 8, since: '2026-08-22',
+            groups: ['Food', 'Packaging', 'Cleaning', 'Other'].map((label, i) => ({
+                group: label.toLowerCase(), label, now: 1039.68 - i, was: 1047.67, money: -7.99 - i, change: -0.8, products: 73,
+                series: [], movers: many(3, j => ({ name: `A product with a long name ${i}.${j}`, money: 6.19 - j })),
+            })),
+        }
+        const shopped = reportEmail({ ...base, sections: heavySections, figures: { ...figures, cleaning, prices: { ...prices, usualShop } } })
+        expect(shopped.html).toContain('Our usual shop')
+        expect(shopped.html).toContain('>Other<')
+        expect(shopped.html.length).toBeLessThan(75000)
+    })
+
     it('stays well under the size Gmail cuts off at', () => {
         // Found the heavy parts before saying anything about the size.
         expect(mail.html).toContain('Checklist 7')
@@ -2391,34 +2406,120 @@ describe('actions done this week in the mail', () => {
     })
 })
 
-// His, 17 October: what was on each day, under the sales and costs.
+// His, 17 October: what was on each day, under the sales and costs. And his
+// of 1 November: only what was on, no sales up or down.
 describe('what was on', () => {
-    const html = reportEmail(base).html
+    const mail = reportEmail(base)
+    const part = whatWasOn(base.figures.whatWasOn)
 
-    it('gives each day its takings against a usual day, and what was on under it', () => {
-        expect(html).toContain('What was on')
-        expect(html).toContain('Usual Monday €1,708.69')
-        expect(html).toMatch(/\+26%/)
-        expect(html).toContain('3Arena, 18:30 · The Pussycat Dolls')
-        expect(html).toContain('Also on: 11:30 Lunch Team, 12:10 Feedr')
+    it('says how many shows, then what was on each day', () => {
+        expect(mail.html).toContain('What was on')
+        expect(part).toContain('1 show at the 3Arena')
+        expect(part).toContain('Mon 5 Oct')
+        expect(part).toContain('3Arena, 18:30 · The Pussycat Dolls')
+        expect(part).toContain('Catering · Ancestry, 11:30')
+        expect(part).toContain('Also on: 11:30 Lunch Team, 12:10 Feedr')
     })
 
-    it('says a closed day, a day with no sales, and a day with no usual yet', () => {
-        expect(html).toContain('>Closed</span>')
-        expect(html).toContain('No sales entered')
-        expect(html).toContain('Not enough weeks yet to say what is usual')
-        expect(html).toContain('Nothing on nearby')
+    it('says nothing about whether sales went up or down', () => {
+        // The words, not the markup, which has widths in percent.
+        expect(part.replace(/<[^>]+>/g, ' ')).not.toMatch(/€|%|usual/i)
+        expect(mail.html).not.toContain('Usual is the middle of the same day')
+        expect(mail.html).not.toContain('days with a show at the 3Arena took')
+        expect(mail.html).not.toContain('A usual week')
     })
 
-    it('says what usual means, and how show nights have gone', () => {
-        expect(html).toContain('Usual is the middle of the same day over the 8 weeks before')
-        expect(html).toContain('days with a show at the 3Arena took 29% more')
-        expect(html).toContain('A usual week €1,708.69')
+    it('leaves out a day with nothing on', () => {
+        expect(part).not.toContain('Sun 4 Oct')
+        expect(part).not.toContain('Tue 6 Oct')
+        expect(part).not.toContain('Nothing on nearby')
+    })
+
+    it('still says a closed day that had something on', () => {
+        const closed = { days: [{ date: '2026-12-25', closed: true, on: [{ tone: 'show', text: '3Arena, 19:00 · A Christmas show' }] }] }
+        expect(whatWasOn(closed)).toContain('Closed')
+    })
+
+    it('counts the shows at each place with a row of its own, and nothing else', () => {
+        const week = {
+            days: [
+                { on: [{ tone: 'show', text: '3Arena, 18:30 · One' }, { tone: 'show', text: '3Arena · Two' }, { tone: 'nearby', text: 'Odeon, 11:00 · A film' }] },
+                { on: [{ tone: 'show', text: 'Pavilion, 20:00 · Three' }, { tone: 'catering', text: 'Catering · Ancestry, 11:30' }] },
+            ],
+        }
+        expect(showsWords(week)).toBe('2 shows at the 3Arena and 1 at the Pavilion')
+        expect(showsWords({ days: [{ on: [{ tone: 'nearby', text: 'Odeon · A film' }] }] })).toBe('No shows this week')
+    })
+
+    it('says so when nothing at all was on', () => {
+        const quiet = whatWasOn({ days: [{ date: '2026-10-05', on: [] }] })
+        expect(quiet).toContain('No shows this week')
+        expect(quiet).toContain('Nothing else was on: no events nearby, no catering and no office orders.')
+    })
+
+    it('goes in the plain text as well', () => {
+        expect(mail.text).toContain('  What was on: 1 show at the 3Arena')
+        expect(mail.text).toContain('    Mon 5 Oct')
+        expect(mail.text).toContain('      Catering · Ancestry, 11:30')
     })
 
     it('is left out of a report frozen before it existed', () => {
         const { whatWasOn, ...older } = base.figures
         expect(whatWasOn).toBeTruthy()
         expect(reportEmail({ ...base, figures: older }).html).not.toContain('What was on')
+    })
+})
+
+// His pick of 1 November 2026: the full card on the Hub, the short one in the
+// mail, the same average week priced at two dates.
+describe('our usual shop in the mail', () => {
+    const usualShop = {
+        weeks: 12, compare: 8, since: '2026-08-22',
+        groups: [
+            {
+                group: 'food', label: 'Food', now: 1039.68, was: 1047.67, money: -7.99, change: -0.8, products: 73,
+                series: [], movers: [{ name: 'Tomatoes', money: -17.34 }, { name: 'Paprika', money: 6.19 }],
+            },
+            { group: 'cleaning', label: 'Cleaning', now: 81.82, was: 80.12, money: 1.7, change: 2.1, products: 1, series: [], movers: [] },
+        ],
+    }
+    const section = { key: 'prices_suppliers', title: 'Prices and suppliers', sort_order: 2, items: [] }
+    const empty = priceWeek({ weekStart: '2026-10-11', weekEnd: '2026-10-17', today: '2026-10-20' })
+    const send = shop => reportEmail({ ...base, sections: [section], figures: { ...figures, prices: { ...empty, usualShop: shop } } })
+    const mail = send(usualShop)
+
+    it('is the short card: the change and both prices', () => {
+        expect(mail.html).toContain('Our usual shop')
+        expect(mail.html).toContain('Our average week of buying: the same quantities priced at two dates, so only prices move it.')
+        expect(mail.html).toContain("At 22 Aug prices: €1,047.67 · At this week's: €1,039.68")
+        expect(mail.html).toContain('-0.8%<br />-€7.99 a week')
+        expect(mail.html).toContain('+2.1%<br />+€1.70 a week')
+    })
+
+    it('leaves the products and what moved it to the Hub', () => {
+        expect(mail.html).not.toContain('products, averaged')
+        expect(mail.html).not.toContain('Most of it')
+        expect(mail.text).not.toContain('Most of it')
+    })
+
+    it('goes in the plain text, beside the line saying nothing else moved', () => {
+        expect(mail.text).toContain('  Our usual shop. Our average week of buying')
+        expect(mail.text).toContain('    Food: -0.8%, -€7.99 a week')
+        expect(mail.text).toContain("      At 22 Aug prices: €1,047.67 · At this week's: €1,039.68")
+        expect(mail.text).toContain('Nothing moved on prices this week and nothing came back.')
+    })
+
+    it('is not on a report frozen before it existed', () => {
+        const older = send(undefined)
+        expect(older.html).not.toContain('Our usual shop')
+        expect(older.text).not.toContain('Our usual shop')
+    })
+
+    it('keeps everything that cannot wrap narrow enough for a phone', () => {
+        const lines = [...mail.html.matchAll(/<td[^>]*white-space:nowrap[^>]*>([\s\S]*?)<\/td>/g)]
+            .flatMap(m => m[1].split(/<br\s*\/?>/))
+            .map(l => l.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&[a-z0-9#]+;/gi, 'x').trim())
+        expect(lines).toContain('-€7.99 a week')
+        expect(lines.filter(l => l.length > 16)).toEqual([])
     })
 })

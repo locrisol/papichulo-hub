@@ -44,7 +44,9 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { reportEmail } from './email.js'
 import { changesSince } from './changes.js'
 import { senderFor, heldNotice, deliverable, isJustTheGoodbye, replyToFor, switchedOff, whatToSend, correctionSend } from './email.js'
-import { timesheetEmail, personPeriod, addDays, hoursPdfPath } from './timesheet.js'
+import {
+    timesheetEmail, personPeriod, addDays, hoursPdfPath, permissionList, dublinToday, DEFAULT_GRACE,
+} from './timesheet.js'
 import { base64, mimeParts, headersFor } from './mime.js'
 
 function serviceKey() {
@@ -612,20 +614,22 @@ async function sendTimesheet({
     // there does not throw, it comes back as an error and a null row, and an
     // unchecked null would have sent a week headed "The restaurant" to nobody.
     let { data: restaurant, error: missing } = await admin
-        .from('restaurants').select('id, name, mail_from, timesheet_recipients')
+        .from('restaurants').select('id, name, mail_from, timesheet_recipients, roster_rules')
         .eq('id', forRestaurant).maybeSingle()
 
     if (missing) {
         console.warn('restaurants.timesheet_recipients is missing on this database', missing)
         const again = await admin
-            .from('restaurants').select('id, name, mail_from')
+            .from('restaurants').select('id, name, mail_from, roster_rules')
             .eq('id', forRestaurant).maybeSingle()
         restaurant = again.data
     }
 
     const [{ data: team }, { data: worked }, { data: away }] = await Promise.all([
+        // Where each stands on permission to work as well, for the list
+        // everybody employed is on (his, 1 November 2026).
         admin.from('employees')
-            .select('id, full_name, sort_order, started_on, ended_on')
+            .select('id, full_name, sort_order, started_on, ended_on, work_permission, work_permission_expires, permission_renewal_applied')
             .eq('restaurant_id', forRestaurant)
             .order('sort_order'),
         admin.from('timesheet_entries')
@@ -672,12 +676,20 @@ async function sendTimesheet({
         return json({ sent: 0, why: 'nobody on the list', skipped: skipped.length ? skipped : undefined })
     }
 
+    // On the day it goes, in Ireland. A restaurant's own grace setting if it
+    // has one, the same as the roster reads it.
+    const today = dublinToday()
     let mail = timesheetEmail({
         restaurantName: restaurant?.name,
         periodStart: period,
         people: personPeriod({ people, entries: worked || [], absences: away || [], dates }),
         comment: String(comment || '').trim(),
         test: Boolean(test),
+        permissions: permissionList(team || [], today, restaurant?.roster_rules?.permissionGrace || DEFAULT_GRACE),
+        today,
+        // Each person's days are only in the PDF now, and the mail says so
+        // when there is one.
+        paper: Boolean(attachment),
     })
 
     // **The paper the browser drew, fetched with the service role.**

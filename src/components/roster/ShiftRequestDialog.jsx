@@ -135,18 +135,24 @@ export default function ShiftRequestDialog({
 
     const change = toEmployeeId ? hoursChange(draft, weekShifts, breakRules) : []
 
-    const timeRow = (from, setFrom, to, setTo) => (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
-            <div>
-                <label className={labelClass}>From</label>
-                <TimeField value={from} onChange={setFrom} aria-label="From" />
+    // Part of a shift is part of it, so the lists offer the shift's own hours
+    // and nothing either side (his, 1 November 2026): anything else is turned
+    // away by windowProblem and by the database.
+    const timeRow = (shift, from, setFrom, to, setTo) => {
+        const within = shift ? { from: shortTime(shift.starts_at), to: shortTime(shift.ends_at) } : null
+        return (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
+                <div>
+                    <label className={labelClass}>From</label>
+                    <TimeField value={from} onChange={setFrom} within={within} aria-label="From" />
+                </div>
+                <div>
+                    <label className={labelClass}>To</label>
+                    <TimeField value={to} onChange={setTo} within={within} aria-label="To" />
+                </div>
             </div>
-            <div>
-                <label className={labelClass}>To</label>
-                <TimeField value={to} onChange={setTo} aria-label="To" />
-            </div>
-        </div>
-    )
+        )
+    }
 
     const shiftLine = shift =>
         `${dayLabel(shift.shift_date)}, `
@@ -189,8 +195,8 @@ export default function ShiftRequestDialog({
                     </button>
                 </div>
                 {mine
-                    ? givePart && timeRow(giveFrom, setGiveFrom, giveTo, setGiveTo)
-                    : takePart && timeRow(takeFrom, setTakeFrom, takeTo, setTakeTo)}
+                    ? givePart && timeRow(giveShift, giveFrom, setGiveFrom, giveTo, setGiveTo)
+                    : takePart && timeRow(takeShift, takeFrom, setTakeFrom, takeTo, setTakeTo)}
 
                 {/* Who. Only when this started from your own shift: opening it
                     off somebody else's already answered it. */}
@@ -303,8 +309,8 @@ export default function ShiftRequestDialog({
                                     </button>
                                 </div>
                                 {otherPart && (mine
-                                    ? timeRow(takeFrom, setTakeFrom, takeTo, setTakeTo)
-                                    : timeRow(giveFrom, setGiveFrom, giveTo, setGiveTo))}
+                                    ? timeRow(takeShift, takeFrom, setTakeFrom, takeTo, setTakeTo)
+                                    : timeRow(giveShift, giveFrom, setGiveFrom, giveTo, setGiveTo))}
                             </>
                         )}
                     </>

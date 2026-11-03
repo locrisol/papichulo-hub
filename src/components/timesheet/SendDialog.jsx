@@ -5,6 +5,7 @@ import { todayISO, addDays, shortDate, stampDateTime } from '@/lib/dates'
 import { periodWords, periodIsOver, periodDates } from '@/lib/payPeriod'
 import { personWeek, unanswered, personPeriod } from '@/lib/timesheet'
 import { timesheetPdf } from '@/lib/timesheetPdf'
+import { permissionList, DEFAULT_RULES } from '@/lib/workRules'
 import { sendTimesheet, sentWords } from '@/lib/timesheetMail'
 import { friendlyError } from '@/lib/errors'
 import Modal from '@/components/ui/Modal'
@@ -70,8 +71,10 @@ export default function SendDialog({
             const end = period.end
 
             const [team, worked, away, planned, marks] = await Promise.all([
+                // Where each stands on permission to work as well, for the
+                // list everybody employed is on (his, 1 November 2026).
                 supabase.from('employees')
-                    .select('id, full_name, sort_order, started_on, ended_on')
+                    .select('id, full_name, sort_order, started_on, ended_on, work_permission, work_permission_expires, permission_renewal_applied')
                     .eq('restaurant_id', restaurant.id).order('sort_order'),
                 supabase.from('timesheet_entries')
                     .select('*').eq('restaurant_id', restaurant.id)
@@ -122,6 +125,7 @@ export default function SendDialog({
                 )),
                 entries: worked.data || [],
                 absences: away.data || [],
+                team: team.data || [],
             })
             setLoading(false)
         }
@@ -157,10 +161,13 @@ export default function SendDialog({
     // The paper for her files, built from the rows already read for the block
     // so the mail and the PDF cannot be about two different fortnights.
     async function draw(save) {
+        const today = todayISO()
         return timesheetPdf({
             restaurant,
             periodStart: period.start,
             people: personPeriod({ ...rows, dates: periodDates(period.start) }),
+            permissions: permissionList(rows.team, today, restaurant?.roster_rules?.permissionGrace || DEFAULT_RULES.permissionGrace),
+            today,
             save,
         })
     }

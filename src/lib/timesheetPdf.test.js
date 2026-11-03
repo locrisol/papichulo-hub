@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest'
 import {
-    timesheetPdf, COL_WIDTH, SUMMARY_HEADS, NAME_HEAD, HEAD_SIZE, HEAD_SPACING,
+    timesheetPdf, COL_WIDTHS, SUMMARY_HEADS, NAME_HEAD, HEAD_SIZE, HEAD_SPACING,
 } from '@/lib/timesheetPdf'
 import { personPeriod } from '@/lib/timesheet'
 import { periodDates } from '@/lib/payPeriod'
+import { permissionList } from '@/lib/workRules'
 
 // Proof that it builds at all.
 //
@@ -103,7 +104,11 @@ describe('the summary headings fit their own columns', () => {
         expect(NAME_HEAD).toBe('NAME')
     })
 
-    it.each(SUMMARY_HEADS)('%s', async label => {
+    it('has a width for every heading', () => {
+        expect(COL_WIDTHS).toHaveLength(SUMMARY_HEADS.length)
+    })
+
+    it.each(SUMMARY_HEADS.map((label, i) => [label, COL_WIDTHS[i]]))('%s', async (label, column) => {
         const JsPDF = (await import('jspdf')).default
         const pdf = new JsPDF({ unit: 'mm', format: 'a4' })
         pdf.setFont('helvetica', 'bold')
@@ -113,7 +118,7 @@ describe('the summary headings fit their own columns', () => {
         const width = pdf.getTextWidth(label) + label.length * HEAD_SPACING
         // Two millimetres of padding on the right, and a millimetre of air on
         // the left so two headings never touch.
-        expect(width).toBeLessThan(COL_WIDTH - 3)
+        expect(width).toBeLessThan(column - 3)
     })
 })
 
@@ -190,5 +195,22 @@ describe('a person is kept in one piece', () => {
         const doc = await timesheetPdf({ restaurant, periodStart: PERIOD, people: [huge], save: false })
         const all = Array.from({ length: doc.getNumberOfPages() }, (_, i) => drawnOn(doc, i + 1)).join('')
         expect(all).toContain('continued')
+    })
+})
+
+// His, 1 November 2026: everybody's permission to work, grouped, on the paper.
+describe('permission to work on the paper', () => {
+    it('builds with the list on it, every state included', async () => {
+        const permissions = permissionList([
+            { full_name: 'Aoife Byrne', work_permission: 'unrestricted' },
+            { full_name: 'Cathal Nolan', work_permission: 'stamp2', work_permission_expires: '2026-10-01', permission_renewal_applied: '2026-09-20' },
+            { full_name: 'Dara Walsh', work_permission: 'stamp2', work_permission_expires: '2026-10-01' },
+            { full_name: 'Eimear Ryan', work_permission: 'stamp1g', work_permission_expires: '2026-12-10' },
+            { full_name: 'Fionn Kelly', work_permission: '' },
+        ], '2026-11-01')
+        const pdf = await timesheetPdf({
+            restaurant: { name: 'Point Campus' }, periodStart: PERIOD, people, permissions, today: '2026-11-01', save: false,
+        })
+        expect(pdf.getNumberOfPages()).toBeGreaterThan(0)
     })
 })

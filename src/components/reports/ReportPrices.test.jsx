@@ -304,6 +304,23 @@ describe('prices and suppliers on the report', () => {
         const { container } = render(<ReportPrices section={null} />)
         expect(container).toBeEmptyDOMElement()
     })
+
+    // His question, 27 October 2026: was it this week's buying against an
+    // older week's? It is the same average week priced twice, and says so.
+    it('prices the same average week at two dates, a line each', () => {
+        const usualShop = {
+            weeks: 12, compare: 8, since: '2026-08-29',
+            groups: [{
+                group: 'food', label: 'Food', now: 1133.01, was: 1129.62, money: 3.39, change: 0.3, products: 48,
+                series: [['2026-08-29', 1129.62], ['2026-10-24', 1133.01]], movers: [],
+            }],
+        }
+        draw({ section: { ...section, usualShop } })
+        expect(screen.getByText('Our average week of buying: the same quantities priced at two dates, so only prices move it')).toBeInTheDocument()
+        expect(screen.getByText('At 29 Aug prices: €1,129.62')).toBeInTheDocument()
+        expect(screen.getByText("At this week's prices: €1,133.01")).toBeInTheDocument()
+        expect(screen.getByText('48 products, averaged over the last 12 weeks')).toBeInTheDocument()
+    })
 })
 
 // His screenshots, 15 October: two deliveries four weeks apart were drawn

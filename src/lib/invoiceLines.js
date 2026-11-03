@@ -44,7 +44,11 @@ export function inPrintedOrder(lines) {
 //              not cost from it
 //   rejected   Keep the price: what was paid is in the week, the price the
 //              Hub keeps is not
-//   ignored    Not stock, which Leave this one stores the same way
+//   ignored    Not stock, or Leave this one, stored the same way. Not stock
+//              also marks the code as never stock, so a line whose code is
+//              not marked was left out: tomatoes bought once because the
+//              usual ones were out are not "Not stock" (28 October 2026).
+//              `notStock` is the codes marked so; left off, it says Not stock
 //
 // Nothing decided yet is waiting for a decision, the words the sidebar and
 // Import invoices use. Except on a credit note: Review never asks about one's
@@ -55,11 +59,13 @@ const DECIDED = {
     rejected: { label: 'Price kept', tone: 'plain', note: 'What was paid still counts towards the week\'s cost.' },
     ignored: { label: 'Not stock', tone: 'plain', note: 'It still counts towards the week\'s cost.' },
 }
+const LEFT = { label: 'Left out', tone: 'plain', note: 'It still counts towards the week\'s cost.' }
 const NOTHING = { label: 'Nothing to decide', tone: 'plain', note: null }
 const WAITING = { label: 'Waiting for a decision', tone: 'wait', note: null }
 
-export function lineDecision(line, { credit = false } = {}) {
+export function lineDecision(line, { credit = false, notStock = null } = {}) {
     if (credit && (!line?.decision || (line.decision === 'matched' && !line.products?.name))) return NOTHING
+    if (line?.decision === 'ignored' && notStock && !notStock.has(line.supplier_code)) return LEFT
     return DECIDED[line?.decision] || WAITING
 }
 

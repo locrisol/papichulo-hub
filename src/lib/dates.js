@@ -130,6 +130,12 @@ export function addDays(dateStr, days) {
     return toISODate(d)
 }
 
+// The Sunday of last week, where the Timesheet and the cost dashboard open:
+// both are read once a week has finished, not while it is still running.
+export function lastWeekStart() {
+    return addDays(weekStartOf(todayISO()), -7)
+}
+
 // The first day of the month containing the given date.
 export function monthStart(dateStr) {
     const d = new Date(dateStr + 'T00:00:00')

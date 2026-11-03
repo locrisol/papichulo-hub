@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
     NOTICE_DEFAULT, noticeDays, noticeBlocks, daysBefore, noticeProblem,
     isPartDay, requestLabel, partWords, hitsShift, shiftsHit, partDaySpans,
-    isCovered, openGaps, waiting, askedOff, cannotAnswer,
+    isCovered, openGaps, waiting, askedOff, cannotAnswer, partWindow, partBackwards,
 } from '@/lib/timeOff'
 
 const TODAY = '2026-09-04'
@@ -251,5 +251,42 @@ describe('the hours a part day takes out', () => {
     it('does not draw outside the day it was given', () => {
         // Somebody who can work from seven, on a day drawn from eight.
         expect(partDaySpans(ask({ can_work_from: '07:00' }), from, to)).toEqual([])
+    })
+})
+
+// The hour lists run two hours past closing since 1 November 2026, so "until
+// 00:30" is a real answer, and it is that night.
+describe('a part day that runs past midnight', () => {
+    const part = (from, to) => ({
+        id: 'p1', employee_id: 'e1', kind: 'day_off', starts_on: '2026-11-06', ends_on: '2026-11-06',
+        status: 'approved', can_work_from: from, can_work_to: to,
+    })
+    const late = (starts, ends) => ({ employee_id: 'e1', shift_date: '2026-11-06', starts_at: starts, ends_at: ends })
+
+    it('reads an end before the start as that night', () => {
+        expect(partWindow(part('18:00', '00:30'))).toEqual({ from: 1080, to: 1470 })
+        expect(partWindow(part('09:00', '15:00'))).toEqual({ from: 540, to: 900 })
+    })
+
+    it('reads an end in the small hours with no start as that night', () => {
+        expect(partWindow(part(null, '00:30'))).toEqual({ from: null, to: 1470 })
+        expect(partWindow(part(null, '15:00'))).toEqual({ from: null, to: 900 })
+    })
+
+    it('does not call a late shift inside those hours a clash', () => {
+        expect(hitsShift(part('18:00', '00:30'), late('18:00', '00:00'))).toBe(false)
+        expect(hitsShift(part('18:00', '00:30'), late('17:00', '00:00'))).toBe(true)
+        expect(hitsShift(part('18:00', '00:30'), late('19:00', '01:00'))).toBe(true)
+    })
+
+    it('shades only the hours after it on a timeline running past midnight', () => {
+        expect(partDaySpans(part(null, '00:30'), 540, 1500)).toEqual([[1470, 1500]])
+    })
+
+    it('knows which way round the hours run, in the order the list offers them', () => {
+        expect(partBackwards('18:00', '00:30', '09:00')).toBe(false)
+        expect(partBackwards('18:00', '17:00', '09:00')).toBe(true)
+        expect(partBackwards('12:00', '12:00', '09:00')).toBe(true)
+        expect(partBackwards('', '17:00', '09:00')).toBe(false)
     })
 })

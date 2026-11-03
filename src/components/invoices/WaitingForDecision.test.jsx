@@ -168,6 +168,23 @@ describe('a price that changed', () => {
         await waitFor(() => expect(written.find(w => w.row?.decision === 'rejected')).toBeTruthy())
         expect(written.some(w => w.table === 'product_supplier_prices')).toBe(false)
     })
+
+    // The rice of 28 October 2026: the Hub had the bag, the case of three came
+    // cheaper a kg. Not a pack the supplier changed, and not a price that went
+    // from 14.50 to 33.24.
+    it('says a case the Hub has no price for in kilos, and that both prices are kept', async () => {
+        tables.product_supplier_prices = [RICE]
+        tables.invoice_lines = [{ ...line('l1', '777001', 'BASMATI RICE', 36), pack_size: '3X5 KG', units_per_case: 15, cases: 2 }]
+        renderWithRouter(<Section />)
+        expect((await screen.findByText('€2.40')).closest('p')).toHaveTextContent('€2.90 to €2.40 a kg')
+        expect(screen.getByText(/^This case is 15 kg at €36.00/)).toHaveTextContent(
+            'This case is 15 kg at €36.00. The Hub only has a price for 5 kg, €14.50, so adding this one keeps both prices.',
+        )
+        expect(screen.queryByText(/pack changed/)).toBeNull()
+        expect(screen.getByRole('button', { name: 'Add the case of 15 kg at €36.00 and cost from it' })).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Add the case of 15 kg, keep costing from the 5 kg' })).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Keep only the price for 5 kg, €14.50' })).toBeInTheDocument()
+    })
 })
 
 // His design of 4 October: the brand's list is the owners'. A store manager

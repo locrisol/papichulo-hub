@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { timeOptions, END_OF_DAY } from '@/lib/timeOptions'
+import { timeOptions, END_OF_DAY, aroundTheDay } from '@/lib/timeOptions'
 
 const values = opts => opts.map(o => o.value)
 
@@ -134,5 +134,55 @@ describe('marking the hours somebody cannot work', () => {
 
     it('marks nothing when it is not asked to', () => {
         expect(timeOptions().every(o => o.free)).toBe(true)
+    })
+})
+
+// His, 1 November 2026: a part day off was offered 02:00, 03:00 and 04:00.
+describe('a list trimmed to a stretch of the day', () => {
+    it('offers only the quarter hours inside it, both ends included', () => {
+        const opts = values(timeOptions({ within: { from: '09:00', to: '23:00' } }))
+        expect(opts[0]).toBe('09:00')
+        expect(opts.at(-1)).toBe('23:00')
+        expect(opts).toHaveLength(57)
+        expect(opts).not.toContain('03:00')
+    })
+
+    it('runs on past midnight when the end is the earlier time', () => {
+        const opts = values(timeOptions({ within: { from: '10:00', to: '01:00' } }))
+        expect(opts[0]).toBe('10:00')
+        expect(opts.slice(-5)).toEqual(['00:00', '00:15', '00:30', '00:45', '01:00'])
+        expect(opts).not.toContain('03:00')
+    })
+
+    // The rule the whole list keeps: what is saved is never quietly lost.
+    it('keeps a saved time from outside it, after the rest', () => {
+        const opts = values(timeOptions({ value: '05:00', within: { from: '09:00', to: '23:00' } }))
+        expect(opts.at(-1)).toBe('05:00')
+        expect(opts.filter(v => v === '05:00')).toHaveLength(1)
+    })
+
+    it('is the whole day when the stretch is not one', () => {
+        expect(timeOptions({ within: { from: '09:00', to: '09:00' } })).toHaveLength(96)
+        expect(timeOptions({ within: { from: '', to: '' } })).toHaveLength(96)
+    })
+
+    it('still ends with End of day where that is asked for', () => {
+        expect(values(timeOptions({ within: { from: '09:00', to: '23:00' }, endOfDay: true })).at(-1)).toBe(END_OF_DAY)
+    })
+})
+
+describe('a day with two hours either side', () => {
+    it('runs from two hours before opening to two after closing', () => {
+        expect(aroundTheDay({ open: '11:00', close: '21:00' })).toEqual({ from: '09:00', to: '23:00' })
+    })
+
+    it('runs past midnight for a late close', () => {
+        expect(aroundTheDay({ open: '11:00', close: '23:30' })).toEqual({ from: '09:00', to: '01:30' })
+        expect(aroundTheDay({ open: '11:00', close: '00:30' })).toEqual({ from: '09:00', to: '02:30' })
+    })
+
+    it('is nothing on a closed day, or when it would go all the way round', () => {
+        expect(aroundTheDay(null)).toBeNull()
+        expect(aroundTheDay({ open: '06:00', close: '04:00' })).toBeNull()
     })
 })

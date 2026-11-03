@@ -4,7 +4,10 @@ import Modal from '@/components/ui/Modal'
 import { supabase } from '@/lib/supabase'
 import { friendlyError } from '@/lib/errors'
 import { todayISO } from '@/lib/dates'
-import { noticeProblem, noticeDays } from '@/lib/timeOff'
+import { noticeProblem, noticeDays, partBackwards } from '@/lib/timeOff'
+import { aroundTheDay } from '@/lib/timeOptions'
+import { useRestaurant } from '@/context/restaurant'
+import useDayHours from '@/components/roster/useDayHours'
 import { emailTheAsk } from '@/lib/rosterMail'
 import {
     modalFooter, primaryButton, secondaryButton, fieldClass, labelClass, hintClass, segmentTrack, segmentButton,
@@ -42,6 +45,10 @@ export default function TimeOffRequestDialog({ me, rules, onClose, onSaved }) {
 
     const isPart = kind === 'part'
     const isHoliday = kind === 'holiday'
+    // The day's hours with two either side (his, 1 November 2026): nobody
+    // asking for part of a Tuesday off needs offering 03:00.
+    const activeRestaurant = useRestaurant()?.activeRestaurant
+    const within = aroundTheDay(useDayHours(activeRestaurant, isPart ? startsOn : null))
     // A day off and a part day are one date, so the second one follows the
     // first rather than being asked for twice.
     const lastDay = isHoliday ? endsOn : startsOn
@@ -66,7 +73,7 @@ export default function TimeOffRequestDialog({ me, rules, onClose, onSaved }) {
         if (lastDay < startsOn) return 'The last day is before the first one.'
         if (startsOn < today) return 'That date is in the past.'
         if (isPart && !canFrom && !canTo) return 'Enter the hours you can work.'
-        if (isPart && canFrom && canTo && canTo <= canFrom) return 'The end is before the start.'
+        if (isPart && partBackwards(canFrom, canTo, within?.from)) return 'The end is before the start.'
         return null
     }
 
@@ -139,13 +146,18 @@ export default function TimeOffRequestDialog({ me, rules, onClose, onSaved }) {
                         {/* allowEmpty on both, because empty is an answer here
                             rather than a gap: it means from opening, or until
                             closing. Without it, picking a time once would make
-                            that state unreachable. */}
+                            that state unreachable.
+
+                            Opening and Closing rather than From opening and
+                            Until closing: two boxes side by side on a phone
+                            cut those off at "From openi", and the line under
+                            them says the rest. */}
                         <div className="flex items-center gap-2">
-                            <TimeField value={canFrom} onChange={setCanFrom} allowEmpty
-                                placeholder="From opening" aria-label="I can work from" />
+                            <TimeField value={canFrom} onChange={setCanFrom} allowEmpty within={within}
+                                placeholder="Opening" aria-label="I can work from" />
                             <span className="text-xs text-muted flex-shrink-0">to</span>
-                            <TimeField value={canTo} onChange={setCanTo} allowEmpty
-                                placeholder="Until closing" aria-label="I can work until" />
+                            <TimeField value={canTo} onChange={setCanTo} allowEmpty within={within}
+                                placeholder="Closing" aria-label="I can work until" />
                         </div>
                         <p className={hintClass}>
                             Leave a time empty to mean from opening or until closing.
