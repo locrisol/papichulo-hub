@@ -20,7 +20,7 @@ import {
     DEFAULT_OVERHEADS,
     mailMissing,
 } from '@/lib/weeklyReport'
-import { personWeek, unanswered } from '@/lib/timesheet'
+import { personWeek, unanswered, peopleFor } from '@/lib/timesheet'
 import { can, RESTAURANT_CONFIG } from '@/lib/access'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 
@@ -288,7 +288,9 @@ export default function ReportsListPage() {
                 // page at all: it read every row as typed and unremarkable.
                 // The id is what tells a saved clock in from a draft, so
                 // without it a clock in with no clock out never held the week.
-                .select('id, employee_id, work_date, starts_at, ends_at, kind, source, note')
+                // person_name is somebody from another restaurant, held to the
+                // same rules as anybody.
+                .select('id, employee_id, person_name, work_date, starts_at, ends_at, kind, source, note')
                 .eq('restaurant_id', restaurantId)
                 .gte('work_date', from).lte('work_date', to),
             supabase
@@ -340,10 +342,9 @@ export default function ReportsListPage() {
                 d.sale_date >= weekStart && d.sale_date <= weekEnd)
 
             // Anybody who had left before the week or had not started is not on
-            // it, the same rule the timesheet itself uses.
-            const rows = (team.data || [])
-                .filter(p => (!p.ended_on || p.ended_on >= weekStart)
-                    && (!p.started_on || p.started_on <= weekEnd))
+            // it, and anybody from another restaurant with a shift in it is:
+            // the same rule the timesheet itself uses.
+            const rows = peopleFor(team.data, entries.data, weekStart, weekEnd)
                 .map(person => personWeek({
                     person,
                     weekStart,

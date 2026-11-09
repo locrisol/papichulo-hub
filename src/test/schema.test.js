@@ -780,3 +780,49 @@ describe('what is gone', () => {
         expect(schema).not.toContain('allergens_changed_at')
     })
 })
+
+// Migration 014, 9 November 2026.
+describe('somebody from another restaurant', () => {
+    const start = schema.indexOf('CREATE TABLE IF NOT EXISTS "public"."timesheet_entries" (')
+    const table = schema.slice(start, schema.indexOf(');', start))
+
+    it('keeps what the till called her, last, where 014 put it on live', () => {
+        expect(start, 'timesheet_entries is not in schema.sql').toBeGreaterThan(-1)
+        expect(table).toMatch(/"updated_at" timestamp with time zone DEFAULT "now"\(\) NOT NULL,\s+(--[^\n]*\n\s+)*"till_name" "text",/)
+    })
+
+    it('makes a row one person or the other, and keeps the till name to a typed name', () => {
+        expect(table).toContain('CONSTRAINT "timesheet_entries_one_person" CHECK ((("employee_id" IS NULL) OR ("person_name" IS NULL)))')
+        expect(table).toMatch(/CONSTRAINT "timesheet_entries_till_name_with_a_typed_name" CHECK \(\s+\("till_name" IS NULL\) OR \(\("employee_id" IS NULL\) AND \("btrim"\("till_name"\) <> ''::"text"\)\)\s+\)/)
+        // Still allowed: a typed name and no employee.
+        expect(table).toContain('CONSTRAINT "timesheet_entries_has_a_person" CHECK (')
+    })
+
+    it('never remembers her as a till name', () => {
+        const names = schema.slice(
+            schema.indexOf('CREATE TABLE IF NOT EXISTS "public"."timesheet_names" ('),
+            schema.indexOf(');', schema.indexOf('CREATE TABLE IF NOT EXISTS "public"."timesheet_names" (')),
+        )
+        expect(names).toContain('CONSTRAINT "timesheet_names_says_something" CHECK ((("employee_id" IS NOT NULL) <> "ignored"))')
+        expect(names).not.toMatch(/person_name|till_name/)
+    })
+
+    it('costs her hours at the restaurant rate in labour_by_day, as it always has', () => {
+        expect(schema).toContain('COALESCE(("t"."employee_id")::"text", "t"."person_name")')
+    })
+
+    it('sends her name with last week\'s rows to the sidebar', () => {
+        const at = schema.indexOf('create or replace function public.my_badges(restaurant uuid) returns jsonb')
+        const body = schema.slice(at, schema.indexOf('end $$;', at))
+        expect(body).toContain("'id', t.id, 'employee_id', t.employee_id, 'person_name', t.person_name, 'work_date', t.work_date,")
+    })
+
+    it('is the same badge function in the migration as in schema.sql', () => {
+        const migration = readFileSync('supabase/migrations/014_from_another_restaurant.sql', 'utf8')
+        const take = text => {
+            const at = text.indexOf('create or replace function public.my_badges(restaurant uuid) returns jsonb')
+            return text.slice(at, text.indexOf('end $$;', at))
+        }
+        expect(take(migration)).toBe(take(schema))
+    })
+})

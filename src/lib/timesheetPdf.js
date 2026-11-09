@@ -1,4 +1,4 @@
-import { AWAY_LOOK, KIND_LOOK, BANK_LOOK, PERMISSION_LOOK, COUNTED_DAYS, awayWords } from '@/lib/timesheet'
+import { AWAY_LOOK, KIND_LOOK, BANK_LOOK, PERMISSION_LOOK, GUEST_LOOK, COUNTED_DAYS, awayWords } from '@/lib/timesheet'
 import { PERMISSION_STATES } from '@/lib/workRules'
 import { periodWords } from '@/lib/payPeriod'
 import { addDays, weekRange, stampDateTime, WEEKDAY_NAMES } from '@/lib/dates'
@@ -153,7 +153,10 @@ export async function timesheetPdf({
         pdf.setFont('helvetica', 'bold')
         pdf.setFontSize(10)
         pdf.setTextColor(255)
-        pdf.text(continued ? `${person.name}, continued` : person.name, marginX + 3, y)
+        // Somebody from another restaurant says so on her band as well as in
+        // the summary, because a page of her days can be read on its own.
+        const name = person.guest ? `${person.name}, from another restaurant` : person.name
+        pdf.text(continued ? `${name}, continued` : name, marginX + 3, y)
 
         pdf.setFontSize(9)
         pdf.text(`${fmtHours(person.worked)} h`, right - 3, y, { align: 'right' })
@@ -263,6 +266,7 @@ export async function timesheetPdf({
     pdf.setFont('helvetica', 'normal')
     for (const person of people) {
         const marks = []
+        if (person.guest) marks.push([GUEST_LOOK, GUEST_LOOK.label])
         if (person.trial > 0) marks.push([KIND_LOOK.trial, `Trial ${fmtHours(person.trial)} h`])
         if (person.training > 0) marks.push([KIND_LOOK.training, `Training ${fmtHours(person.training)} h`])
         if (person.sickDays > 0) marks.push([AWAY_LOOK.sick, `${plural(person.sickDays, 'day')} sick`])
@@ -335,6 +339,9 @@ export async function timesheetPdf({
         + 'and unpaid leave are counted in days, as no hours are recorded for them. '
         + 'Part of a day is counted as a part day, and any hours worked that day are included in Hours worked. '
         + 'Public holiday entitlement is not calculated here. '
+        + (people.some(p => p.guest)
+            ? 'Somebody marked From another restaurant is on another restaurant\'s team and worked these hours here. '
+            : '')
         + 'Every time below is as the till recorded it, to the second.'
     for (const line of pdf.splitTextToSize(note, right - marginX)) {
         pdf.text(line, marginX, y)
