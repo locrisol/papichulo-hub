@@ -109,6 +109,123 @@ export function rateFor(person, restaurantRate) {
     return Number.isFinite(fallback) ? fallback : 0
 }
 
+// ---------------------------------------------------------------------------
+// Somebody from another restaurant
+// ---------------------------------------------------------------------------
+
+// Somebody on another restaurant's team who worked a shift here (his, 9
+// November 2026: a second Camila came over for a week, and the till had her
+// under her own name). **A typed name on her rows and nothing more**, as
+// decided on 20 September 2026: the other restaurant may not be in the Hub at
+// all, and its team is not this one's to read. On screen she is a person like
+// anybody else, with an id made from her name so her rows find her, and
+// `guest` so the few things that belong to our own team leave her out:
+// holiday and sick days, the roster, permission to work.
+//
+// The function's copy of the timesheet has the same words and colours, and a
+// test holds the two together.
+export const GUEST_LABEL = 'From another restaurant'
+export const GUEST_LOOK = { label: GUEST_LABEL, ink: '#2F7359', wash: '#E6F2ED' }
+
+// Spaces tidied, so "Camila  Valenzuela " and "Camila Valenzuela" are one
+// person rather than two lines on the PDF.
+export function guestName(text) {
+    return String(text ?? '').trim().replace(/\s+/g, ' ')
+}
+
+export function guestPerson(name) {
+    const full = guestName(name)
+    return { id: `guest:${full}`, full_name: full, guest: true, hourly_rate: null }
+}
+
+// Whether a row is this person's: by employee for our own, by name for
+// somebody from another restaurant.
+export function belongsTo(entry, person) {
+    if (person?.guest) return !entry?.employee_id && guestName(entry?.person_name) === person.full_name
+    return entry?.employee_id === person?.id
+}
+
+// What a new row for this person carries.
+export function whose(person) {
+    return person?.guest
+        ? { employee_id: null, person_name: person.full_name }
+        : { employee_id: person.id }
+}
+
+// Everybody from another restaurant with a row here, once each and in name
+// order. Plain code point order rather than localeCompare, so the browser and
+// the mail function put them the same way round.
+export function guestsIn(entries = []) {
+    const names = new Set()
+    for (const entry of entries || []) {
+        if (entry.employee_id) continue
+        const name = guestName(entry.person_name)
+        if (name) names.add(name)
+    }
+    return [...names].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).map(guestPerson)
+}
+
+// The team as given, then everybody from another restaurant: those with rows,
+// and any added by hand that have none yet. Our own people first.
+export function withGuests(people = [], entries = [], extra = []) {
+    const found = guestsIn(entries)
+    const more = (extra || [])
+        .map(guestPerson)
+        .filter((g, i, all) => g.full_name && !found.some(f => f.id === g.id) && all.findIndex(o => o.id === g.id) === i)
+    return [...(people || []), ...found, ...more]
+}
+
+// Who a stretch of days is about: everybody on the team employed at some point
+// in it, and everybody from another restaurant with a row in it. The week, the
+// send, the mail, the PDF and the Reports list all ask this, so a person
+// cannot be on one and missing from another.
+export function peopleFor(team = [], entries = [], from, to) {
+    const ours = (team || []).filter(p => (
+        (!p.ended_on || p.ended_on >= from) && (!p.started_on || p.started_on <= to)
+    ))
+    return withGuests(ours, (entries || []).filter(e => e.work_date >= from && e.work_date <= to))
+}
+
+// What a day can be marked as. Holiday and sick are absences, kept by her own
+// restaurant, and a trial is somebody being tried for a job here, who goes in
+// Team. Training is hours worked here, so it stays.
+export function statesFor(person) {
+    return person?.guest ? STATE_KEYS.filter(s => s.value === 'training') : STATE_KEYS
+}
+
+// A name to start from, made from what the till calls her. The till puts the
+// surnames first in capitals, "VALENZUELA ALVAREZ Camila", and the Hub calls
+// people by their first name, so this is the first name and the first surname:
+// "Camila Valenzuela", enough to tell her from our Camila. A name not in that
+// shape is left as it is.
+export function guestFromTill(name) {
+    const words = guestName(name).split(' ').filter(Boolean)
+    const capitals = w => w.length > 1 && w === w.toUpperCase() && w !== w.toLowerCase()
+    let i = 0
+    while (i < words.length && capitals(words[i])) i++
+    if (i === 0 || i === words.length) return guestName(name)
+    const surname = words[0].toLowerCase().replace(/(^|['-])(\p{L})/gu, (_, before, letter) => before + letter.toUpperCase())
+    return `${words.slice(i).join(' ')} ${surname}`
+}
+
+// Why a name cannot be used, or '' when it can. **Never the name of somebody
+// on the team**, whatever the capitals, or her hours and theirs are one line
+// on the PDF. `team` is the whole team, not just this week's: the PDF covers
+// a fortnight. `guests` are the other names from other restaurants it could
+// be mistaken for, and `self` is the name being changed, which may stay.
+export function guestNameProblem(name, { team = [], guests = [], self = '' } = {}) {
+    const full = guestName(name)
+    if (!full) return 'Type a name.'
+    const same = other => guestName(other).toLowerCase() === full.toLowerCase()
+    if ((team || []).some(p => same(p.full_name))) {
+        return `${full} is already on the team. Add something to tell them apart, like a surname.`
+    }
+    if ((guests || []).some(g => same(g)) && !same(self)) {
+        return 'Somebody else from another restaurant is already called that.'
+    }
+    return ''
+}
+
 // With the day it was worked, so the two nights the clocks change come to the
 // hours really worked, the same as the database's own figure.
 function hoursOf(entry) {
@@ -177,7 +294,10 @@ export function dayCell({
         // rules have always followed for somebody on trial: do not warn about
         // the one thing a trial is not expected to have. A worked span on the
         // same day still counts, because that one was meant to be planned.
-        unplanned: rostered.length === 0 && mine.some(e => e.kind !== 'trial'),
+        //
+        // Nor is somebody from another restaurant: she cannot be on this
+        // restaurant's roster at all.
+        unplanned: !person.guest && rostered.length === 0 && mine.some(e => e.kind !== 'trial'),
         // Down to work and never clocked in. Worth saying on the screen
         // whatever else is true, because it is the thing somebody reading the
         // day wants to know.
@@ -235,8 +355,8 @@ export function personWeek({
     person, weekStart, entries = [], absences = [], shifts = [],
     restaurantRate = 0, imported = false, today = todayISO(),
 }) {
-    const mine = entries.filter(e => e.employee_id === person.id)
-    const theirs = shifts.filter(s => s.employee_id === person.id)
+    const mine = entries.filter(e => belongsTo(e, person))
+    const theirs = person.guest ? [] : shifts.filter(s => s.employee_id === person.id)
 
     // **A week that has not finished is not missing anything.**
     //
@@ -482,12 +602,25 @@ export function summarise(verdicts) {
 // safety there is on an import that does not stop at every row, so it has to
 // be able to say exactly what happened, and a plan that exists before the
 // writing starts can.
+//
+// A till name answered as **somebody from another restaurant** comes in as
+// `{ name, guest }`, the name she is to have here, and is never remembered
+// for good: she came for that week (his, 9 November 2026). What the till
+// called her is kept on her rows instead, so the same report read in again
+// finds her there and does not ask twice, even after her name was changed.
 export function planImport({ shifts = [], mappings = [], entries = [], absences = [] }) {
     const known = new Map((mappings || []).map(m => [m.name, m]))
+    // Her rows on this week answer for her till name, over anything
+    // remembered: this week's answer is the newer one.
+    for (const entry of entries || []) {
+        if (entry.employee_id || !entry.till_name || !guestName(entry.person_name)) continue
+        known.set(entry.till_name, { name: entry.till_name, guest: guestName(entry.person_name), already: true })
+    }
 
     const unknown = []
     const ignored = []
     const steps = []
+    const guests = new Map()
 
     // Grouped so a split shift lines up with a split shift. Within a day the
     // two lists are paired in clock order, which is the only pairing that does
@@ -500,29 +633,48 @@ export function planImport({ shifts = [], mappings = [], entries = [], absences 
             if (!unknown.includes(shift.name)) unknown.push(shift.name)
             continue
         }
-        if (mapping.ignored || !mapping.employee_id) {
+        const guest = guestName(mapping.guest)
+        if (!guest && (mapping.ignored || !mapping.employee_id)) {
             ignored.push(shift)
             continue
         }
-        const key = `${mapping.employee_id}|${shift.work_date}`
-        if (!byDay.has(key)) byDay.set(key, { employee_id: mapping.employee_id, date: shift.work_date, coming: [] })
+        const who = guest ? guestPerson(guest) : { id: mapping.employee_id }
+        if (guest) {
+            const one = guests.get(guest) || { name: guest, till: shift.name, shifts: 0, already: Boolean(mapping.already) }
+            one.shifts += 1
+            guests.set(guest, one)
+        }
+        const key = `${who.id}|${shift.work_date}`
+        if (!byDay.has(key)) byDay.set(key, { who, till: shift.name, date: shift.work_date, coming: [] })
         byDay.get(key).coming.push(shift)
     }
 
     for (const day of byDay.values()) {
+        // Hers by name and ours by employee, so two people from other
+        // restaurants on one day, or one of them and one of ours, are never
+        // paired with each other's rows.
         const here = entries
-            .filter(e => e.employee_id === day.employee_id && e.work_date === day.date)
+            .filter(e => belongsTo(e, day.who) && e.work_date === day.date)
             .sort((a, b) => String(a.starts_at).localeCompare(String(b.starts_at)))
         const coming = day.coming
             .slice()
             .sort((a, b) => String(a.starts_at).localeCompare(String(b.starts_at)))
 
-        const absence = wholeDayOn(absences, day.employee_id, day.date)
+        // Her days off are her own restaurant's to keep, so none are here.
+        const absence = day.who.guest ? null : wholeDayOn(absences, day.who.id, day.date)
 
         coming.forEach((shift, i) => {
             const existing = here[i] || null
             const verdict = importVerdict({ existing, incoming: shift, absence })
-            steps.push({ ...verdict, employee_id: day.employee_id, date: day.date, existing, incoming: shift })
+            steps.push({
+                ...verdict,
+                employee_id: day.who.guest ? null : day.who.id,
+                person_name: day.who.guest ? day.who.full_name : null,
+                till_name: day.who.guest ? day.till : null,
+                date: day.date,
+                existing,
+                incoming: shift,
+            })
         })
     }
 
@@ -530,6 +682,7 @@ export function planImport({ shifts = [], mappings = [], entries = [], absences 
         unknown,
         ignored,
         steps,
+        guests: [...guests.values()],
         ...summarise(steps),
     }
 }
@@ -728,7 +881,7 @@ export function personPeriod({
     )) || null
 
     return people.map(person => {
-        const mine = entries.filter(e => e.employee_id === person.id)
+        const mine = entries.filter(e => belongsTo(e, person))
 
         const days = dates.map((date, i) => {
             const spans = mine
@@ -785,6 +938,8 @@ export function personPeriod({
 
         return {
             name: person.full_name,
+            // Somebody from another restaurant, marked as such on the paper.
+            guest: Boolean(person.guest),
             days,
             week,
             weekBank,

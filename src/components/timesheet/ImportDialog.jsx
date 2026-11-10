@@ -6,11 +6,11 @@ import { fullDate, shortDate } from '@/lib/dates'
 import { fmtHours } from '@/lib/roster'
 import { shortClock } from '@/lib/clock'
 import { readTimesheet, fileFits, insideWeek, sameTimeWho } from '@/lib/timesheetImport'
-import { planImport } from '@/lib/timesheet'
+import { planImport, guestName, guestFromTill, guestNameProblem, GUEST_LABEL } from '@/lib/timesheet'
 import Modal from '@/components/ui/Modal'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import {
-    modalFooter, secondaryButton, primaryButton, labelClass, fieldClass, rowButton,
+    modalFooter, secondaryButton, primaryButton, labelClass, fieldClass, rowButton, hintClass, fieldError,
 } from '@/lib/controlStyles'
 
 // Reading the till's report into a week.
@@ -27,8 +27,14 @@ import {
 // roster time, an earlier import, a couple of minutes either way, gets on with
 // it and is counted in a line you can read in two seconds.
 
+//
+// A name can also be **somebody from another restaurant** (his, 9 November
+// 2026): her shifts go in under a name typed here, which starts as one made
+// from the till's. She is not remembered for good, because she came for that
+// week; her rows keep what the till called her instead, so the same report
+// read in again finds her and does not ask twice.
 export default function ImportDialog({
-    restaurantId, restaurantName, weekStart, weekEnd, people, entries, absences,
+    restaurantId, restaurantName, weekStart, weekEnd, people, team = people, entries, absences,
     onClose, onDone,
 }) {
     const { user } = useAuth()
@@ -39,6 +45,13 @@ export default function ImportDialog({
     const [read, setRead] = useState(null)
     const [mappings, setMappings] = useState([])
     const [answers, setAnswers] = useState({})
+    // The names the file asked about, held from the first look. Answers fold
+    // into the plan as they are given, so the plan's own list shrinks while
+    // somebody is still typing a name into it.
+    const [asked, setAsked] = useState([])
+    // What each till name was called last time it came as somebody from
+    // another restaurant, to start the box from.
+    const [lastTime, setLastTime] = useState({})
     const [result, setResult] = useState(null)
 
     async function take(file) {
@@ -70,19 +83,45 @@ export default function ImportDialog({
         setMappings(data || [])
 
         const plan = planImport({ shifts: mine.shifts, mappings: data || [], entries, absences })
+        setAsked(plan.unknown)
+        if (plan.unknown.length) {
+            // Only a help: a read that fails, or a database without the
+            // column yet, starts the box from the till's name instead.
+            const { data: before } = await supabase.from('timesheet_entries')
+                .select('till_name, person_name, work_date, source, note')
+                .eq('restaurant_id', restaurantId)
+                .is('employee_id', null)
+                .in('till_name', plan.unknown)
+                .order('work_date', { ascending: false })
+            const names = {}
+            for (const row of before || []) {
+                if (!names[row.till_name] && guestName(row.person_name)) names[row.till_name] = guestName(row.person_name)
+            }
+            setLastTime(names)
+        }
         setStage(plan.unknown.length ? 'names' : 'ready')
+    }
+
+    // Why the name typed for somebody from another restaurant will not do, or
+    // ''. Never somebody on the team, and never the name given to another till
+    // name in this same file.
+    function guestProblem(till) {
+        const answer = answers[till]
+        if (!answer || typeof answer !== 'object') return ''
+        const others = Object.entries(answers)
+            .filter(([name, a]) => name !== till && a && typeof a === 'object')
+            .map(([, a]) => a.guest)
+        return guestNameProblem(answer.guest, { team, guests: others })
     }
 
     const plan = read
         ? planImport({
             shifts: read.shifts,
             mappings: [...mappings, ...Object.entries(answers)
-                .filter(([, a]) => a && a !== 'once')
-                .map(([name, a]) => ({
-                    name,
-                    employee_id: a === 'ignore' ? null : a,
-                    ignored: a === 'ignore',
-                }))],
+                .filter(([name, a]) => a && a !== 'once' && !guestProblem(name))
+                .map(([name, a]) => (typeof a === 'object'
+                    ? { name, guest: guestName(a.guest) }
+                    : { name, employee_id: a === 'ignore' ? null : a, ignored: a === 'ignore' }))],
             entries,
             absences,
         })
@@ -90,7 +129,8 @@ export default function ImportDialog({
 
     // "Ignore this time" is answered and deliberately not remembered, so the
     // name still counts as unknown to the planner. It is filtered here instead.
-    const waiting = (plan?.unknown || []).filter(name => !answers[name])
+    // A name for somebody from another restaurant counts once it would do.
+    const waiting = asked.filter(name => !answers[name] || guestProblem(name))
 
     async function apply() {
         setBusy(true)
@@ -99,8 +139,11 @@ export default function ImportDialog({
         // Only what was answered for good. "This time" writes nothing, which is
         // the whole difference: remembering a wrong employee number would hide
         // a real person's hours the first week they worked.
+        //
+        // Somebody from another restaurant is never remembered either: she
+        // came for that week, and her rows carry what the till called her.
         const remember = Object.entries(answers)
-            .filter(([, a]) => a && a !== 'once')
+            .filter(([, a]) => typeof a === 'string' && a !== 'once')
             .filter(([name]) => !mappings.some(m => m.name === name))
             .map(([name, a]) => ({
                 restaurant_id: restaurantId,
@@ -116,6 +159,9 @@ export default function ImportDialog({
         }
 
         const made = []
+        // Hers apart, so a file with nobody from another restaurant in it
+        // writes exactly what it always wrote.
+        const theirs = []
         const changed = []
 
         for (const step of plan.steps) {
@@ -127,7 +173,18 @@ export default function ImportDialog({
                 source: 'import',
             }
 
-            if (step.action === 'fill') {
+            if (step.action === 'fill' && step.person_name) {
+                theirs.push({
+                    restaurant_id: restaurantId,
+                    employee_id: null,
+                    person_name: step.person_name,
+                    till_name: step.till_name,
+                    work_date: step.date,
+                    kind: 'worked',
+                    created_by: user?.id,
+                    ...row,
+                })
+            } else if (step.action === 'fill') {
                 made.push({
                     restaurant_id: restaurantId,
                     employee_id: step.employee_id,
@@ -137,12 +194,15 @@ export default function ImportDialog({
                     ...row,
                 })
             } else {
-                changed.push({ id: step.existing.id, row })
+                // A row of hers typed by hand that the till now confirms takes
+                // the till's name too, so the next read of the file finds it.
+                changed.push({ id: step.existing.id, row: step.person_name ? { ...row, till_name: step.till_name } : row })
             }
         }
 
-        if (made.length) {
-            const { error: failed } = await supabase.from('timesheet_entries').insert(made)
+        for (const rows of [made, theirs]) {
+            if (!rows.length) continue
+            const { error: failed } = await supabase.from('timesheet_entries').insert(rows)
             if (failed) { setBusy(false); setError(friendlyError(failed)); return }
         }
         for (const one of changed) {
@@ -169,8 +229,9 @@ export default function ImportDialog({
         setBusy(false)
         if (notMarked) setError(friendlyError(notMarked))
         setResult({
-            shifts: made.length + changed.length,
-            people: new Set(plan.steps.map(s => s.employee_id)).size,
+            shifts: made.length + theirs.length + changed.length,
+            people: new Set(plan.steps.map(s => s.employee_id || `guest:${s.person_name}`)).size,
+            guests: plan.guests,
             hours: read.shifts.reduce((t, s) => t + (Number(s.hours) || 0), 0),
             breaks: read.breaks.length,
             breakHours: read.breakHours,
@@ -223,9 +284,11 @@ export default function ImportDialog({
 
                 {stage === 'names' && (
                     <Names
-                        names={plan.unknown}
+                        names={asked}
                         people={people}
                         answers={answers}
+                        lastTime={lastTime}
+                        problemFor={guestProblem}
                         onAnswer={(name, value) => setAnswers(was => ({ ...was, [name]: value }))}
                     />
                 )}
@@ -293,32 +356,66 @@ function refusal(fits, weekStart, weekEnd) {
     return 'That file does not look like a till report. Nothing in it says which week it covers.'
 }
 
-// A name the Hub has not seen. Four answers, and the difference between the
-// last two is the whole reason there are both: "always" is a fact about an
-// account, "this time" is a fact about one file.
-function Names({ names, people, answers, onAnswer }) {
+// A name the Hub has not seen. Five answers, and the difference between the
+// two ignores is the whole reason there are both: "always" is a fact about an
+// account, "this time" is a fact about one file. Somebody from another
+// restaurant is in the list with the team, because that is where somebody
+// looking for who this is will look.
+function Names({ names, people, answers, lastTime, problemFor, onAnswer }) {
     return (
         <div>
             <p className="text-sm text-muted mb-4">
                 Some names from the till do not match anyone on the team, and some are not people.
-                Your answers are remembered, except Ignore this time.
+                A person you pick and Not a person are remembered. Ignore this time and From
+                another restaurant are not.
             </p>
 
-            {names.map(name => (
+            {names.map(name => {
+                const answer = answers[name]
+                const guest = Boolean(answer) && typeof answer === 'object'
+                const problem = guest ? problemFor(name) : ''
+                return (
                 <div key={name} className="mb-4 pb-4 border-b border-border last:border-b-0 last:mb-0 last:pb-0">
                     <p className="text-sm font-semibold text-gray-900 mb-2 break-words">{name}</p>
 
                     <select
+                        aria-label={`Who ${name} is`}
                         className={`${fieldClass} mb-2`}
-                        value={typeof answers[name] === 'string' && answers[name] !== 'ignore' && answers[name] !== 'once'
-                            ? answers[name] : ''}
-                        onChange={e => onAnswer(name, e.target.value || null)}
+                        value={guest ? 'guest'
+                            : typeof answer === 'string' && answer !== 'ignore' && answer !== 'once' ? answer : ''}
+                        onChange={e => onAnswer(name, e.target.value === 'guest'
+                            ? { guest: lastTime[name] || guestFromTill(name) }
+                            : e.target.value || null)}
                     >
                         <option value="">Pick a person</option>
                         {people.map(p => (
                             <option key={p.id} value={p.id}>{p.full_name}</option>
                         ))}
+                        <option value="guest">{GUEST_LABEL}</option>
                     </select>
+
+                    {guest && (
+                        <div className="mb-2">
+                            <label className={labelClass} htmlFor={`guest-${name}`}>Their name</label>
+                            <input
+                                id={`guest-${name}`}
+                                type="text"
+                                autoComplete="off"
+                                className={fieldClass}
+                                value={answer.guest}
+                                onChange={e => onAnswer(name, { guest: e.target.value })}
+                            />
+                            {problem
+                                ? <p className={fieldError}>{problem}</p>
+                                : (
+                                    <p className={hintClass}>
+                                        Their name on the timesheet and in the hours, marked {GUEST_LABEL.toLowerCase()}.
+                                        Make it different from everybody on the team, for example with a surname.
+                                        {lastTime[name] ? ` Last time this name was ${lastTime[name]}.` : ''}
+                                    </p>
+                                )}
+                        </div>
+                    )}
 
                     <div className="flex flex-wrap gap-2">
                         <button
@@ -337,14 +434,15 @@ function Names({ names, people, answers, onAnswer }) {
                         </button>
                     </div>
 
-                    {answers[name] === 'once' && (
+                    {answer === 'once' && (
                         <p className="text-xs text-muted mt-2">
                             Skipped for this file only. You will be asked again the next time this name
                             appears.
                         </p>
                     )}
                 </div>
-            ))}
+                )
+            })}
         </div>
     )
 }
@@ -397,6 +495,12 @@ function Ready({ plan, read }) {
                 {plan.rosterReplaced > 0 && <Line>{plan.rosterReplaced} already here, to be replaced by the clock</Line>}
                 {plan.nudged > 0 && <Line>{plan.nudged} typed by hand, out by under an hour</Line>}
                 {plan.unchanged > 0 && <Line>{plan.unchanged} already exactly right</Line>}
+                {plan.guests.map(g => (
+                    <Line key={g.name}>
+                        {g.name}, from another restaurant: {g.shifts} shift{g.shifts === 1 ? '' : 's'}
+                        {g.already ? ', already on this week' : ''}
+                    </Line>
+                ))}
                 {read.breaks.length > 0 && (
                     <Line>
                         {read.breaks.length} break lines dropped, worth {fmtHours(read.breakHours)} hours.
@@ -451,6 +555,11 @@ function Done({ result, people }) {
                 {result.sameTime.length > 0 && (
                     <Line tick>{sameTimeWords(result.sameTime.length)}: {sameTimeWho(result.sameTime)}</Line>
                 )}
+                {result.guests.length > 0 && (
+                    <Line tick>
+                        {result.guests.map(g => g.name).join(', ')} from another restaurant
+                    </Line>
+                )}
                 {result.ignored > 0 && <Line quiet>{result.ignored} lines skipped, not people</Line>}
             </ul>
 
@@ -463,7 +572,7 @@ function Done({ result, people }) {
                         {result.asks.map((ask, i) => (
                             <li key={i}>
                                 <span className="font-semibold text-gray-900">
-                                    {nameOf(ask.employee_id)}, {shortDate(ask.date)}
+                                    {ask.person_name || nameOf(ask.employee_id)}, {shortDate(ask.date)}
                                 </span>
                                 {' · '}
                                 {ask.why === 'absence'

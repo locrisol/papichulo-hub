@@ -201,6 +201,53 @@ export const PERMISSION_LOOK = {
 // unpaid leave are not.
 export const COUNTED_DAYS = ['sick', 'unpaid']
 
+// Somebody from another restaurant who worked a shift here (his, 9 November
+// 2026): a typed name on her rows and nothing more. Listed after the team with
+// this mark, so the accountant knows her own restaurant is who pays her, and
+// never on the permission to work list, which is our own team's. The same
+// colours as lent, which is the same fact seen from the other side. Copied
+// from src/lib/timesheet.js with the people rule below, and the tests hold
+// the two copies together.
+export const GUEST_LOOK = { label: 'From another restaurant', ink: '#2F7359', wash: '#E6F2ED' }
+
+export function guestName(text) {
+    return String(text ?? '').trim().replace(/\s+/g, ' ')
+}
+
+function guestPerson(name) {
+    const full = guestName(name)
+    return { id: `guest:${full}`, full_name: full, guest: true, hourly_rate: null }
+}
+
+// Whether a row is this person's: by employee for our own, by name for
+// somebody from another restaurant.
+export function belongsTo(entry, person) {
+    if (person?.guest) return !entry?.employee_id && guestName(entry?.person_name) === person.full_name
+    return entry?.employee_id === person?.id
+}
+
+// Everybody from another restaurant with a row here, once each, in plain code
+// point order so the browser and this function sort them the same.
+function guestsIn(entries = []) {
+    const names = new Set()
+    for (const entry of entries || []) {
+        if (entry.employee_id) continue
+        const name = guestName(entry.person_name)
+        if (name) names.add(name)
+    }
+    return [...names].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).map(guestPerson)
+}
+
+// Who a stretch of days is about: everybody on the team employed at some point
+// in it, then everybody from another restaurant with a row in it. The same
+// rule as the app's peopleFor, so the mail and the PDF list the same people.
+export function peopleFor(team = [], entries = [], from, to) {
+    const ours = (team || []).filter(p => (
+        (!p.ended_on || p.ended_on >= from) && (!p.started_on || p.started_on <= to)
+    ))
+    return [...ours, ...guestsIn((entries || []).filter(e => e.work_date >= from && e.work_date <= to))]
+}
+
 // The absence covering one date, if there is one.
 function awayOn(absences, employeeId, date) {
     for (const away of absences) {
@@ -246,7 +293,7 @@ export function awayWords(day) {
 // she still needs to know which week the hours fell in.
 export function personPeriod({ people = [], entries = [], absences = [], dates = [], half = 7 }) {
     return people.map(person => {
-        const mine = entries.filter(e => e.employee_id === person.id)
+        const mine = entries.filter(e => belongsTo(e, person))
 
         const days = dates.map((date, i) => {
             const spans = mine
@@ -308,6 +355,8 @@ export function personPeriod({ people = [], entries = [], absences = [], dates =
 
         return {
             name: person.full_name,
+            // Somebody from another restaurant, marked under her name.
+            guest: Boolean(person.guest),
             days,
             week,
             weekBank,
@@ -637,6 +686,10 @@ const together = (n, word) => plural(n, word).replace(/ /g, '&nbsp;')
 // floors the whole table at a width it does not have.
 function marksFor(person) {
     const out = []
+    // First, because it is who she is rather than something about her days.
+    // Breakable between its words like the others: "restaurant" is the widest
+    // piece, measured inside the phone's 307px with a bank holiday column.
+    if (person.guest) out.push(figureMark(GUEST_LOOK, 'From another', 'restaurant'))
     if (person.trial > 0) out.push(figureMark(KIND_LOOK.trial, 'Trial', `${hours(person.trial)}&nbsp;h`))
     if (person.training > 0) out.push(figureMark(KIND_LOOK.training, 'Training', `${hours(person.training)}&nbsp;h`))
     if (person.sickDays > 0) out.push(figureMark(AWAY_LOOK.sick, '', together(person.sickDays, 'day'), 'sick'))
@@ -819,6 +872,7 @@ function asText({ restaurantName, period, weeks, people, T, test, comment, permi
 
     for (const person of people) {
         const apart = [
+            person.guest ? 'from another restaurant' : '',
             person.bankHoliday > 0 ? `${hours(person.bankHoliday)} on the bank holiday${bankWhen(person.weekBank)}` : '',
             person.holiday > 0 ? `${hours(person.holiday)} holiday` : '',
             person.sundays > 0 ? `${plural(person.sundays, 'Sunday')} worked` : '',

@@ -218,7 +218,10 @@ describe('a screen that judges the timesheet asks for the whole row', () => {
     // Nothing was broken in a way anything could see. The query worked, the
     // page rendered, and a week that should have been blocked was offered with
     // a Start button on it.
-    const NEEDED = ['source', 'note']
+    // person_name since 9 November 2026: somebody from another restaurant has
+    // rows with her name and no employee, and a read without it never sees her
+    // clock in with no clock out.
+    const NEEDED = ['source', 'note', 'person_name']
     // A comment can sit between the two calls, so the window is wide.
     const reads = sourcePaths.filter(p => /\.from\('timesheet_entries'\)[\s\S]{0,500}?\.select\(/.test(sources[p]))
 

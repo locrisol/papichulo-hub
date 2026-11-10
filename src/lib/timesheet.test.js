@@ -4,6 +4,7 @@ import {
     personWeek, weekTotals, labourPercent,
     unanswered, importVerdict, summarise, planImport, ASK_ABOVE_SECONDS,
     planDrift, driftsFor, NOTICEABLE_MINUTES, ROW_BANDS, takenOut, spansToDraw,
+    guestPerson, guestsIn, withGuests, peopleFor, statesFor, guestFromTill, guestNameProblem, whose, belongsTo,
 } from '@/lib/timesheet'
 
 // The week of Sunday 25 to Saturday 31 October 2026, which holds the October
@@ -1027,5 +1028,179 @@ describe('the pairs of boxes a day draws', () => {
 
     it('gives an empty day one pair to type into', () => {
         expect(spansToDraw([])).toEqual([{ id: null, starts_at: '', ends_at: '' }])
+    })
+})
+
+// His, 9 November 2026: a second Camila came over from another restaurant for
+// a week, and the till had her as VALENZUELA ALVAREZ Camila.
+describe('somebody from another restaurant', () => {
+    const camila = { id: 'e3', full_name: 'Camila', hourly_rate: null }
+    const visitor = guestPerson('Camila Valenzuela')
+    const hers = (over = {}) => shift({
+        id: 'g1', employee_id: null, person_name: 'Camila Valenzuela', work_date: TUE,
+        starts_at: '13:28:23', ends_at: '18:02:37', source: 'import', ...over,
+    })
+    const ours = (over = {}) => shift({
+        id: 'c1', employee_id: 'e3', work_date: TUE, starts_at: '17:32:15', ends_at: '21:31:18', source: 'import', ...over,
+    })
+
+    it('puts her rows on her own line, apart from somebody on the team with the same first name', () => {
+        const entries = [hers(), ours()]
+        const ourWeek = personWeek({ person: camila, weekStart: WEEK, entries, restaurantRate: 17, today: AFTER })
+        const herWeek = personWeek({ person: visitor, weekStart: WEEK, entries, restaurantRate: 17, today: AFTER })
+        expect(herWeek.worked).toBeCloseTo(4.57, 2)
+        expect(ourWeek.worked).toBeCloseTo(3.98, 2)
+        expect(herWeek.days.find(d => d.date === TUE).entries.map(e => e.id)).toEqual(['g1'])
+    })
+
+    it('finds them in the rows once each, after the team, in name order', () => {
+        const entries = [
+            hers(), hers({ id: 'g2', work_date: MON }),
+            hers({ id: 'g3', person_name: ' Ana  Ruiz ' }),
+            ours(),
+        ]
+        expect(guestsIn(entries).map(p => p.full_name)).toEqual(['Ana Ruiz', 'Camila Valenzuela'])
+        expect(withGuests([camila], entries).map(p => p.full_name)).toEqual(['Camila', 'Ana Ruiz', 'Camila Valenzuela'])
+        // One added by hand with nothing saved yet comes last, once.
+        expect(withGuests([camila], entries, ['Rosa', 'Rosa', 'Ana Ruiz']).map(p => p.full_name))
+            .toEqual(['Camila', 'Ana Ruiz', 'Camila Valenzuela', 'Rosa'])
+    })
+
+    it('holds the same people for a stretch of days as the mail does: the team employed in it, then them', () => {
+        const team = [camila, { id: 'e9', full_name: 'Left', ended_on: '2026-10-01' }]
+        const entries = [hers(), hers({ id: 'g4', person_name: 'Earlier', work_date: '2026-10-11' })]
+        expect(peopleFor(team, entries, WEEK, '2026-10-31').map(p => p.full_name)).toEqual(['Camila', 'Camila Valenzuela'])
+    })
+
+    it('costs them at the restaurant rate and shows no rate of their own', () => {
+        const row = personWeek({ person: visitor, weekStart: WEEK, entries: [hers()], restaurantRate: 17, today: AFTER })
+        expect(row.rate).toBe(17)
+        expect(row.ownRate).toBe(false)
+    })
+
+    it('never says not rostered for them', () => {
+        const row = personWeek({ person: visitor, weekStart: WEEK, entries: [hers()], today: AFTER })
+        expect(row.days.find(d => d.date === TUE).unplanned).toBe(false)
+    })
+
+    it('still asks about their clock in with no clock out', () => {
+        const row = personWeek({ person: visitor, weekStart: WEEK, entries: [hers({ ends_at: null })], today: AFTER })
+        expect(unanswered([row])).toEqual([expect.objectContaining({ open: [TUE] })])
+    })
+
+    it('still asks about their hours typed on an imported week with nothing said', () => {
+        const row = personWeek({
+            person: visitor, weekStart: WEEK, entries: [hers({ source: 'typed' })], imported: true, today: AFTER,
+        })
+        expect(unanswered([row])).toEqual([expect.objectContaining({ changed: [TUE] })])
+    })
+
+    it('offers only training for them', () => {
+        expect(statesFor(visitor).map(s => s.value)).toEqual(['training'])
+        expect(statesFor(camila)).toBe(STATE_KEYS)
+    })
+
+    it('gives a new row of theirs the name and no employee', () => {
+        expect(whose(visitor)).toEqual({ employee_id: null, person_name: 'Camila Valenzuela' })
+        expect(whose(camila)).toEqual({ employee_id: 'e3' })
+        expect(belongsTo(hers({ person_name: 'Camila  Valenzuela' }), visitor)).toBe(true)
+        expect(belongsTo(hers(), camila)).toBe(false)
+    })
+
+    it("makes a name from the till's", () => {
+        expect(guestFromTill('VALENZUELA ALVAREZ Camila')).toBe('Camila Valenzuela')
+        expect(guestFromTill("O'BRIEN Sean")).toBe("Sean O'Brien")
+        expect(guestFromTill('Tiffany')).toBe('Tiffany')
+        expect(guestFromTill('CBE')).toBe('CBE')
+    })
+
+    it('refuses a name somebody on the team has, whatever the capitals, and one another of them has', () => {
+        expect(guestNameProblem('  ', { team: [camila] })).toBe('Type a name.')
+        expect(guestNameProblem('CAMILA', { team: [camila] })).toMatch(/already on the team/)
+        expect(guestNameProblem('Camila Valenzuela', { team: [camila], guests: ['Camila Valenzuela'] }))
+            .toMatch(/Somebody else from another restaurant/)
+        // Her own name may stay when it is hers being changed.
+        expect(guestNameProblem('Camila Valenzuela', { team: [camila], guests: ['Camila Valenzuela'], self: 'Camila Valenzuela' })).toBe('')
+        expect(guestNameProblem('Camila Valenzuela', { team: [camila] })).toBe('')
+    })
+
+    describe('in an upload', () => {
+        const mappings = [{ name: 'SOLIS Camila', employee_id: 'e3', ignored: false }]
+        const came = (over = {}) => ({
+            name: 'VALENZUELA ALVAREZ Camila', work_date: TUE, starts_at: '13:28:23', ends_at: '18:02:37', ...over,
+        })
+
+        it('asks about her till name like any name it has never seen', () => {
+            const plan = planImport({ shifts: [came()], mappings })
+            expect(plan.unknown).toEqual(['VALENZUELA ALVAREZ Camila'])
+        })
+
+        it('files a name answered as from another restaurant under the name typed', () => {
+            const plan = planImport({
+                shifts: [came()],
+                mappings: [...mappings, { name: 'VALENZUELA ALVAREZ Camila', guest: ' Camila  Valenzuela ' }],
+            })
+            expect(plan.unknown).toEqual([])
+            expect(plan.steps).toEqual([expect.objectContaining({
+                action: 'fill', employee_id: null, person_name: 'Camila Valenzuela', till_name: 'VALENZUELA ALVAREZ Camila', date: TUE,
+            })])
+            expect(plan.guests).toEqual([{ name: 'Camila Valenzuela', till: 'VALENZUELA ALVAREZ Camila', shifts: 1, already: false }])
+        })
+
+        it("never pairs her shifts with a team member's on the same day", () => {
+            const plan = planImport({
+                shifts: [came()],
+                mappings: [...mappings, { name: 'VALENZUELA ALVAREZ Camila', guest: 'Camila Valenzuela' }],
+                entries: [ours()],
+            })
+            expect(plan.steps[0]).toMatchObject({ action: 'fill', existing: null })
+        })
+
+        it('keeps two people from other restaurants on one day apart', () => {
+            const plan = planImport({
+                shifts: [came(), came({ name: 'RUIZ Ana', starts_at: '09:00:00', ends_at: '15:00:00' })],
+                mappings: [
+                    { name: 'VALENZUELA ALVAREZ Camila', guest: 'Camila Valenzuela' },
+                    { name: 'RUIZ Ana', guest: 'Ana Ruiz' },
+                ],
+                entries: [hers({ id: 'g1', source: 'typed' })],
+            })
+            const byName = Object.fromEntries(plan.steps.map(s => [s.person_name, s]))
+            expect(byName['Camila Valenzuela'].existing?.id).toBe('g1')
+            expect(byName['Ana Ruiz'].existing).toBe(null)
+        })
+
+        it('finds her shifts again on a second upload of the same file, after her name was changed, and does not ask', () => {
+            const plan = planImport({
+                shifts: [came()],
+                mappings,
+                entries: [hers({ person_name: 'Camila V', till_name: 'VALENZUELA ALVAREZ Camila' })],
+            })
+            expect(plan.unknown).toEqual([])
+            // Paired with her own row, as an earlier read of the file, never
+            // added a second time.
+            expect(plan.steps).toEqual([expect.objectContaining({ action: 'replace', why: 'reimport', person_name: 'Camila V' })])
+            expect(plan.steps[0].existing.id).toBe('g1')
+            expect(plan.guests[0]).toMatchObject({ name: 'Camila V', already: true })
+        })
+
+        it("takes this week's answer over a remembered one", () => {
+            const plan = planImport({
+                shifts: [came()],
+                mappings: [{ name: 'VALENZUELA ALVAREZ Camila', employee_id: 'e3', ignored: false }],
+                entries: [hers({ till_name: 'VALENZUELA ALVAREZ Camila' })],
+            })
+            expect(plan.steps[0]).toMatchObject({ employee_id: null, person_name: 'Camila Valenzuela' })
+        })
+
+        it("never puts her shift against anybody's day off", () => {
+            const absences = [{ id: 'a1', employee_id: null, kind: 'holiday', status: 'approved', starts_on: TUE, ends_on: TUE }]
+            const plan = planImport({
+                shifts: [came()],
+                mappings: [{ name: 'VALENZUELA ALVAREZ Camila', guest: 'Camila Valenzuela' }],
+                absences,
+            })
+            expect(plan.steps[0]).toMatchObject({ action: 'fill' })
+        })
     })
 })

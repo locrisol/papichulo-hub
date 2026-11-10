@@ -321,6 +321,9 @@ export default function TimesheetDay({
                             // a thing to warn about. Being far off a plan still
                             // counts, on a trial as on anything else.
                             const trial = span.entry.kind === 'trial'
+                            // Nor is somebody from another restaurant, who
+                            // cannot be on this restaurant's roster at all.
+                            const guest = Boolean(row.person.guest)
                             return {
                                 ...span,
                                 planned: Boolean(planned),
@@ -328,8 +331,9 @@ export default function TimesheetDay({
                                 adrift,
                                 kind,
                                 trial,
+                                guest,
                                 label: `entry:${span.id}`,
-                                colour: adrift || (!planned && !trial) ? NOT_AS_PLANNED : kind ? kind.colour : AS_PLANNED,
+                                colour: adrift || (!planned && !trial && !guest) ? NOT_AS_PLANNED : kind ? kind.colour : AS_PLANNED,
                             }
                         })
                         const planLabel = shift => `plan:${row.person.id}:${shift.id || shift.starts_at}`
@@ -361,6 +365,11 @@ export default function TimesheetDay({
                                     <span className="text-sm font-semibold text-gray-900 truncate">
                                         {row.person.full_name}
                                     </span>
+                                    {row.person.guest && (
+                                        <span className="text-[0.625rem] text-muted">
+                                            from another restaurant
+                                        </span>
+                                    )}
                                     {cell.unplanned && (
                                         <span className="text-[0.625rem] font-bold text-accent-ink">
                                             not rostered
@@ -574,7 +583,7 @@ function BlockDetails({ block }) {
                     {' '}· {block.kind.label.toLowerCase()}
                 </span>
             )}
-            {!block.planned && !block.trial && <span className="font-semibold text-accent-ink"> · not rostered</span>}
+            {!block.planned && !block.trial && !block.guest && <span className="font-semibold text-accent-ink"> · not rostered</span>}
             {drift && drift.minutes !== 0 && (
                 <span className="font-semibold" style={{ color: block.adrift ? NOT_AS_PLANNED : '#4B5563' }}>
                     {' '}· {drift.where} {drift.minutes > 0 ? '+' : '−'}{Math.abs(drift.minutes)} min

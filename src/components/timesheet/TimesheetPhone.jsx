@@ -1,6 +1,6 @@
 import { dayName, dayNumber, fullDayLabel } from '@/lib/dates'
 import { fmtMoney } from '@/lib/format'
-import { weekTotals, cellColour } from '@/lib/timesheet'
+import { weekTotals, cellColour, GUEST_LABEL } from '@/lib/timesheet'
 import { kindLabel as absenceLabel } from '@/lib/absences'
 
 // The same week on a phone.
@@ -12,7 +12,7 @@ import { kindLabel as absenceLabel } from '@/lib/absences'
 //
 // A tablet in landscape gets the wide grid, not this. An iPad 10.2 inch is
 // 1,080 points across and the grid is about 1,050.
-export default function TimesheetPhone({ rows, dates, onOpenDay }) {
+export default function TimesheetPhone({ rows, dates, onOpenDay, onName }) {
     const totals = weekTotals(rows)
 
     return (
@@ -44,7 +44,20 @@ export default function TimesheetPhone({ rows, dates, onOpenDay }) {
             {rows.map(row => (
                 <div key={row.person.id} className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border last:border-b-0">
                     <div className="min-w-0">
-                        <p className="text-sm font-semibold text-gray-900 truncate">{row.person.full_name}</p>
+                        {/* Somebody from another restaurant: her name opens it
+                            to be changed, and the line under it says so. */}
+                        {row.person.guest && onName ? (
+                            <button
+                                type="button"
+                                onClick={() => onName(row.person)}
+                                className="block max-w-full text-left text-sm font-semibold text-gray-900 truncate underline decoration-dotted decoration-gray-400 underline-offset-2"
+                            >
+                                {row.person.full_name}
+                            </button>
+                        ) : (
+                            <p className="text-sm font-semibold text-gray-900 truncate">{row.person.full_name}</p>
+                        )}
+                        {row.person.guest && <p className="text-[0.66rem] text-muted">{GUEST_LABEL}</p>}
                         <div className="flex gap-1 mt-1">
                             {row.days.map(cell => (
                                 <DayChip key={cell.date} cell={cell} onOpen={() => onOpenDay(row.person, cell)} />
