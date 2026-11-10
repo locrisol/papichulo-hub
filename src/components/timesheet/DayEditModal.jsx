@@ -1,7 +1,7 @@
 import { fullDate } from '@/lib/dates'
 import { fmtHours } from '@/lib/roster'
 import { shortClock, maskTime, settleTime } from '@/lib/clock'
-import { STATE_KEYS, kindOf, cellColour, spansToDraw, cameFromTill } from '@/lib/timesheet'
+import { statesFor, kindOf, cellColour, spansToDraw, cameFromTill, GUEST_LABEL } from '@/lib/timesheet'
 import { kindLabel as absenceLabel, takesHours, kindOf as absenceKind } from '@/lib/absences'
 import { numberField } from '@/lib/numberInput'
 import { BANK_HOLIDAY_INK } from '@/lib/bankHolidays'
@@ -37,7 +37,11 @@ export default function DayEditModal({
                     </p>
                 )}
 
-                {cell.rostered.length > 0 ? (
+                {/* Somebody from another restaurant is never on this
+                    roster, so the line says where she is from instead. */}
+                {person.guest ? (
+                    <p className="text-xs text-muted mb-4">{GUEST_LABEL}.</p>
+                ) : cell.rostered.length > 0 ? (
                     <p className="text-xs text-muted mb-4">
                         Rostered {cell.rostered.map(s => `${shortClock(s.starts_at)} to ${shortClock(s.ends_at)}`).join(', ')}
                     </p>
@@ -188,7 +192,7 @@ export default function DayEditModal({
                     <div className="mt-4 pt-3 border-t border-border">
                         <p className={labelClass}>Or the whole day was</p>
                         <div className="flex flex-wrap gap-2">
-                            {STATE_KEYS.map(state => (
+                            {statesFor(person).map(state => (
                                 <button
                                     key={state.key}
                                     type="button"

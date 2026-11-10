@@ -47,3 +47,20 @@ describe('a day with a shift somebody emptied', () => {
         expect(screen.getByLabelText('Why nothing was worked, for the accountant')).toHaveValue('Clock out by mistake earlier')
     })
 })
+
+// Somebody from another restaurant (9 November 2026): her days off are her own
+// restaurant's, and she is never on this roster.
+describe('a day for somebody from another restaurant', () => {
+    it('offers only training, and says where she is from rather than not rostered', () => {
+        const visitor = { id: 'guest:Camila Valenzuela', full_name: 'Camila Valenzuela', guest: true }
+        const cell = { date: DAY, entries: [], rostered: [], absence: null, bankHoliday: null, hours: 0, holidayHours: 0 }
+        render(<DayEditModal person={visitor} cell={cell} onClose={vi.fn()} onType={vi.fn()} onSettle={vi.fn()} onState={vi.fn()} onAdd={vi.fn()} onNote={vi.fn()} />)
+
+        expect(screen.getByRole('button', { name: 'Training' })).toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: 'Holiday' })).not.toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: 'Off sick' })).not.toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: 'Trial' })).not.toBeInTheDocument()
+        expect(screen.getByText('From another restaurant.')).toBeInTheDocument()
+        expect(screen.queryByText('Not rostered for this day.')).not.toBeInTheDocument()
+    })
+})

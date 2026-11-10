@@ -22,7 +22,7 @@ import { cannotAnswer, isPartDay, openGaps } from '@/lib/timeOff'
 import { publishState } from '@/lib/roster'
 import { reportableWeeks, statementWeek, mailMissing, WEEKS_LISTED } from '@/lib/weeklyReport'
 import { reprintDue } from '@/lib/allergenSheet'
-import { personWeek, unanswered } from '@/lib/timesheet'
+import { personWeek, unanswered, withGuests } from '@/lib/timesheet'
 import { periodOf as payPeriodOf, periodIsOver } from '@/lib/payPeriod'
 import { periodOf as stretchOf } from '@/lib/checklists'
 import { graceFor, DEFAULT_RULES } from '@/lib/workRules'
@@ -94,7 +94,9 @@ export function timesheetWaiting(answer) {
     const a = answer || {}
     const t = a.timesheet
     if (t) {
-        const rows = (t.people || []).map(person => personWeek({
+        // The team the database sends, then anybody from another restaurant
+        // with a row last week (my_badges sends person_name since 014).
+        const rows = withGuests(t.people || [], t.entries || []).map(person => personWeek({
             person, weekStart: t.week_start, entries: t.entries, absences: t.absences, shifts: t.shifts,
             imported: t.imported, today: a.today,
         }))

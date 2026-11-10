@@ -4,6 +4,7 @@ import {
     clock, hours, dayWords, weekWords, periodWords, addDays, hoursPdfPath,
     AWAY_LOOK, KIND_LOOK, BANK_LOOK, COUNTED_DAYS, awayWords,
     permissionState, permissionWords, permissionList, PERMISSION_STATES, PERMISSION_LOOK, dublinToday,
+    GUEST_LOOK, peopleFor, belongsTo,
 } from '../../supabase/functions/weekly-report-email/timesheet'
 import { heldNotice, page } from '../../supabase/functions/weekly-report-email/email'
 import { readFileSync } from 'node:fs'
@@ -13,6 +14,7 @@ import {
     KINDS, personPeriod as appPersonPeriod,
     AWAY_LOOK as appAway, KIND_LOOK as appKind, BANK_LOOK as appBank,
     COUNTED_DAYS as appCounted, awayWords as appAwayWords, PERMISSION_LOOK as appPermissionLook,
+    GUEST_LOOK as appGuestLook, peopleFor as appPeopleFor, belongsTo as appBelongsTo, guestPerson,
 } from '@/lib/timesheet'
 import {
     permissionState as appPermissionState, permissionWords as appPermissionWords,
@@ -303,6 +305,7 @@ describe('the marks match the ones on the screen', () => {
         expect(AWAY_LOOK).toEqual(appAway)
         expect(KIND_LOOK).toEqual(appKind)
         expect(BANK_LOOK).toEqual(appBank)
+        expect(GUEST_LOOK).toEqual(appGuestLook)
         expect(COUNTED_DAYS).toEqual(appCounted)
     })
 
@@ -786,6 +789,34 @@ describe('the summary fits a phone', () => {
         expect(widest.reduce((t, n) => t + n, 0)).toBeLessThanOrEqual(35)
     })
 
+    // Somebody from another restaurant (9 November 2026). Her mark breaks
+    // between its words, so its widest piece is "restaurant", a character
+    // wider than "Everybody" was. Measured in headless Chrome on 9 November
+    // 2026, both shapes, with her mark, Training marks and three figure
+    // totals: 301px against the 307px his phone gives, and 36 characters
+    // across.
+    it('still fits a phone with somebody from another restaurant on it', () => {
+        const visitor = guestPerson('Camila Valenzuela')
+        const hers = [
+            shift({ employee_id: null, person_name: 'Camila Valenzuela', work_date: '2026-10-26', starts_at: '13:28:23', ends_at: '18:02:37', hours: 4.57 }),
+            shift({ employee_id: null, person_name: 'Camila Valenzuela', work_date: '2026-10-29', kind: 'training', starts_at: '09:00:00', ends_at: '21:30:00', hours: 12.5 }),
+        ]
+        const withHer = (rows, periodStart = PERIOD) => timesheetEmail({
+            restaurantName: 'Point Campus',
+            periodStart,
+            people: personPeriod({
+                people: [aoife, cathal, visitor], entries: rows, absences: [],
+                dates: Array.from({ length: 14 }, (_, i) => addDays(periodStart, i)),
+            }),
+        }).html
+        for (const html of [withHer([...trained, ...busy, ...hers]), withHer(later([...trained, ...busy, ...hers]), LATER)]) {
+            expect(html).toContain('From another&#32;<span style="white-space:nowrap;">restaurant</span>')
+            const widest = across(html)
+            expect(widest).toHaveLength(6)
+            expect(widest.reduce((t, n) => t + n, 0)).toBeLessThanOrEqual(36)
+        }
+    })
+
     it('lets a mark break between its words and its figure', () => {
         const html = mail(trained)
         const marks = [...summaryOf(html).matchAll(/<span (?:class="[^"]*" )?style="display:inline-block;([^"]*)">/g)].map(m => m[1])
@@ -840,10 +871,37 @@ describe('the browser and the function agree about a period', () => {
         }),
     ]
 
-    const args = { people: [aoife, cathal], entries: withKinds, absences: away, dates: DATES }
+    // Somebody from another restaurant: her rows carry her name and no
+    // employee, and she shares a first name with nobody here but could.
+    const visitor = guestPerson('Camila Valenzuela')
+    const visiting = [
+        shift({ employee_id: null, person_name: 'Camila Valenzuela', work_date: '2026-10-29', starts_at: '13:28:23', ends_at: '18:02:37', hours: 4.57 }),
+        shift({ employee_id: null, person_name: ' Camila  Valenzuela', work_date: '2026-11-02', kind: 'training', starts_at: '09:00:00', ends_at: '13:00:00', hours: 4, note: 'Learning the new till' }),
+    ]
+
+    const args = { people: [aoife, cathal, visitor], entries: [...withKinds, ...visiting], absences: away, dates: DATES }
 
     it('gives the same answer, field for field', () => {
         expect(appPersonPeriod(args)).toEqual(personPeriod(args))
+    })
+
+    it('agrees about somebody from another restaurant', () => {
+        const hers = personPeriod(args).find(p => p.name === 'Camila Valenzuela')
+        expect(hers).toMatchObject({ guest: true, training: 4 })
+        expect(hers.worked).toBeCloseTo(8.57, 2)
+        expect(appPersonPeriod(args).find(p => p.name === 'Camila Valenzuela')).toEqual(hers)
+        for (const entry of args.entries) {
+            expect(appBelongsTo(entry, visitor)).toBe(belongsTo(entry, visitor))
+            expect(appBelongsTo(entry, aoife)).toBe(belongsTo(entry, aoife))
+        }
+    })
+
+    it('puts the same people in a period', () => {
+        const team = [aoife, cathal, { id: 'e8', full_name: 'Gone', ended_on: '2026-10-01' }, { id: 'e9', full_name: 'Later', started_on: '2026-12-01' }]
+        const rows = [...args.entries, shift({ employee_id: null, person_name: 'Ana Ruiz', work_date: '2026-11-20', starts_at: '09:00:00', ends_at: '12:00:00', hours: 3 })]
+        const app = appPeopleFor(team, rows, PERIOD, DATES[13])
+        expect(app.map(p => p.full_name)).toEqual(['Aoife', 'Cathal', 'Camila Valenzuela'])
+        expect(peopleFor(team, rows, PERIOD, DATES[13])).toEqual(app)
     })
 
     it('agrees when there is nothing at all', () => {
@@ -1035,6 +1093,16 @@ describe('permission to work', () => {
         expect(mail({ permissions: null }).html).not.toContain('Permission to work')
     })
 
+    it('reads the name of somebody from another restaurant, and lists her after the team but not here', () => {
+        const source = readFileSync('supabase/functions/weekly-report-email/index.ts', 'utf8')
+        const rows = /from\('timesheet_entries'\)\s*\.select\('([^']*)'\)/.exec(source)
+        expect(rows?.[1]).toContain('person_name')
+        expect(source).toContain('const people = peopleFor(team || [], worked || [], period, periodEnd)')
+        // Permission to work is our own team's: the whole team, never the
+        // people on the period, who include her.
+        expect(source).toMatch(/permissions: permissionList\(team \|\| \[\]/)
+    })
+
     it('reads the permissions and the restaurant\'s grace in the function', () => {
         const source = readFileSync('supabase/functions/weekly-report-email/index.ts', 'utf8')
         const team = /from\('employees'\)\s*\.select\('([^']*)'\)/.exec(source)
@@ -1047,5 +1115,39 @@ describe('permission to work', () => {
     it('takes today as it is in Ireland', () => {
         expect(dublinToday(new Date('2026-07-01T23:30:00Z'))).toBe('2026-07-02')
         expect(dublinToday(new Date('2026-12-01T23:30:00Z'))).toBe('2026-12-01')
+    })
+})
+
+// His, 9 November 2026: somebody from another restaurant who worked here is in
+// the hours, after the team, marked, and not on the permission to work list.
+describe('somebody from another restaurant in the mail', () => {
+    const visitor = { id: 'guest:Camila Valenzuela', full_name: 'Camila Valenzuela', guest: true }
+    const rows = [
+        ...entries,
+        { kind: 'worked', employee_id: null, person_name: 'Camila Valenzuela', work_date: '2026-10-29', starts_at: '13:28:23', ends_at: '18:02:37', hours: 4.57 },
+    ]
+    const people = personPeriod({ people: [aoife, cathal, visitor], entries: rows, absences: [], dates: DATES })
+    const sent = timesheetEmail({
+        restaurantName: 'Point Campus', periodStart: PERIOD, people,
+        permissions: permissionList([aoife, cathal], '2026-11-09'), today: '2026-11-09',
+    })
+
+    it('lists her after the team, with her hours in Everybody', () => {
+        expect(people.map(p => p.name)).toEqual(['Aoife', 'Cathal', 'Camila Valenzuela'])
+        const html = sent.html
+        expect(html.indexOf('Cathal')).toBeLessThan(html.indexOf('Camila Valenzuela'))
+        const total = people.reduce((t, p) => t + p.worked, 0)
+        expect(html).toContain(`>${total.toFixed(2)}</td>`)
+    })
+
+    it('marks her under her name, in the HTML and the text', () => {
+        expect(sent.html).toMatch(/Camila Valenzuela\s*<div[^>]*><span class="ts-mark"[^>]*>From another&#32;<span style="white-space:nowrap;">restaurant<\/span><\/span>/)
+        expect(sent.text).toContain('Camila Valenzuela: worked 4.57 h (week 1 4.57, week 2 0.00)\n  from another restaurant')
+    })
+
+    it('leaves her off the permission to work list', () => {
+        const section = sent.html.slice(sent.html.indexOf('Permission to work'))
+        expect(section).not.toContain('Camila Valenzuela')
+        expect(sent.text.slice(sent.text.indexOf('Permission to work'))).not.toContain('Camila Valenzuela')
     })
 })

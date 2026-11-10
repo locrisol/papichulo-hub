@@ -1,7 +1,7 @@
 import { shortDate, DAY_NAMES } from '@/lib/dates'
 import { fmtMoney, fmtPct } from '@/lib/format'
 import { statusFor } from '@/lib/costTargets'
-import { weekTotals, ROW_BANDS } from '@/lib/timesheet'
+import { weekTotals, ROW_BANDS, GUEST_LABEL } from '@/lib/timesheet'
 import { tableHeadRow } from '@/lib/controlStyles'
 import { BANK_HOLIDAY_ON_DARK, BANK_HOLIDAY_WASH, BANK_HOLIDAY_LABEL } from '@/lib/bankHolidays'
 import TimeCell from '@/components/timesheet/TimeCell'
@@ -69,7 +69,7 @@ const DOT = { green: '#7BD3A0', amber: '#F0C36B', red: '#F08B7B', none: 'transpa
 
 export default function TimesheetWeek({
     rows, dates, percent, target, canEdit = true,
-    onType, onSettle, onState, onClear, onAdd, onOpen,
+    onType, onSettle, onState, onClear, onAdd, onOpen, onName,
 }) {
     const totals = weekTotals(rows)
 
@@ -168,7 +168,29 @@ export default function TimesheetWeek({
                                 style={{ backgroundColor: SHEET.name[band] }}
                                 className="text-left px-3 py-2 font-semibold text-white whitespace-nowrap"
                             >
-                                {row.person.full_name}
+                                {/* Somebody from another restaurant: her name
+                                    opens it to be changed, and in place of a rate
+                                    of her own it says where she is from. Both may
+                                    wrap: our team go by one name, but hers has a
+                                    surname in it to tell her apart, and the
+                                    column is a fixed tenth of the grid. */}
+                                {row.person.guest && canEdit && onName ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => onName(row.person)}
+                                        title="Change the name"
+                                        className="block whitespace-normal break-words text-left font-semibold text-white underline decoration-dotted decoration-white/50 underline-offset-2 hover:decoration-white"
+                                    >
+                                        {row.person.full_name}
+                                    </button>
+                                ) : row.person.guest ? (
+                                    <span className="block whitespace-normal break-words">{row.person.full_name}</span>
+                                ) : row.person.full_name}
+                                {row.person.guest && (
+                                    <span className="block whitespace-normal text-xs text-white/60 tracking-wide">
+                                        {GUEST_LABEL}
+                                    </span>
+                                )}
                                 {row.ownRate && (
                                     <span className="block text-xs text-white/60 tracking-wide">
                                         {fmtMoney(row.rate)}

@@ -12,12 +12,13 @@ import { fmtMoney } from '@/lib/format'
 import { settleTime, noLength } from '@/lib/clock'
 import {
     personWeek, weekTotals, unanswered, cameFromTill, labourPercent, STATE_KEYS,
+    withGuests, whose, statesFor, guestName, guestNameProblem,
 } from '@/lib/timesheet'
 import { resolveTarget } from '@/lib/costTargets'
 import { kindLabel as absenceLabel } from '@/lib/absences'
 import {
     card, cardEdge, pageTitle, segmentTrack, segmentButton, dateField, secondaryButton,
-    primaryButton,
+    primaryButton, rowButton,
 } from '@/lib/controlStyles'
 import JumpButton from '@/components/ui/JumpButton'
 import DateStepper from '@/components/ui/DateStepper'
@@ -33,6 +34,7 @@ import TouchBar from '@/components/timesheet/TouchBar'
 import DayEditModal from '@/components/timesheet/DayEditModal'
 import ImportDialog from '@/components/timesheet/ImportDialog'
 import SendDialog from '@/components/timesheet/SendDialog'
+import GuestDialog from '@/components/timesheet/GuestDialog'
 
 // What people actually worked.
 //
@@ -62,6 +64,9 @@ const VIEWS = [
 // A start and a finish at the same time read as 24 hours, so it is never
 // saved. See noLength.
 const SAME_TIME = 'A shift cannot start and finish at the same time.'
+
+// Nobody added by hand, one array so the rows are not worked out again for it.
+const NONE = []
 
 // A list of people, read out the way somebody would say it.
 function names(waiting) {
@@ -105,6 +110,18 @@ export default function TimesheetPage() {
     useEffect(() => { if (refresh) recountBadges() }, [refresh, recountBadges])
 
     const [people, setPeople] = useState([])
+    // The whole team, leavers and starters included, which a name for somebody
+    // from another restaurant is checked against: the PDF covers a fortnight,
+    // and a name somebody on it has would make her and them one line.
+    const [team, setTeam] = useState([])
+    // Somebody from another restaurant added by hand who has nothing saved yet.
+    // She is a row of empty boxes until a time is typed, the same as anybody,
+    // and goes when the week or the restaurant changes rather than on every
+    // reload: a refused save reloads the week, and she must not vanish then.
+    const [pending, setPending] = useState({ key: '', names: [] })
+    // The dialog that adds somebody from another restaurant, or changes the
+    // name of one: null, { adding: true } or { person }.
+    const [naming, setNaming] = useState(null)
     const [entries, setEntries] = useState([])
     // A cell nobody has saved anything into yet.
     //
@@ -235,6 +252,7 @@ export default function TimesheetPage() {
                 (!p.ended_on || p.ended_on >= weekStart)
                 && (!p.started_on || p.started_on <= weekEnd)
             )))
+            setTeam(team.data || [])
             setEntries(worked.data || [])
             setDrafts({})
             setTyping({})
@@ -252,6 +270,17 @@ export default function TimesheetPage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [restaurantId, weekStart, refresh])
 
+    // Somebody added by hand belongs to the week she was added on, so the
+    // list is kept with the week it was made for and read only on that week.
+    const weekKey = `${restaurantId}:${weekStart}`
+    const pendingGuests = pending.key === weekKey ? pending.names : NONE
+    function setPendingGuests(change) {
+        setPending(was => {
+            const names = was.key === weekKey ? was.names : []
+            return { key: weekKey, names: typeof change === 'function' ? change(names) : change }
+        })
+    }
+
     // What is saved, with whatever is being typed over the top of it, plus the
     // cells that have nothing saved in them yet. The grid cannot tell the three
     // apart and does not need to.
@@ -263,10 +292,17 @@ export default function TimesheetPage() {
         [entries, typing, drafts],
     )
 
-    const rows = useMemo(() => people.map(person => personWeek({
+    // The team, then anybody from another restaurant: with rows saved, with a
+    // time being typed, or just added and still empty.
+    const everyone = useMemo(
+        () => withGuests(people, shown, pendingGuests),
+        [people, shown, pendingGuests],
+    )
+
+    const rows = useMemo(() => everyone.map(person => personWeek({
         person, weekStart, entries: shown, absences, shifts,
         restaurantRate, imported,
-    })), [people, weekStart, shown, absences, shifts, restaurantRate, imported])
+    })), [everyone, weekStart, shown, absences, shifts, restaurantRate, imported])
 
     const totals = weekTotals(rows)
     const waiting = unanswered(rows)
@@ -330,7 +366,7 @@ export default function TimesheetPage() {
             [key]: {
                 ...(was[key] || { starts_at: '', ends_at: '' }),
                 id: null,
-                employee_id: person.id,
+                ...whose(person),
                 work_date: cell.date,
                 kind: 'worked',
                 source: 'typed',
@@ -423,13 +459,13 @@ export default function TimesheetPage() {
         // A row needs a start. Typing the out time first is legitimate and
         // rare, so the draft holds it and waits rather than inventing one.
         if (!start) {
-            setDrafts(was => ({ ...was, [keyFor(person, cell)]: { ...draft, id: null, employee_id: person.id, work_date: cell.date, kind: 'worked', source: 'typed', ends_at: end } }))
+            setDrafts(was => ({ ...was, [keyFor(person, cell)]: { ...draft, id: null, ...whose(person), work_date: cell.date, kind: 'worked', source: 'typed', ends_at: end } }))
             return
         }
 
         forget(person, cell)
         await create({
-            employee_id: person.id,
+            ...whose(person),
             work_date: cell.date,
             starts_at: start,
             ends_at: end || null,
@@ -545,6 +581,16 @@ export default function TimesheetPage() {
         if (!state) return
         setError('')
 
+        // **Refused before anything is touched.** Holiday and sick are absences,
+        // which need somebody on this team, so for somebody from another
+        // restaurant the times would be deleted below and then the absence
+        // refused, losing the day. Her days off are her own restaurant's.
+        if (!statesFor(person).includes(state)) {
+            finish(null, 'Only Training can be marked for somebody from another restaurant. '
+                + 'Their holiday, sick days and trials are kept by their own restaurant.')
+            return
+        }
+
         if (state.absence) {
             // **A day with times on it asks first.** Marking it deletes them,
             // and one letter is a small thing to delete a shift with: a stray
@@ -616,7 +662,7 @@ export default function TimesheetPage() {
         const first = cell.entries[0]
         if (first) return save(first.id, { kind: state.value })
         await create({
-            employee_id: person.id,
+            ...whose(person),
             work_date: cell.date,
             starts_at: null,
             kind: state.value,
@@ -726,7 +772,7 @@ export default function TimesheetPage() {
         const draft = drafts[keyFor(person, cell)] || {}
         forget(person, cell)
         await create({
-            employee_id: person.id,
+            ...whose(person),
             work_date: cell.date,
             starts_at: settleTime(draft.starts_at) || null,
             ends_at: settleTime(draft.ends_at) || null,
@@ -743,7 +789,7 @@ export default function TimesheetPage() {
             ...was,
             [keyFor(person, cell)]: {
                 id: null,
-                employee_id: person.id,
+                ...whose(person),
                 work_date: cell.date,
                 starts_at: '',
                 ends_at: '',
@@ -751,6 +797,78 @@ export default function TimesheetPage() {
                 source: 'typed',
             },
         }))
+    }
+
+    // Somebody from another restaurant, added by hand on a week with no till
+    // report for her (his, 9 November 2026). She is a row of empty boxes until
+    // a time is typed, and a row in the database from then on. Says why not,
+    // or nothing when she was added.
+    function addGuest(next) {
+        const name = guestName(next)
+        // Already on this week: there is nothing to add.
+        if (rows.some(r => r.person.guest && r.person.full_name === name)) return ''
+        const problem = guestNameProblem(name, { team })
+        if (problem) return problem
+        setPendingGuests(was => [...was, name])
+        return ''
+    }
+
+    // Her name, changed on every day of the pay period, or of the week when no
+    // pay period is set, so the PDF never shows her as two people. **Checked
+    // against every name from another restaurant in that stretch first**:
+    // two of them given one name become one person for good.
+    async function renameGuest(person, next) {
+        const name = guestName(next)
+        if (name === person.full_name) return ''
+        setError('')
+
+        const from = period?.start || weekStart
+        const to = period?.end || weekEnd
+        const { data: there, error: unread } = await supabase.from('timesheet_entries')
+            .select('id, person_name, source, note')
+            .eq('restaurant_id', restaurantId)
+            .is('employee_id', null)
+            .gte('work_date', from).lte('work_date', to)
+        if (unread) return friendlyError(unread)
+
+        const others = [...(there || []).map(e => guestName(e.person_name)), ...pendingGuests]
+            .filter(n => n && n !== person.full_name)
+        const problem = guestNameProblem(name, { team, guests: others })
+        if (problem) return problem
+
+        const hers = (there || []).filter(e => guestName(e.person_name) === person.full_name)
+        if (hers.length) {
+            setSaving(true)
+            const { data, error: failed } = await supabase.from('timesheet_entries')
+                .update({ person_name: name })
+                .in('id', hers.map(e => e.id))
+                .select()
+            if (finish(failed)) { setRefresh(n => n + 1); return friendlyError(failed) }
+            // A write the rules turn away changes no row and says nothing, so
+            // it only counts when every row comes back.
+            if ((data || []).length !== hers.length) {
+                const why = 'That could not be saved, so nothing has changed.'
+                finish(null, why)
+                setRefresh(n => n + 1)
+                return why
+            }
+            const saved = new Map(data.map(e => [e.id, e]))
+            setEntries(was => was.map(e => saved.get(e.id) || e))
+        }
+
+        // What is on screen under her old name follows her: a time half typed,
+        // a name added by hand, and the day open on a phone.
+        const before = person.id
+        const after = `guest:${name}`
+        setDrafts(was => Object.fromEntries(Object.entries(was).map(([key, draft]) => (
+            key.startsWith(`${before}|`)
+                ? [`${after}|${key.slice(before.length + 1)}`, { ...draft, person_name: name }]
+                : [key, draft]
+        ))))
+        setPendingGuests(was => was.map(n => (n === person.full_name ? name : n)))
+        setEditing(was => (was?.personId === before ? { ...was, personId: after } : was))
+        setWorkingOn(null)
+        return ''
     }
 
     // The touch bar acts on whatever box has the cursor, so it needs to turn a
@@ -961,6 +1079,7 @@ export default function TimesheetPage() {
                 </div>
                 </>
             ) : (
+                <>
                 <div className={`${card} overflow-hidden`} ref={grid}>
                     {/* The wide grid on anything that can hold it, the hours
                         view on a phone. Both are always rendered and one is
@@ -977,6 +1096,7 @@ export default function TimesheetPage() {
                             onClear={clear}
                             onAdd={addSpan}
                             onOpen={(person, cell) => setEditing({ personId: person.id, date: cell.date })}
+                            onName={person => setNaming({ person })}
                         />
                     </div>
                     <div className="md:hidden">
@@ -988,10 +1108,40 @@ export default function TimesheetPage() {
                             rows={rows}
                             dates={dates}
                             onOpenDay={(person, cell) => setEditing({ personId: person.id, date: cell.date })}
+                            onName={person => setNaming({ person })}
                         />
                     </div>
                     <TouchBar gridRef={grid} onState={stateFromBar} />
                 </div>
+                {/* Under the week rather than in the bar above it: it adds a
+                    line to the grid, and is needed a few times a year. The
+                    till's report asks about her by itself; this is for a week
+                    typed by hand. */}
+                <div className="mt-3">
+                    <button type="button" onClick={() => setNaming({ adding: true })} className={rowButton()}>
+                        Add somebody from another restaurant
+                    </button>
+                </div>
+                </>
+            )}
+
+            {naming && (
+                <GuestDialog
+                    restaurantId={restaurantId}
+                    person={naming.person || null}
+                    tillName={naming.person
+                        ? entries.find(e => !e.employee_id && guestName(e.person_name) === naming.person.full_name && e.till_name)?.till_name
+                        : null}
+                    period={period}
+                    weekStart={weekStart}
+                    weekEnd={weekEnd}
+                    onClose={() => setNaming(null)}
+                    onSave={async name => {
+                        const why = naming.person ? await renameGuest(naming.person, name) : addGuest(name)
+                        if (!why) setNaming(null)
+                        return why
+                    }}
+                />
             )}
 
             {open && (
@@ -1028,6 +1178,7 @@ export default function TimesheetPage() {
                     weekStart={weekStart}
                     weekEnd={weekEnd}
                     people={people}
+                    team={team}
                     entries={entries}
                     absences={absences}
                     onClose={() => setImporting(false)}

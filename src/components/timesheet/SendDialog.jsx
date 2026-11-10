@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { todayISO, addDays, shortDate, stampDateTime } from '@/lib/dates'
 import { periodWords, periodIsOver, periodDates } from '@/lib/payPeriod'
-import { personWeek, unanswered, personPeriod } from '@/lib/timesheet'
+import { personWeek, unanswered, personPeriod, peopleFor } from '@/lib/timesheet'
 import { timesheetPdf } from '@/lib/timesheetPdf'
 import { permissionList, DEFAULT_RULES } from '@/lib/workRules'
 import { sendTimesheet, sentWords } from '@/lib/timesheetMail'
@@ -102,11 +102,11 @@ export default function SendDialog({
             // One week at a time, because personWeek is what the screen uses
             // and a second way of deciding whether a day is answered is a
             // second way for the two to disagree.
+            //
+            // Somebody from another restaurant is held to the same rules as
+            // anybody: a clock in with no clock out holds the period for her.
             const open = period.weeks.flatMap(weekStart => {
-                const people = (team.data || []).filter(p => (
-                    (!p.ended_on || p.ended_on >= weekStart)
-                    && (!p.started_on || p.started_on <= addDays(weekStart, 6))
-                ))
+                const people = peopleFor(team.data, worked.data, weekStart, addDays(weekStart, 6))
                 const rows = people.map(person => personWeek({
                     person,
                     weekStart,
@@ -120,9 +120,10 @@ export default function SendDialog({
 
             setWaiting(open)
             setRows({
-                people: (team.data || []).filter(p => (
-                    (!p.ended_on || p.ended_on >= start) && (!p.started_on || p.started_on <= end)
-                )),
+                // The team employed in the period, then anybody from another
+                // restaurant with a shift in it: the same people the mail
+                // lists (peopleFor, copied into the function).
+                people: peopleFor(team.data, worked.data, start, end),
                 entries: worked.data || [],
                 absences: away.data || [],
                 team: team.data || [],

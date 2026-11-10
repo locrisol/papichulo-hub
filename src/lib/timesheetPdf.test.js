@@ -214,3 +214,32 @@ describe('permission to work on the paper', () => {
         expect(pdf.getNumberOfPages()).toBeGreaterThan(0)
     })
 })
+
+// His, 9 November 2026: somebody from another restaurant is on the paper with
+// her hours, marked in the summary and on her own band.
+describe('somebody from another restaurant on the paper', () => {
+    it('marks her in the summary, on her band and in the note', async () => {
+        const mine = personPeriod({
+            people: [{ id: 'e1', full_name: 'Aoife Byrne' }, { id: 'guest:Camila Valenzuela', full_name: 'Camila Valenzuela', guest: true }],
+            entries: [
+                shift({ employee_id: 'e1', work_date: '2026-10-28', starts_at: '09:00:00', ends_at: '15:00:00', hours: 6 }),
+                shift({ employee_id: null, person_name: 'Camila Valenzuela', work_date: '2026-10-29', starts_at: '13:28:23', ends_at: '18:02:37', hours: 4.57 }),
+            ],
+            absences: [],
+            dates: DATES,
+        })
+        const doc = await timesheetPdf({ restaurant, periodStart: PERIOD, people: mine, save: false })
+        const all = Array.from({ length: doc.getNumberOfPages() }, (_, i) => drawnOn(doc, i + 1)).join('')
+
+        expect(all).toContain('FROM ANOTHER RESTAURANT')
+        expect(all).toContain('Camila Valenzuela, from another restaurant')
+        expect(all).toContain('13:28:23 to 18:02:37')
+        expect(all).toMatch(/is on another restaurant.s team and worked these hours here/)
+    })
+
+    it('says nothing about another restaurant when nobody is from one', async () => {
+        const doc = await timesheetPdf({ restaurant, periodStart: PERIOD, people, save: false })
+        const all = Array.from({ length: doc.getNumberOfPages() }, (_, i) => drawnOn(doc, i + 1)).join('')
+        expect(all).not.toMatch(/another restaurant/i)
+    })
+})

@@ -35,6 +35,7 @@ function chain(table) {
     const self = {
         select: () => self,
         eq: () => self,
+        is: () => self,
         gte: () => self,
         lte: () => self,
         in: () => self,
@@ -50,6 +51,14 @@ function chain(table) {
             return { select: () => Promise.resolve({ data: [made], error: null }) }
         },
         update: patch => ({
+            // Several rows at once, by id: a name changed across a pay period.
+            in: (_, ids) => ({
+                select: () => {
+                    updated.push({ table, ids, patch })
+                    rows[table] = (rows[table] || []).map(r => (ids.includes(r.id) ? { ...r, ...patch } : r))
+                    return Promise.resolve({ data: rows[table].filter(r => ids.includes(r.id)), error: null })
+                },
+            }),
             eq: (_, id) => ({
                 select: () => {
                     // The restaurant row, which an owner's rules never match:
@@ -765,5 +774,86 @@ describe('the second view', () => {
         const picked = screen.getAllByRole('button', { pressed: true })
         expect(picked).toHaveLength(1)
         expect(picked[0].closest('[class~="hidden"][class~="md:block"]')).not.toBeNull()
+    })
+})
+
+// His, 9 November 2026: somebody from another restaurant who worked here.
+describe('somebody from another restaurant', () => {
+    const hers = (over = {}) => ({
+        id: 'g1', restaurant_id: 'r1', employee_id: null, person_name: 'Camila Valenzuela', work_date: WEEK,
+        starts_at: '13:28:23', ends_at: '18:02:37', kind: 'worked', source: 'import',
+        till_name: 'VALENZUELA ALVAREZ Camila', ...over,
+    })
+    const herBoxes = () => Array.from(document.querySelectorAll('input[data-r="1"]'))
+
+    it('shows her on her own line after the team, marked', async () => {
+        rows.timesheet_entries = [hers()]
+        render(<TimesheetPage />)
+        expect((await screen.findAllByRole('button', { name: 'Camila Valenzuela' })).length).toBeGreaterThan(0)
+        expect(screen.getAllByText('From another restaurant').length).toBeGreaterThan(0)
+        expect(herBoxes()[0]).toHaveValue('13:28:23')
+    })
+
+    it('adds her by hand and saves her first time with her name and no employee', async () => {
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        await userEvent.click(screen.getByRole('button', { name: 'Add somebody from another restaurant' }))
+        await userEvent.type(screen.getByLabelText('Their name'), 'Camila Valenzuela')
+        await userEvent.click(screen.getByRole('button', { name: 'Add' }))
+
+        await waitFor(() => expect(herBoxes().length).toBeGreaterThan(0))
+        await userEvent.type(herBoxes()[0], '0900')
+        await userEvent.tab()
+
+        await waitFor(() => expect(inserted).toHaveLength(1))
+        expect(inserted[0]).toMatchObject({
+            table: 'timesheet_entries',
+            values: { employee_id: null, person_name: 'Camila Valenzuela', starts_at: '09:00:00', source: 'typed' },
+        })
+    })
+
+    it('refuses a name somebody on the team already has', async () => {
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        await userEvent.click(screen.getByRole('button', { name: 'Add somebody from another restaurant' }))
+        await userEvent.type(screen.getByLabelText('Their name'), 'aoife')
+        await userEvent.click(screen.getByRole('button', { name: 'Add' }))
+
+        expect(await screen.findByText(/aoife is already on the team/)).toBeInTheDocument()
+        expect(herBoxes()).toHaveLength(0)
+    })
+
+    it('changes her name on every day of the pay period', async () => {
+        rows.timesheet_entries = [hers(), hers({ id: 'g2', work_date: addDays(WEEK, 2) })]
+        render(<TimesheetPage />)
+        const [name] = await screen.findAllByRole('button', { name: 'Camila Valenzuela' })
+        await userEvent.click(name)
+
+        expect(screen.getByText(/In the till as VALENZUELA ALVAREZ Camila/)).toBeInTheDocument()
+        const box = screen.getByLabelText('Their name')
+        await userEvent.clear(box)
+        await userEvent.type(box, 'Camila V.')
+        await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+        await waitFor(() => expect(updated).toHaveLength(1))
+        expect(updated[0]).toMatchObject({ table: 'timesheet_entries', ids: ['g1', 'g2'], patch: { person_name: 'Camila V.' } })
+        expect((await screen.findAllByRole('button', { name: 'Camila V.' })).length).toBeGreaterThan(0)
+    })
+
+    // Holiday is an absence, which needs somebody on this team. Refused before
+    // anything is touched, or the times would go and the day with them.
+    it('refuses holiday for her before deleting anything', async () => {
+        rows.timesheet_entries = [hers()]
+        render(<TimesheetPage />)
+        await waitFor(() => expect(herBoxes().length).toBeGreaterThan(0))
+
+        await userEvent.type(herBoxes()[0], 'h')
+
+        expect(await screen.findByText(/Only Training can be marked for somebody from another restaurant/)).toBeInTheDocument()
+        expect(asked).toHaveLength(0)
+        expect(deleted).toHaveLength(0)
+        expect(inserted).toHaveLength(0)
     })
 })

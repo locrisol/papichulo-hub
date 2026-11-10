@@ -1192,10 +1192,21 @@ CREATE TABLE IF NOT EXISTS "public"."timesheet_entries" (
     "created_by" "uuid",
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    -- Last, where 014 put it on live: what the till called somebody from
+    -- another restaurant, so the same report read in again finds her shifts
+    -- after her name was changed.
+    "till_name" "text",
     CONSTRAINT "timesheet_entries_kind_known" CHECK (("kind" = ANY (ARRAY['worked'::"text", 'training'::"text", 'trial'::"text"]))),
     CONSTRAINT "timesheet_entries_source_known" CHECK (("source" = ANY (ARRAY['typed'::"text", 'roster'::"text", 'import'::"text", 'corrected'::"text"]))),
     CONSTRAINT "timesheet_entries_has_a_person" CHECK (
         ("employee_id" IS NOT NULL) OR ("btrim"(COALESCE("person_name", ''::"text")) <> ''::"text")
+    ),
+    -- One or the other, never both: a row with an employee and a typed name
+    -- would be two people to every screen that reads it (014).
+    CONSTRAINT "timesheet_entries_one_person" CHECK ((("employee_id" IS NULL) OR ("person_name" IS NULL))),
+    -- The till's name only on a typed name's row, and never blank.
+    CONSTRAINT "timesheet_entries_till_name_with_a_typed_name" CHECK (
+        ("till_name" IS NULL) OR (("employee_id" IS NULL) AND ("btrim"("till_name") <> ''::"text"))
     ),
     -- And something to say: a start time, a note saying why there is none, a
     -- kind that is a statement in itself, a training day or a trial marked
@@ -1224,7 +1235,8 @@ CREATE INDEX "idx_timesheet_entries_employee" ON "public"."timesheet_entries" US
 COMMENT ON TABLE "public"."timesheet_entries" IS 'One person, one span of a day, to the second. A split shift is two rows. Holiday and off sick are not here: they live in absences, which already has them with an approval and a colour.';
 COMMENT ON COLUMN "public"."timesheet_entries"."source" IS 'typed by somebody, taken from the roster with one key, read from the till, or corrected: a till time changed by hand afterwards. It decides what an import may quietly replace, and a corrected row is never replaced quietly because it was changed away from that file on purpose. A corrected row with no note is what the week is blocked on.';
 COMMENT ON COLUMN "public"."timesheet_entries"."hours" IS 'What the span came to, in real hours. Worked out from the date and the two times in Irish time, so a shift on the night the clocks go back or forward is the hours really worked, not what the clock face says. An end at or before the start is the next morning.';
-COMMENT ON COLUMN "public"."timesheet_entries"."person_name" IS 'Only for somebody with no employees row here, which today means borrowed from the other restaurant. The rules see one restaurant at a time, so their real record cannot be read from this one.';
+COMMENT ON COLUMN "public"."timesheet_entries"."person_name" IS 'Somebody with no employees row here, typed by a manager: somebody from another restaurant who worked a shift here (a typed name and nothing more, 20 September 2026; built 9 November 2026). Their own restaurant keeps their record, and the rules see one restaurant at a time.';
+COMMENT ON COLUMN "public"."timesheet_entries"."till_name" IS 'What the till called somebody from another restaurant, so the same report read in again finds her shifts after her name was changed. Only on a typed name''s row. Never remembered in timesheet_names: she is asked about every week she comes.';
 COMMENT ON COLUMN "public"."timesheet_entries"."note" IS 'Why a figure is what it is, in the manager''s own words, and it goes out with the week. On a row with no times it is the reason nothing was worked, which is what the report block means by "times or a reason". Nothing about the roster ever goes in one: the accountant does not see the roster and has no use for a plan she cannot check.';
 
 -- What the till calls people.
@@ -1254,7 +1266,7 @@ ALTER TABLE ONLY "public"."timesheet_names"
 ALTER TABLE ONLY "public"."timesheet_names"
     ADD CONSTRAINT "timesheet_names_once" UNIQUE ("restaurant_id", "name");
 
-COMMENT ON TABLE "public"."timesheet_names" IS 'What the till calls somebody, answered once. Either it points at an employee or it is marked ignored, never both and never neither. "Ignore this time" writes nothing here on purpose.';
+COMMENT ON TABLE "public"."timesheet_names" IS 'What the till calls somebody, answered once. Either it points at an employee or it is marked ignored, never both and never neither. "Ignore this time" writes nothing here on purpose, and neither does somebody from another restaurant: she is asked about every week she comes, and her rows keep the till''s name in timesheet_entries.till_name.';
 
 -- One row per restaurant per week: when the till's report was read in, and
 -- when the week was filed and by whom.
@@ -4595,7 +4607,7 @@ begin
                      where s.restaurant_id = restaurant and s.shift_date between last_week and last_week + 6), '[]'::jsonb),
                 'entries', coalesce((
                     select jsonb_agg(jsonb_build_object(
-                        'id', t.id, 'employee_id', t.employee_id, 'work_date', t.work_date,
+                        'id', t.id, 'employee_id', t.employee_id, 'person_name', t.person_name, 'work_date', t.work_date,
                         'starts_at', t.starts_at, 'ends_at', t.ends_at, 'kind', t.kind, 'source', t.source, 'note', t.note))
                       from public.timesheet_entries t
                      where t.restaurant_id = restaurant and t.work_date between last_week and last_week + 6), '[]'::jsonb),

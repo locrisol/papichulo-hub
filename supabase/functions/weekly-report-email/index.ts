@@ -45,7 +45,7 @@ import { reportEmail } from './email.js'
 import { changesSince } from './changes.js'
 import { senderFor, heldNotice, deliverable, isJustTheGoodbye, replyToFor, switchedOff, whatToSend, correctionSend } from './email.js'
 import {
-    timesheetEmail, personPeriod, addDays, hoursPdfPath, permissionList, dublinToday, DEFAULT_GRACE,
+    timesheetEmail, personPeriod, peopleFor, addDays, hoursPdfPath, permissionList, dublinToday, DEFAULT_GRACE,
 } from './timesheet.js'
 import { base64, mimeParts, headersFor } from './mime.js'
 
@@ -632,8 +632,10 @@ async function sendTimesheet({
             .select('id, full_name, sort_order, started_on, ended_on, work_permission, work_permission_expires, permission_renewal_applied')
             .eq('restaurant_id', forRestaurant)
             .order('sort_order'),
+        // person_name for somebody from another restaurant, whose rows carry
+        // her name and no employee (his, 9 November 2026).
         admin.from('timesheet_entries')
-            .select('employee_id, work_date, starts_at, ends_at, hours, kind, note')
+            .select('employee_id, person_name, work_date, starts_at, ends_at, hours, kind, note')
             .eq('restaurant_id', forRestaurant)
             .gte('work_date', period).lte('work_date', periodEnd),
         // The two part day times as well, or somebody who worked until three
@@ -644,12 +646,11 @@ async function sendTimesheet({
             .lte('starts_on', periodEnd).gte('ends_on', period),
     ])
 
-    // Somebody who left before the week, or had not started, is not on it. The
-    // same rule the screen uses, so the mail and the screen hold the same
-    // people.
-    const people = (team || []).filter(p => (
-        (!p.ended_on || p.ended_on >= period) && (!p.started_on || p.started_on <= periodEnd)
-    ))
+    // Somebody who left before the period, or had not started, is not on it,
+    // and somebody from another restaurant with a shift in it is, after the
+    // team. The same rule the screen and the PDF use, so the mail and the
+    // paper attached to it hold the same people.
+    const people = peopleFor(team || [], worked || [], period, periodEnd)
 
     const skipped: string[] = []
     const to: string[] = []
