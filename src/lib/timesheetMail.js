@@ -19,9 +19,13 @@ import { functionError, friendlyError } from '@/lib/errors'
 // public and report-charts is.
 export const HOURS_BUCKET = 'timesheet-hours'
 
+// `scope` is 'week' for week 1 on its own, with no paper, or 'period' for the
+// whole pay period with its PDF (his, 9 November 2026). The dialog decides
+// which by the date, and the function checks it again.
 export async function sendTimesheet({
-    periodStart, restaurantId, comment = '', test = false, pdf = null,
+    periodStart, restaurantId, comment = '', test = false, pdf = null, scope = 'period',
 }) {
+    if (scope === 'week') pdf = null
     // **The paper goes up before the mail goes out.**
     //
     // The browser draws the PDF, because that is where jsPDF and the logo are,
@@ -49,7 +53,7 @@ export async function sendTimesheet({
     }
 
     const { data, error } = await supabase.functions.invoke('weekly-report-email', {
-        body: { kind: 'timesheet', periodStart, restaurantId, comment, test, attachment },
+        body: { kind: 'timesheet', periodStart, restaurantId, comment, test, attachment, scope },
     })
 
     if (error) throw new Error(await functionError(error))
@@ -63,17 +67,25 @@ export async function sendTimesheet({
 // the function drops an address that cannot receive rather than letting one
 // refusal take the whole send with it, and in silence that turns the list on
 // screen into a lie about who has the week.
-export function sentWords(result, { test = false } = {}) {
+//
+// A fourth since the hours go every week: whether the Hub kept a copy of what
+// went, because without one a change later cannot be shown in red.
+export function sentWords(result, { test = false, scope = 'period' } = {}) {
     const sent = result?.sent || 0
     const skipped = result?.skipped || []
+    const addresses = `${sent} ${sent === 1 ? 'address' : 'addresses'}`
+    const what = scope === 'week' ? 'Week 1' : 'The pay period'
 
     let words
     if (sent === 0) {
         words = 'Nobody is on the list, so nothing was sent.'
     } else if (test) {
-        words = `Test sent to ${sent} ${sent === 1 ? 'address' : 'addresses'}. The pay period is not marked as sent.`
+        words = `Test sent to ${addresses}. ${what} is not marked as sent.`
     } else {
-        words = `Sent to ${sent} ${sent === 1 ? 'address' : 'addresses'}.`
+        words = `${scope === 'week' ? 'Week 1 sent' : 'Sent'} to ${addresses}.`
+        if (result?.kept === false) {
+            words += ' The Hub could not keep a copy of what was sent, so a change to it later cannot be shown in red.'
+        }
     }
 
     if (skipped.length > 0) {

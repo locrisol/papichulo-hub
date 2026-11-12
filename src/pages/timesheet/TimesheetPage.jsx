@@ -12,7 +12,7 @@ import { fmtMoney } from '@/lib/format'
 import { settleTime, noLength } from '@/lib/clock'
 import {
     personWeek, weekTotals, unanswered, cameFromTill, labourPercent, STATE_KEYS,
-    withGuests, whose, statesFor, guestName, guestNameProblem,
+    withGuests, whose, statesFor, guestName, guestNameProblem, weekAsSent, earlierSends, changeNames,
 } from '@/lib/timesheet'
 import { resolveTarget } from '@/lib/costTargets'
 import { kindLabel as absenceLabel } from '@/lib/absences'
@@ -161,6 +161,10 @@ export default function TimesheetPage() {
     // When this week's hours were last mailed out, so the screen can say so
     // rather than leaving somebody to wonder whether they sent it.
     const [filedAt, setFiledAt] = useState(null)
+    // What each email that carried this week said (timesheet_sends), so a
+    // change since can be said in red straight away. `failed` when it could
+    // not be read: said quietly, and never a block.
+    const [copies, setCopies] = useState({ rows: [], failed: false })
     // What the week took, and what it is meant to cost. Only for the one figure
     // the old Labour page was read for: what the day's hours came to as a share
     // of what the day sold.
@@ -211,7 +215,7 @@ export default function TimesheetPage() {
             setLoading(true)
             setError('')
 
-            const [team, worked, away, rostered, week, takings, targets] = await Promise.all([
+            const [team, worked, away, rostered, week, takings, targets, kept] = await Promise.all([
                 supabase.from('employees')
                     .select('id, full_name, hourly_rate, sort_order, started_on, ended_on')
                     .eq('restaurant_id', restaurantId)
@@ -240,6 +244,11 @@ export default function TimesheetPage() {
                 supabase.from('cost_target_overrides')
                     .select('target_type, override_value, effective_from, effective_until, created_at')
                     .eq('restaurant_id', restaurantId),
+                supabase.from('timesheet_sends')
+                    .select('week_start, scope, sent_at, shape, people, held')
+                    .eq('restaurant_id', restaurantId)
+                    .eq('week_start', weekStart)
+                    .order('sent_at', { ascending: false }),
             ])
 
             const failed = team.error || worked.error || away.error || rostered.error
@@ -260,6 +269,7 @@ export default function TimesheetPage() {
             setShifts(rostered.data || [])
             setImported(Boolean(week.data?.imported_at))
             setFiledAt(week.data?.filed_at || null)
+            setCopies({ rows: kept.data || [], failed: Boolean(kept.error) })
             setSales(Object.fromEntries((takings.data || []).map(d => [d.sale_date, d])))
             setOverrides(targets.data || [])
             loadedKey.current = key
@@ -303,6 +313,19 @@ export default function TimesheetPage() {
         person, weekStart, entries: shown, absences, shifts,
         restaurantRate, imported,
     })), [everyone, weekStart, shown, absences, shifts, restaurantRate, imported])
+
+    // **Whether this week has changed since an email carried it** (his, 9
+    // November 2026: once the owners have a week, a change to it is "a bigger
+    // issue"). Saved rows only, never what is being typed, laid over the
+    // latest real copy by the same code the send dialog and the email use. A
+    // change and a change back is no change, so putting it back takes the
+    // red away.
+    const sentWeek = useMemo(() => {
+        if (!period || (!filedAt && !copies.rows.length)) return null
+        const now = weekAsSent({ team, entries, absences, periodStart: period.start, weekStart })
+        return earlierSends({ weeks: [{ weekStart, now }], sends: copies.rows, filed: { [weekStart]: filedAt } })[0]
+    }, [period, filedAt, copies, team, entries, absences, weekStart])
+    const changedSince = sentWeek?.changes?.length ? sentWeek.changes : []
 
     const totals = weekTotals(rows)
     const waiting = unanswered(rows)
@@ -978,7 +1001,10 @@ export default function TimesheetPage() {
                             dialog already reads it this way. */}
                         <span className="text-muted">
                             {' '}&middot;{' '}
-                            {filedAt ? `Sent ${shortDate(toISODate(new Date(filedAt)))}` : 'Not sent yet'}
+                            {!filedAt ? 'Not sent yet'
+                                : changedSince.length
+                                    ? <span className="font-semibold text-red-700">Sent {shortDate(toISODate(new Date(filedAt)))}, changed since</span>
+                                    : `Sent ${shortDate(toISODate(new Date(filedAt)))}`}
                         </span>
                     </SaveState>
                 </div>
@@ -1005,6 +1031,27 @@ export default function TimesheetPage() {
                     </button>
                 </div>
             </div>
+
+            {/* Red, above everything else on the week: the owners already
+                have this week as it was sent. No dialog and no lock (his
+                call): the line is said as soon as a saved change makes the
+                week differ, and goes when it is put back. */}
+            {changedSince.length > 0 && (
+                <Notice tone="urgent" className="mb-4">
+                    <strong className="font-bold">
+                        {sentWeek.scope === 'week'
+                            ? `This week was sent on ${shortDate(toISODate(new Date(sentWeek.sentAt)))}, and it has changed since.`
+                            : `This week went out with the pay period on ${shortDate(toISODate(new Date(sentWeek.sentAt)))}, and it has changed since.`}
+                    </strong>{' '}
+                    {changeNames(changedSince)}.{' '}
+                    {sentWeek.scope === 'week'
+                        ? 'When the pay period goes, the email and the PDF will show these in red, with what each was when sent. A comment on the day goes beside it in the PDF.'
+                        : 'Send the pay period again so the accountant has the right hours. The email and the PDF will show the changes in red.'}
+                </Notice>
+            )}
+            {copies.failed && filedAt && (
+                <p className="text-xs text-muted mb-4">Could not check whether this week changed since it was sent.</p>
+            )}
 
             {(unsaid.length > 0 || changed.length > 0 || noClockOut.length > 0) && (
                 <Notice tone="warn" className="mb-4 space-y-1">
@@ -1135,6 +1182,7 @@ export default function TimesheetPage() {
                     period={period}
                     weekStart={weekStart}
                     weekEnd={weekEnd}
+                    sentAt={filedAt}
                     onClose={() => setNaming(null)}
                     onSave={async name => {
                         const why = naming.person ? await renameGuest(naming.person, name) : addGuest(name)
@@ -1163,7 +1211,6 @@ export default function TimesheetPage() {
                 <SendDialog
                     period={period}
                     restaurant={activeRestaurant}
-                    filedAt={filedAt}
                     canSend={sends}
                     onClose={() => setSending(false)}
                     onKeepList={keepRecipients}
@@ -1181,6 +1228,7 @@ export default function TimesheetPage() {
                     team={team}
                     entries={entries}
                     absences={absences}
+                    sentAt={filedAt}
                     onClose={() => setImporting(false)}
                     onDone={() => setRefresh(n => n + 1)}
                 />

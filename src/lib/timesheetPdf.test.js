@@ -243,3 +243,74 @@ describe('somebody from another restaurant on the paper', () => {
         expect(all).not.toMatch(/another restaurant/i)
     })
 })
+
+// His, 9 November 2026: a week changed after an email carried it is "a
+// bigger issue to remark on the report in PDF in red or a strong color".
+// Aoife's Monday 3 November was 6 hours when week 1 of 1 to 14 November went
+// on its own; it is 8 now. Cathal's Tuesday is gone since.
+describe('what changed since an email carried a week', () => {
+    const START = '2026-11-01'
+    const team = [{ id: 'e1', full_name: 'Aoife Byrne' }, { id: 'e2', full_name: 'Cathal Nolan' }]
+    const rows = hours => [
+        shift({ employee_id: 'e1', work_date: '2026-11-02', starts_at: '09:00:00', ends_at: hours === 6 ? '15:00:00' : '17:00:00', hours, note: 'Stayed to cover the lunch rush' }),
+        shift({ employee_id: 'e2', work_date: '2026-11-04', starts_at: '09:00:00', ends_at: '13:00:00', hours: 4 }),
+    ]
+    const now = personPeriod({ people: team, entries: rows(8).slice(0, 1), absences: [], dates: periodDates(START) })
+    const changes = [
+        {
+            id: 'e1', name: 'Aoife Byrne', added: false, gone: false, figures: [{ field: 'worked', was: 6, now: 8 }],
+            days: [{ date: '2026-11-02', was: { spans: [{ starts_at: '09:00:00', ends_at: '15:00:00', hours: 6 }], open: [], hours: 6 }, now: now[0].days[0] }],
+        },
+        {
+            id: 'e2', name: 'Cathal Nolan', added: false, gone: true, figures: [{ field: 'worked', was: 4, now: 0 }],
+            days: [{ date: '2026-11-04', was: { spans: [{ starts_at: '09:00:00', ends_at: '13:00:00', hours: 4 }], open: [], hours: 4 }, now: null }],
+        },
+    ]
+    const alone = list => [{ week: 0, weekStart: START, scope: 'week', sentAt: '2026-11-09T10:12:00Z', changes: list }, null]
+    const paper = async earlier => {
+        const doc = await timesheetPdf({ restaurant, periodStart: START, people: now, save: false, earlier })
+        return Array.from({ length: doc.getNumberOfPages() }, (_, i) => drawnOn(doc, i + 1))
+    }
+
+    it('starts page 1 with the red section, above the summary', async () => {
+        const [first] = await paper(alone(changes))
+        expect(first).toContain('WEEK 1 CHANGED AFTER IT WAS SENT')
+        expect(first).toContain('WHAT CHANGED IN WEEK 1')
+        expect(first.indexOf('WEEK 1 CHANGED AFTER IT WAS SENT')).toBeLessThan(first.indexOf('HOURS WORKED'))
+        expect(first).toContain('When sent: 09:00:00 to 15:00:00, 6.00 h')
+        expect(first).toContain('Now: 09:00:00 to 17:00:00, 8.00 h')
+        expect(first).toContain('Comment: Stayed to cover the lunch rush')
+        expect(first).toContain('Cathal Nolan, taken off since it was sent')
+        // The red, 185 28 28, is what the pen is set to.
+        expect(first).toContain('0.725 0.11 0.11 rg')
+    })
+
+    it('marks who changed in the summary, and the day in red with what it was', async () => {
+        const all = (await paper(alone(changes))).join('')
+        expect(all).toContain('WEEK 1 CHANGED')
+        expect(all).toContain('When sent on 9 Nov: 09:00:00 to 15:00:00, 6.00 h')
+    })
+
+    it('draws a day that is gone with what it was', async () => {
+        const mine = [{ ...changes[0], id: 'e1', gone: false, figures: [{ field: 'worked', was: 12, now: 8 }], days: [{ date: '2026-11-03', was: { spans: [{ starts_at: '10:00:00', ends_at: '14:00:00', hours: 4 }], open: [], hours: 4 }, now: null }] }]
+        const all = (await paper(alone(mine))).join('')
+        expect(all).toContain('Nothing now')
+        expect(all).toContain('When sent on 9 Nov: 10:00:00 to 14:00:00, 4.00 h')
+    })
+
+    it('leaves the red out when nothing changed, and says week 1 is the same', async () => {
+        const all = (await paper(alone([]))).join('')
+        expect(all).not.toContain('CHANGED')
+        expect(all).not.toContain('When sent')
+        expect(all).toContain('Week 1 was emailed on its own on')
+        expect(all).toContain('and has not changed since.')
+    })
+
+    it('says the pay period was sent before when it goes again', async () => {
+        const again = [{ week: 0, weekStart: START, scope: 'period', sentAt: '2026-11-15T09:30:00Z', changes }, { week: 1, weekStart: '2026-11-08', scope: 'period', sentAt: '2026-11-15T09:30:00Z', changes: [] }]
+        const [first] = await paper(again)
+        expect(first).toContain('CHANGED AFTER THIS PAY PERIOD WAS SENT')
+        expect(first).toContain('If the payroll has already been run')
+        expect(first).toContain('WEEK 1, ')
+    })
+})

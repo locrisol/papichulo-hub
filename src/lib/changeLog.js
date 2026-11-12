@@ -26,6 +26,7 @@ const TABLES = {
     timesheet_entries: 'Timesheet',
     timesheet_names: 'Timesheet names',
     timesheet_weeks: 'Timesheet week',
+    timesheet_sends: 'Hours sent',
     waste_logs: 'Waste',
     stock_takes: 'Stock take',
     stock_take_lines: 'Stock take entry',

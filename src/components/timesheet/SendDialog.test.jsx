@@ -4,7 +4,8 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { mockSupabase, renderWithRouter } from '@/test/helpers'
 import { periodOf } from '@/lib/payPeriod'
-import { todayISO } from '@/lib/dates'
+import { todayISO, addDays, weekStartOf } from '@/lib/dates'
+import { weekAsSent } from '@/lib/timesheet'
 
 // The dialog behind Send the hours. Nothing in the fortnight unless a test
 // puts something there, so nothing holds the send up and the only question is
@@ -28,7 +29,6 @@ function open(props = {}) {
         <SendDialog
             period={PERIOD}
             restaurant={RESTAURANT}
-            filedAt={null}
             onClose={() => {}}
             onKeepList={async () => ''}
             onSent={() => {}}
@@ -96,12 +96,6 @@ describe('what is said about the fortnight', () => {
         expect(screen.queryByText(/You can still send it/)).not.toBeInTheDocument()
     })
 
-    it('tells a store manager the period has not finished, and that it can still go', async () => {
-        open({ canSend: true, period: periodOf(todayISO(), '2026-09-06') })
-        expect(await screen.findByText('This period has not finished yet.')).toBeInTheDocument()
-        expect(screen.getByText(/You can still send it/)).toBeInTheDocument()
-    })
-
     it('tells an owner who has a day with nothing said, without the sending', async () => {
         anaNeverAnswered()
         open({ canSend: false })
@@ -116,6 +110,98 @@ describe('what is said about the fortnight', () => {
         expect(await screen.findByText(/One person has a day in this period/)).toBeInTheDocument()
         expect(screen.getByText(/cannot go out/)).toBeInTheDocument()
         expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled()
+    })
+})
+
+// The hours go every week now (his, 9 November 2026): week 1 on its own once
+// it has finished, the pay period whole after week 2, and one button that
+// picks by the date.
+describe('week 1 on its own', () => {
+    const thisWeek = weekStartOf(todayISO())
+    // A pay period whose week 1 was last week, and one whose week 1 is now.
+    const running = () => periodOf(todayISO(), addDays(thisWeek, -7))
+    const fresh = () => periodOf(todayISO(), thisWeek)
+
+    it('sends week 1 on its own while the pay period is running, with no PDF', async () => {
+        open({ canSend: true, period: running() })
+        expect(await screen.findByText(/^Week 1 of 2:/)).toBeInTheDocument()
+        expect(screen.getByText(/This sends week 1 on its own/)).toBeInTheDocument()
+        const send = screen.getByRole('button', { name: 'Send week 1' })
+        await waitFor(() => expect(send).toBeEnabled())
+        const uploads = db.storage.from.mock.calls.length
+        const posts = db.functions.invoke.mock.calls.length
+        await userEvent.click(send)
+        await waitFor(() => expect(db.functions.invoke.mock.calls.length).toBe(posts + 1))
+        expect(db.functions.invoke.mock.calls.at(-1)[1].body).toMatchObject({ scope: 'week', attachment: null })
+        expect(db.storage.from.mock.calls.length).toBe(uploads)
+    })
+
+    // Sent halfway through, every shift after it would come back in red as
+    // added. A test is a rehearsal and can go any time.
+    it('holds a real week 1 back until it has finished', async () => {
+        open({ canSend: true, period: fresh() })
+        expect(await screen.findByText('Week 1 has not finished yet.')).toBeInTheDocument()
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Send a test' })).toBeEnabled())
+        expect(screen.getByRole('button', { name: 'Send week 1' })).toBeDisabled()
+    })
+
+    // Once the pay period has gone it goes whole, even before it finishes.
+    it('sends the whole pay period again once it has gone', async () => {
+        const period = running()
+        tables.timesheet_weeks = {
+            data: period.weeks.map(week_start => ({ week_start, filed_at: '2026-11-02T09:00:00Z' })),
+            error: null,
+        }
+        open({ canSend: true, period })
+        expect(await screen.findByText('This period has not finished yet.')).toBeInTheDocument()
+        expect(screen.getByText(/You can still send it/)).toBeInTheDocument()
+        expect(screen.getByText(/marked Corrected/)).toBeInTheDocument()
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled())
+    })
+})
+
+// Ana worked 8 hours on Monday 7 September when week 1 went on its own, and 9
+// now. The pay period is over, so it goes whole, and says so in red first.
+describe('what changed since week 1 was sent', () => {
+    const team = [{ id: 'e1', full_name: 'Ana', sort_order: 0 }]
+    const day = ends => ({
+        id: 't1', employee_id: 'e1', work_date: '2026-09-07', starts_at: '09:00:00', ends_at: ends,
+        hours: ends === '17:00:00' ? 8 : 9, kind: 'worked', source: 'typed',
+    })
+    function sentWith(ends, now) {
+        tables.employees = { data: team, error: null }
+        tables.timesheet_entries = { data: [day(now)], error: null }
+        tables.timesheet_weeks = { data: [{ week_start: '2026-09-06', filed_at: '2026-09-14T09:00:00Z' }], error: null }
+        tables.timesheet_sends = {
+            data: [{
+                week_start: '2026-09-06', scope: 'week', sent_at: '2026-09-14T09:00:00Z', shape: 1, held: false,
+                people: weekAsSent({ team, entries: [day(ends)], periodStart: PERIOD.start, weekStart: '2026-09-06' }),
+            }],
+            error: null,
+        }
+    }
+
+    it('says in red what changed, before anybody presses Send', async () => {
+        sentWith('17:00:00', '18:00:00')
+        open({ canSend: true })
+        expect(await screen.findByText(/Week 1 has changed since it was sent on/)).toBeInTheDocument()
+        expect(screen.getByText(/Ana: worked 8\.00 h then, 9\.00 h now/)).toBeInTheDocument()
+        expect(screen.getByText(/The email and the PDF will show this in red/)).toBeInTheDocument()
+    })
+
+    it('says week 1 went alone and has not changed', async () => {
+        sentWith('18:00:00', '18:00:00')
+        open({ canSend: true })
+        expect(await screen.findByText(/Week 1 was sent on its own on .* and has not changed since/)).toBeInTheDocument()
+        expect(screen.queryByText(/has changed since/)).not.toBeInTheDocument()
+    })
+
+    // A failed read of the copies is said, and never holds the send up.
+    it('says when it could not check, and still lets it go', async () => {
+        tables.timesheet_sends = { data: null, error: { message: 'no such table' } }
+        open({ canSend: true })
+        expect(await screen.findByText(/could not check whether the sent weeks have changed/)).toBeInTheDocument()
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled())
     })
 })
 

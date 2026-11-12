@@ -46,6 +46,7 @@ import { changesSince } from './changes.js'
 import { senderFor, heldNotice, deliverable, isJustTheGoodbye, replyToFor, switchedOff, whatToSend, correctionSend } from './email.js'
 import {
     timesheetEmail, personPeriod, peopleFor, addDays, hoursPdfPath, permissionList, dublinToday, DEFAULT_GRACE,
+    weekAsSent, earlierSends, isPeriodStart, SEND_SHAPE, dayWords,
 } from './timesheet.js'
 import { base64, mimeParts, headersFor } from './mime.js'
 
@@ -284,7 +285,7 @@ Deno.serve(async (req) => {
 
     try {
         const {
-            reportId, kind, periodStart, restaurantId, comment, attachment,
+            reportId, kind, periodStart, restaurantId, comment, attachment, scope,
             test = false, origin, figures: posted, charts: postedCharts,
         } = await req.json()
         if (!reportId && kind !== 'timesheet') return json({ error: 'Which report?' }, 400)
@@ -321,7 +322,7 @@ Deno.serve(async (req) => {
         if (kind === 'timesheet') {
             return await sendTimesheet({
                 admin, account, caller, send, from,
-                periodStart, restaurantId, comment, test, attachment,
+                periodStart, restaurantId, comment, test, attachment, scope,
             })
         }
 
@@ -568,7 +569,7 @@ Deno.serve(async (req) => {
 // list for one job, and the person who does that job is the only one who
 // should be on it.
 async function sendTimesheet({
-    admin, account, caller, send, from, periodStart, restaurantId, comment, test, attachment,
+    admin, account, caller, send, from, periodStart, restaurantId, comment, test, attachment, scope: asked,
 }: {
     admin: ReturnType<typeof createClient>,
     account: { id: string, role: string, restaurant_id: string | null, full_name?: string | null },
@@ -582,9 +583,15 @@ async function sendTimesheet({
     // Only whether there is a PDF. The app still posts the path it uploaded
     // to, and any value at all means yes: the path itself is never used.
     attachment?: unknown,
+    // 'week' for week 1 on its own, anything else the whole pay period, so
+    // an app that has never heard of a week send still gets what it got.
+    scope?: unknown,
 }) {
     const period = String(periodStart || '').slice(0, 10)
     if (!/^\d{4}-\d{2}-\d{2}$/.test(period)) return json({ error: 'Which pay period?' }, 400)
+    const scope = asked === 'week' ? 'week' : 'period'
+    // Week 1 on its own goes with no paper: the PDF is the pay period's.
+    if (scope === 'week') attachment = null
 
     const forRestaurant = restaurantId || account.restaurant_id
     if (!forRestaurant) return json({ error: 'Which restaurant?' }, 400)
@@ -599,33 +606,44 @@ async function sendTimesheet({
     const pdfPath = hoursPdfPath(forRestaurant, period)
     if (!pdfPath) return json({ error: 'Which restaurant?' }, 400)
 
-    // **A pay period is always a fortnight.** His, 23 September 2026, and the
-    // reason the hours leave the building two weeks at a time rather than one:
-    // a weekly mail leaves whoever runs the payroll adding two of them together
-    // before they can run anything.
+    // **A pay period is always a fortnight.** His, 23 September 2026: the
+    // payroll is run from the whole of it, never from two weeks added together.
+    // Since 9 November 2026 week 1 also goes on its own once it has finished,
+    // for the owners' records and saying it is not for the payroll yet, and
+    // the pay period still goes whole after week 2. Both are read as the
+    // fortnight, so week 1 here is the same figures as week 1 there.
     const dates = Array.from({ length: 14 }, (_, i) => addDays(period, i))
     const periodEnd = dates[13]
     // The two Hub weeks it is made of. Everything else in the app still works
     // a week at a time, and these are what it is handed.
     const weeks = [period, addDays(period, 7)]
+    // The weeks this email carries.
+    const carried = scope === 'week' ? [period] : weeks
 
     // timesheet_recipients came later than the table, and a function can be
     // deployed before the database has it. Asking for a column that is not
     // there does not throw, it comes back as an error and a null row, and an
     // unchecked null would have sent a week headed "The restaurant" to nobody.
     let { data: restaurant, error: missing } = await admin
-        .from('restaurants').select('id, name, mail_from, timesheet_recipients, roster_rules')
+        .from('restaurants').select('id, name, mail_from, timesheet_recipients, roster_rules, pay_period_start')
         .eq('id', forRestaurant).maybeSingle()
 
     if (missing) {
         console.warn('restaurants.timesheet_recipients is missing on this database', missing)
         const again = await admin
-            .from('restaurants').select('id, name, mail_from, roster_rules')
+            .from('restaurants').select('id, name, mail_from, roster_rules, pay_period_start')
             .eq('id', forRestaurant).maybeSingle()
         restaurant = again.data
     }
 
-    const [{ data: team }, { data: worked }, { data: away }] = await Promise.all([
+    // **The period has to be one.** A mail that says "week 1 of 2" has to be
+    // right about which fortnight it is, and the browser only says a date.
+    if (!restaurant?.pay_period_start) return json({ error: 'No pay period start date is set.' }, 400)
+    if (!isPeriodStart(period, restaurant.pay_period_start)) {
+        return json({ error: 'That date does not start a pay period.' }, 400)
+    }
+
+    const [team, entries, absences, marks, copies] = await Promise.all([
         // Where each stands on permission to work as well, for the list
         // everybody employed is on (his, 1 November 2026).
         admin.from('employees')
@@ -644,13 +662,72 @@ async function sendTimesheet({
             .select('employee_id, kind, status, starts_on, ends_on, hours, can_work_from, can_work_to')
             .eq('restaurant_id', forRestaurant)
             .lte('starts_on', periodEnd).gte('ends_on', period),
+        // When each week last went, and what each email said (his, 9
+        // November 2026), so this one can say what changed since.
+        admin.from('timesheet_weeks')
+            .select('week_start, filed_at')
+            .eq('restaurant_id', forRestaurant)
+            .in('week_start', weeks),
+        admin.from('timesheet_sends')
+            .select('week_start, scope, sent_at, shape, people, held')
+            .eq('restaurant_id', forRestaurant)
+            .in('week_start', weeks)
+            .order('sent_at', { ascending: false }),
     ])
+
+    // **Every read is checked.** A failed read left unchecked would keep an
+    // empty week as what was sent, and the next email would say everybody
+    // had been added since.
+    const failed = team.error || entries.error || absences.error || marks.error
+    if (failed) {
+        console.warn('the hours could not be read', failed)
+        return json({ error: 'The hours could not be read, so nothing was sent.' }, 500)
+    }
+    // The copies are the one read allowed to fail, for a pay period: before
+    // migration 015 there is no table, and the pay period went whole without
+    // one for weeks. Week 1 on its own does not go without, because a week 1
+    // nobody can compare with later is the whole point lost.
+    const keeps = !copies.error
+    if (!keeps) console.warn('timesheet_sends could not be read', copies.error)
+    if (scope === 'week' && !keeps) {
+        return json({ error: 'The Hub could not keep a copy of week 1, so it was not sent.' }, 500)
+    }
+
+    const worked = entries.data || []
+    const away = absences.data || []
+    const filed = Object.fromEntries((marks.data || []).map(m => [m.week_start, m.filed_at]))
+
+    // On the day it goes, in Ireland.
+    const today = dublinToday()
+
+    // **Week 1 on its own, only when it can be.** Once the pay period has
+    // gone, or finished, it goes whole; and not before week 1's Saturday,
+    // or every shift after the send would come back in red as added. A test
+    // goes any time, because it never counts as sent.
+    if (scope === 'week') {
+        if (filed[weeks[1]]) {
+            return json({ error: 'This pay period has already gone, so week 1 cannot go on its own. Send the pay period again.' }, 400)
+        }
+        if (today > periodEnd) return json({ error: 'This pay period has finished, so it goes whole.' }, 400)
+        if (!test && today <= addDays(period, 6)) {
+            return json({ error: `Week 1 has not finished yet. It can go once it ends on ${dayWords(addDays(period, 6))}.` }, 400)
+        }
+    }
 
     // Somebody who left before the period, or had not started, is not on it,
     // and somebody from another restaurant with a shift in it is, after the
     // team. The same rule the screen and the PDF use, so the mail and the
     // paper attached to it hold the same people.
-    const people = peopleFor(team || [], worked || [], period, periodEnd)
+    const people = peopleFor(team.data || [], worked, period, periodEnd)
+
+    // Each week as it is now, the way a copy of it is kept, and what changed
+    // since the last real email that carried it.
+    const asNow = carried.map(weekStart => weekAsSent({
+        team: team.data || [], entries: worked, absences: away, periodStart: period, weekStart,
+    }))
+    const earlier = keeps
+        ? earlierSends({ weeks: carried.map((weekStart, i) => ({ weekStart, now: asNow[i] })), sends: copies.data || [], filed })
+        : []
 
     const skipped: string[] = []
     const to: string[] = []
@@ -677,20 +754,22 @@ async function sendTimesheet({
         return json({ sent: 0, why: 'nobody on the list', skipped: skipped.length ? skipped : undefined })
     }
 
-    // On the day it goes, in Ireland. A restaurant's own grace setting if it
-    // has one, the same as the roster reads it.
-    const today = dublinToday()
+    // A restaurant's own grace setting if it has one, the same as the roster
+    // reads it. Week 1 on its own is the week as it is kept, the pay period
+    // the whole fortnight.
     let mail = timesheetEmail({
         restaurantName: restaurant?.name,
         periodStart: period,
-        people: personPeriod({ people, entries: worked || [], absences: away || [], dates }),
+        people: scope === 'week' ? asNow[0] : personPeriod({ people, entries: worked, absences: away, dates }),
         comment: String(comment || '').trim(),
         test: Boolean(test),
-        permissions: permissionList(team || [], today, restaurant?.roster_rules?.permissionGrace || DEFAULT_GRACE),
+        permissions: permissionList(team.data || [], today, restaurant?.roster_rules?.permissionGrace || DEFAULT_GRACE),
         today,
         // Each person's days are only in the PDF now, and the mail says so
         // when there is one.
         paper: Boolean(attachment),
+        scope,
+        earlier,
     })
 
     // **The paper the browser drew, fetched with the service role.**
@@ -735,17 +814,42 @@ async function sendTimesheet({
         attachments: attachments.length ? attachments : undefined,
     })
 
-    // The week is marked as filed, and a test never is: a rehearsal that said
-    // a week had gone to the accountant would be worse than no mark at all.
-    // It moves on a second send, because a week can be corrected and sent
-    // again and what matters is when the figures she has were sent.
-    // **Both weeks, because the period is what went.** The mark is per week,
-    // which is right: every screen reads a week at a time, and a week left
-    // unmarked would sit there looking like it had never been sent.
+    // **A copy of what it said, then the weeks marked as sent**, and a test
+    // does neither: a rehearsal that said a week had gone would be worse than
+    // no mark at all.
+    //
+    // The copy is a row a week the email carried, with the week as it went,
+    // so the next email can say what changed since (his, 9 November 2026).
+    // Held mail is kept marked as held and is never what a later email is
+    // compared with: nobody on the list got it.
+    //
+    // The mark moves on a second send, because a week can be corrected and
+    // sent again and what matters is when the figures she has were sent. Week
+    // 1 on its own marks week 1 alone; the pay period marks both, and week 2
+    // marked is what says the pay period has gone. Both are written with the
+    // same time, which is how a copy and its mark are known to go together.
+    let kept = false
     if (!test) {
         const at = new Date().toISOString()
-        await admin.from('timesheet_weeks').upsert(
-            weeks.map(week_start => ({
+        if (keeps) {
+            const { error: notKept } = await admin.from('timesheet_sends').insert(carried.map((week_start, i) => ({
+                restaurant_id: forRestaurant,
+                period_start: period,
+                week_start,
+                scope,
+                sent_at: at,
+                sent_by: account.id,
+                sent_to: sentTo,
+                comment: String(comment || '').trim() || null,
+                shape: SEND_SHAPE,
+                people: asNow[i],
+                held: Boolean(redirect),
+            })))
+            if (notKept) console.warn('the copy of the hours sent could not be kept', notKept)
+            kept = !notKept
+        }
+        const { error: notFiled } = await admin.from('timesheet_weeks').upsert(
+            carried.map(week_start => ({
                 restaurant_id: forRestaurant,
                 week_start,
                 filed_at: at,
@@ -753,6 +857,7 @@ async function sendTimesheet({
             })),
             { onConflict: 'restaurant_id,week_start' },
         )
+        if (notFiled) console.warn('the weeks could not be marked as sent', notFiled)
     }
 
     return json({
@@ -760,5 +865,7 @@ async function sendTimesheet({
         to: test || redirect ? sentTo : undefined,
         held: redirect ? to.length : undefined,
         skipped: skipped.length ? skipped : undefined,
+        scope,
+        kept: test ? undefined : kept,
     })
 }

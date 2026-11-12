@@ -230,7 +230,24 @@ describe('the Timesheet', () => {
     it('is waiting while the last finished pay period is not all sent', () => {
         const pay = { start: '2026-09-13', ever_filed: true, filed: ['2026-09-13'] }
         expect(timesheetWaiting({ today: WED, pay })).toBe('period')
-        expect(timesheetWaiting({ today: WED, pay: { ...pay, filed: ['2026-09-13', '2026-09-20'] } })).toBeNull()
+        // 27 September is week 1 of the pay period running on 7 October, sent too.
+        expect(timesheetWaiting({ today: WED, pay: { ...pay, filed: ['2026-09-13', '2026-09-20', '2026-09-27'] } })).toBeNull()
+    })
+
+    // The hours go every week now (his, 9 November 2026): on 7 October last
+    // week, 27 September, is week 1 of 27 September to 10 October, finished
+    // and not sent on its own.
+    it('is waiting while last week was week 1 of a running pay period and has not gone', () => {
+        const pay = { start: '2026-09-13', ever_filed: true, filed: ['2026-09-13', '2026-09-20'] }
+        expect(timesheetWaiting({ today: WED, pay })).toBe('week1')
+        expect(badgesFrom({ today: WED, role: 'store_manager', pay })['/costs/timesheet'])
+            .toMatchObject({ dot: true, words: "Last week's hours have not been sent" })
+    })
+
+    // Last week is week 2: nothing more goes until the pay period has finished.
+    it('says nothing about week 1 once the week before was week 2', () => {
+        const pay = { start: '2026-09-20', ever_filed: true, filed: ['2026-09-20', '2026-09-27'] }
+        expect(timesheetWaiting({ today: WED, pay })).toBeNull()
     })
 
     // A test send never files a week, so a restaurant that has never really

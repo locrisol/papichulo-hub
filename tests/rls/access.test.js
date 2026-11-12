@@ -672,6 +672,12 @@ maybe('what each role can see and do', () => {
             expect(count, 'an employee can read the printed allergen sheets').toBe(0)
         })
 
+        // What each email of the hours said is everybody's hours (015).
+        it('cannot read what the hours emails said', async () => {
+            const { count } = await countVisible(employee, 'timesheet_sends')
+            expect(count, 'an employee can read what the hours emails said').toBe(0)
+        })
+
         it('is refused when writing a MIX recipe', async () => {
             const refused = await writeRefused(employee, 'mix_recipes', {
                 mix_product_id: NOBODY,
@@ -730,6 +736,16 @@ maybe('what each role can see and do', () => {
                 restaurant_id: otherRestaurantId,
                 sale_date: '2020-01-01',
                 gross_sales: 1, net_sales: 1,
+            })
+            expect(refused).toBe(true)
+        })
+
+        // What an hours email said is written by the function alone, after it
+        // has sent (015). A copy a manager could write would say an email went
+        // that never did, at their own restaurant as much as the other.
+        it('cannot write what an hours email said, even at their own restaurant', async () => {
+            const refused = await writeRefused(manager, 'timesheet_sends', {
+                restaurant_id: ownRestaurantId, period_start: '2020-01-05', week_start: '2020-01-05', scope: 'week',
             })
             expect(refused).toBe(true)
         })
@@ -1458,6 +1474,11 @@ maybe('what each role can see and do', () => {
                 const { count } = await countVisible(anon, table)
                 expect(count, `${table} is still readable by anybody`).toBe(0)
             }
+        })
+
+        it('cannot read what the hours emails said', async () => {
+            const { count } = await countVisible(anon, 'timesheet_sends')
+            expect(count, 'timesheet_sends is readable by anybody').toBe(0)
         })
 
         it('cannot call the functions that change the Recommended list', async () => {

@@ -826,3 +826,46 @@ describe('somebody from another restaurant', () => {
         expect(take(migration)).toBe(take(schema))
     })
 })
+
+// Migration 015, 9 November 2026.
+describe('what each email of the hours said', () => {
+    const start = schema.indexOf('create table if not exists public.timesheet_sends (')
+    const table = schema.slice(start, schema.indexOf(');', start))
+    const migration = readFileSync('supabase/migrations/015_what_the_hours_said.sql', 'utf8')
+    const tableIn = text => {
+        const at = text.indexOf('create table if not exists public.timesheet_sends (')
+        return text.slice(at, text.indexOf(');', at))
+    }
+
+    it('is a table of a row a week an email carried, week 1 alone or the pay period', () => {
+        expect(start, 'timesheet_sends is not in schema.sql').toBeGreaterThan(-1)
+        for (const check of [
+            "constraint timesheet_sends_scope_known check (scope in ('week', 'period'))",
+            'constraint timesheet_sends_period_on_a_sunday check (extract(dow from period_start) = 0)',
+            'constraint timesheet_sends_week_in_its_period check (week_start = period_start or week_start = period_start + 7)',
+            "constraint timesheet_sends_alone_is_week_1 check (scope = 'period' or week_start = period_start)",
+            "constraint timesheet_sends_people_a_list check (jsonb_typeof(people) = 'array')",
+        ]) expect(table).toContain(check)
+        // Held mail is kept marked, and never what a later email is compared with.
+        expect(table).toContain('held boolean default false not null')
+        expect(tableIn(migration)).toBe(table)
+    })
+
+    it('is read by managers and above at their own restaurant, and written by nobody through the API', () => {
+        const policies = schema.match(/create policy \w+ on public\.timesheet_sends[^;]*;/g) || []
+        expect(policies).toHaveLength(1)
+        expect(policies[0]).toContain('for select to authenticated')
+        expect(policies[0]).toContain("(select public.get_my_role()) = any (array['owner', 'store_manager'])")
+        expect(policies[0]).toContain('restaurant_id = (select public.get_my_restaurant_id())')
+        expect(schema).toContain('alter table public.timesheet_sends enable row level security;')
+        expect(schema).toContain('revoke all on table public.timesheet_sends from anon, authenticated, public;')
+        expect(schema).toContain('grant select on table public.timesheet_sends to authenticated;')
+        expect(schema).not.toMatch(/grant (insert|update|delete|all)[^;]*public\.timesheet_sends/i)
+    })
+
+    it('says filed_at moves on every real send, and where what was sent is kept', () => {
+        const words = "'When this week''s hours were last mailed out, on their own (week 1) or in the pay period. It moves on every real send. What each email said is in timesheet_sends.'"
+        expect(schema).toContain(`COMMENT ON COLUMN "public"."timesheet_weeks"."filed_at" IS ${words};`)
+        expect(migration).toContain(`comment on column public.timesheet_weeks.filed_at is ${words};`)
+    })
+})
