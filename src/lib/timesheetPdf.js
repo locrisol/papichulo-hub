@@ -1,7 +1,10 @@
-import { AWAY_LOOK, KIND_LOOK, BANK_LOOK, PERMISSION_LOOK, GUEST_LOOK, COUNTED_DAYS, awayWords } from '@/lib/timesheet'
+import {
+    AWAY_LOOK, KIND_LOOK, BANK_LOOK, PERMISSION_LOOK, GUEST_LOOK, CHANGED_LOOK, COUNTED_DAYS,
+    awayWords, isHoursField,
+} from '@/lib/timesheet'
 import { PERMISSION_STATES } from '@/lib/workRules'
 import { periodWords } from '@/lib/payPeriod'
-import { addDays, weekRange, stampDateTime, WEEKDAY_NAMES } from '@/lib/dates'
+import { addDays, weekRange, stampDateTime, stampDay, shortDate, WEEKDAY_NAMES } from '@/lib/dates'
 import { fmtHours } from '@/lib/roster'
 import { loadJsPdf, footers, rgb, LOGO_WIDTH, LOGO_HEIGHT } from '@/lib/pdfPage'
 import logo from '@/assets/PapiChuloLogoPrint.png?inline'
@@ -63,8 +66,48 @@ function clock(time) {
     return m ? `${m[1]}:${m[2]}:${m[3] || '00'}` : ''
 }
 
+// A day as the red section says it: the times and the hours, or what the day
+// was, or nothing.
+function dayText(day) {
+    if (!day) return 'nothing'
+    const times = [
+        ...(day.spans || []).map(s => `${clock(s.starts_at)} to ${clock(s.ends_at)}`),
+        ...(day.open || []).map(at => `clock in ${clock(at)}, no clock out`),
+    ]
+    if (times.length) {
+        const away = COUNTED_DAYS.includes(day.away) ? `, ${awayWords(day).toLowerCase()}` : ''
+        return `${times.join(', ')}, ${fmtHours(day.hours)} h${away}`
+    }
+    if (day.away && AWAY_LOOK[day.away]) return awayWords(day)
+    return 'nothing'
+}
+
+// What each figure is called in the red section.
+const FIGURE_LABELS = {
+    worked: 'Worked',
+    bankHoliday: 'Bank holiday',
+    holiday: 'Holiday',
+    trial: 'Trial',
+    training: 'Training',
+    sundays: 'Sundays',
+    sickDays: 'Days sick',
+    sickParts: 'Part days sick',
+    unpaidDays: 'Days unpaid',
+    unpaidParts: 'Part days unpaid',
+}
+
+const figureText = (field, value) => (isHoursField(field)
+    ? `${fmtHours(value)} h`
+    : value ? String(value) : 'none')
+
+// `earlier` is earlierSends for the two weeks (his, 9 November 2026): what
+// each was compared with, and what changed since. A week changed after an
+// email carried it is said in red above everything else on page 1, marked in
+// red in the summary, and drawn in red on the person's days with what it was
+// when sent. The same earlierSends the email is told, so the two agree.
 export async function timesheetPdf({
     restaurant, periodStart, people = [], at = new Date(), save = true, permissions = null, today = null,
+    earlier = [],
 }) {
     const JsPDF = await loadJsPdf()
     const pdf = new JsPDF({ unit: 'mm', format: 'a4' })
@@ -85,6 +128,27 @@ export async function timesheetPdf({
         worked: people.reduce((t, p) => t + p.worked, 0),
         bankHoliday: people.reduce((t, p) => t + p.bankHoliday, 0),
         holiday: people.reduce((t, p) => t + p.holiday, 0),
+    }
+
+    // **What changed since an email carried a week**, the same reading the
+    // email makes (timesheet.js changeStory in the function): the pay period
+    // sent again is compared with the last pay period email, otherwise week 1
+    // with the week 1 email if it went on its own.
+    const again = (earlier || []).filter(e => e?.scope === 'period')
+    const alone = !again.length && earlier?.[0]?.scope === 'week' ? earlier[0] : null
+    const told = (again.length ? again : alone ? [alone] : []).filter(e => e.changes?.length)
+    const latest = again.length ? again.reduce((a, b) => (Date.parse(b.sentAt) > Date.parse(a.sentAt) ? b : a)) : alone
+    // By person: which weeks, and which figures. By person and day: what it
+    // was when sent.
+    const redWeeks = new Map()
+    const redFields = new Map()
+    const redDays = new Map()
+    for (const e of told) {
+        for (const c of e.changes) {
+            redWeeks.set(c.id, [...(redWeeks.get(c.id) || []), e.week])
+            redFields.set(c.id, [...(redFields.get(c.id) || []), ...c.figures.map(f => ({ ...f, week: e.week }))])
+            for (const d of c.days) redDays.set(`${c.id}|${d.date}`, { ...d, sentAt: e.sentAt, added: c.added })
+        }
     }
 
     let y = 0
@@ -174,16 +238,35 @@ export async function timesheetPdf({
         if (onPage) drawPersonHead(onPage, true)
     }
 
+    // A person's days in one week, with any day that is gone since an email
+    // carried it put back where it was, so it can be drawn in red as nothing
+    // now with what it was.
+    function daysIn(person, w) {
+        const mine = person.days.filter(day => day.week === w)
+        const have = new Set(mine.map(d => d.date))
+        const from = weeks[w]
+        const to = addDays(weeks[w], 6)
+        const gone = [...redDays.entries()]
+            .filter(([key, d]) => key === `${person.id}|${d.date}` && !d.now && !have.has(d.date) && d.date >= from && d.date <= to)
+            .map(([, d]) => ({
+                date: d.date, week: w, gone: true, spans: [], open: [], notes: [], hours: 0, bankHoliday: false, away: null, part: false,
+            }))
+        return [...mine, ...gone].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+    }
+
     // Roughly how tall a person's section will be, so one can be kept whole.
     function heightOf(person) {
         let need = 16
         for (const w of [0, 1]) {
-            const mine = person.days.filter(day => day.week === w)
+            const mine = daysIn(person, w)
             need += 4 + 8.5 + (person.weekBank[w] > 0 ? 4.4 : 0)
             need += mine.length
-                ? mine.reduce((t, day) => t + (day.notes.length
-                    ? 5.7 + day.notes.length * 3.4
-                    : 5.4), 0)
+                ? mine.reduce((t, day) => {
+                    const red = redDays.has(`${person.id}|${day.date}`)
+                    return t + (day.notes.length || red
+                        ? 5.7 + day.notes.length * 3.4 + (red ? 3.4 : 0)
+                        : 5.4)
+                }, 0)
                 : 5.4
         }
         return need + 4
@@ -260,13 +343,131 @@ export async function timesheetPdf({
         y += 6
     }
 
+    // ---- what changed since an email carried it ---------------------------
+    //
+    // **First, above the summary** (his, 9 November 2026: "a bigger issue to
+    // remark on the report in PDF in red or a strong color"). The owners have
+    // the hours as they were sent, so whoever reads this has to know which
+    // figures moved before reading any of them.
+    const RED = rgb(CHANGED_LOOK.ink)
+
+    // A row of three: what it is, what it was when sent, and what it is now.
+    function drawChangeRow(label, was, now) {
+        const at = [marginX + 4, marginX + 40, marginX + 108]
+        const widths = [34, 64, right - at[2]]
+        pdf.setFontSize(7.5)
+        const parts = [label, was, now].map((text, i) => {
+            pdf.setFont('helvetica', i === 0 ? 'bold' : 'normal')
+            return pdf.splitTextToSize(text, widths[i])
+        })
+        const tall = Math.max(...parts.map(p => p.length)) * 3.4
+        room(tall + 1)
+        parts.forEach((lines, i) => {
+            pdf.setFont('helvetica', i === 0 ? 'bold' : 'normal')
+            pdf.setTextColor(...(i === 2 ? RED : INK))
+            lines.forEach((line, n) => pdf.text(line, at[i], y + n * 3.4))
+        })
+        y += tall + 0.6
+    }
+
+    function drawChanges() {
+        if (!told.length) return
+        const words = again.length
+            ? `This pay period was emailed on ${stampDateTime(latest.sentAt)}. Some hours have changed since, so that `
+                + 'email and its PDF are out of date for the people below. If the payroll has already been run, these '
+                + 'are the hours to put right. Everything in this PDF is the hours as they are now.'
+            : `Week 1, ${weekRange(weeks[0])}, was emailed on its own on ${stampDateTime(alone.sentAt)}. Some of its `
+                + 'hours have changed since, so that email is out of date for the people below. Everything in this PDF '
+                + 'is the hours as they are now. Each change is listed here and marked in red on the person\'s days, '
+                + 'with what it was when sent.'
+        pdf.setFont('helvetica', 'normal')
+        pdf.setFontSize(8)
+        const lines = pdf.splitTextToSize(words, right - marginX - 9)
+        const height = 9.5 + lines.length * 3.6
+
+        pdf.setFillColor(...rgb(CHANGED_LOOK.wash))
+        pdf.rect(marginX, y - 5, right - marginX, height, 'F')
+        pdf.setFillColor(...RED)
+        pdf.rect(marginX, y - 5, 1.2, height, 'F')
+
+        pdf.setFont('helvetica', 'bold')
+        pdf.setFontSize(9)
+        pdf.setTextColor(...RED)
+        pdf.text(again.length ? 'CHANGED AFTER THIS PAY PERIOD WAS SENT' : 'WEEK 1 CHANGED AFTER IT WAS SENT', marginX + 4, y, { charSpace: 0.3 })
+        y += 4.8
+        pdf.setFont('helvetica', 'normal')
+        pdf.setFontSize(8)
+        for (const line of lines) {
+            pdf.text(line, marginX + 4, y)
+            y += 3.6
+        }
+        y += 5
+
+        pdf.setFont('helvetica', 'bold')
+        pdf.setFontSize(6)
+        pdf.setTextColor(...RED)
+        pdf.text(again.length ? 'WHAT CHANGED' : 'WHAT CHANGED IN WEEK 1', marginX, y, { charSpace: 0.4 })
+        y += 5
+
+        for (const e of told) {
+            if (again.length) {
+                room(8)
+                pdf.setFont('helvetica', 'bold')
+                pdf.setFontSize(6)
+                pdf.setTextColor(...MUTED)
+                pdf.text(`WEEK ${e.week + 1}, ${weekRange(weeks[e.week]).toUpperCase()}`, marginX + 2, y, { charSpace: 0.4 })
+                y += 4.4
+            }
+            for (const c of e.changes) {
+                room(9)
+                pdf.setFont('helvetica', 'bold')
+                pdf.setFontSize(8.5)
+                pdf.setTextColor(...INK)
+                const who = c.added ? ', added since it was sent' : c.gone ? ', taken off since it was sent' : ''
+                pdf.text(`${c.name}${who}`, marginX + 2, y)
+                y += 4.4
+                for (const d of c.days) {
+                    drawChangeRow(
+                        dayWords(d.date),
+                        `When sent: ${d.was ? dayText(d.was) : c.added ? 'not in the email' : 'nothing'}`,
+                        `Now: ${dayText(d.now)}`,
+                    )
+                    // Why, in his words, beside the change it explains. The
+                    // email never carries a comment; this is where it goes.
+                    for (const note of [...(d.now?.notes || [])].sort()) {
+                        pdf.setFont('helvetica', 'italic')
+                        pdf.setFontSize(7)
+                        pdf.setTextColor(...MUTED)
+                        for (const line of pdf.splitTextToSize(`Comment: ${note}`, right - marginX - 44)) {
+                            room(5)
+                            pdf.text(line, marginX + 40, y)
+                            y += 3.4
+                        }
+                    }
+                }
+                for (const f of c.figures) {
+                    drawChangeRow(FIGURE_LABELS[f.field], `When sent: ${figureText(f.field, f.was)}`, `Now: ${figureText(f.field, f.now)}`)
+                }
+                y += 1.6
+            }
+        }
+        pdf.setDrawColor(...RED)
+        pdf.setLineWidth(0.4)
+        pdf.line(marginX, y - 1.5, right, y - 1.5)
+        y += 6
+    }
+
     drawPageTop()
+    drawChanges()
+    room(14)
     drawSummaryHead()
 
     pdf.setFont('helvetica', 'normal')
     for (const person of people) {
         const marks = []
         if (person.guest) marks.push([GUEST_LOOK, GUEST_LOOK.label])
+        // Red, for a week of theirs that changed after an email carried it.
+        for (const w of redWeeks.get(person.id) || []) marks.push([CHANGED_LOOK, `Week ${w + 1} changed`])
         if (person.trial > 0) marks.push([KIND_LOOK.trial, `Trial ${fmtHours(person.trial)} h`])
         if (person.training > 0) marks.push([KIND_LOOK.training, `Training ${fmtHours(person.training)} h`])
         if (person.sickDays > 0) marks.push([AWAY_LOOK.sick, `${plural(person.sickDays, 'day')} sick`])
@@ -291,12 +492,23 @@ export async function timesheetPdf({
             person.holiday > 0 ? fmtHours(person.holiday) : '—',
             person.sundays > 0 ? String(person.sundays) : '—',
         ]
+        // Each figure that moved since an email carried it is drawn in red.
+        const red = new Set()
+        for (const f of redFields.get(person.id) || []) {
+            if (f.field === 'worked') { red.add(f.week); red.add(2) }
+            if (f.field === 'bankHoliday') red.add(3)
+            if (f.field === 'holiday') red.add(4)
+            if (f.field === 'sundays') red.add(5)
+        }
         figures.forEach((value, i) => {
             if (value === null) return
+            pdf.setTextColor(...(red.has(i) ? RED : INK))
             pdf.text(value, mid(i), y, { align: 'center' })
         })
         pdf.setFont('helvetica', 'bold')
+        pdf.setTextColor(...(red.has(2) ? RED : INK))
         pdf.text(fmtHours(person.worked), mid(2), y, { align: 'center' })
+        pdf.setTextColor(...INK)
 
         if (marks.length) {
             let x = marginX + 2
@@ -341,6 +553,9 @@ export async function timesheetPdf({
         + 'Public holiday entitlement is not calculated here. '
         + (people.some(p => p.guest)
             ? 'Somebody marked From another restaurant is on another restaurant\'s team and worked these hours here. '
+            : '')
+        + (alone && Array.isArray(alone.changes) && !alone.changes.length
+            ? `Week 1 was emailed on its own on ${stampDateTime(alone.sentAt)}, and has not changed since. `
             : '')
         + 'Every time below is as the till recorded it, to the second.'
     for (const line of pdf.splitTextToSize(note, right - marginX)) {
@@ -458,7 +673,7 @@ export async function timesheetPdf({
         y += 6
 
         for (const w of [0, 1]) {
-            const mine = person.days.filter(day => day.week === w)
+            const mine = daysIn(person, w)
             room(12)
 
             pdf.setFont('helvetica', 'bold')
@@ -475,16 +690,25 @@ export async function timesheetPdf({
             }
 
             for (const day of mine) {
-                room(9)
-                pdf.setFont('helvetica', 'normal')
+                // A day that changed since an email carried it is in red,
+                // with what it was when sent under it.
+                const changedDay = redDays.get(`${person.id}|${day.date}`)
+                const ink = changedDay ? RED : INK
+                room(changedDay ? 12 : 9)
+                pdf.setFont('helvetica', changedDay ? 'bold' : 'normal')
                 pdf.setFontSize(8)
-                pdf.setTextColor(...INK)
+                pdf.setTextColor(...ink)
                 pdf.text(dayWords(day.date), marginX + 2, y)
 
                 let x = marginX + 48
                 if (day.bankHoliday) x += drawMark(BANK_LOOK, null, x, y)
 
-                if (day.spans.length || day.open.length) {
+                if (day.gone) {
+                    pdf.setFont('helvetica', 'italic')
+                    pdf.setFontSize(8)
+                    pdf.setTextColor(...RED)
+                    pdf.text('Nothing now', x, y)
+                } else if (day.spans.length || day.open.length) {
                     // A clock in with no clock out is said, never dropped:
                     // the send is held for one, but the paper can still be
                     // downloaded.
@@ -492,7 +716,7 @@ export async function timesheetPdf({
                         ...day.spans.map(s => `${clock(s.starts_at)} to ${clock(s.ends_at)}`),
                         ...day.open.map(at => `Clock in ${clock(at)}, no clock out`),
                     ].join(',  ')
-                    pdf.setTextColor(...INK)
+                    pdf.setTextColor(...ink)
                     pdf.setFont('helvetica', 'normal')
                     pdf.setFontSize(8)
                     pdf.text(times, x, y)
@@ -506,7 +730,9 @@ export async function timesheetPdf({
                         drawMark(AWAY_LOOK[day.away], awayWords(day), after, y)
                     }
                     pdf.setFont('helvetica', 'bold')
+                    pdf.setTextColor(...ink)
                     pdf.text(`${fmtHours(day.hours)} h`, right, y, { align: 'right' })
+                    pdf.setTextColor(...INK)
                 } else if (day.away && AWAY_LOOK[day.away]) {
                     drawMark(AWAY_LOOK[day.away], awayWords(day), x, y)
                 } else {
@@ -519,8 +745,19 @@ export async function timesheetPdf({
                 // A comment belongs to the day above it, so it sits closer to
                 // that day than to the next one. A full row's gap put it in the
                 // middle and left it looking like it could belong to either.
-                const said = day.notes.length > 0
+                const said = day.notes.length > 0 || Boolean(changedDay)
                 y += said ? 3.9 : 5.4
+
+                if (changedDay) {
+                    const was = changedDay.was ? dayText(changedDay.was) : changedDay.added ? 'not in the email' : 'nothing'
+                    pdf.setFont('helvetica', 'italic')
+                    pdf.setFontSize(7)
+                    pdf.setTextColor(...RED)
+                    for (const line of pdf.splitTextToSize(`When sent on ${shortDate(stampDay(changedDay.sentAt))}: ${was}`, right - marginX - 54)) {
+                        pdf.text(line, marginX + 52, y)
+                        y += 3.4
+                    }
+                }
 
                 for (const words of day.notes) {
                     pdf.setFont('helvetica', 'italic')

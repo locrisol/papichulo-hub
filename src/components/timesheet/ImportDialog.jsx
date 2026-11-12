@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { friendlyError } from '@/lib/errors'
-import { fullDate, shortDate } from '@/lib/dates'
+import { fullDate, shortDate, stampDay } from '@/lib/dates'
 import { fmtHours } from '@/lib/roster'
 import { shortClock } from '@/lib/clock'
 import { readTimesheet, fileFits, insideWeek, sameTimeWho } from '@/lib/timesheetImport'
@@ -35,7 +35,7 @@ import {
 // read in again finds her and does not ask twice.
 export default function ImportDialog({
     restaurantId, restaurantName, weekStart, weekEnd, people, team = people, entries, absences,
-    onClose, onDone,
+    sentAt = null, onClose, onDone,
 }) {
     const { user } = useAuth()
 
@@ -295,7 +295,7 @@ export default function ImportDialog({
 
                 {stage === 'ready' && <Ready plan={plan} read={read} />}
 
-                {stage === 'done' && <Done result={result} people={people} />}
+                {stage === 'done' && <Done result={result} people={people} sentAt={sentAt} />}
             </div>
 
             <div className={modalFooter}>
@@ -534,7 +534,9 @@ function Ready({ plan, read }) {
     )
 }
 
-function Done({ result, people }) {
+// `sentAt` is when this week last went, if it has: anything the upload
+// changed is now a change to what the owners have, and shows in red.
+function Done({ result, people, sentAt }) {
     const nameOf = id => people.find(p => p.id === id)?.full_name || 'Somebody'
 
     return (
@@ -582,6 +584,13 @@ function Done({ result, people }) {
                         ))}
                     </ul>
                 </div>
+            )}
+
+            {sentAt && (result.filled > 0 || result.rosterReplaced > 0 || result.nudged > 0) && (
+                <p className="text-sm text-muted border-t border-border pt-3 mt-3">
+                    This week was already sent on {shortDate(stampDay(sentAt))}. Anything this changed shows
+                    in red on the week, and in the next email.
+                </p>
             )}
         </div>
     )

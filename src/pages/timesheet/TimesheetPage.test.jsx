@@ -4,6 +4,8 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import process from 'node:process'
 import { todayISO, weekStartOf, addDays, shortDate } from '@/lib/dates'
+import { periodOf } from '@/lib/payPeriod'
+import { weekAsSent } from '@/lib/timesheet'
 
 // The page opens on last week, because a timesheet is filled in once the week
 // has finished and the till's report for it exists.
@@ -133,6 +135,7 @@ beforeEach(() => {
     rows.roster_shifts = []
     rows.sales_records = []
     rows.timesheet_weeks = []
+    rows.timesheet_sends = []
 })
 
 describe('typing into a cell with nothing in it', () => {
@@ -855,5 +858,51 @@ describe('somebody from another restaurant', () => {
         expect(asked).toHaveLength(0)
         expect(deleted).toHaveLength(0)
         expect(inserted).toHaveLength(0)
+    })
+})
+
+// His, 9 November 2026: once the owners have a week, a change to it is "a
+// bigger issue". Aoife's Sunday was 6 hours when the week went, and is 8 now.
+describe('a week changed since it was sent', () => {
+    const PERIOD_START = periodOf(WEEK, '2026-01-04').start
+    const team = [{ id: 'e1', full_name: 'Aoife', sort_order: 0, started_on: '2026-01-01', ended_on: null }]
+    const day = (hours, note = null) => ({
+        ...off_the_till, ends_at: hours === 6 ? '15:00:00' : '17:00:00', hours, note,
+    })
+    function sent(scope, hours) {
+        // Sent the Monday after the week, at ten.
+        rows.timesheet_weeks = [{ imported_at: null, filed_at: `${addDays(WEEK, 8)}T10:00:00.000Z` }]
+        rows.timesheet_sends = [{
+            week_start: WEEK, scope, sent_at: rows.timesheet_weeks[0].filed_at, shape: 1, held: false,
+            people: weekAsSent({ team, entries: [day(hours)], periodStart: PERIOD_START, weekStart: WEEK }),
+        }]
+    }
+
+    it('says in red that a sent week has changed since, and who', async () => {
+        sent('week', 6)
+        rows.timesheet_entries = [day(8)]
+        render(<TimesheetPage />)
+        expect(await screen.findByText(/This week was sent on .*, and it has changed since\./)).toBeInTheDocument()
+        expect(screen.getByText(/Aoife \(/)).toBeInTheDocument()
+        expect(screen.getByText(/When the pay period goes, the email and the PDF will show these in red/)).toBeInTheDocument()
+        expect(screen.getByText(/, changed since$/)).toBeInTheDocument()
+    })
+
+    // Net, not edits: put back as it was, the red goes.
+    it('says nothing once the change is put back, or for a comment alone', async () => {
+        sent('week', 8)
+        rows.timesheet_entries = [day(8, 'Stayed to close')]
+        render(<TimesheetPage />)
+        await screen.findAllByText(/Sent /)
+        expect(screen.queryByText(/has changed since/)).not.toBeInTheDocument()
+        expect(screen.queryByText(/changed since$/)).not.toBeInTheDocument()
+    })
+
+    it('tells him to send the pay period again when the week went with it', async () => {
+        sent('period', 6)
+        rows.timesheet_entries = [day(8)]
+        render(<TimesheetPage />)
+        expect(await screen.findByText(/went out with the pay period on .*, and it has changed since\./)).toBeInTheDocument()
+        expect(screen.getByText(/Send the pay period again so the accountant has the right hours/)).toBeInTheDocument()
     })
 })

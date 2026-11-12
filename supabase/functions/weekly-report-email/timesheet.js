@@ -354,6 +354,9 @@ export function personPeriod({ people = [], entries = [], absences = [], dates =
         const weekBank = [inWeek(0, true), inWeek(1, true)]
 
         return {
+            // Who it is, so a week kept when it was sent can be laid over the
+            // same week now person by person (whatChanged).
+            id: person.id,
             name: person.full_name,
             // Somebody from another restaurant, marked under her name.
             guest: Boolean(person.guest),
@@ -381,6 +384,169 @@ export function personPeriod({ people = [], entries = [], absences = [], dates =
             unpaidParts: daysOf('unpaid', true),
         }
     }).filter(person => person.days.length > 0 || person.holiday > 0)
+}
+
+// ---------------------------------------------------------------------------
+// What each email said, and what has changed since (his, 9 November 2026)
+// ---------------------------------------------------------------------------
+//
+// Week 1 goes on its own now, for the owners' records and not for the
+// payroll, and the pay period after week 2 with the PDF. A week changed after
+// an email carried it is said in red the next time the hours go. The Hub
+// keeps a copy of each week a real email carried (timesheet_sends) and lays
+// the week as it is now over it.
+//
+// **A copy of the app's own** (src/lib/timesheet.js), like personPeriod: a
+// function only deploys what is inside its own folder. The tests run both
+// over the same rows and want the same answer, because a mail that said week
+// 1 changed while the PDF attached to it said it had not would be worse than
+// saying nothing.
+
+export const CHANGED_LOOK = { label: 'Changed after it was sent', ink: '#B91C1C', wash: '#FDECEC' }
+
+export const SEND_SHAPE = 1
+
+// round2's own formula, which this folder cannot import.
+const two = v => Math.round(num(v) * 100) / 100
+
+// One week as an email has it: personPeriod over its seven days, for the
+// people of its pay period. Only ever compared with another of these: in the
+// fourteen days a week 2 bank holiday sits in weekBank[1], here in weekBank[0].
+export function weekAsSent({ team = [], entries = [], absences = [], periodStart, weekStart }) {
+    const people = peopleFor(team || [], entries || [], periodStart, addDays(periodStart, 13))
+    const dates = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
+    return personPeriod({ people, entries: entries || [], absences: absences || [], dates })
+}
+
+const CHANGE_HOURS = ['worked', 'bankHoliday', 'holiday', 'trial', 'training']
+const CHANGE_COUNTS = ['sundays', 'sickDays', 'sickParts', 'unpaidDays', 'unpaidParts']
+export const CHANGE_FIELDS = [...CHANGE_HOURS, ...CHANGE_COUNTS]
+
+export const CHANGE_WORDS = {
+    worked: 'worked',
+    bankHoliday: 'bank holiday',
+    holiday: 'holiday',
+    trial: 'trial',
+    training: 'training',
+    sundays: ['Sunday', 'Sundays'],
+    sickDays: ['day sick', 'days sick'],
+    sickParts: ['part day sick', 'part days sick'],
+    unpaidDays: ['day unpaid', 'days unpaid'],
+    unpaidParts: ['part day unpaid', 'part days unpaid'],
+}
+
+// What a day comes to. A comment on its own is never a change. Against a
+// week 1 email only what it could show counts; against a pay period email,
+// whose PDF had every time, the times and every kind of day count too.
+function dayKey(day, scope) {
+    if (!day) return ''
+    const whole = scope === 'period'
+    const kindHours = kind => two((day.spans || []).reduce((t, s) => (s.kind === kind ? t + num(s.hours) : t), 0))
+    const counted = whole || day.away === 'holiday' || COUNTED_DAYS.includes(day.away)
+    const away = day.away && counted ? day.away : null
+    const spans = whole
+        ? (day.spans || []).map(s => [String(s.starts_at ?? '').slice(0, 8), String(s.ends_at ?? '').slice(0, 8), two(s.hours), s.kind || ''])
+        : []
+    const open = whole ? (day.open || []).map(at => String(at ?? '').slice(0, 8)) : []
+    const hours = two(day.hours)
+    const trial = kindHours('trial')
+    const training = kindHours('training')
+    if (!hours && !away && !trial && !training && !spans.length && !open.length) return ''
+    return JSON.stringify([hours, trial, training, away, Boolean(away && day.part), spans, open])
+}
+
+// What changed in one week since an email carried it. See the app's copy for
+// the rules; this one has to give the same answer.
+export function whatChanged(sent = [], now = [], { scope = 'week' } = {}) {
+    const daysOf = (was, is) => {
+        const all = [...(was?.days || []), ...(is?.days || [])]
+        const dates = [...new Set(all.map(d => d.date))].sort()
+        return dates.map(date => {
+            const a = (was?.days || []).find(d => d.date === date) || null
+            const b = (is?.days || []).find(d => d.date === date) || null
+            const before = dayKey(a, scope)
+            const after = dayKey(b, scope)
+            return before === after ? null : { date, was: before ? a : null, now: after ? b : null }
+        }).filter(Boolean)
+    }
+    const compare = (was, is) => {
+        const figures = CHANGE_FIELDS
+            .map(field => ({ field, was: two(was?.[field]), now: two(is?.[field]) }))
+            .filter(f => f.was !== f.now)
+        const days = daysOf(was, is)
+        return figures.length || (scope === 'period' && days.length) ? { figures, days } : null
+    }
+
+    const before = new Map((sent || []).map(p => [p.id, p]))
+    const after = new Map((now || []).map(p => [p.id, p]))
+    const entry = (person, diff, added, gone) => ({
+        id: person.id, name: person.name, guest: Boolean(person.guest), added, gone, ...diff,
+    })
+
+    let here = (now || []).map(person => {
+        const was = before.get(person.id) || null
+        const diff = compare(was, person)
+        return diff && entry(person, diff, !was, false)
+    }).filter(Boolean)
+    const gone = (sent || []).filter(p => !after.has(p.id)).map(person => {
+        const diff = compare(person, null)
+        return diff && entry(person, diff, false, true)
+    }).filter(Boolean)
+
+    const renamed = new Set()
+    for (const left of gone.filter(c => c.guest)) {
+        const match = here.find(c => c.added && c.guest && !compare(before.get(left.id), after.get(c.id)))
+        if (!match) continue
+        here = here.filter(c => c !== match)
+        renamed.add(left.id)
+    }
+    return [...here, ...gone.filter(c => !renamed.has(c.id))]
+}
+
+const when = stamp => Date.parse(stamp || '') || 0
+
+// Which send each week is compared with: the latest real email that carried
+// it. Held mail never is, and a week filed with no copy went before the Hub
+// kept copies (or the copy failed), so nothing can be said about it. See the
+// app's copy.
+export function earlierSends({ weeks = [], sends = [], filed = {} }) {
+    const stamps = weeks.map(w => filed?.[w.weekStart] || null)
+    const together = stamps.length === 2 && Boolean(stamps[0]) && when(stamps[0]) === when(stamps[1])
+    return weeks.map((w, index) => {
+        const mine = (sends || [])
+            .filter(s => s.week_start === w.weekStart)
+            .sort((a, b) => when(b.sent_at) - when(a.sent_at))
+        const real = mine.find(s => !s.held) || null
+        const held = mine.find(s => s.held) || null
+        const at = stamps[index]
+
+        const uncopied = at && (!real || when(at) > when(real.sent_at)) && !(held && when(held.sent_at) >= when(at))
+        if (uncopied) {
+            return { week: index, weekStart: w.weekStart, scope: together || index === 1 ? 'period' : 'week', sentAt: at, changes: null }
+        }
+        if (!real) return null
+        const known = real.shape === SEND_SHAPE && Array.isArray(real.people)
+        return {
+            week: index,
+            weekStart: w.weekStart,
+            scope: real.scope === 'week' ? 'week' : 'period',
+            sentAt: real.sent_at,
+            changes: known ? whatChanged(real.people, w.now, { scope: real.scope }) : null,
+        }
+    })
+}
+
+// Whether a date starts a pay period: the reference snapped back to its
+// Sunday, then counted in fourteens, the same as periodOf in the app. A mail
+// that says "week 1 of 2" has to be right about it.
+export function isPeriodStart(period, reference) {
+    const at = new Date(`${String(period ?? '').slice(0, 10)}T00:00:00Z`)
+    const ref = new Date(`${String(reference ?? '').slice(0, 10)}T00:00:00Z`)
+    if (isNaN(at.getTime()) || isNaN(ref.getTime())) return false
+    if (at.getUTCDay() !== 0) return false
+    const anchor = ref.getTime() - ref.getUTCDay() * 86400000
+    const days = Math.round((at.getTime() - anchor) / 86400000)
+    return ((days % 14) + 14) % 14 === 0
 }
 
 // The ten Irish public holidays, computed rather than typed, so a mail sent in
@@ -571,12 +737,20 @@ export function permissionList(team = [], today, grace = DEFAULT_GRACE) {
 // The mail
 // ---------------------------------------------------------------------------
 
+// **Two emails from one button** (his, 9 November 2026). `scope` 'week' is
+// week 1 on its own, for the owners' records and not for the payroll: one
+// table, no PDF. 'period' is the whole pay period after week 2, with the PDF,
+// as it always was. `earlier` is earlierSends for the weeks this email
+// carries, and is what decides whether it says Corrected, or that week 1
+// changed after it went, in red under the header.
 export function timesheetEmail({
     restaurantName, periodStart, people = [], test = false, comment = '', permissions = null, today = null,
-    paper = false,
+    paper = false, scope = 'period', earlier = [],
 }) {
+    const single = scope === 'week'
     const period = periodWords(periodStart)
     const weeks = [weekWords(periodStart), weekWords(addDays(periodStart, 7))]
+    const told = changeStory({ single, earlier, paper })
 
     const T = {
         week: [
@@ -598,9 +772,22 @@ export function timesheetEmail({
     const bankWeeks = [0, 1].filter(w => (
         Array.from({ length: 7 }, (_, i) => addDays(periodStart, w * 7 + i)).some(d => bankHolidayOn(d))
         || people.some(person => person.weekBank[w] > 0)
-    ))
+    )).filter(w => !single || w === 0)
 
-    const subject = `${test ? '[Test] ' : ''}Hours, ${period}${restaurantName ? `, ${restaurantName}` : ''}`
+    const what = single ? `Hours, week 1 of 2, ${weeks[0]}` : `Hours, ${period}`
+    const subject = `${test ? '[Test] ' : ''}${told.prefix}${what}${restaurantName ? `, ${restaurantName}` : ''}`
+    const preheader = told.preheader
+        ? `${told.preheader} ${single ? weeks[0] : period}`
+        : single ? `Week 1 of 2, not for the payroll yet. ${weeks[0]}` : period
+
+    const intro = single
+        ? 'Week 1 of 2, sent on its own, and not for the payroll yet. The whole pay period comes after week 2 with'
+            + ' the PDF, and it will say at the top if anything in week 1 has changed.&#32;Bank holiday and holiday'
+            + ' hours are not in Worked.'
+        : `Week 1 is ${escapeHtml(weekWords(periodStart, { year: false }))} and week 2 is
+        ${escapeHtml(weekWords(addDays(periodStart, 7), { year: false }))}.${told.same ? `&#32;${escapeHtml(told.same)}` : ''}&#32;Bank holiday and
+        holiday hours are not in Worked.${paper ? `&#32;Each person's days, with the clock times and
+        comments, are in the PDF attached.` : ''}`
 
     // Edge to edge, the same as the report: no gutter and no border round the
     // card, because on a phone those pixels are what the summary is short of.
@@ -612,32 +799,31 @@ export function timesheetEmail({
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
     style="max-width:${WIDTH}px;background:#ffffff;overflow:hidden;font-family:${FONT};color:${INK};">
 
-    ${test ? notice('#9A4A26', '#F6ECE6', 'Test', 'The hours below are real, but sending this test does not mark the pay period as sent.') : ''}
+    ${test ? notice('#9A4A26', '#F6ECE6', 'Test', `The hours below are real, but sending this test does not mark ${single ? 'week 1' : 'the pay period'} as sent.`) : ''}
 
     <tr><td style="background:${DARK};padding:20px ${SIDE}px;">
         <div class="ts-kicker" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#A9C0B2;">
             ${escapeHtml(restaurantName || 'Papi Chulo')}
         </div>
         <div class="ts-title" style="font-size:22px;font-weight:700;color:#ffffff;padding-top:4px;">
-            Hours, ${escapeHtml(period)}
+            Hours, ${escapeHtml(single ? weeks[0] : period)}
         </div>
         <div class="ts-sub" style="font-size:12px;color:#A9C0B2;padding-top:3px;">
-            Pay period, two weeks
+            ${single ? `Week 1 of 2, pay period ${escapeHtml(period)}` : 'Pay period, two weeks'}
         </div>
     </td></tr>
 
+    ${told.band ? changedBand(told.band) : ''}
+
     ${row(`<div class="ts-intro" style="font-size:14px;line-height:1.5;color:${MUTED};padding:16px 0 0;">
-        Week 1 is ${escapeHtml(weekWords(periodStart, { year: false }))} and week 2 is
-        ${escapeHtml(weekWords(addDays(periodStart, 7), { year: false }))}.&#32;Bank holiday and
-        holiday hours are not in Worked.${paper ? `&#32;Each person's days, with the clock times and
-        comments, are in the PDF attached.` : ''}
+        ${intro}
     </div>`)}
 
     ${comment ? row(`<div class="ts-comment" style="font-size:14px;line-height:1.5;color:${INK};padding:12px 14px;margin-top:14px;background:${CREAM};border-left:3px solid ${DARK};word-break:break-word;overflow-wrap:anywhere;">
         ${escapeLines(comment)}
     </div>`) : ''}
 
-    ${row(summary(people, T, bankWeeks), 'padding-top:18px;')}
+    ${row(summary(people, T, bankWeeks, { single, changed: told.marks }), 'padding-top:18px;')}
 
     ${permissions ? row(permissionsBlock(permissions, today)) : ''}
 
@@ -648,9 +834,126 @@ export function timesheetEmail({
 
 </table>
 </td></tr>
-</table>`, { subject, preheader: period, style: WIDE }))
+</table>`, { subject, preheader, style: WIDE }))
 
-    return { subject, html, text: asText({ restaurantName, period, weeks, people, T, test, comment, permissions, today, paper }) }
+    return {
+        subject,
+        html,
+        text: asText({ restaurantName, period, weeks, people, T, test, comment, permissions, today, paper, single, told, bankWeeks }),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// What changed since an earlier email, in words
+// ---------------------------------------------------------------------------
+
+// The day an email went, in Ireland, the way the mail writes a day.
+const sentDay = stamp => dayWords(dublinToday(new Date(stamp)))
+
+// One figure, as the line says it: "worked 22.00 h when sent, 26.50 h now",
+// or for a count "1 day sick when sent, none now".
+function figureWords({ field, was, now }) {
+    const words = CHANGE_WORDS[field]
+    if (typeof words === 'string') return `${words} ${hours(was)} h when sent, ${hours(now)} h now`
+    const say = n => (n ? `${n} ${n === 1 ? words[0] : words[1]}` : 'none')
+    return `${say(was)} when sent, ${say(now)} now`
+}
+
+// Which days moved it: "Thursday 5 November changed", "added", "taken away".
+function daysMoved(days) {
+    return days.map(d => `${dayWords(d.date)} ${d.was && d.now ? 'changed' : d.now ? 'added' : 'taken away'}`).join(' and ')
+}
+
+// One person's line. **Never a comment**: the email carries none (his call),
+// and the PDF has each one beside its day. `email` is what the earlier email
+// is called in the line.
+export function changeLine(change, { email = 'the week 1 email' } = {}) {
+    const days = change.days.length ? ` ${daysMoved(change.days)}.` : ''
+    const worked = side => change.figures.find(f => f.field === 'worked')?.[side] ?? 0
+    if (change.added) return `${change.name}: not in ${email}. Added since, with ${hours(worked('now'))} h worked.${days}`
+    if (change.gone) return `${change.name}: in ${email} with ${hours(worked('was'))} h worked, not in this one.${days}`
+    if (!change.figures.length) return `${change.name}:${days} The hours are the same.`
+    return `${change.name}: ${change.figures.map(figureWords).join(', and ')}.${days}`
+}
+
+// Everything this email has to say about the emails before it, worked out
+// once for the HTML and the plain text alike.
+//
+// - **Corrected**: this email goes again, the pay period after the pay period
+//   went, or week 1 after week 1 went. It says what it replaces and what
+//   changed, or that nothing did, or that the Hub kept no copy to tell.
+// - **Week 1 changed**: the pay period, after week 1 went on its own and has
+//   changed since. Red under the header, because the owners already have the
+//   hours as week 1 had them.
+// - **Week 1 the same**: one sentence in the top text.
+//
+// `marks` is who gets a red mark in the table, by id, and for which weeks.
+function changeStory({ single, earlier = [], paper }) {
+    const story = { prefix: '', preheader: '', band: null, same: '', marks: new Map(), lines: [] }
+    const mark = (changes, week) => {
+        for (const c of changes || []) {
+            if (c.gone) continue
+            story.marks.set(c.id, [...(story.marks.get(c.id) || []), week])
+        }
+    }
+    const known = (earlier || []).filter(Boolean)
+
+    const again = single
+        ? known.filter(e => e.week === 0 && e.scope === 'week')
+        : known.filter(e => e.scope === 'period')
+    if (again.length) {
+        const latest = again.reduce((a, b) => (when(b.sentAt) > when(a.sentAt) ? b : a))
+        const day = sentDay(latest.sentAt)
+        story.prefix = 'Corrected: '
+        story.preheader = 'Corrected.'
+        const title = single ? `This replaces the week 1 email sent on ${day}` : `This replaces the hours sent on ${day}`
+        if (again.some(e => !Array.isArray(e.changes))) {
+            story.band = { title, words: 'The Hub did not keep a copy of that email, so it cannot say what changed.', lines: [] }
+        } else if (again.every(e => e.changes.length === 0)) {
+            story.band = { title, words: single ? 'The hours have not changed from that email.' : `The hours have not changed from the email sent on ${day}.`, lines: [] }
+        } else {
+            for (const e of again) mark(e.changes, e.week)
+            story.band = {
+                title,
+                words: single
+                    ? 'Some hours have changed since. The table below has them as they are now.'
+                    : 'Some hours have changed since. If the payroll for this period has already been run, these are the'
+                        + ` hours to put right. The table below has them as they are now${paper ? ', and the PDF shows each change day by day' : ''}.`,
+                lines: again.flatMap(e => e.changes.map(c => `${single ? '' : `Week ${e.week + 1}, `}${changeLine(c, { email: 'that email' })}`)),
+            }
+        }
+        return story
+    }
+
+    const one = single ? null : known.find(e => e.week === 0 && e.scope === 'week')
+    if (one && Array.isArray(one.changes)) {
+        const day = sentDay(one.sentAt)
+        if (!one.changes.length) {
+            story.same = `Week 1 was sent on its own on ${day}, and it has not changed since.`
+            return story
+        }
+        mark(one.changes, 0)
+        story.prefix = 'Week 1 changed: '
+        story.preheader = 'Week 1 changed after it was sent.'
+        story.band = {
+            title: 'Week 1 changed after it was sent',
+            words: `Week 1 was sent on its own on ${day}. Some of its hours have changed since, so that email is out of`
+                + ` date. The table below has the hours as they are now${paper ? ', and the PDF shows each change day by day' : ''}.`,
+            lines: one.changes.map(c => changeLine(c)),
+        }
+    }
+    return story
+}
+
+// Red, straight under the header, full width: the one thing in the email
+// that has to be seen before the table is read.
+function changedBand({ title, words, lines = [] }) {
+    const look = CHANGED_LOOK
+    return `<tr><td style="background:${look.wash};padding:14px ${SIDE}px;border-bottom:2px solid ${look.ink};">
+        <div class="ts-notice" style="font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:${look.ink};">${escapeHtml(title)}</div>
+        <div class="ts-notice" style="font-size:13px;line-height:1.5;color:${look.ink};padding-top:4px;">${escapeHtml(words)}</div>
+        ${lines.map(line => `<div class="ts-notice" style="font-size:13px;line-height:1.5;color:${INK};padding-top:6px;word-break:break-word;overflow-wrap:anywhere;">${escapeHtml(line)}</div>`).join('')}
+    </td></tr>`
 }
 
 function notice(ink, background, title, words) {
@@ -684,12 +987,15 @@ const together = (n, word) => plural(n, word).replace(/ /g, '&nbsp;')
 //
 // Not columns of their own: they are rare, and on a phone every column more
 // floors the whole table at a width it does not have.
-function marksFor(person) {
+function marksFor(person, changedWeeks = []) {
     const out = []
     // First, because it is who she is rather than something about her days.
     // Breakable between its words like the others: "restaurant" is the widest
     // piece, measured inside the phone's 307px with a bank holiday column.
     if (person.guest) out.push(figureMark(GUEST_LOOK, 'From another', 'restaurant'))
+    // Red, for a week of hers that changed after an email carried it (his, 9
+    // November 2026), so the figure beside it is read as the new one.
+    for (const week of changedWeeks) out.push(figureMark(CHANGED_LOOK, `Week ${week + 1}`, 'changed'))
     if (person.trial > 0) out.push(figureMark(KIND_LOOK.trial, 'Trial', `${hours(person.trial)}&nbsp;h`))
     if (person.training > 0) out.push(figureMark(KIND_LOOK.training, 'Training', `${hours(person.training)}&nbsp;h`))
     if (person.sickDays > 0) out.push(figureMark(AWAY_LOOK.sick, '', together(person.sickDays, 'day'), 'sick'))
@@ -731,23 +1037,32 @@ const SHARE = 14
 // column is only there on a fortnight with a bank holiday, and only then do
 // the two weeks share a column, one above the other. The headings are what
 // floor most columns, which is why they are small and may break.
-function summary(people, T, bankWeeks) {
+//
+// **Week 1 on its own** (`single`) has no week columns: Name, Worked, Bank
+// hol. only on a week with one, Holiday and Sundays. Three figure columns
+// take a fifth of the width each, four a little less, and the name the rest.
+function summary(people, T, bankWeeks, { single = false, changed = new Map() } = {}) {
     const bank = bankWeeks.length > 0
-    const head = (label, wash) => `<th width="${SHARE}%" class="ts-th" style="font-size:9px;letter-spacing:.03em;`
+    const share = single ? (bank ? 16 : 20) : SHARE
+    const columns = single ? (bank ? 4 : 3) : 5
+    const head = (label, wash) => `<th width="${share}%" class="ts-th" style="font-size:9px;letter-spacing:.03em;`
         + `text-transform:uppercase;color:#ffffff;background:${DARK};border-bottom:3px solid ${wash};`
         + `padding:7px 2px;text-align:center;font-weight:700;">${label}</th>`
 
-    const weekHeads = bank
-        ? head('Week&nbsp;1<br />Week&nbsp;2', WASH.week[0])
-        : head('Week&nbsp;1', WASH.week[0]) + head('Week&nbsp;2', WASH.week[1])
-    const weekCells = (cell, [one, two], weight) => (bank
-        ? cell(`${hours(one)}<br />${hours(two)}`, WASH.week[0], weight)
-        : cell(hours(one), WASH.week[0], weight) + cell(hours(two), WASH.week[1], weight))
+    const weekHeads = single ? ''
+        : bank
+            ? head('Week&nbsp;1<br />Week&nbsp;2', WASH.week[0])
+            : head('Week&nbsp;1', WASH.week[0]) + head('Week&nbsp;2', WASH.week[1])
+    const weekCells = (cell, [one, two], weight) => (single ? ''
+        : bank
+            ? cell(`${hours(one)}<br />${hours(two)}`, WASH.week[0], weight)
+            : cell(hours(one), WASH.week[0], weight) + cell(hours(two), WASH.week[1], weight))
 
     // The bank holiday says which week it fell in. With one in the fortnight,
     // which is nearly always, the heading names the week; with one in each,
-    // the hours sit one above the other like the weeks beside them.
-    const bankHead = bankWeeks.length === 1
+    // the hours sit one above the other like the weeks beside them. A week
+    // on its own has only the one, so the heading says no more.
+    const bankHead = bankWeeks.length === 1 && !single
         ? `Bank hol.<br />Week&nbsp;${bankWeeks[0] + 1}`
         : 'Bank hol.'
     const dash = value => (value > 0 ? hours(value) : '&mdash;')
@@ -757,14 +1072,14 @@ function summary(people, T, bankWeeks) {
 
     // nowrap so a figure never breaks, and centred in its column the way the
     // PDF has them.
-    const fig = (value, wash, weight = '400') => `<td width="${SHARE}%" class="ts-cell" style="padding:7px 2px;`
+    const fig = (value, wash, weight = '400') => `<td width="${share}%" class="ts-cell" style="padding:7px 2px;`
         + `background:${wash};border-bottom:1px solid ${BORDER};text-align:center;white-space:nowrap;`
         + `font-size:13px;font-weight:${weight};">${value}</td>`
-    const name = `${100 - SHARE * 5}%`
+    const name = `${100 - share * columns}%`
 
     const rows = people.map(person => `<tr>
         <td width="${name}" class="ts-cell" style="padding:7px 3px 7px 6px;border-bottom:1px solid ${BORDER};font-size:13px;font-weight:600;">
-            ${escapeHtml(person.name)}${marksFor(person)}
+            ${escapeHtml(person.name)}${marksFor(person, changed.get(person.id) || [])}
         </td>
         ${weekCells(fig, person.week)}
         ${fig(hours(person.worked), WASH.worked, '700')}
@@ -773,7 +1088,7 @@ function summary(people, T, bankWeeks) {
         ${fig(person.sundays > 0 ? String(person.sundays) : '&mdash;', WASH.sundays)}
     </tr>`).join('')
 
-    const last = (value, wash, weight = '700') => `<td width="${SHARE}%" class="ts-cell" style="padding:8px 2px;`
+    const last = (value, wash, weight = '700') => `<td width="${share}%" class="ts-cell" style="padding:8px 2px;`
         + `background:${wash};border-top:2px solid ${DARK};text-align:center;white-space:nowrap;`
         + `font-size:13px;font-weight:${weight};">${value}</td>`
 
@@ -855,24 +1170,42 @@ function bankWhen(split) {
 // The plain text half, for a reader that will not draw the other one. It says
 // the same things in the same order: anybody reading this instead of the HTML
 // should not be told less.
-function asText({ restaurantName, period, weeks, people, T, test, comment, permissions, today, paper }) {
+function asText({ restaurantName, period, weeks, people, T, test, comment, permissions, today, paper, single, told, bankWeeks }) {
     const lines = []
-    if (test) lines.push('[Test] Sending this test does not mark the pay period as sent.', '')
-    lines.push(`${restaurantName || 'Papi Chulo'}, hours, ${period}`, 'Pay period, two weeks', '')
+    if (test) lines.push(`[Test] Sending this test does not mark ${single ? 'week 1' : 'the pay period'} as sent.`, '')
+    if (single) {
+        lines.push(`${restaurantName || 'Papi Chulo'}, hours, ${weeks[0]}`, `Week 1 of 2, pay period ${period}`, '')
+    } else {
+        lines.push(`${restaurantName || 'Papi Chulo'}, hours, ${period}`, 'Pay period, two weeks')
+        if (told.same) lines.push(told.same)
+        lines.push('')
+    }
+    // Plain text has no red, so the band is said in words at the top.
+    if (told.band) {
+        lines.push(`${told.band.title}.`, told.band.words, ...told.band.lines.map(line => `  ${line}`), '')
+    }
+    if (single) {
+        lines.push('Week 1 of 2, sent on its own, and not for the payroll yet. The whole pay period comes after week 2'
+            + ' with the PDF, and it will say at the top if anything in week 1 has changed.', '')
+    }
     if (comment) lines.push(...typed(comment), '')
 
+    // A week on its own has a bank holiday line only when it has one.
+    const bankWeek = single && bankWeeks.length > 0
     lines.push(
-        `Week 1 (${weeks[0]}) ${hours(T.week[0])}`,
-        `Week 2 (${weeks[1]}) ${hours(T.week[1])}`,
+        ...(single ? [] : [`Week 1 (${weeks[0]}) ${hours(T.week[0])}`, `Week 2 (${weeks[1]}) ${hours(T.week[1])}`]),
         `Worked ${hours(T.worked)} (without bank holiday hours)`,
-        `Bank holiday ${hours(T.bankHoliday)}${bankWhen(T.weekBank)}`,
+        ...(!single ? [`Bank holiday ${hours(T.bankHoliday)}${bankWhen(T.weekBank)}`]
+            : bankWeek ? [`Bank holiday ${hours(T.bankHoliday)}`] : []),
         `Holiday ${hours(T.holiday)}`,
         '',
     )
 
+    const changed = told.marks
     for (const person of people) {
         const apart = [
             person.guest ? 'from another restaurant' : '',
+            ...(changed.get(person.id) || []).map(week => `week ${week + 1} changed`),
             person.bankHoliday > 0 ? `${hours(person.bankHoliday)} on the bank holiday${bankWhen(person.weekBank)}` : '',
             person.holiday > 0 ? `${hours(person.holiday)} holiday` : '',
             person.sundays > 0 ? `${plural(person.sundays, 'Sunday')} worked` : '',
@@ -885,7 +1218,9 @@ function asText({ restaurantName, period, weeks, people, T, test, comment, permi
         ].filter(Boolean).join(', ')
 
         lines.push(
-            `${person.name}: worked ${hours(person.worked)} h (week 1 ${hours(person.week[0])}, week 2 ${hours(person.week[1])})`,
+            single
+                ? `${person.name}: worked ${hours(person.worked)} h`
+                : `${person.name}: worked ${hours(person.worked)} h (week 1 ${hours(person.week[0])}, week 2 ${hours(person.week[1])})`,
             ...(apart ? [`  ${apart}`] : []),
         )
     }

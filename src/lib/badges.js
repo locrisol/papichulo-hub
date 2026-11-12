@@ -82,7 +82,9 @@ export function salesWaiting(answer) {
 }
 
 // What the Timesheet is waiting on: 'week' while last week is not finished,
-// 'period' while the last finished pay period has not been sent, or null.
+// 'period' while the last finished pay period has not been sent, 'week1'
+// while last week was week 1 of a pay period still running and has not gone
+// on its own (his, 9 November 2026: the hours go every week now), or null.
 //
 // Last week is judged by the rows the Reports list reads and the rule it
 // applies (personWeek and unanswered): a rostered shift with nothing said
@@ -109,6 +111,11 @@ export function timesheetWaiting(answer) {
         if (period && !periodIsOver(period.start, a.today)) period = payPeriodOf(addDays(period.start, -1), pay.start)
         const filed = new Set(pay.filed || [])
         if (period && !period.weeks.every(w => filed.has(w))) return 'period'
+        // Week 1 of the pay period running now, finished and not sent.
+        const lastWeek = addDays(weekStartOf(a.today), -7)
+        const running = payPeriodOf(lastWeek, pay.start)
+        if (running && running.weeks[0] === lastWeek && !periodIsOver(running.start, a.today)
+            && !filed.has(lastWeek) && !filed.has(running.weeks[1])) return 'week1'
     }
     return null
 }
@@ -207,6 +214,7 @@ export function badgesFrom(answer, extras = {}) {
     const timesheet = timesheetWaiting(a)
     if (timesheet === 'week') dot('/costs/timesheet', 'Last week is not finished on the timesheet')
     if (timesheet === 'period') dot('/costs/timesheet', 'The last pay period has not been sent')
+    if (timesheet === 'week1') dot('/costs/timesheet', "Last week's hours have not been sent")
 
     const reports = a.role === 'owner' ? (a.unread || 0) : reportsOwed(a.reports, a.today)
     count('/reports', reports, n => (a.role === 'owner'

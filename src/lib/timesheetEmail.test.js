@@ -817,6 +817,36 @@ describe('the summary fits a phone', () => {
         }
     })
 
+    // Her and a red Week 1 changed on the same person (his, 9 November 2026),
+    // and week 1 on its own, which has fewer columns and wider shares. Both
+    // marks break between their words, so neither widens a column past
+    // "restaurant".
+    it('still fits a phone with both marks on one person, and as week 1 alone', () => {
+        const visitor = guestPerson('Camila Valenzuela')
+        const hers = [
+            shift({ employee_id: null, person_name: 'Camila Valenzuela', work_date: '2026-10-26', starts_at: '13:28:23', ends_at: '18:02:37', hours: 4.57 }),
+            shift({ employee_id: null, person_name: 'Camila Valenzuela', work_date: '2026-10-29', kind: 'training', starts_at: '09:00:00', ends_at: '21:30:00', hours: 12.5 }),
+        ]
+        const rows = [...trained, ...busy, ...hers]
+        const changes = [{ id: visitor.id, name: visitor.full_name, added: true, gone: false, figures: [{ field: 'worked', was: 0, now: 4.57 }], days: [] }]
+        const earlier = [{ week: 0, weekStart: PERIOD, scope: 'week', sentAt: '2026-11-02T10:00:00Z', changes }, null]
+        const people = personPeriod({ people: [aoife, cathal, visitor], entries: rows, absences: [], dates: DATES })
+        const html = timesheetEmail({ restaurantName: 'Point Campus', periodStart: PERIOD, people, earlier }).html
+        expect(html).toContain('Week 1&#32;<span style="white-space:nowrap;">changed</span>')
+        expect(across(html).reduce((t, n) => t + n, 0)).toBeLessThanOrEqual(36)
+
+        const alone = timesheetEmail({
+            restaurantName: 'Point Campus', periodStart: PERIOD, scope: 'week',
+            people: personPeriod({ people: [aoife, cathal, visitor], entries: rows, absences: [], dates: DATES.slice(0, 7) }),
+            earlier: [{ ...earlier[0] }],
+        }).html
+        expect(alone).toContain('Week 1&#32;<span style="white-space:nowrap;">changed</span>')
+        expect(alone).toContain('Bank hol.')
+        const widest = across(alone)
+        expect(widest).toHaveLength(5)
+        expect(widest.reduce((t, n) => t + n, 0)).toBeLessThanOrEqual(36)
+    })
+
     it('lets a mark break between its words and its figure', () => {
         const html = mail(trained)
         const marks = [...summaryOf(html).matchAll(/<span (?:class="[^"]*" )?style="display:inline-block;([^"]*)">/g)].map(m => m[1])
@@ -1097,10 +1127,10 @@ describe('permission to work', () => {
         const source = readFileSync('supabase/functions/weekly-report-email/index.ts', 'utf8')
         const rows = /from\('timesheet_entries'\)\s*\.select\('([^']*)'\)/.exec(source)
         expect(rows?.[1]).toContain('person_name')
-        expect(source).toContain('const people = peopleFor(team || [], worked || [], period, periodEnd)')
+        expect(source).toContain('const people = peopleFor(team.data || [], worked, period, periodEnd)')
         // Permission to work is our own team's: the whole team, never the
         // people on the period, who include her.
-        expect(source).toMatch(/permissions: permissionList\(team \|\| \[\]/)
+        expect(source).toMatch(/permissions: permissionList\(team\.data \|\| \[\]/)
     })
 
     it('reads the permissions and the restaurant\'s grace in the function', () => {
