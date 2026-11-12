@@ -17,10 +17,10 @@
 // So a week is three sources laid over each other: what the roster planned,
 // what the absences say, and what the clock recorded.
 
-import { weekDates, todayISO } from '@/lib/dates'
+import { weekDates, todayISO, addDays, dayLabel } from '@/lib/dates'
 import { num, round2 } from '@/lib/format'
 import { spanHours, toSeconds } from '@/lib/clock'
-import { toMinutes, shiftMinutes } from '@/lib/roster'
+import { toMinutes, shiftMinutes, fmtHours } from '@/lib/roster'
 import {
     wholeDayOn, absenceDays, holidayHoursInWeek, isPartDay, kindOf as absenceKind,
 } from '@/lib/absences'
@@ -937,6 +937,10 @@ export function personPeriod({
         const weekBank = [inWeek(0, true), inWeek(1, true)]
 
         return {
+            // Who it is, so a week kept when it was sent can be laid over the
+            // same week now person by person (whatChanged). A name is no use
+            // for that: names change, and two people can share one.
+            id: person.id,
             name: person.full_name,
             // Somebody from another restaurant, marked as such on the paper.
             guest: Boolean(person.guest),
@@ -956,4 +960,245 @@ export function personPeriod({
             unpaidParts: daysOf('unpaid', true),
         }
     }).filter(person => person.days.length > 0 || person.holiday > 0)
+}
+
+// ---------------------------------------------------------------------------
+// What each email of the hours said, and what has changed since
+// ---------------------------------------------------------------------------
+//
+// **The hours go every week now** (his, 9 November 2026): week 1 on its own,
+// for the owners' records and not for the payroll, then the whole pay period
+// with the PDF once week 2 has finished. A week changed after it went is "a
+// bigger issue", because the owners already have it for their reports, so it
+// is shown in red the next time the hours go: on the Timesheet straight away,
+// in the send dialog, in the email and above all in the PDF.
+//
+// The Hub keeps a copy of each week a real email carried (timesheet_sends,
+// written by the function after it has sent) and lays the week as it is now
+// over it. **Copied into the function** with personPeriod, and the tests run
+// the two copies over the same rows.
+
+// The red the report's "This replaces the report sent earlier" band uses, and
+// PERMISSION_LOOK.not's: the one colour in these papers that means stop.
+export const CHANGED_LOOK = { label: 'Changed after it was sent', ink: '#B91C1C', wash: '#FDECEC' }
+
+// Which shape a kept copy is in. A later change to what personPeriod returns
+// bumps it, and a copy in a shape this code does not know is never compared:
+// it is said to have been sent, and nothing more.
+export const SEND_SHAPE = 1
+
+// One week as an email has it: personPeriod over its seven days, for the
+// people of its pay period (peopleFor: the team employed at some point in the
+// fortnight, and anybody from another restaurant with a row in it). The same
+// people the pay period email lists, so week 1 now and week 1 in the pay
+// period email are the same figures.
+//
+// **Only ever compare this with this.** In the fourteen day personPeriod a
+// bank holiday in week 2 sits in weekBank[1]; here it is weekBank[0]. Laying
+// one over the other would show red for a figure that never moved.
+export function weekAsSent({ team = [], entries = [], absences = [], periodStart, weekStart }) {
+    const people = peopleFor(team || [], entries || [], periodStart, addDays(periodStart, 13))
+    return personPeriod({ people, entries: entries || [], absences: absences || [], dates: weekDates(weekStart) })
+}
+
+// The figures an email shows for each person, in the order a line says them.
+const CHANGE_HOURS = ['worked', 'bankHoliday', 'holiday', 'trial', 'training']
+const CHANGE_COUNTS = ['sundays', 'sickDays', 'sickParts', 'unpaidDays', 'unpaidParts']
+export const CHANGE_FIELDS = [...CHANGE_HOURS, ...CHANGE_COUNTS]
+
+// How each figure is said: an hours figure by its name, a count by what it
+// counts, one and many.
+export const CHANGE_WORDS = {
+    worked: 'worked',
+    bankHoliday: 'bank holiday',
+    holiday: 'holiday',
+    trial: 'trial',
+    training: 'training',
+    sundays: ['Sunday', 'Sundays'],
+    sickDays: ['day sick', 'days sick'],
+    sickParts: ['part day sick', 'part days sick'],
+    unpaidDays: ['day unpaid', 'days unpaid'],
+    unpaidParts: ['part day unpaid', 'part days unpaid'],
+}
+
+export const isHoursField = field => CHANGE_HOURS.includes(field)
+
+// What a day comes to, for telling whether it changed. Nothing on it, or only
+// a comment, comes to nothing: **a comment on its own is never a change** (his
+// call, 9 November 2026), and the week 1 email carries none.
+//
+// Against a week 1 email only what that email could show counts: the hours,
+// trial and training, and a day of holiday, sick or unpaid leave. Its clock
+// times and a day off were never in it. Against a pay period email, whose PDF
+// had every time and every day, they count too.
+function dayKey(day, scope) {
+    if (!day) return ''
+    const whole = scope === 'period'
+    const kindHours = kind => round2((day.spans || []).reduce((t, s) => (s.kind === kind ? t + num(s.hours) : t), 0))
+    const counted = whole || day.away === 'holiday' || COUNTED_DAYS.includes(day.away)
+    const away = day.away && counted ? day.away : null
+    const spans = whole
+        ? (day.spans || []).map(s => [String(s.starts_at ?? '').slice(0, 8), String(s.ends_at ?? '').slice(0, 8), round2(s.hours), s.kind || ''])
+        : []
+    const open = whole ? (day.open || []).map(at => String(at ?? '').slice(0, 8)) : []
+    const hours = round2(day.hours)
+    const trial = kindHours('trial')
+    const training = kindHours('training')
+    if (!hours && !away && !trial && !training && !spans.length && !open.length) return ''
+    return JSON.stringify([hours, trial, training, away, Boolean(away && day.part), spans, open])
+}
+
+// What changed in one week since an email carried it.
+//
+// `sent` and `now` are both weekAsSent, the copy kept and the week today.
+// People are matched by id. Each figure is taken to two places first, because
+// hours added up in floats never give the same float twice. **Net, not
+// edits**: a change and a change back is no change, the same as the report.
+//
+// A person is listed when a figure the email showed is different, or, against
+// a pay period email, when a day is. Never for a comment, and never for a new
+// name: a rename is not hours. Somebody from another restaurant is matched by
+// her name (her id is made from it), so a rename reads as one gone and one
+// added; a pair with exactly the same days is taken as the rename it is.
+//
+// Returns the people who changed, in today's order, then anybody who is gone:
+// { id, name, guest, added, gone, figures: [{ field, was, now }],
+//   days: [{ date, was, now }] }, a day's was or now null where there was
+// nothing. The days say which day moved a figure.
+export function whatChanged(sent = [], now = [], { scope = 'week' } = {}) {
+    const daysOf = (was, is) => {
+        const all = [...(was?.days || []), ...(is?.days || [])]
+        const dates = [...new Set(all.map(d => d.date))].sort()
+        return dates.map(date => {
+            const a = (was?.days || []).find(d => d.date === date) || null
+            const b = (is?.days || []).find(d => d.date === date) || null
+            const before = dayKey(a, scope)
+            const after = dayKey(b, scope)
+            return before === after ? null : { date, was: before ? a : null, now: after ? b : null }
+        }).filter(Boolean)
+    }
+    const compare = (was, is) => {
+        const figures = CHANGE_FIELDS
+            .map(field => ({ field, was: round2(was?.[field]), now: round2(is?.[field]) }))
+            .filter(f => f.was !== f.now)
+        const days = daysOf(was, is)
+        return figures.length || (scope === 'period' && days.length) ? { figures, days } : null
+    }
+
+    const before = new Map((sent || []).map(p => [p.id, p]))
+    const after = new Map((now || []).map(p => [p.id, p]))
+    const entry = (person, diff, added, gone) => ({
+        id: person.id, name: person.name, guest: Boolean(person.guest), added, gone, ...diff,
+    })
+
+    let here = (now || []).map(person => {
+        const was = before.get(person.id) || null
+        const diff = compare(was, person)
+        return diff && entry(person, diff, !was, false)
+    }).filter(Boolean)
+    const gone = (sent || []).filter(p => !after.has(p.id)).map(person => {
+        const diff = compare(person, null)
+        return diff && entry(person, diff, false, true)
+    }).filter(Boolean)
+
+    const renamed = new Set()
+    for (const left of gone.filter(c => c.guest)) {
+        const match = here.find(c => c.added && c.guest && !compare(before.get(left.id), after.get(c.id)))
+        if (!match) continue
+        here = here.filter(c => c !== match)
+        renamed.add(left.id)
+    }
+    return [...here, ...gone.filter(c => !renamed.has(c.id))]
+}
+
+const when = stamp => Date.parse(stamp || '') || 0
+
+// Which send each week of a pay period is compared with, and what changed
+// since: the latest real email that carried it (his call, 9 November 2026).
+//
+// `weeks` is [{ weekStart, now }] with now from weekAsSent, `sends` the kept
+// copies for those weeks (any order), `filed` each week's filed_at.
+//
+// - **Held mail is never what a week is compared with.** While mail is held
+//   (MAIL_REDIRECT_TO) nobody on the list got it, and the next real email
+//   must not say it replaces one they never had. A week filed only by held
+//   mail reads as never sent.
+// - **A week filed with no copy** was sent by the Hub before it kept copies,
+//   or the copy could not be written: it went, and nothing can be said about
+//   what changed. A pay period sent before copies stamped both weeks with one
+//   time, so the same stamp on both is a pay period; a stamp on week 1 alone
+//   is week 1 on its own.
+//
+// One entry a week, null for a week never sent: { week, weekStart, scope,
+// sentAt, changes }, changes null when there is no copy to compare with.
+export function earlierSends({ weeks = [], sends = [], filed = {} }) {
+    const stamps = weeks.map(w => filed?.[w.weekStart] || null)
+    const together = stamps.length === 2 && Boolean(stamps[0]) && when(stamps[0]) === when(stamps[1])
+    return weeks.map((w, index) => {
+        const mine = (sends || [])
+            .filter(s => s.week_start === w.weekStart)
+            .sort((a, b) => when(b.sent_at) - when(a.sent_at))
+        const real = mine.find(s => !s.held) || null
+        const held = mine.find(s => s.held) || null
+        const at = stamps[index]
+
+        const uncopied = at && (!real || when(at) > when(real.sent_at)) && !(held && when(held.sent_at) >= when(at))
+        if (uncopied) {
+            return { week: index, weekStart: w.weekStart, scope: together || index === 1 ? 'period' : 'week', sentAt: at, changes: null }
+        }
+        if (!real) return null
+        const known = real.shape === SEND_SHAPE && Array.isArray(real.people)
+        return {
+            week: index,
+            weekStart: w.weekStart,
+            scope: real.scope === 'week' ? 'week' : 'period',
+            sentAt: real.sent_at,
+            changes: known ? whatChanged(real.people, w.now, { scope: real.scope }) : null,
+        }
+    })
+}
+
+// Which email the Send button makes (his call, 9 November 2026): week 1 on
+// its own while the pay period is running and has not gone, the whole pay
+// period once it has finished or gone. No new button and no choice to make.
+// Week 2 filed is the pay period gone: a week 1 send never files week 2, and
+// every pay period send, before copies and after, has.
+export function sendScope({ period, today, filed = {} }) {
+    if (!period) return 'period'
+    if (filed?.[period.weeks[1]]) return 'period'
+    return today > period.end ? 'period' : 'week'
+}
+
+// Week 1 can only really go once its Saturday is behind us. Sent halfway
+// through, every shift after the send would come back in red as added.
+export function weekOneOver(period, today) {
+    return Boolean(period) && today > addDays(period.start, 6)
+}
+
+// One person's change, short enough for a notice on screen: "Camila: worked
+// 22.00 h then, 26.50 h now (Thu 5 Nov)." The email and the PDF say it at
+// more length, in their own words.
+export function changeShort(change) {
+    const days = change.days.length ? ` (${change.days.map(d => dayLabel(d.date)).join(', ')})` : ''
+    if (change.added) return `${change.name}: added since${days}.`
+    if (change.gone) return `${change.name}: taken off since${days}.`
+    if (!change.figures.length) return `${change.name}: times changed, the hours are the same${days}.`
+    const say = ({ field, was, now }) => {
+        const words = CHANGE_WORDS[field]
+        if (typeof words === 'string') return `${words} ${fmtHours(was)} h then, ${fmtHours(now)} h now`
+        const count = n => (n ? `${n} ${n === 1 ? words[0] : words[1]}` : 'none')
+        return `${count(was)} then, ${count(now)} now`
+    }
+    return `${change.name}: ${change.figures.map(say).join(', ')}${days}.`
+}
+
+// Who changed, by name with the day: "Camila (Thu 5 Nov), Cathal Nolan (Wed
+// 4 Nov) and Niamh Walsh (added)". For the Timesheet's red line.
+export function changeNames(changes = []) {
+    const one = c => {
+        const said = c.added ? 'added' : c.gone ? 'taken off' : c.days.map(d => dayLabel(d.date)).join(', ')
+        return said ? `${c.name} (${said})` : c.name
+    }
+    const all = changes.map(one)
+    return all.length > 1 ? `${all.slice(0, -1).join(', ')} and ${all[all.length - 1]}` : all[0] || ''
 }

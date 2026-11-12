@@ -35,7 +35,18 @@ describe('what the browser is allowed to post', () => {
             comment: 'Two corrections',
             test: false,
             attachment: null,
+            scope: 'period',
         })
+    })
+
+    // Week 1 on its own (his, 9 November 2026) goes with no paper, whatever
+    // the screen hands over: the PDF is the pay period's.
+    it('says week 1 and uploads nothing for it', async () => {
+        invoke.mockResolvedValue({ data: { sent: 2 }, error: null })
+        const aPdf = new Blob(['%PDF-1.4'], { type: 'application/pdf' })
+        await sendTimesheet({ periodStart: '2026-11-01', restaurantId: 'r1', scope: 'week', pdf: aPdf })
+        expect(upload).not.toHaveBeenCalled()
+        expect(invoke.mock.calls[0][1].body).toMatchObject({ scope: 'week', attachment: null })
     })
 
     it('says when it is a rehearsal', async () => {
@@ -75,6 +86,21 @@ describe('what to tell somebody afterwards', () => {
     it('says a test is a test, and that nothing has been filed', () => {
         expect(sentWords({ sent: 2 }, { test: true }))
             .toBe('Test sent to 2 addresses. The pay period is not marked as sent.')
+    })
+
+    it('says week 1 went, and that a test of it is not marked as sent', () => {
+        expect(sentWords({ sent: 3 }, { scope: 'week' })).toBe('Week 1 sent to 3 addresses.')
+        expect(sentWords({ sent: 3 }, { test: true, scope: 'week' }))
+            .toBe('Test sent to 3 addresses. Week 1 is not marked as sent.')
+    })
+
+    // Without a copy a change later cannot be shown in red, which is worth
+    // knowing at the moment of sending.
+    it('says when the Hub could not keep a copy of what was sent', () => {
+        expect(sentWords({ sent: 2, kept: false }))
+            .toBe('Sent to 2 addresses. The Hub could not keep a copy of what was sent, so a change to it later cannot be shown in red.')
+        expect(sentWords({ sent: 2, kept: true })).toBe('Sent to 2 addresses.')
+        expect(sentWords({ sent: 2, kept: false }, { test: true })).not.toContain('copy')
     })
 
     it('says plainly when there is nobody to send to', () => {
