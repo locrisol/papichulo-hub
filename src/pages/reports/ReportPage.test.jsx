@@ -422,3 +422,38 @@ describe('the save line', () => {
         expect(screen.queryByText('Not saved')).toBeNull()
     })
 })
+
+// His, 13 November 2026: a comment about the costs under the cost figures,
+// before What was on. The Sales and costs box the card always had, moved up.
+describe('the comment on the costs', () => {
+    const costs = (status, items = []) => ({
+        ...HEAD,
+        status,
+        ...(status === 'published' ? {
+            send_count: 1, sent_to: ['owner@example.ie'], published_at: `${WEEK}T09:00:00Z`,
+            figures: { net: 1000, gross: 1100, version: 6, paperwork: { food: SUMMED, permits: SUMMED } },
+        } : {}),
+        report_sections: [
+            { id: 's0', key: 'sales_costs', title: 'Sales and costs', sort_order: 0, report_items: items },
+        ],
+    })
+    // Where one node falls against another in the page.
+    const before = (a, b) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
+
+    it('puts the box under the costs and before What was on on a draft', async () => {
+        answer({ head: costs('draft') })
+        renderReport()
+        const box = await screen.findByRole('textbox', { name: 'Add a comment' })
+        expect(before(screen.getByText(/These are the same figures as on the Cost dashboard/), box)).toBe(true)
+        expect(before(box, screen.getByRole('heading', { name: 'What was on' }))).toBe(true)
+    })
+
+    it('shows it as text in the same place once the report is sent', async () => {
+        const said = { id: 'c1', kind: 'comment', note: 'Chicken went up again', sort_order: 0, meta: {} }
+        answer({ head: costs('published', [said]) })
+        renderReport()
+        const text = await screen.findByText('Chicken went up again')
+        expect(screen.queryByRole('textbox', { name: 'Add a comment' })).toBeNull()
+        expect(before(text, screen.getByRole('heading', { name: 'What was on' }))).toBe(true)
+    })
+})

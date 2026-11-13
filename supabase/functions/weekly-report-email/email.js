@@ -87,9 +87,10 @@ export const SIDE = 16
 // It also means no layout in this file may depend on a space between two tags,
 // because that space is about to be removed.
 //
-// The mail goes as base64 now (see mime.js), which never reaches that encoder,
-// so the =20 cannot happen any more. tidy() stays all the same, because every
-// layout in this file was measured with it.
+// The mail goes as quoted printable again, written by our own encoder in
+// mime.js rather than the library's, so the =20 cannot come back from there.
+// tidy() stays all the same, because every layout in this file was measured
+// with it.
 export function tidy(html) {
     return html
         .replace(/>\s+</g, '><')
@@ -609,8 +610,11 @@ function salesAndCosts(section, f, charts) {
         line({ label: 'Cost of sales', value: withShare(f.costOfSales, f.costOfSalesPct), total: true }),
     ])
         + (targetNote ? note(`Current targets: ${targetNote}.`) : '')
-        + whatWasOn(f.whatWasOn)
+        // The comments on the costs, straight under them and before What was
+        // on (his, 13 November 2026). The same box the card always had, so a
+        // report sent again draws the way its Hub page does now.
         + comments(sectionComments(section))
+        + whatWasOn(f.whatWasOn)
 }
 
 // The edge of each line under a day, by what it is: a show next door, another
@@ -1992,15 +1996,22 @@ export function reportEmail({
 // cannot carry.
 //
 // Every line is trimmed on the way out, for the same reason the HTML is sent as
-// one line: a space at the end of a line arrived as "=20" while the mail went
-// as quoted printable. It goes as base64 now (see mime.js), and the trimming
-// stays along with tidy().
+// one line: a space at the end of a line arrived as "=20" when the library
+// wrote the quoted printable. Our own encoder in mime.js writes it now, and the
+// trimming stays along with tidy().
 
 // Typed text, one line of the copy for each line somebody typed, indented to
 // sit under whatever it belongs to.
 function typed(text, indent) {
     if (!text) return []
     return String(text).split(/\r?\n/).map(l => indent + l)
+}
+
+// A section's own comments, one after another, the way the plain text says
+// them wherever they go.
+function commentLines(section) {
+    return sectionComments(section)
+        .flatMap(comment => typed(`${comment.label ? comment.label + '. ' : ''}${noteWords(comment)}`, '  '))
 }
 
 function plainText({ report, restaurant, sections, figures: f, publisher, appUrl, changes, isTest, correction }) {
@@ -2038,6 +2049,8 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
             out.push(share('Labour', f.labour, f.labourPct))
             out.push(share('Packaging and cleaning', f.packaging, f.packagingPct))
             out.push(share('Cost of sales', f.costOfSales, f.costOfSalesPct))
+            // The comments on the costs before What was on, as in the HTML.
+            out.push(...commentLines(section))
             out.push(...whatWasOnText(f.whatWasOn))
         } else if (section.key === 'profit_loss') {
             const shown = overheadsToShow(of(section, 'overhead'))
@@ -2159,9 +2172,8 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
             }
         }
 
-        for (const comment of sectionComments(section)) {
-            out.push(...typed(`${comment.label ? comment.label + '. ' : ''}${noteWords(comment)}`, '  '))
-        }
+        // Sales and costs has said its comments already, under the costs.
+        if (section.key !== 'sales_costs') out.push(...commentLines(section))
         out.push('')
     }
 
