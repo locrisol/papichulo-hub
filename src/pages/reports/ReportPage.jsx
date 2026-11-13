@@ -1488,21 +1488,15 @@ export default function ReportPage() {
                         />
                     </div>
 
-                    <p className="text-xs text-muted mt-4 mb-4">
+                    <p className="text-xs text-muted mt-4">
                         Food and packaging come from the invoices dated in this week, and labour from the hours
                         entered for it. These are the same figures as on the Cost dashboard.
                     </p>
 
-                    <WeekChart rows={history} {...specs.sales} />
-                    <figcaption className="text-xs text-muted mt-2">{specs.sales.caption}</figcaption>
-
-                    <h3 className="text-xs font-bold text-muted uppercase tracking-wider mt-6 mb-2">What was on</h3>
-                    <ReportWhatWasOn
-                        data={report.status === 'published' ? figures.whatWasOn : liveOn.data}
-                        error={liveOn.error}
-                        published={report.status === 'published'}
-                    />
-
+                    {/* What the costs need saying, straight under them (his,
+                        13 November 2026), and so in the mail before What was
+                        on. The box the card always had, moved up: both
+                        comments ever written in it were about the costs. */}
                     {salesCosts && (
                         <ReportComments
                             items={commentsOf(salesCosts)}
@@ -1512,6 +1506,18 @@ export default function ReportPage() {
                             onRemove={removeItem}
                         />
                     )}
+
+                    <div className="mt-4">
+                        <WeekChart rows={history} {...specs.sales} />
+                        <figcaption className="text-xs text-muted mt-2">{specs.sales.caption}</figcaption>
+                    </div>
+
+                    <h3 className="text-xs font-bold text-muted uppercase tracking-wider mt-6 mb-2">What was on</h3>
+                    <ReportWhatWasOn
+                        data={report.status === 'published' ? figures.whatWasOn : liveOn.data}
+                        error={liveOn.error}
+                        published={report.status === 'published'}
+                    />
                 </div>
             </div>
 

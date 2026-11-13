@@ -2470,6 +2470,78 @@ describe('what was on', () => {
     })
 })
 
+// His, 13 November 2026: a comment about the costs under the cost figures,
+// so in the mail it comes before What was on. It is the Sales and costs box the
+// report always had, moved up, on every report.
+describe('the comment on the costs', () => {
+    const said = 'Food is up because of the <b>chicken</b> price & two catering jobs'
+    const costs = (items = [{ kind: 'comment', note: said, sort_order: 0 }]) => [
+        { ...sections[0], items },
+        ...sections.slice(1),
+    ]
+    const mail = reportEmail({ ...base, sections: costs() })
+    const at = text => mail.html.indexOf(text)
+
+    it('comes after the cost figures and the targets, before What was on', () => {
+        expect(at('chicken')).toBeGreaterThan(at('Cost of sales'))
+        expect(at('chicken')).toBeGreaterThan(at('Current targets'))
+        expect(at('chicken')).toBeLessThan(at('>What was on<'))
+    })
+
+    it('says it once in the plain text, between Cost of sales and What was on', () => {
+        const lines = mail.text.split('\n')
+        const found = lines.filter(l => l.includes('chicken'))
+        expect(found).toHaveLength(1)
+        const where = lines.indexOf(found[0])
+        expect(where).toBeGreaterThan(lines.findIndex(l => l.startsWith('  Cost of sales:')))
+        expect(where).toBeLessThan(lines.findIndex(l => l.startsWith('  What was on:')))
+    })
+
+    // Typed text, never markup: an older plain note goes through escapeLines.
+    it('is escaped', () => {
+        expect(mail.html).not.toContain('<b>chicken</b>')
+        expect(mail.html).toContain('&lt;b&gt;chicken&lt;/b&gt; price &amp; two')
+    })
+
+    it('keeps the lines it was typed on', () => {
+        const two = reportEmail({ ...base, sections: costs([{ kind: 'comment', note: 'First line\nSecond line', sort_order: 0 }]) })
+        expect(two.html).toContain('First line<br />Second line')
+        expect(two.text).toContain('  First line\n  Second line')
+    })
+
+    // A long link pasted in must never widen the mail past a phone.
+    it('lets a long link break', () => {
+        const link = `https://example.test/${'a'.repeat(120)}`
+        const long = reportEmail({ ...base, sections: costs([{ kind: 'comment', note: link, sort_order: 0 }]) })
+        const cell = long.html.slice(long.html.lastIndexOf('<td', long.html.indexOf(link)), long.html.indexOf(link))
+        expect(cell).toContain('word-break:break-word')
+        expect(cell).toContain('overflow-wrap:anywhere')
+    })
+
+    // Nothing written, nothing drawn, and nothing else moves.
+    it('draws nothing when there is no comment', () => {
+        const none = reportEmail({ ...base, sections: costs([]) })
+        expect(none.html).toBe(reportEmail(base).html)
+        expect(none.text).toBe(reportEmail(base).text)
+    })
+
+    // A comment with a key is a platform's note and stays on its platform.
+    it('leaves a platform note out', () => {
+        const keyed = reportEmail({ ...base, sections: costs([{ kind: 'comment', key: 'p1', note: 'Only for Deliveroo', sort_order: 0 }]) })
+        expect(keyed.html).not.toContain('Only for Deliveroo')
+    })
+
+    // A report with no What was on (frozen before it existed) still has its
+    // comment under the costs.
+    it('still sits under the costs on a report with no What was on', () => {
+        const older = { ...figures }
+        delete older.whatWasOn
+        const old = reportEmail({ ...base, figures: older, sections: costs() })
+        expect(old.html.indexOf('chicken')).toBeGreaterThan(old.html.indexOf('Cost of sales'))
+        expect(old.html).not.toContain('>What was on<')
+    })
+})
+
 // His pick of 1 November 2026: the full card on the Hub, the short one in the
 // mail, the same average week priced at two dates.
 describe('our usual shop in the mail', () => {
