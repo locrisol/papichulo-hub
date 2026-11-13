@@ -1721,10 +1721,14 @@ CREATE TABLE IF NOT EXISTS "public"."weekly_reports" (
     "sent_to" "text"[],
     "charts" "jsonb",
     "previous_figures" "jsonb",
-    CONSTRAINT "weekly_reports_status_check" CHECK (("status" = ANY (ARRAY['draft'::"text", 'published'::"text"])))
+    "weeks" smallint DEFAULT 1 NOT NULL,
+    CONSTRAINT "weekly_reports_four_weeks_on_the_count" CHECK ((("weeks" = 1) OR (("week_start" >= '2026-10-04'::"date") AND ((("week_start" - '2026-10-04'::"date") % 28) = 0)))),
+    CONSTRAINT "weekly_reports_status_check" CHECK (("status" = ANY (ARRAY['draft'::"text", 'published'::"text"]))),
+    CONSTRAINT "weekly_reports_weeks_known" CHECK (("weeks" = ANY (ARRAY[1, 4])))
 );
 
-COMMENT ON TABLE "public"."weekly_reports" IS 'One weekly report per restaurant per week. The week is identified by its Sunday, the same as everywhere else in this system.';
+COMMENT ON TABLE "public"."weekly_reports" IS 'One weekly report per restaurant per week, and one monthly report per four weeks (weeks = 4). Each is identified by its first Sunday, the same as everywhere else in this system.';
+COMMENT ON COLUMN "public"."weekly_reports"."weeks" IS '1 for a week. 4 for a monthly report: the four weekly reports from week_start, as they were sent, added up. Made as a draft by make_four_week_reports once all four are published, in blocks of 28 days from 4 October 2026, and never sent by the Hub on its own (his, 13 November 2026).';
 COMMENT ON COLUMN "public"."weekly_reports"."charts" IS 'The chart pictures drawn when it was published, as {key: url}. Frozen for the same reason the figures are: the mail points at these, and a mail opened in six months has to show the week it was about rather than the week as it looks now.';
 COMMENT ON COLUMN "public"."weekly_reports"."figures" IS 'The sales, cost and profit figures as they stood when the report was published. Null while it is a draft, because a draft reads them live. Frozen on publish so an invoice entered afterwards cannot change what people were already sent.';
 COMMENT ON COLUMN "public"."weekly_reports"."previous_figures" IS 'What the last mail said, kept so the next one can say what changed. A correction that only says "this replaces Monday''s" makes everybody read the whole thing again looking for the difference; this is what lets it say "food was 31.2%, it is 29.8%" instead. Null until a report has been sent twice.';
@@ -1748,7 +1752,7 @@ COMMENT ON COLUMN "public"."weekly_reports"."sent_to" IS 'The addresses this rep
 ALTER TABLE ONLY "public"."weekly_reports"
     ADD CONSTRAINT "weekly_reports_pkey" PRIMARY KEY ("id");
 ALTER TABLE ONLY "public"."weekly_reports"
-    ADD CONSTRAINT "weekly_reports_restaurant_id_week_start_key" UNIQUE ("restaurant_id", "week_start");
+    ADD CONSTRAINT "weekly_reports_restaurant_id_week_start_weeks_key" UNIQUE ("restaurant_id", "week_start", "weeks");
 
 CREATE TABLE IF NOT EXISTS "public"."report_sections" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
@@ -2564,6 +2568,78 @@ begin
   return new;
 end;
 $$;
+
+-- The monthly report (his, 13 November 2026): a draft for every block of four
+-- weeks whose four weekly reports are all published and whose 28 days are
+-- over in Ireland, made once and never sent from here. Blocks are counted in
+-- 28 days from Sunday 4 October 2026, so weeks 40 to 43 are one and 44 to 47
+-- the next, and the turn of the year changes nothing.
+--
+-- `since` is the first block it may make. The trigger leaves it at 1 November,
+-- his "starting with week 44": October is made only when somebody asks for it
+-- by name, select public.make_four_week_reports(null, date '2026-10-04').
+--
+-- Its sections are the last monthly report's, so a section he adds stays, or
+-- the four money ones the first time. Its figures are added up by the report
+-- page from the four weeks as they were sent, never here.
+create or replace function public.make_four_week_reports(only_restaurant uuid default null, since date default date '2026-11-01')
+    returns integer
+    language plpgsql security definer set search_path to 'public', 'pg_temp' as $$
+declare
+  today date := (now() at time zone 'Europe/Dublin')::date;
+  made integer := 0;
+  due record;
+  new_id uuid;
+  before uuid;
+begin
+  for due in
+    select w.restaurant_id,
+           date '2026-10-04' + ((w.week_start - date '2026-10-04') / 28) * 28 as first_week
+      from public.weekly_reports w
+     where w.weeks = 1 and w.status = 'published'
+       and (only_restaurant is null or w.restaurant_id = only_restaurant)
+       and w.week_start >= date '2026-10-04'
+       and (w.week_start - date '2026-10-04') % 7 = 0
+     group by 1, 2
+    having count(*) = 4
+  loop
+    continue when due.first_week < since or due.first_week + 27 >= today;
+
+    new_id := null;
+    insert into public.weekly_reports (restaurant_id, week_start, weeks)
+    values (due.restaurant_id, due.first_week, 4)
+    on conflict (restaurant_id, week_start, weeks) do nothing
+    returning id into new_id;
+    continue when new_id is null;
+
+    before := null;
+    select p.id into before from public.weekly_reports p
+     where p.restaurant_id = due.restaurant_id and p.weeks = 4 and p.week_start < due.first_week
+     order by p.week_start desc limit 1;
+
+    if before is not null then
+      insert into public.report_sections (report_id, key, title, sort_order)
+      select new_id, s.key, s.title, s.sort_order from public.report_sections s where s.report_id = before;
+    else
+      insert into public.report_sections (report_id, key, title, sort_order) values
+        (new_id, 'sales_costs', 'Sales and costs', 0),
+        (new_id, 'profit_loss', 'Profit and loss', 1),
+        (new_id, 'online_sales', 'Online sales', 2),
+        (new_id, 'corporate_sales', 'Corporate sales', 3);
+    end if;
+    made := made + 1;
+  end loop;
+  return made;
+end $$;
+
+-- A weekly report sent may be the fourth of its block. Security definer like
+-- the checklist guards, so it fires for a manager who may not call it.
+create or replace function public.four_weeks_when_sent() returns trigger
+    language plpgsql security definer set search_path to 'public', 'pg_temp' as $$
+begin
+  perform public.make_four_week_reports(new.restaurant_id);
+  return null;
+end $$;
 
 -- A count reopened is one staff can read again, so what it was worth when it
 -- closed goes as it opens, however it is reopened. Closing works it out again.
@@ -4597,7 +4673,7 @@ begin
     if my_role in ('store_manager', 'super_admin') then
         out := out || jsonb_build_object(
             'reports', coalesce((
-                select jsonb_agg(jsonb_build_object('week_start', w.week_start, 'status', w.status,
+                select jsonb_agg(jsonb_build_object('week_start', w.week_start, 'weeks', w.weeks, 'status', w.status,
                                                     'send_count', w.send_count, 'sent_to', w.sent_to))
                   from public.weekly_reports w
                  where w.restaurant_id = restaurant and w.week_start >= this_week - 7 * 10), '[]'::jsonb),
@@ -4722,6 +4798,8 @@ COMMENT ON FUNCTION "public"."checklist_photos_removed"("names" "text"[]) IS 'Ma
 COMMENT ON FUNCTION "public"."finish_checklist_round"("round" "uuid") IS 'Ends a round when everything on its list is ticked. Returns whether it did. Safe to call any time: it does nothing to a round with something left or one already ended.';
 COMMENT ON FUNCTION "public"."record_change"() IS 'Trigger that writes one change_log row per insert, update or delete. An insert stores no payload: the row it made is still there to look at. Columns in audit_ignored_columns() do not count as a change.';
 COMMENT ON FUNCTION "public"."record_logins"() IS 'Copies sign ins out of auth.sessions and keeps their last seen up to date. Idempotent: safe to run by hand, on a schedule, or twice at once.';
+comment on function public.make_four_week_reports(uuid, date) is 'Makes the monthly report draft for every block of four weeks whose four weekly reports are published and whose 28 days are over in Ireland, from the block starting on since (1 November 2026 by default). Idempotent, never sends anything. Run by the trigger on a weekly report sent; October 2026 only by hand, with since 2026-10-04.';
+comment on function public.four_weeks_when_sent() is 'After a weekly report is published: makes its block''s monthly report draft if this was the last of the four.';
 COMMENT ON FUNCTION "public"."switch_off_leavers"() IS 'Switches off the login of anybody whose last day (employees.ended_on) has passed, in Irish time. Run every night by the cron job switch-off-leavers. Never an owner or a super admin, never switches anybody back on. Idempotent: safe to run by hand.';
 COMMENT ON FUNCTION "public"."row_label"("tbl" "text", "row_data" "jsonb") IS 'Which row this is, in words, worked out from its own columns and its foreign keys. Never raises: a label that cannot be built comes back null.';
 COMMENT ON FUNCTION "public"."sales_platform_key"() IS 'Gives a platform added without a key its name as the key, the way every platform already there got one, and keeps the key as it was on every update.';
@@ -4820,6 +4898,10 @@ revoke all on function "public"."stock_take_reopened_clears_value"() from public
 grant execute on function "public"."stock_take_reopened_clears_value"() to service_role;
 revoke all on function "public"."switch_off_leavers"() from public, anon, authenticated, service_role;
 grant execute on function "public"."switch_off_leavers"() to service_role;
+revoke all on function public.make_four_week_reports(uuid, date) from public, anon, authenticated, service_role;
+grant execute on function public.make_four_week_reports(uuid, date) to service_role;
+revoke all on function public.four_weeks_when_sent() from public, anon, authenticated, service_role;
+grant execute on function public.four_weeks_when_sent() to service_role;
 revoke all on function "public"."unwatched_tables"() from public, anon, authenticated, service_role;
 grant execute on function "public"."unwatched_tables"() to authenticated, service_role;
 revoke all on function "public"."watch_changes"() from public, anon, authenticated, service_role;
@@ -6403,6 +6485,7 @@ CREATE OR REPLACE TRIGGER "places_updated_at" BEFORE UPDATE ON "public"."places"
 CREATE OR REPLACE TRIGGER "shift_requests_transition_guard" BEFORE INSERT OR UPDATE ON "public"."shift_requests" FOR EACH ROW EXECUTE FUNCTION "public"."shift_request_transition_guard"();
 CREATE OR REPLACE TRIGGER "absences_answer_guard" BEFORE UPDATE ON "public"."absences" FOR EACH ROW EXECUTE FUNCTION "public"."absence_answer_guard"();
 CREATE OR REPLACE TRIGGER "weekly_reports_touch" BEFORE UPDATE ON "public"."weekly_reports" FOR EACH ROW EXECUTE FUNCTION "public"."touch_weekly_report"();
+CREATE OR REPLACE TRIGGER "weekly_reports_make_four_weeks" AFTER INSERT OR UPDATE OF "status" ON "public"."weekly_reports" FOR EACH ROW WHEN ((("new"."weeks" = 1) AND ("new"."status" = 'published'::"text"))) EXECUTE FUNCTION "public"."four_weeks_when_sent"();
 CREATE OR REPLACE TRIGGER "checklists_updated_at" BEFORE UPDATE ON "public"."checklists" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "checklist_tasks_guard" BEFORE INSERT OR UPDATE ON "public"."checklist_tasks" FOR EACH ROW EXECUTE FUNCTION "public"."checklist_task_guard"();
 CREATE OR REPLACE TRIGGER "checklist_tasks_moved" AFTER UPDATE OF "category_id" ON "public"."checklist_tasks" FOR EACH ROW WHEN ((("new"."parent_id" IS NULL) AND ("old"."category_id" IS DISTINCT FROM "new"."category_id"))) EXECUTE FUNCTION "public"."checklist_task_moved"();

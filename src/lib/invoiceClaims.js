@@ -778,11 +778,14 @@ export function fromEarlierWeeks(claims, invoices, weekStart) {
 // closes a week; a draft can still take the money. One row a week, so it is
 // a few dozen a year and never needs paging.
 //
-// `publishedOn` is the day each went out, for claimReopened.
+// `publishedOn` is the day each went out, for claimReopened. Weekly reports
+// only: a monthly report shares its first week's Sunday, and its send date
+// is not that week's (weeks, 13 November 2026).
 export async function sentWeeks(db, restaurantId) {
     const { data, error } = await db.from('weekly_reports')
         .select('week_start, published_at')
         .eq('restaurant_id', restaurantId)
+        .eq('weeks', 1)
         .eq('status', 'published')
     if (error) return { weeks: null, publishedOn: null, error }
     const rows = data || []

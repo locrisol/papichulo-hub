@@ -817,8 +817,10 @@ describe('somebody from another restaurant', () => {
         expect(body).toContain("'id', t.id, 'employee_id', t.employee_id, 'person_name', t.person_name, 'work_date', t.work_date,")
     })
 
-    it('is the same badge function in the migration as in schema.sql', () => {
-        const migration = readFileSync('supabase/migrations/014_from_another_restaurant.sql', 'utf8')
+    // The newest migration that carries my_badges is what live runs. 016 (the
+    // monthly report) copied it again, from 014's.
+    it('is the same badge function in the newest migration as in schema.sql', () => {
+        const migration = readFileSync('supabase/migrations/016_monthly_reports.sql', 'utf8')
         const take = text => {
             const at = text.indexOf('create or replace function public.my_badges(restaurant uuid) returns jsonb')
             return text.slice(at, text.indexOf('end $$;', at))
@@ -867,5 +869,62 @@ describe('what each email of the hours said', () => {
         const words = "'When this week''s hours were last mailed out, on their own (week 1) or in the pay period. It moves on every real send. What each email said is in timesheet_sends.'"
         expect(schema).toContain(`COMMENT ON COLUMN "public"."timesheet_weeks"."filed_at" IS ${words};`)
         expect(migration).toContain(`comment on column public.timesheet_weeks.filed_at is ${words};`)
+    })
+})
+
+// Migration 016, 13 November 2026.
+describe('the monthly report', () => {
+    const start = schema.indexOf('CREATE TABLE IF NOT EXISTS "public"."weekly_reports" (')
+    const table = schema.slice(start, schema.indexOf(');', start))
+    const migration = readFileSync('supabase/migrations/016_monthly_reports.sql', 'utf8')
+    const fnOf = text => {
+        const at = text.indexOf('create or replace function public.make_four_week_reports')
+        return text.slice(at, text.indexOf('end $$;', at))
+    }
+
+    it('says how many weeks a report covers, last, where 016 puts it on live', () => {
+        expect(table).toMatch(/"previous_figures" "jsonb",\s+"weeks" smallint DEFAULT 1 NOT NULL,/)
+        expect(table).toContain('CONSTRAINT "weekly_reports_weeks_known" CHECK (("weeks" = ANY (ARRAY[1, 4])))')
+        expect(table).toContain(`("week_start" >= '2026-10-04'::"date") AND ((("week_start" - '2026-10-04'::"date") % 28) = 0)`)
+    })
+
+    // A week and its four weeks share a Sunday.
+    it('keeps one report a week and one a block, on the same Sunday', () => {
+        expect(schema).toContain('ADD CONSTRAINT "weekly_reports_restaurant_id_week_start_weeks_key" UNIQUE ("restaurant_id", "week_start", "weeks");')
+        expect(schema).not.toContain('"weekly_reports_restaurant_id_week_start_key"')
+    })
+
+    // His "starting with week 44", and only completed weeks.
+    it('makes a block only from 1 November, once its four weeks are sent and its days are over', () => {
+        const fn = fnOf(schema)
+        expect(fn).toContain("since date default date '2026-11-01'")
+        expect(fn).toContain("w.weeks = 1 and w.status = 'published'")
+        expect(fn).toContain('having count(*) = 4')
+        expect(fn).toContain('due.first_week + 27 >= today')
+        expect(fn).toContain("(now() at time zone 'Europe/Dublin')::date")
+        expect(fn).toContain('on conflict (restaurant_id, week_start, weeks) do nothing')
+        expect(fn).not.toMatch(/current_date|net\.http|weekly-report-email/)
+    })
+
+    it('makes it when a weekly report is sent, and never on its own row', () => {
+        expect(schema).toContain(`CREATE OR REPLACE TRIGGER "weekly_reports_make_four_weeks" AFTER INSERT OR UPDATE OF "status" ON "public"."weekly_reports" FOR EACH ROW WHEN ((("new"."weeks" = 1) AND ("new"."status" = 'published'::"text"))) EXECUTE FUNCTION "public"."four_weeks_when_sent"();`)
+    })
+
+    it('lets nobody signed in call it', () => {
+        for (const fn of ['make_four_week_reports(uuid, date)', 'four_weeks_when_sent()']) {
+            expect(schema).toContain(`revoke all on function public.${fn} from public, anon, authenticated, service_role;`)
+            expect(schema).toContain(`grant execute on function public.${fn} to service_role;`)
+            expect(migration).toContain(`revoke all on function public.${fn} from public, anon, authenticated, service_role;`)
+        }
+    })
+
+    it('is the same function in the migration as in schema.sql', () => {
+        expect(fnOf(migration)).toBe(fnOf(schema))
+    })
+
+    it('tells the badge how many weeks each report covers', () => {
+        const at = schema.indexOf('create or replace function public.my_badges(restaurant uuid) returns jsonb')
+        const body = schema.slice(at, schema.indexOf('end $$;', at))
+        expect(body).toContain("jsonb_build_object('week_start', w.week_start, 'weeks', w.weeks, 'status', w.status,")
     })
 })

@@ -31,8 +31,8 @@ export default function ReportSectionHead({ section, canEdit, onRename, onRemove
     async function drop() {
         const ok = await confirm({
             title: `Remove ${section.title}?`,
-            message: 'Everything written in it this week goes with it, and it stops appearing on the weeks '
-                + 'after. Reports already sent keep their own copy and do not change.',
+            message: 'Everything written in it on this report goes with it, and it stops appearing on the '
+                + 'reports after. Reports already sent keep their own copy and do not change.',
             confirmLabel: 'Remove',
         })
         if (ok) onRemove(section.id)
