@@ -911,9 +911,13 @@ function platformBlock(section, platform, rated, f) {
         }
     }
 
-    const mark = platform.mark || platform.colour || MUTED
-    const remark = noteFor(section, platform.id)
+    return platformFrame(platform, rows, noteFor(section, platform.id))
+}
 
+// A platform's block: its colour down the edge, its name and what it took on
+// top, its lines under, and the note on it last. Weekly and monthly alike.
+function platformFrame(platform, rows, remark) {
+    const mark = platform.mark || platform.colour || MUTED
     return `<tr><td style="padding:14px ${SIDE}px 0;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
             style="border:1px solid ${BORDER};border-left:5px solid ${mark};border-radius:10px;">
@@ -950,7 +954,7 @@ function platformSection(section, f, charts, bucket, chartKey) {
     const platforms = platformsIn(f, bucket)
 
     const body = platforms.length === 0
-        ? note('No platforms were tracked for this week.')
+        ? note(f.fourWeeks ? 'No platforms took anything in these four weeks.' : 'No platforms were tracked for this week.')
         : platforms.map(p => platformBlock(section, p, bucket === 'online_platform', f)).join('')
 
     // Under the band, the same as sales and costs. A section that opens with
@@ -1221,10 +1225,109 @@ function cleaningSection(section, f) {
 
 // A section somebody added. It has no figures of its own, only what was written
 // in it, which is the whole reason it exists.
-function ownSection(section) {
+function ownSection(section, monthly = false) {
     const written = sectionComments(section)
     return heading(section.title, section.number)
-        + (written.length ? comments(written) : note('Nothing written this week.'))
+        + (written.length ? comments(written) : note(monthly ? 'Nothing written for these four weeks.' : 'Nothing written this week.'))
+}
+
+// ---------------------------------------------------------------------------
+// The monthly report (his, 13 November 2026)
+// ---------------------------------------------------------------------------
+//
+// Four weekly reports as they were sent, added up by the app and frozen with
+// a fourWeeks part saying what it was made from. Told apart from a week by
+// that part alone, never by a column read here: a function deployed before the
+// column existed would fail every send asking for it. Money only (his pick):
+// Sales and costs, Profit and loss, Online, Corporate and his own sections.
+
+// "Weeks 44 to 47", by date, so across a year end it is "Weeks 52 to 3".
+export function monthlyWeeksWords(start) {
+    return `Weeks ${weekNumber(start)} to ${weekNumber(addDaysUtc(start, 21))}`
+}
+
+function addDaysUtc(iso, days) {
+    const d = new Date(String(iso).slice(0, 10) + 'T00:00:00Z')
+    return new Date(d.getTime() + days * 86400000).toISOString().slice(0, 10)
+}
+
+// Every fixed overhead over the four weeks, the delivery, and what was left.
+function monthlyProfitLoss(section, f, charts) {
+    const t = f.targets || {}
+    const rows = (f.fourWeeks.overheads || [])
+        .filter(o => num(o.amount) !== 0)
+        .map(o => line({ label: escapeHtml(o.label || 'Overhead'), value: money(o.amount), indent: true }))
+    rows.push(line({ label: 'Fixed overheads', value: money(f.standing), total: true }))
+
+    const d = deliverySummary(f)
+    const days = statementDays(f)
+    const deliveryRow = figures([line({
+        label: 'Third party delivery costs'
+            + (d.rate != null ? small(`of ${money(d.taken)} online sales${salesDays(f) ? `, ${salesDays(f)}` : ''}`) : '')
+            + (days ? small(escapeHtml(days)) : ''),
+        value: d.rate != null ? withShare(d.total, d.rate, costTone(d.rate, t.delivery)) : money(d.total),
+        total: true,
+    })])
+
+    return heading(section.title, section.number)
+        + figures(rows)
+        + deliveryRow
+        + chart(charts.delivery, '', 'What each platform kept of its sales, week by week.')
+        + bigFigure({
+            label: 'Net earnings',
+            value: money(f.earnings),
+            share: pct(f.earningsPct),
+            tone: num(f.earnings) < 0 ? RED : GREEN,
+        })
+        + note('Net earnings is net sales minus food, labour, packaging and cleaning, fixed '
+            + 'overheads and third party delivery costs, over the four weeks.')
+        + chart(charts.earnings, 'Net earnings, week by week.')
+        + comments(sectionComments(section))
+}
+
+// Each online platform over the four weeks: what it took and cost, its rating
+// at the end against where it started, its reviews by stars and its refunds.
+// Counts and money only; each week's notes are in its own report.
+function monthlyOnline(section, f, charts) {
+    const platforms = platformsIn(f, 'online_platform')
+    const summary = new Map((f.fourWeeks.online || []).map(o => [o.id, o]))
+    const change = 'font-size:13px;font-weight:400;'
+
+    const blocks = platforms.map(platform => {
+        const s = summary.get(platform.id)
+        const r = s?.rating
+        const moved = r?.from != null && r?.to != null && Math.abs(r.to - r.from) >= 0.005
+        const rows = [
+            line({ inset: 14,
+                label: 'Delivery cost' + (platform.rate != null ? small(`${pct(platform.rate)} of what it took`) : ''),
+                value: money(platform.cost),
+            }),
+            line({ inset: 14,
+                label: 'Overall rating',
+                value: r?.to == null
+                    ? `<span style="color:${MUTED};">not recorded</span>`
+                    : `${num(r.to).toFixed(1)}&nbsp;out&nbsp;of&nbsp;5`
+                        + (moved
+                            ? `<br /><span style="color:${r.to > r.from ? GREEN : RED};${change}">(${r.to > r.from ? 'up' : 'down'} from ${num(r.from).toFixed(1)})</span>`
+                            : ''),
+            }),
+            subHeading(s?.reviews?.count ? `Reviews: ${s.reviews.count}` : 'Reviews: none'),
+            ...Object.entries(s?.reviews?.stars || {})
+                .sort((a, b) => num(b[0]) - num(a[0]))
+                .map(([n, count]) => line({ inset: 14,
+                    label: `<span style="color:${starColour(n)};font-size:16px;">${stars(n)}</span>&nbsp;&times;&nbsp;${count}`,
+                    value: '',
+                })),
+            subHeading(s?.refunds?.count ? `Refunds: ${s.refunds.count}` : 'Refunds: none'),
+            ...(s?.refunds?.count ? [line({ inset: 14, label: 'Refunded', value: negative(s.refunds.money), tone: RED })] : []),
+        ]
+        return platformFrame(platform, rows, noteFor(section, platform.id))
+    })
+
+    return heading(section.title, section.number)
+        + chart(charts.online, '', 'What each platform took, week by week.')
+        + (blocks.length ? blocks.join('') : note('No online platforms took anything in these four weeks.'))
+        + comments(sectionComments(section))
 }
 
 // ---------------------------------------------------------------------------
@@ -1891,12 +1994,16 @@ export function reportEmail({
     const weekStart = report.week_start
     const place = restaurant?.name || 'The restaurant'
     const correction = correctionSend(report, isTest)
+    const monthly = Boolean(f.fourWeeks)
+    const lastDay = monthly ? addDaysUtc(weekStart, 27) : weekEnd(weekStart)
 
     // Which restaurant it is comes from the sender name, which is why the
     // subject does not carry it as well.
     const subject = (isTest ? '[Test] ' : correction ? 'Corrected: ' : '')
-        + `Weekly Summary Report Week ${weekNumber(weekStart)}`
-        + ` (${slashDate(weekStart)} to ${slashDate(weekEnd(weekStart))})`
+        + (monthly
+            ? `Monthly Summary Report ${monthlyWeeksWords(weekStart)}`
+            : `Weekly Summary Report Week ${weekNumber(weekStart)}`)
+        + ` (${slashDate(weekStart)} to ${slashDate(lastDay)})`
 
     let bands = ''
     if (isTest) {
@@ -1925,6 +2032,12 @@ export function reportEmail({
         support_actions: s => supportActions(s, weekStart),
         cleaning: s => cleaningSection(s, f),
     }
+    if (monthly) {
+        known.profit_loss = s => monthlyProfitLoss(s, f, charts)
+        known.online_sales = s => monthlyOnline(s, f, charts)
+        known.marketing = s => ownSection(s, true)
+    }
+    const own = s => ownSection(s, monthly)
 
     // Numbered in the order they are drawn, which is the order they are read
     // and the only order that could be meant. Counted here rather than inside
@@ -1932,7 +2045,7 @@ export function reportEmail({
     // across every mail the same isolate renders.
     const body = [...sections]
         .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
-        .map((section, i) => (known[section.key] || ownSection)({ ...section, number: i + 1 }))
+        .map((section, i) => (known[section.key] || own)({ ...section, number: i + 1 }))
         .join('')
 
     // align and bgcolor say again what the style already says, for classic
@@ -1946,8 +2059,9 @@ export function reportEmail({
             </td></tr>
         </table>
         <div style="margin-top:12px;font-size:13px;line-height:1.55;color:${MUTED};text-align:center;">
-            Easier to read there. You can put this week beside any other one, follow a figure back to
-            the invoices or the hours behind it, and see every report that has gone out.
+            ${monthly
+        ? 'Easier to read there, with each of the four weeks a click away.'
+        : 'Easier to read there. You can put this week beside any other one, follow a figure back to the invoices or the hours behind it, and see every report that has gone out.'}
         </div>`
         : ''
 
@@ -1958,9 +2072,11 @@ export function reportEmail({
     style="width:100%;max-width:${WIDTH}px;background:#ffffff;overflow:hidden;font-family:${FONT};">
 
     <tr><td style="background:${DARK};padding:22px ${SIDE}px;color:#ffffff;">
-        <div style="font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:#A9C0B2;">Weekly summary report</div>
+        <div style="font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:#A9C0B2;">${monthly ? 'Monthly' : 'Weekly'} summary report</div>
         <div style="margin-top:5px;font-size:22px;font-weight:700;color:#ffffff;">${escapeHtml(place)}</div>
-        <div style="margin-top:4px;font-size:14px;color:#D1D5D3;">Week ${weekNumber(weekStart)}&nbsp;&middot;&nbsp;${weekWords(weekStart)}</div>
+        <div style="margin-top:4px;font-size:14px;color:#D1D5D3;">${monthly
+        ? `${monthlyWeeksWords(weekStart)}&nbsp;&middot;&nbsp;${fmtDate(weekStart)} to ${fmtDate(lastDay)}`
+        : `Week ${weekNumber(weekStart)}&nbsp;&middot;&nbsp;${weekWords(weekStart)}`}</div>
     </td></tr>
 
     <tr><td style="padding:18px 0 26px;">
@@ -2020,8 +2136,14 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
     const share = (label, amount, rate) =>
         `  ${label}: ${rate == null ? money(amount) : `${pct(rate)} (${money(amount)})`}`
 
-    out.push(`${restaurant?.name || 'The restaurant'} weekly summary report`)
-    out.push(`Week ${weekNumber(weekStart)} (${slashDate(weekStart)} to ${slashDate(weekEnd(weekStart))})`)
+    const monthly = Boolean(f.fourWeeks)
+    if (monthly) {
+        out.push(`${restaurant?.name || 'The restaurant'} monthly summary report`)
+        out.push(`${monthlyWeeksWords(weekStart)} (${slashDate(weekStart)} to ${slashDate(addDaysUtc(weekStart, 27))})`)
+    } else {
+        out.push(`${restaurant?.name || 'The restaurant'} weekly summary report`)
+        out.push(`Week ${weekNumber(weekStart)} (${slashDate(weekStart)} to ${slashDate(weekEnd(weekStart))})`)
+    }
     out.push('')
 
     if (isTest) {
@@ -2052,6 +2174,33 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
             // The comments on the costs before What was on, as in the HTML.
             out.push(...commentLines(section))
             out.push(...whatWasOnText(f.whatWasOn))
+        } else if (section.key === 'profit_loss' && monthly) {
+            for (const o of (f.fourWeeks.overheads || []).filter(o => num(o.amount) !== 0)) {
+                out.push(share(o.label || 'Overhead', o.amount, null))
+            }
+            out.push(share('Fixed overheads', f.standing, null))
+            const d = deliverySummary(f)
+            out.push(share('Third party delivery costs', d.total, d.rate)
+                + (d.rate != null ? ` of ${money(d.taken)} online sales${salesDays(f) ? `, ${salesDays(f)}` : ''}` : ''))
+            if (statementDays(f)) out.push(`    ${statementDays(f)}`)
+            out.push(share('Net earnings', f.earnings, f.earningsPct))
+        } else if (section.key === 'online_sales' && monthly) {
+            const summary = new Map((f.fourWeeks.online || []).map(o => [o.id, o]))
+            for (const platform of platformsIn(f, 'online_platform')) {
+                const s = summary.get(platform.id)
+                const r = s?.rating
+                out.push(share(platform.name, platform.taken, null))
+                out.push(`    Delivery cost: ${money(platform.cost)}${platform.rate != null ? ` (${pct(platform.rate)} of what it took)` : ''}`)
+                out.push('    Overall rating: ' + (r?.to == null ? 'not recorded'
+                    : `${num(r.to).toFixed(1)} out of 5`
+                        + (r.from != null && Math.abs(r.to - r.from) >= 0.005 ? ` (${r.to > r.from ? 'up' : 'down'} from ${num(r.from).toFixed(1)})` : '')))
+                out.push(`    Reviews: ${s?.reviews?.count || 'none'}`)
+                for (const [n, count] of Object.entries(s?.reviews?.stars || {}).sort((a, b) => num(b[0]) - num(a[0]))) {
+                    out.push(`      ${n} star x ${count}`)
+                }
+                out.push(`    Refunds: ${s?.refunds?.count ? `${s.refunds.count}, ${negative(s.refunds.money)}` : 'none'}`)
+                out.push(...typed(noteWords(noteFor(section, platform.id)), '    '))
+            }
         } else if (section.key === 'profit_loss') {
             const shown = overheadsToShow(of(section, 'overhead'))
             for (const item of shown.lines) {
@@ -2179,7 +2328,9 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
 
     if (appUrl) {
         out.push(`Open it in the Hub: ${reportLink(appUrl, report)}`)
-        out.push('Easier to read there, and you can put this week beside any other one.')
+        out.push(monthly
+            ? 'Easier to read there, with each of the four weeks a click away.'
+            : 'Easier to read there, and you can put this week beside any other one.')
     }
     if (publisher) out.push(`Written up by ${publisher}. Replies come straight back to them.`)
 

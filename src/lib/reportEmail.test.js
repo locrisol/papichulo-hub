@@ -2595,3 +2595,107 @@ describe('our usual shop in the mail', () => {
         expect(lines.filter(l => l.length > 16)).toEqual([])
     })
 })
+
+// The monthly report (his, 13 November 2026): four weekly reports as they were
+// sent, added up by the app and frozen with a fourWeeks part. The mail tells
+// it from a week by that part alone.
+describe('the monthly report', () => {
+    const fourWeeks = {
+        shape: 1, start: '2026-11-01', targetsChanged: false,
+        weeks: [{ week_start: '2026-11-01', send_count: 1, published_at: '2026-11-10T09:00:00Z', version: 6 }],
+        overheads: [
+            { key: 'rent', label: 'Rent', amount: 6000 },
+            { key: 'gas', label: 'Gas and electric', amount: 1408 },
+            { key: 'old', label: 'Old lease', amount: 0 },
+        ],
+        online: [
+            { id: 'p1', rating: { from: 4.4, to: 4.7 }, reviews: { count: 4, stars: { 5: 3, 2: 1 } }, refunds: { count: 2, money: 19.75 } },
+            { id: 'p2', rating: { from: 4.8, to: 4.8 }, reviews: { count: 0, stars: {} }, refunds: { count: 0, money: 0 } },
+        ],
+    }
+    const monthFigures = {
+        ...figures,
+        net: 56667.05, gross: 61930.98, earnings: 6274.35, earningsPct: 11.07, standing: 7408, deliveryTotal: 3477.11,
+        statement: { from: '2026-11-02', to: '2026-11-29', words: 'Monday 2 November to Sunday 29 November' },
+        platforms: [
+            { id: 'p1', name: 'Deliveroo', bucket: 'online_platform', taken: 4800.12, cost: 1807.95, rate: 37.66, colour: '#145C86', mark: '#1A6E9E' },
+            { id: 'p2', name: 'Uber Eats', bucket: 'online_platform', taken: 3035, cost: 1013.47, rate: 33.39, colour: '#1B6B43', mark: '#248C58' },
+            { id: 'p3', name: 'Feedr', bucket: 'catering', taken: 4618.11 },
+        ],
+        whatWasOn: undefined, prices: undefined, cleaning: undefined, paperwork: undefined,
+        fourWeeks,
+    }
+    const monthSections = [
+        { key: 'sales_costs', title: 'Sales and costs', sort_order: 0, items: [{ kind: 'comment', note: 'Food up on chicken', sort_order: 0 }] },
+        { key: 'profit_loss', title: 'Profit and loss', sort_order: 1, items: [] },
+        { key: 'online_sales', title: 'Online sales', sort_order: 2, items: [] },
+        { key: 'corporate_sales', title: 'Corporate sales', sort_order: 3, items: [{ kind: 'comment', key: 'p3', note: 'Ancestry every Tuesday', sort_order: 0 }] },
+        { key: 'own_one', title: 'Things to look at', sort_order: 4, items: [] },
+    ]
+    const month = (over = {}) => reportEmail({
+        ...base, report: { week_start: '2026-11-01', send_count: 0 }, sections: monthSections, figures: monthFigures, ...over,
+    })
+    const mail = month()
+
+    it('says Monthly with its weeks and dates, in the subject and the header', () => {
+        expect(mail.subject).toBe('Monthly Summary Report Weeks 44 to 47 (01/11/2026 to 28/11/2026)')
+        expect(mail.html).toContain('Monthly summary report')
+        expect(mail.html).toContain('Weeks 44 to 47&nbsp;&middot;&nbsp;1 Nov 2026 to 28 Nov 2026')
+        expect(month({ isTest: true }).subject).toBe('[Test] Monthly Summary Report Weeks 44 to 47 (01/11/2026 to 28/11/2026)')
+        expect(mail.text.split('\n').slice(0, 2)).toEqual(['Point Campus monthly summary report', 'Weeks 44 to 47 (01/11/2026 to 28/11/2026)'])
+    })
+
+    // weekNumber starts again each January.
+    it('names a block across the year end by its dates', () => {
+        const turn = month({ report: { week_start: '2026-12-27', send_count: 0 } })
+        expect(turn.subject).toBe('Monthly Summary Report Weeks 52 to 3 (27/12/2026 to 23/01/2027)')
+    })
+
+    it('lists every fixed overhead over the four weeks, and leaves out a line at nought', () => {
+        expect(mail.html).toContain('Rent')
+        expect(mail.html).toContain('€6,000.00')
+        expect(mail.html).toContain('Gas and electric')
+        expect(mail.html).not.toContain('Old lease')
+        expect(mail.html).toContain('€7,408.00')
+        expect(mail.text).toContain('  Rent: €6,000.00')
+        expect(mail.text).toContain('  Net earnings: 11.07% (€6,274.35)')
+    })
+
+    it('gives each online platform its cost, its rating against the start, and its reviews and refunds counted', () => {
+        expect(mail.html).toMatch(/4\.7&nbsp;out&nbsp;of&nbsp;5<br \/><span[^>]*>\(up from 4\.4\)/)
+        expect(mail.html).toContain('Reviews: 4')
+        expect(mail.html).toContain('Refunds: 2')
+        expect(mail.html).toContain('Reviews: none')
+        expect(mail.html).toContain('€1,807.95')
+        expect(mail.text).toContain('    Overall rating: 4.7 out of 5 (up from 4.4)')
+        expect(mail.text).toContain('      5 star x 3')
+    })
+
+    it('keeps the corporate notes and the comment on the costs', () => {
+        expect(mail.html).toContain('Ancestry every Tuesday')
+        expect(mail.html.indexOf('Food up on chicken')).toBeGreaterThan(mail.html.indexOf('Cost of sales'))
+    })
+
+    it('says nothing about a week, or about prices, cleaning or what was on', () => {
+        for (const part of [mail.html, mail.text]) {
+            expect(part).not.toMatch(/this week|last week|Weekly|What was on|Cleaning|Prices and suppliers/)
+        }
+        expect(mail.html).toContain('Nothing written for these four weeks.')
+        expect(mail.html).toContain('Easier to read there, with each of the four weeks a click away.')
+    })
+
+    it('fits a phone and stays well inside the size Gmail cuts at', () => {
+        const lines = [...mail.html.matchAll(/<td[^>]*white-space:nowrap[^>]*>([\s\S]*?)<\/td>/g)]
+            .flatMap(m => m[1].split(/<br\s*\/?>/))
+            .map(l => l.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&[a-z0-9#]+;/gi, 'x').trim())
+        expect(lines.length).toBeGreaterThan(5)
+        expect(lines.filter(l => l.length > 16)).toEqual([])
+        expect(mail.html.length).toBeLessThan(75000)
+        expect(mail.html).not.toMatch(/[\u2013\u2014]/)
+    })
+
+    // A week's mail is the same as it was.
+    it('leaves a weekly report alone', () => {
+        expect(reportEmail(base).subject).toBe('Weekly Summary Report Week 35 (30/08/2026 to 05/09/2026)')
+    })
+})

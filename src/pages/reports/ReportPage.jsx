@@ -5,17 +5,16 @@ import { useAuth } from '@/context/auth'
 import { useConfirm } from '@/context/confirm'
 import { useRecountBadges } from '@/context/badges'
 import { useRestaurant } from '@/context/restaurant'
-import { fmtMoney, num, fmtPct } from '@/lib/format'
+import { fmtMoney, num } from '@/lib/format'
 import { addDays, weekNumber, weekRange, todayISO, shortDate } from '@/lib/dates'
 import { bankHolidaysBetween, BANK_HOLIDAY_INK } from '@/lib/bankHolidays'
-import { resolveTarget, statusFor } from '@/lib/costTargets'
+import { resolveTarget } from '@/lib/costTargets'
 import { friendlyError } from '@/lib/errors'
 import {
-    card, cardHeader, badge, secondaryButton, primaryButton, fieldClass, pageTitle, pageSubtitle,
+    card, cardHeader, badge, pageTitle, pageSubtitle,
 } from '@/lib/controlStyles'
-import { useState as useLocalState } from 'react'
 import {
-    reportFigures, sectionKey, publishCheck, figuresToStore, platformShare,
+    reportFigures, sectionKey, publishCheck, figuresToStore, platformShare, DEFAULT_SECTIONS,
     deliveryRows, deliveryBlockers, deliveryCost, platformTaken, statementWeek, statementWords, platformWeeks,
     isCorrection, mailMissing,
     platformsUnsaid,
@@ -30,6 +29,7 @@ import { chartSpecs, deliveryRates, accountColour } from '@/lib/reportCharts'
 import { brandFor } from '@/lib/platformBrand'
 import { uploadCharts, sendReport, sendWords } from '@/lib/reportMail'
 import ReportComments from '@/components/reports/ReportComments'
+import CostCard from '@/components/reports/CostCard'
 import ReportProfitLoss from '@/components/reports/ReportProfitLoss'
 import ReportOnlineSales from '@/components/reports/ReportOnlineSales'
 import ReportCorporateSales from '@/components/reports/ReportCorporateSales'
@@ -42,15 +42,17 @@ import ReportWhatWasOn from '@/components/reports/ReportWhatWasOn'
 import useCleaningWeek from '@/components/reports/useCleaningWeek'
 import ReportCleaning from '@/components/reports/ReportCleaning'
 import { claimActions } from '@/lib/invoiceReport'
+import { fourWeeksOf, fourWeekFigures, fourWeekBlockers, fourWeekWarnings, weeksToday } from '@/lib/fourWeekReport'
+import MonthlyReport from '@/components/reports/MonthlyReport'
 import { costFromPaid, movePreferred, canJoinCodes, canBuyBoth } from '@/lib/priceEvents'
 import { claimKind } from '@/lib/invoiceClaims'
 import { readToDecide } from '@/lib/invoiceReview'
 import ReportSectionHead from '@/components/reports/ReportSectionHead'
+import AddSection from '@/components/reports/AddSection'
 import Recipients from '@/components/reports/Recipients'
 import PublishBar from '@/components/reports/PublishBar'
 import WeekChart from '@/components/reports/WeekChart'
 import BackButton from '@/components/ui/BackButton'
-import AddButton from '@/components/ui/AddButton'
 import { can, RESTAURANT_CONFIG } from '@/lib/access'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import SaveState from '@/components/ui/SaveState'
@@ -68,44 +70,8 @@ import SaveState from '@/components/ui/SaveState'
 // a quiet toggle.
 
 
-// Green at or under target, amber within two points over, red beyond. The same
-// bands the cost dashboard uses, so a week does not look different depending on
-// which screen you read it on.
-// The report prints percentages to two decimals where the rest of the app
-// uses one, because a food cost moving by a tenth of a point is a real
-// change on a week's turnover and gets argued about.
-const pct2 = v => fmtPct(v, 2)
-
 // What stands in the way of Publish while part of the week could not be read.
 const UNREAD = 'Part of this week could not be loaded, so it cannot be sent yet. Reload the page to try again.'
-
-const TONE = {
-    green: 'text-green-700',
-    amber: 'text-amber-700',
-    red: 'text-red-600',
-    none: 'text-muted',
-}
-
-// One cost, as a share of net sales.
-//
-// Net first and large, gross second and small. Net is what the business
-// actually keeps and is what every target is set against; gross is here only
-// because the report has always quoted it and people read for it.
-function CostCard({ label, figure, share, shareGross, target }) {
-    const tone = TONE[statusFor(share, target)]
-
-    return (
-        <div className="rounded-lg border border-border bg-app-bg p-4">
-            <p className="text-xs font-bold text-muted uppercase tracking-wider mb-2">{label}</p>
-            <p className={`font-serif text-3xl font-bold leading-none ${tone}`}>{pct2(share)}</p>
-            <p className="text-sm text-muted mt-2 tabular-nums">
-                of net{target ? ` · ${target}% target` : ''}
-            </p>
-            <p className="text-sm text-gray-700 mt-1 tabular-nums font-semibold">{fmtMoney(figure)}</p>
-            <p className="text-xs text-muted mt-0.5 tabular-nums">{pct2(shareGross)} of gross</p>
-        </div>
-    )
-}
 
 export default function ReportPage() {
     const { id } = useParams()
@@ -116,6 +82,13 @@ export default function ReportPage() {
 
     const [report, setReport] = useState(null)
     const recountBadges = useRecountBadges()
+    // A monthly report (weeks 4, his, 13 November 2026) is the four weekly
+    // reports as they were sent, added up. `weeks` is those four as they are
+    // now, `today` the same weeks read again from the till and the invoices,
+    // for the warning when one has changed since it was sent (null when that
+    // could not be read: a warning lost, never a reason to hold it).
+    const monthly = report?.weeks === 4
+    const [month, setMonth] = useState({ weeks: [], today: null })
 
     // Opening a published report is the one badge that looking clears: an
     // owner's Reports count is the reports they have not opened. Saved for
@@ -188,7 +161,7 @@ export default function ReportPage() {
         restaurantId: report?.restaurant_id,
         weekStart: report?.week_start,
         threshold: activeRestaurant?.recipe_gap_percent == null ? undefined : num(activeRestaurant.recipe_gap_percent),
-        enabled: report?.status === 'draft',
+        enabled: report?.status === 'draft' && !monthly,
         refresh: priceRefresh,
     })
 
@@ -197,7 +170,7 @@ export default function ReportPage() {
     const liveCleaning = useCleaningWeek({
         restaurantId: report?.restaurant_id,
         weekStart: report?.week_start,
-        enabled: report?.status === 'draft',
+        enabled: report?.status === 'draft' && !monthly,
     })
 
     // What was on each day beside what it took, and the show nights. Live on
@@ -205,7 +178,7 @@ export default function ReportPage() {
     const liveOn = useWhatWasOn({
         restaurant: activeRestaurant,
         weekStart: report?.week_start,
-        enabled: report?.status === 'draft',
+        enabled: report?.status === 'draft' && !monthly,
     })
 
     // The paperwork a sent report went out with, checked on the day it was
@@ -260,7 +233,7 @@ export default function ReportPage() {
                         legacy: true,
                     }
                 })
-    const deliveryHeld = report?.status === 'draft'
+    const deliveryHeld = report?.status === 'draft' && !monthly
         ? deliveryBlockers({ weekStart: report.week_start, rows: delivery, days: around })
         : []
 
@@ -279,10 +252,13 @@ export default function ReportPage() {
         : []
     // Each online platform has a review or "No reviews", and a refund or "No
     // refunds", before the week goes out. See platformsUnsaid.
-    const unsaid = report?.status === 'draft' && sections.some(s => s.key === 'online_sales')
+    const unsaid = report?.status === 'draft' && !monthly && sections.some(s => s.key === 'online_sales')
         ? platformsUnsaid(sections.find(s => s.key === 'online_sales')?.items || [], onlinePlatforms)
         : []
-    const held = [...deliveryHeld, ...reviewHeld, ...unsaid]
+    // A monthly report waits for its four weeks, each sent with its figures.
+    const held = monthly
+        ? (report.status === 'draft' ? fourWeekBlockers(month.weeks, report.week_start) : [])
+        : [...deliveryHeld, ...reviewHeld, ...unsaid]
     const specs = chartSpecs({ onlinePlatforms, corporatePlatforms, deliveryTarget: targets.delivery })
 
     // How the last send went, so somebody who presses publish is told whether
@@ -356,6 +332,8 @@ export default function ReportPage() {
                     ...s,
                     items: (s.report_items || []).slice().sort((a, b) => a.sort_order - b.sort_order),
                 })))
+
+            if (head.weeks === 4) return loadMonthly(head, stop)
 
             const weekStart = head.week_start
             const end = addDays(weekStart, 6)
@@ -541,9 +519,12 @@ export default function ReportPage() {
                     .gte('entry_date', yearFrom).lte('entry_date', end),
                 // Overheads and delivery costs live on each week's own report,
                 // so a week nobody wrote up has no answer rather than a nought.
+                // Weekly reports only: a monthly report on the same Sunday
+                // would take its first week's place with no overheads.
                 supabase.from('weekly_reports')
                     .select('week_start, report_sections(report_items(kind, key, amount))')
                     .eq('restaurant_id', head.restaurant_id)
+                    .eq('weeks', 1)
                     .gte('week_start', yearFrom).lte('week_start', weekStart),
             ])
             // The charts go out as pictures, so a year that did not come back
@@ -665,6 +646,67 @@ export default function ReportPage() {
                 delivery: resolveTarget(overrides || [], 'delivery', weekStart, num(activeRestaurant?.delivery_cost_target)),
             })
 
+            setReadFailed('')
+            setLoading(false)
+        }
+
+        // A monthly report reads its four weekly reports, never the till or the
+        // invoices for its figures: they are the four weeks as they were sent,
+        // added up, so they agree with the four mails the owners already have. A
+        // sent one reads what it was sent with. The till, the invoices and the
+        // hours are read only to say when a week has changed since it went.
+        async function loadMonthly(head, stop) {
+            const block = fourWeeksOf(head.week_start)
+            const from = block.start
+            const to = block.end
+            const [four, ownerRows, place, days, spend, labour] = await Promise.all([
+                supabase.from('weekly_reports')
+                    .select('id, week_start, status, send_count, published_at, figures, charts, '
+                        + 'report_sections(key, report_items(kind, key, label, amount, carried_from, meta, sort_order))')
+                    .eq('restaurant_id', head.restaurant_id)
+                    .eq('weeks', 1)
+                    .in('week_start', block.weeks),
+                supabase.from('users')
+                    .select('id, full_name')
+                    .eq('restaurant_id', head.restaurant_id)
+                    .eq('role', 'owner').eq('is_active', true)
+                    .eq('is_test', false)
+                    .order('full_name'),
+                supabase.from('restaurants')
+                    .select('report_recipients')
+                    .eq('id', head.restaurant_id).maybeSingle(),
+                supabase.from('sales_records')
+                    .select('sale_date, net_sales, gross_sales, is_closed')
+                    .eq('restaurant_id', head.restaurant_id)
+                    .gte('sale_date', from).lte('sale_date', to),
+                everyRow(() => supabase.from('invoice_cost_by_category')
+                    .select('cost_date, category, amount, came_from')
+                    .eq('restaurant_id', head.restaurant_id)
+                    .gte('cost_date', from).lte('cost_date', to)
+                    .order('cost_date').order('category').order('amount')),
+                supabase.from('labour_by_day')
+                    .select('entry_date, labour_cost')
+                    .eq('restaurant_id', head.restaurant_id)
+                    .gte('entry_date', from).lte('entry_date', to),
+            ])
+            setExtrasRead(!place.error)
+            const failed = four.error || ownerRows.error || place.error
+            if (failed) return stop(failed)
+
+            const weeks = (four.data || []).map(w => ({
+                ...w,
+                sections: (w.report_sections || []).map(sec => ({ key: sec.key, items: sec.report_items || [] })),
+            }))
+            const lost = days.error || spend.error || labour.error
+            setMonth({
+                weeks,
+                today: lost ? null : weeksToday({ start: from, days: (days.data || []).filter(d => !d.is_closed), spend: spend.data || [], labour: labour.data || [] }),
+            })
+            const shown = head.status === 'published' && head.figures ? head.figures : fourWeekFigures(weeks)
+            setFigures(shown)
+            setTargets(shown.targets || {})
+            setOwners(ownerRows.data || [])
+            setExtras(place.data?.report_recipients || [])
             setReadFailed('')
             setLoading(false)
         }
@@ -837,6 +879,8 @@ export default function ReportPage() {
     // change what a report sent in September said. So they are frozen here
     // beside the figures, and the mail reads the frozen copy.
     function frozenFigures() {
+        // A monthly report freezes the four weeks added up, as the page shows them.
+        if (monthly) return figuresToStore(figures)
         const { people, food, permits } = paperworkFor(employees, report.week_start, todayISO())
 
         return figuresToStore({
@@ -912,6 +956,7 @@ export default function ReportPage() {
     // so both have to have finished reading, and be this week's, before
     // anything goes out.
     function stillReading() {
+        if (monthly) return false
         // Waited for, but never a reason to hold the week: a list that could
         // not be read goes out as nothing rather than stopping the report.
         if (!liveOn.ready && !liveOn.error) {
@@ -930,6 +975,13 @@ export default function ReportPage() {
             ? `The prices could not be loaded, so this cannot be sent yet: ${livePrices.error}`
             : 'The prices are still loading. Wait a moment and try again.')
         return true
+    }
+
+    // A monthly report has no charts of its own: week 4's, drawn week by week
+    // up to the end of the block when it was sent.
+    function lastWeekCharts() {
+        const last = [...month.weeks].sort((a, b) => (a.week_start < b.week_start ? 1 : -1))[0]
+        return last?.charts || null
     }
 
     async function publish() {
@@ -955,7 +1007,7 @@ export default function ReportPage() {
             // The pictures first. They have to exist before the mail can point
             // at them, and a chart that will not draw is left out rather than
             // stopping the report.
-            const charts = await uploadCharts({
+            const charts = monthly ? lastWeekCharts() : await uploadCharts({
                 reportId: report.id, rows: history, onlinePlatforms, corporatePlatforms,
                 deliveryTarget: targets.delivery,
             })
@@ -1009,8 +1061,8 @@ export default function ReportPage() {
         if (gone.length > 0) {
             const ok = await confirm({
                 title: 'Remove from the list?',
-                message: `${gone.join(', ')} will stop getting the weekly report, this week and `
-                    + 'every week after, until somebody adds them back.',
+                message: `${gone.join(', ')} will stop getting the reports, this one and `
+                    + 'every one after, until somebody adds them back.',
                 confirmLabel: 'Remove',
             })
             if (!ok) return
@@ -1045,7 +1097,7 @@ export default function ReportPage() {
         setMailed(null)
         setSaving(true)
         try {
-            const charts = await uploadCharts({
+            const charts = monthly ? lastWeekCharts() : await uploadCharts({
                 reportId: report.id, rows: history, onlinePlatforms, corporatePlatforms,
                 deliveryTarget: targets.delivery, test: true,
             })
@@ -1121,7 +1173,10 @@ export default function ReportPage() {
     // Every earlier report keeps its own copy either way, so nothing already
     // sent changes.
     async function addSection(title) {
-        const taken = sections.map(s => s.key)
+        // Every built-in key counts as taken, on a report that has it or not:
+        // a section typed "Cleaning" on a monthly report would otherwise draw
+        // the weekly checklists, and "Marketing" could never be removed.
+        const taken = [...sections.map(s => s.key), ...DEFAULT_SECTIONS.map(d => d.key)]
         // Cleaning stays last, which is where he asked for it, so a section
         // added now goes in just before it.
         const last = sections.find(s => s.key === 'cleaning')
@@ -1362,6 +1417,35 @@ export default function ReportPage() {
     const salesCosts = sections.find(s => s.key === 'sales_costs')
     const check = publishCheck(sections, figures, held)
     const blockers = readFailed ? [UNREAD, ...check.blockers] : check.blockers
+
+    if (monthly) {
+        return (
+            <MonthlyReport
+                report={report}
+                restaurantName={activeRestaurant?.name}
+                sections={sections}
+                figures={figures}
+                weeks={month.weeks}
+                blockers={blockers}
+                warnings={report.status === 'draft' ? fourWeekWarnings(month.weeks, month.today) : []}
+                canEdit={canEdit}
+                canWrite={isStoreManager}
+                saving={saving}
+                savedAt={savedAt}
+                writeFailed={writeFailed}
+                mailed={mailed}
+                error={error}
+                owners={owners}
+                extras={extras}
+                extrasEditable={isStoreManager && extrasRead}
+                commentsOf={commentsOf}
+                on={{
+                    publish, reopen, testSend, sendUnsent, changeRecipients,
+                    addComment, saveComment, removeItem, renameSection, removeSection, addSection, savePlatformNote,
+                }}
+            />
+        )
+    }
 
     return (
         <div className="space-y-4">
@@ -1731,55 +1815,6 @@ function PageChart({ spec, rows }) {
 // not what "add" usually means and it is the reason the feature exists: a
 // restaurant that wants a priorities follow-up every week should type that once
 // and never again.
-function AddSection({ onAdd }) {
-    const [open, setOpen] = useLocalState(false)
-    const [title, setTitle] = useLocalState('')
-
-    if (!open) {
-        return (
-            <AddButton onClick={() => setOpen(true)}>Add a section</AddButton>
-        )
-    }
-
-    return (
-        <div className={`${card} p-4`}>
-            <p className="text-xs font-bold text-muted uppercase tracking-wider mb-2">A section of your own</p>
-            <div className="flex flex-wrap gap-2">
-                <div className="flex-1 min-w-[12rem]">
-                    <input
-                        value={title}
-                        onChange={e => setTitle(e.target.value)}
-                        onKeyDown={e => { if (e.key === 'Escape') { setTitle(''); setOpen(false) } }}
-                        autoFocus
-                        placeholder="What is it called"
-                        className={fieldClass}
-                    />
-                </div>
-                <button
-                    onClick={async () => {
-                        if (!title.trim()) return
-                        await onAdd(title.trim())
-                        setTitle('')
-                        setOpen(false)
-                    }}
-                    className={primaryButton()}
-                >
-                    Add
-                </button>
-                <button
-                    onClick={() => { setTitle(''); setOpen(false) }}
-                    className={secondaryButton}
-                >
-                    Cancel
-                </button>
-            </div>
-            <p className="text-xs text-muted mt-2">
-                It appears on every week from now on, and can be removed at any time.
-            </p>
-        </div>
-    )
-}
-
 // What a platform's row adds to the frozen figures. Nothing for a platform
 // with no row, which is every corporate one.
 function deliveryFrozen(row) {
