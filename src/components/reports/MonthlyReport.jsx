@@ -48,6 +48,7 @@ export default function MonthlyReport({
     const corporate = platforms.filter(p => p.bucket === 'catering')
     const net = num(figures.net)
     const share = amount => (net > 0 ? (num(amount) / net) * 100 : null)
+    const onlineTotal = online.reduce((t, p) => t + num(p.taken), 0)
 
     const comments = section => (
         <ReportComments
@@ -276,6 +277,15 @@ export default function MonthlyReport({
                         <div key={section.id} className={card}>
                             {head(section, 'Four weeks added up')}
                             <div className="p-4 sm:p-5 space-y-3">
+                                <div className="rounded-lg bg-sidebar text-white px-4 py-3 flex flex-wrap items-baseline justify-between gap-2">
+                                    <span className="text-xs font-bold uppercase tracking-wider opacity-75">Online revenue</span>
+                                    <span className="text-right">
+                                        <span className="font-serif text-2xl font-bold tabular-nums">{fmtMoney(onlineTotal)}</span>
+                                        {share(onlineTotal) != null && (
+                                            <span className="block text-xs tabular-nums opacity-75">{fmtPct(share(onlineTotal), 2)} of net sales</span>
+                                        )}
+                                    </span>
+                                </div>
                                 {online.map(p => {
                                     const s = summary.get(p.id)
                                     const stars = Object.entries(s?.reviews.stars || {}).sort((a, b) => b[0] - a[0])
@@ -284,7 +294,10 @@ export default function MonthlyReport({
                                             style={{ borderLeftColor: p.mark || undefined }}>
                                             <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                                                 <span className="font-bold text-base text-gray-900">{p.name}</span>
-                                                <span className="font-serif text-lg font-bold text-sidebar tabular-nums">{fmtMoney(p.taken)}</span>
+                                                <span className="text-right">
+                                                    <span className="font-serif text-lg font-bold text-sidebar tabular-nums">{fmtMoney(p.taken)}</span>
+                                                    {share(p.taken) != null && <span className="block text-xs text-muted tabular-nums">{fmtPct(share(p.taken), 2)} of net sales</span>}
+                                                </span>
                                             </div>
                                             <dl className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
                                                 <div>

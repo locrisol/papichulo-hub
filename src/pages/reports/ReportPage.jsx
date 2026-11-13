@@ -1708,6 +1708,7 @@ export default function ReportPage() {
                                             section={section}
                                             platforms={onlinePlatforms}
                                             taken={taken}
+                                            net={figures.net}
                                             weekStart={report.week_start}
                                             canEdit={canEdit}
                                             handlers={{

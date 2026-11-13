@@ -2699,3 +2699,25 @@ describe('the monthly report', () => {
         expect(reportEmail(base).subject).toBe('Weekly Summary Report Week 35 (30/08/2026 to 05/09/2026)')
     })
 })
+
+// His, 13 November 2026: online sales added up, and what they and each
+// platform came to as a share of net sales, on every report.
+describe('online sales as a share of the week', () => {
+    const mail = reportEmail(base)
+
+    // Deliveroo 3,200 and Uber Eats 2,100 of a 14,750 net.
+    it('gives the online total and its share of net sales at the top of the section', () => {
+        const at = mail.html.indexOf('Online sales</td>')
+        expect(at).toBeGreaterThan(mail.html.indexOf('>Online sales<'))
+        expect(mail.html).toContain('35.93%<br />')
+        expect(mail.html).toContain('€5,300.00')
+        expect(mail.text).toContain('  Online sales: 35.93% (€5,300.00)')
+    })
+
+    it('gives each platform its own share, and no share to a corporate account', () => {
+        expect(mail.html).toContain('21.69%&nbsp;of&nbsp;net')
+        expect(mail.html).toContain('14.24%&nbsp;of&nbsp;net')
+        expect(mail.text).toContain('  Deliveroo: 21.69% (€3,200.00)')
+        expect(mail.text).toContain('  Corporate Ltd: €900.00')
+    })
+})

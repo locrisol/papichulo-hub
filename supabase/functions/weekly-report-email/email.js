@@ -911,12 +911,23 @@ function platformBlock(section, platform, rated, f) {
         }
     }
 
-    return platformFrame(platform, rows, noteFor(section, platform.id))
+    return platformFrame(platform, rows, noteFor(section, platform.id), rated ? pct(netShare(platform.taken, f)) : null)
+}
+
+// What online came to as a share of net sales (his, 13 November 2026): all
+// of it at the top of the section, and each platform under what it took.
+function netShare(amount, f) {
+    return num(f?.net) > 0 ? (num(amount) / num(f.net)) * 100 : null
+}
+
+function onlineTotal(f) {
+    const total = platformsIn(f, 'online_platform').reduce((t, p) => t + num(p.taken), 0)
+    return figures([line({ label: 'Online sales', value: withShare(total, netShare(total, f)), total: true })])
 }
 
 // A platform's block: its colour down the edge, its name and what it took on
 // top, its lines under, and the note on it last. Weekly and monthly alike.
-function platformFrame(platform, rows, remark) {
+function platformFrame(platform, rows, remark, share = null) {
     const mark = platform.mark || platform.colour || MUTED
     return `<tr><td style="padding:14px ${SIDE}px 0;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
@@ -927,7 +938,8 @@ function platformFrame(platform, rows, remark) {
                         <td width="100%" style="font-size:17px;font-weight:700;
                             color:${platform.colour || INK};">${escapeHtml(platform.name)}</td>
                         <td width="1%" align="right" style="padding-left:12px;font-size:17px;
-                            font-weight:700;color:${INK};white-space:nowrap;">${money(platform.taken)}</td>
+                            font-weight:700;color:${INK};white-space:nowrap;">${money(platform.taken)}${share
+                                ? `<br /><span style="font-size:12px;font-weight:400;color:${MUTED};">${share}&nbsp;of&nbsp;net</span>` : ''}</td>
                     </tr>
                 </table>
             </td></tr>
@@ -955,7 +967,8 @@ function platformSection(section, f, charts, bucket, chartKey) {
 
     const body = platforms.length === 0
         ? note(f.fourWeeks ? 'No platforms took anything in these four weeks.' : 'No platforms were tracked for this week.')
-        : platforms.map(p => platformBlock(section, p, bucket === 'online_platform', f)).join('')
+        : (bucket === 'online_platform' ? onlineTotal(f) : '')
+            + platforms.map(p => platformBlock(section, p, bucket === 'online_platform', f)).join('')
 
     // Under the band, the same as sales and costs. A section that opens with
     // the shape of the thing and then breaks it down by platform reads in the
@@ -1321,12 +1334,12 @@ function monthlyOnline(section, f, charts) {
             subHeading(s?.refunds?.count ? `Refunds: ${s.refunds.count}` : 'Refunds: none'),
             ...(s?.refunds?.count ? [line({ inset: 14, label: 'Refunded', value: negative(s.refunds.money), tone: RED })] : []),
         ]
-        return platformFrame(platform, rows, noteFor(section, platform.id))
+        return platformFrame(platform, rows, noteFor(section, platform.id), pct(netShare(platform.taken, f)))
     })
 
     return heading(section.title, section.number)
         + chart(charts.online, '', 'What each platform took, week by week.')
-        + (blocks.length ? blocks.join('') : note('No online platforms took anything in these four weeks.'))
+        + (blocks.length ? onlineTotal(f) + blocks.join('') : note('No online platforms took anything in these four weeks.'))
         + comments(sectionComments(section))
 }
 
@@ -2186,10 +2199,12 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
             out.push(share('Net earnings', f.earnings, f.earningsPct))
         } else if (section.key === 'online_sales' && monthly) {
             const summary = new Map((f.fourWeeks.online || []).map(o => [o.id, o]))
+            const total = platformsIn(f, 'online_platform').reduce((t, p) => t + num(p.taken), 0)
+            out.push(share('Online sales', total, netShare(total, f)))
             for (const platform of platformsIn(f, 'online_platform')) {
                 const s = summary.get(platform.id)
                 const r = s?.rating
-                out.push(share(platform.name, platform.taken, null))
+                out.push(share(platform.name, platform.taken, netShare(platform.taken, f)))
                 out.push(`    Delivery cost: ${money(platform.cost)}${platform.rate != null ? ` (${pct(platform.rate)} of what it took)` : ''}`)
                 out.push('    Overall rating: ' + (r?.to == null ? 'not recorded'
                     : `${num(r.to).toFixed(1)} out of 5`
@@ -2221,8 +2236,12 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
             out.push(...pricesText(f.prices))
         } else if (section.key === 'online_sales' || section.key === 'corporate_sales') {
             const bucket = section.key === 'online_sales' ? 'online_platform' : 'catering'
+            if (bucket === 'online_platform') {
+                const total = platformsIn(f, bucket).reduce((t, p) => t + num(p.taken), 0)
+                out.push(share('Online sales', total, netShare(total, f)))
+            }
             for (const platform of platformsIn(f, bucket)) {
-                out.push(share(platform.name, platform.taken, null))
+                out.push(share(platform.name, platform.taken, bucket === 'online_platform' ? netShare(platform.taken, f) : null))
 
                 // A corporate account has no rating, the same as in the HTML.
                 if (bucket === 'online_platform') {
