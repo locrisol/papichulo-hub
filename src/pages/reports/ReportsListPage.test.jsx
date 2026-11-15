@@ -3,6 +3,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { screen, within, fireEvent } from '@testing-library/react'
 import { mockSupabase, makeQuery, renderWithRouter } from '@/test/helpers'
 import { todayISO, weekStartOf, addDays, weekDates, weekRange } from '@/lib/dates'
+import { fourWeeksOf, monthlyDates } from '@/lib/fourWeekReport'
 
 // What a week that cannot be started says about itself.
 //
@@ -17,7 +18,7 @@ const LAST_WEEK = addDays(weekStartOf(todayISO()), -7)
 const NOT_SENT = addDays(LAST_WEEK, -14)
 const SENT = addDays(LAST_WEEK, -21)
 
-const db = mockSupabase({
+const tables = {
     weekly_reports: {
         data: [
             { id: 'rep1', week_start: NOT_SENT, status: 'published', published_at: `${NOT_SENT}T09:00:00Z`, send_count: 1, sent_to: null },
@@ -52,7 +53,8 @@ const db = mockSupabase({
         }],
         error: null,
     },
-})
+}
+const db = mockSupabase(tables)
 vi.mock('@/lib/supabase', () => ({ supabase: new Proxy({}, { get: (_, k) => db[k] }) }))
 vi.mock('@/context/auth', () => ({ useAuth: () => ({ user: { id: 'u1', role: 'store_manager' } }) }))
 vi.mock('@/context/restaurant', () => ({
@@ -158,5 +160,34 @@ describe('a week with no sales at all', () => {
         const row = await rowFor(addDays(LAST_WEEK, -7))
         expect(within(row).getByText('Sales not finished')).toBeInTheDocument()
         expect(within(row).getByRole('button', { name: 'Open Weekly sales' })).toBeInTheDocument()
+    })
+})
+
+// The monthly report (his, 13 November 2026): a row a block of four weeks,
+// above the newest of its weeks on the list.
+describe('the monthly report on the list', () => {
+    const block = fourWeeksOf(LAST_WEEK)
+    const weekly = tables.weekly_reports.data
+    afterEach(() => { tables.weekly_reports.data = weekly })
+    const firstRow = async () => {
+        renderWithRouter(<ReportsListPage />)
+        const table = (await screen.findAllByRole('table'))[0]
+        return within(table).getAllByRole('row')[1]
+    }
+
+    it('puts a monthly report above the newest of its weeks, with its weeks and dates', async () => {
+        tables.weekly_reports.data = [...weekly, { id: 'm1', week_start: block.start, weeks: 4, status: 'draft', send_count: 0, sent_to: null }]
+        const row = await firstRow()
+        expect(within(row).getByText('Monthly')).toBeInTheDocument()
+        expect(within(row).getByText(monthlyDates(block.start))).toBeInTheDocument()
+        expect(within(row).getByText('Draft')).toBeInTheDocument()
+        expect(within(row).getByRole('button', { name: 'Open' })).toBeInTheDocument()
+    })
+
+    it('says how far a block has got before its monthly report is made', async () => {
+        const row = await firstRow()
+        expect(within(row).getByText('Monthly')).toBeInTheDocument()
+        expect(within(row).getByText(/of 4 sent/)).toBeInTheDocument()
+        expect(within(row).queryByRole('button')).toBeNull()
     })
 })

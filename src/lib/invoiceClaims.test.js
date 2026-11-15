@@ -1383,7 +1383,7 @@ describe('sentWeeks', () => {
             weeks: ['2026-09-20', '2026-09-27'], publishedOn: { '2026-09-20': '2026-09-28' }, error: null,
         })
         expect(db.asked).toEqual(expect.arrayContaining([
-            ['from', 'weekly_reports'], ['eq', 'restaurant_id', 'r1'], ['eq', 'status', 'published'],
+            ['from', 'weekly_reports'], ['eq', 'restaurant_id', 'r1'], ['eq', 'weeks', 1], ['eq', 'status', 'published'],
         ]))
     })
 

@@ -190,7 +190,7 @@ export default function PublishBar({
                         {warnings.map(w => <li key={w}>{w}</li>)}
                     </ul>
                     <p className="text-xs text-muted mt-2">
-                        These do not stop the report being sent. If the week really was like that, you can send it.
+                        These do not stop the report being sent. If that really is how it was, you can send it.
                     </p>
                 </div>
             )}

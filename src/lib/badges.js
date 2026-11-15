@@ -24,6 +24,7 @@ import { reportableWeeks, statementWeek, mailMissing, WEEKS_LISTED } from '@/lib
 import { reprintDue } from '@/lib/allergenSheet'
 import { personWeek, unanswered, withGuests } from '@/lib/timesheet'
 import { periodOf as payPeriodOf, periodIsOver } from '@/lib/payPeriod'
+import { FIRST_MONTHLY } from '@/lib/fourWeekReport'
 import { periodOf as stretchOf } from '@/lib/checklists'
 import { graceFor, DEFAULT_RULES } from '@/lib/workRules'
 import { addDays, weekStartOf, stampDay } from '@/lib/dates'
@@ -172,7 +173,19 @@ export function permitsWaiting(permits, rules, today) {
 // out, newer than the last one sent; reports reopened and not sent again; and
 // published ones whose mail never went (Not sent on the list, mailMissing).
 // A restaurant that has never sent one is not owed any: it does not use them.
+//
+// A monthly report (weeks 4, his, 13 November 2026) is a job of its own: one
+// waiting to be sent, reopened, or sent with no mail counts once. Only from
+// the first real block, 1 November 2026, so an October report made to try it
+// on never lights the badge. It shares its first week's Sunday, so the
+// weekly rule only ever sees weekly rows.
 export function reportsOwed(reports, today) {
+    const monthly = (reports || []).filter(r => r.weeks === 4 && r.week_start >= FIRST_MONTHLY)
+        .filter(r => r.status === 'draft' || mailMissing(r)).length
+    return weeklyOwed((reports || []).filter(r => (r.weeks ?? 1) === 1), today) + monthly
+}
+
+function weeklyOwed(reports, today) {
     // Only the weeks the Reports list shows, so it never counts one it does not.
     const weeks = new Set(reportableWeeks(WEEKS_LISTED, today))
     const list = (reports || []).filter(r => weeks.has(r.week_start))

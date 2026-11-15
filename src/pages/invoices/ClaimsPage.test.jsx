@@ -118,7 +118,7 @@ describe('asking before a claim goes on a line', () => {
     })
 
     it('says before which week it comes off when the delivery\'s report has gone out', async () => {
-        tables.weekly_reports = [{ id: 'w1', restaurant_id: 'r1', week_start: DELIVERY_WEEK, status: 'published' }]
+        tables.weekly_reports = [{ id: 'w1', restaurant_id: 'r1', weeks: 1, week_start: DELIVERY_WEEK, status: 'published' }]
         renderWithRouter(<ClaimsPage />)
         await userEvent.click(await screen.findByRole('button', { name: 'Pick this line' }))
         expect(await screen.findByText(`The report for the week of ${shortDate(DELIVERY_WEEK)} has been sent, `
@@ -216,7 +216,7 @@ describe('putting a note from the door against its line', () => {
     // no report at all. So it comes off the first week whose report has not
     // gone out, and says which delivery it is from. His decision of 1 October.
     it('moves it to the first week still open when that week\'s report has been sent, and says so', async () => {
-        tables.weekly_reports = [{ id: 'w1', restaurant_id: 'r1', week_start: DELIVERY_WEEK, status: 'published' }]
+        tables.weekly_reports = [{ id: 'w1', restaurant_id: 'r1', weeks: 1, week_start: DELIVERY_WEEK, status: 'published' }]
         const { row } = await attach()
         expect(row).toMatchObject({ amount: 22.34, counted_week: NOTED_WEEK })
         expect(await screen.findByText(
@@ -231,9 +231,9 @@ describe('putting a note from the door against its line', () => {
     it('skips every week already sent, wherever the note was written', async () => {
         tables.invoice_line_claims = [{ ...CLAIM, raised_on: DELIVERED, counted_week: DELIVERY_WEEK }]
         tables.weekly_reports = [
-            { id: 'w1', restaurant_id: 'r1', week_start: DELIVERY_WEEK, status: 'published' },
-            { id: 'w2', restaurant_id: 'r1', week_start: NOTED_WEEK, status: 'published' },
-            { id: 'w3', restaurant_id: 'r2', week_start: WEEK_AFTER, status: 'published' },
+            { id: 'w1', restaurant_id: 'r1', weeks: 1, week_start: DELIVERY_WEEK, status: 'published' },
+            { id: 'w2', restaurant_id: 'r1', weeks: 1, week_start: NOTED_WEEK, status: 'published' },
+            { id: 'w3', restaurant_id: 'r2', weeks: 1, week_start: WEEK_AFTER, status: 'published' },
         ]
         const { row } = await attach()
         expect(row).toMatchObject({ amount: 22.34, counted_week: WEEK_AFTER })
@@ -258,7 +258,7 @@ describe('putting a note from the door against its line', () => {
     })
 
     it('still moves it when that week\'s report is only a draft', async () => {
-        tables.weekly_reports = [{ id: 'w1', restaurant_id: 'r1', week_start: DELIVERY_WEEK, status: 'draft' }]
+        tables.weekly_reports = [{ id: 'w1', restaurant_id: 'r1', weeks: 1, week_start: DELIVERY_WEEK, status: 'draft' }]
         const { row } = await attach()
         expect(row).toMatchObject({ counted_week: DELIVERY_WEEK })
     })
@@ -521,7 +521,7 @@ describe('closing a claim, and opening it again', () => {
     it('moves it to the first week still open when its week\'s report went out after it closed, and says so', async () => {
         tables.invoice_line_claims = [{ ...PRICED, status: 'void', settled_on: '2026-10-01' }]
         tables.weekly_reports = [{
-            id: 'w1', restaurant_id: 'r1', week_start: DELIVERY_WEEK, status: 'published', published_at: '2026-10-02T09:00:00+00:00',
+            weeks: 1, id: 'w1', restaurant_id: 'r1', week_start: DELIVERY_WEEK, status: 'published', published_at: '2026-10-02T09:00:00+00:00',
         }]
         renderWithRouter(<ClaimsPage />)
         await userEvent.click(await screen.findByRole('button', { name: 'Reopen' }))
@@ -541,7 +541,7 @@ describe('closing a claim, and opening it again', () => {
     it('keeps it in its week when it was still open as that week\'s report went out', async () => {
         tables.invoice_line_claims = [{ ...PRICED, status: 'refused', settled_on: '2026-10-03' }]
         tables.weekly_reports = [{
-            id: 'w1', restaurant_id: 'r1', week_start: DELIVERY_WEEK, status: 'published', published_at: '2026-10-02T09:00:00+00:00',
+            weeks: 1, id: 'w1', restaurant_id: 'r1', week_start: DELIVERY_WEEK, status: 'published', published_at: '2026-10-02T09:00:00+00:00',
         }]
         renderWithRouter(<ClaimsPage />)
         await userEvent.click(await screen.findByRole('button', { name: 'Reopen' }))
@@ -624,7 +624,7 @@ describe('changing a claim after it was logged', () => {
     // change would land in no report, so only the words and the note change.
     it('keeps its count and money once its week\'s report has gone out', async () => {
         tables.invoice_line_claims = [ON]
-        tables.weekly_reports = [{ id: 'w1', restaurant_id: 'r1', week_start: NOTED_WEEK, status: 'published' }]
+        tables.weekly_reports = [{ id: 'w1', restaurant_id: 'r1', weeks: 1, week_start: NOTED_WEEK, status: 'published' }]
         doorNote = { ...asLogged, what: 'Chorizo, the bags', note: 'Rang them' }
         renderWithRouter(<ClaimsPage />)
         await userEvent.click(await screen.findByRole('button', { name: 'Edit' }))
@@ -644,7 +644,7 @@ describe('changing a claim after it was logged', () => {
         doorNote = asLogged
         renderWithRouter(<ClaimsPage />)
         await userEvent.click(await screen.findByRole('button', { name: 'Edit' }))
-        tables.weekly_reports = [{ id: 'w1', restaurant_id: 'r1', week_start: NOTED_WEEK, status: 'published' }]
+        tables.weekly_reports = [{ id: 'w1', restaurant_id: 'r1', weeks: 1, week_start: NOTED_WEEK, status: 'published' }]
         await userEvent.click(screen.getByRole('button', { name: 'Save the note' }))
         await waitFor(() => expect(answered).toBe(`The report for the week of ${shortDate(NOTED_WEEK)} has been sent, `
             + 'so the amount stays at €83.97. Only what it was and the note can change now.'))
@@ -659,7 +659,7 @@ describe('changing a claim after it was logged', () => {
         await userEvent.click(await screen.findByRole('button', { name: 'Edit' }))
         await userEvent.click(screen.getByRole('button', { name: 'Save the note' }))
         await screen.findByText('This changes the amount from €83.97 to €21.00.')
-        tables.weekly_reports = [{ id: 'w1', restaurant_id: 'r1', week_start: NOTED_WEEK, status: 'published' }]
+        tables.weekly_reports = [{ id: 'w1', restaurant_id: 'r1', weeks: 1, week_start: NOTED_WEEK, status: 'published' }]
         await userEvent.click(screen.getByRole('button', { name: 'Save changes' }))
         expect(await screen.findByText(/so the amount stays at €83\.97\./)).toBeInTheDocument()
         expect(updated).toEqual([])

@@ -48,7 +48,7 @@ const { default: ReportPage } = await import('./ReportPage')
 //
 // `print` is the last allergen sheet printed, with the lines it kept: none
 // unless a test says.
-function answer({ print = { data: null, error: null }, head = HEAD, failing = [], waiting = {}, lines = [], claims = [], items = null } = {}) {
+function answer({ print = { data: null, error: null }, head = HEAD, failing = [], waiting = {}, lines = [], claims = [], items = null, reports = [] } = {}) {
     db.from.mockImplementation(table => {
         if (failing.includes(table)) {
             return makeQuery({ data: null, error: { message: `Could not read ${table}` } })
@@ -74,7 +74,7 @@ function answer({ print = { data: null, error: null }, head = HEAD, failing = []
             return chain
         }
         if (table === 'weekly_reports') {
-            const chain = makeQuery({ data: [], error: null })
+            const chain = makeQuery({ data: reports, error: null })
             chain.single = vi.fn(() => Promise.resolve(failing.includes('the report')
                 ? { data: null, error: { message: 'Could not read the report' } }
                 : { data: head, error: null }))
@@ -420,5 +420,103 @@ describe('the save line', () => {
         expect(await screen.findByText('Could not read employees')).toBeInTheDocument()
         expect(screen.getByText('Saves as you leave each box')).toBeInTheDocument()
         expect(screen.queryByText('Not saved')).toBeNull()
+    })
+})
+
+// His, 13 November 2026: a comment about the costs under the cost figures,
+// before What was on. The Sales and costs box the card always had, moved up.
+describe('the comment on the costs', () => {
+    const costs = (status, items = []) => ({
+        ...HEAD,
+        status,
+        ...(status === 'published' ? {
+            send_count: 1, sent_to: ['owner@example.ie'], published_at: `${WEEK}T09:00:00Z`,
+            figures: { net: 1000, gross: 1100, version: 6, paperwork: { food: SUMMED, permits: SUMMED } },
+        } : {}),
+        report_sections: [
+            { id: 's0', key: 'sales_costs', title: 'Sales and costs', sort_order: 0, report_items: items },
+        ],
+    })
+    // Where one node falls against another in the page.
+    const before = (a, b) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
+
+    it('puts the box under the costs and before What was on on a draft', async () => {
+        answer({ head: costs('draft') })
+        renderReport()
+        const box = await screen.findByRole('textbox', { name: 'Add a comment' })
+        expect(before(screen.getByText(/These are the same figures as on the Cost dashboard/), box)).toBe(true)
+        expect(before(box, screen.getByRole('heading', { name: 'What was on' }))).toBe(true)
+    })
+
+    it('shows it as text in the same place once the report is sent', async () => {
+        const said = { id: 'c1', kind: 'comment', note: 'Chicken went up again', sort_order: 0, meta: {} }
+        answer({ head: costs('published', [said]) })
+        renderReport()
+        const text = await screen.findByText('Chicken went up again')
+        expect(screen.queryByRole('textbox', { name: 'Add a comment' })).toBeNull()
+        expect(before(text, screen.getByRole('heading', { name: 'What was on' }))).toBe(true)
+    })
+})
+
+// The monthly report (his, 13 November 2026): the four weekly reports of
+// October, as they were sent, added up. Read from them, never from the till.
+describe('a monthly report', () => {
+    const money = net => ({
+        version: 6, net, gross: net * 1.1, food: net * 0.3, packaging: 100, labour: net * 0.3, deliveryTotal: 50,
+        standing: 200, overhead: 250, costOfSales: net * 0.6 + 100, grossMargin: net * 0.7 - 100,
+        grossProfit: net * 0.4 - 100, earnings: net * 0.4 - 350, tradingDays: 7, labourDays: 7,
+        foodEntries: 5, packagingEntries: 5, targets: { food: 30, labour: 30, packaging: 2.5 }, platforms: [],
+    })
+    const STARTS = ['2026-10-04', '2026-10-11', '2026-10-18', '2026-10-25']
+    const weeks = (over = {}) => STARTS.map((w, i) => ({
+        id: `w${i}`, week_start: w, status: 'published', send_count: 1, published_at: `${w}T09:00:00Z`,
+        figures: money(1000 * (i + 1)), charts: { sales: `https://x.test/${w}-sales.png` }, report_sections: [],
+        ...(over[i] || {}),
+    }))
+    const MONTH = {
+        id: 'rep1', restaurant_id: 'r1', week_start: '2026-10-04', weeks: 4, status: 'draft', send_count: 0, figures: null,
+        report_sections: [{ id: 's0', key: 'sales_costs', title: 'Sales and costs', sort_order: 0, report_items: [] }],
+    }
+    const asked = () => db.from.mock.calls.map(c => c[0])
+
+    it('adds up its four weeks and reads nothing a week reads', async () => {
+        answer({ head: MONTH, reports: weeks() })
+        db.from.mockClear()
+        renderReport()
+        expect(await screen.findByText('Monthly report')).toBeInTheDocument()
+        expect(screen.getByText(/Weeks 40 to 43/)).toBeInTheDocument()
+        expect(screen.getByText('€10,000.00')).toBeInTheDocument()
+        expect(screen.getByText('Made from')).toBeInTheDocument()
+        for (const table of ['sales_platforms', 'invoice_lines', 'employees', 'cost_target_overrides', 'allergen_sheet_prints']) {
+            expect(asked()).not.toContain(table)
+        }
+    })
+
+    it('holds Publish while one of its weeks is reopened', async () => {
+        answer({ head: MONTH, reports: weeks({ 1: { status: 'draft' } }) })
+        renderReport()
+        expect(await screen.findByText('Week 41 is reopened. Send it again before this report can go out.')).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Publish and send' })).toBeDisabled()
+    })
+
+    it("freezes the four weeks added up, with week 4's charts, and draws none of its own", async () => {
+        answer({ head: MONTH, reports: weeks() })
+        confirmed.mockClear()
+        db.functions.invoke.mockClear()
+        db.functions.invoke.mockResolvedValue({ data: { sent: 2 }, error: null })
+        db.storage.from.mockClear()
+        renderReport()
+        fireEvent.click(await screen.findByRole('button', { name: 'Publish and send' }))
+        await waitFor(() => expect(db.functions.invoke).toHaveBeenCalled())
+        const writes = db.from.mock.results
+            .filter((r, i) => db.from.mock.calls[i][0] === 'weekly_reports')
+            .flatMap(r => r.value.update.mock.calls)
+        expect(writes).toHaveLength(1)
+        const [patch] = writes[0]
+        expect(patch.status).toBe('published')
+        expect(patch.figures.net).toBe(10000)
+        expect(patch.figures.fourWeeks.weeks.map(w => w.week_start)).toEqual(STARTS)
+        expect(patch.charts).toEqual({ sales: 'https://x.test/2026-10-25-sales.png' })
+        expect(db.storage.from).not.toHaveBeenCalled()
     })
 })
