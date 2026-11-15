@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { fmtMoney } from '@/lib/format'
+import { fmtMoney, fmtPct } from '@/lib/format'
 import { numberField } from '@/lib/numberInput'
 import { brandFor } from '@/lib/platformBrand'
 import {
@@ -318,7 +318,7 @@ function RatingLine({ platform, item, canEdit, onSave }) {
 }
 
 function PlatformBlock({
-    platform, taken, rating, reviews, refunds, claims, weekStart, canEdit,
+    platform, taken, share, rating, reviews, refunds, claims, weekStart, canEdit,
     onSaveRating, onSaveNothing, onAddReview, onAddRefund, onSaveItem, onRemoveItem,
 }) {
     const brand = brandFor(platform.name)
@@ -346,8 +346,9 @@ function PlatformBlock({
                     />
                     {platform.name}
                 </span>
-                <span className="font-serif text-lg font-bold text-sidebar tabular-nums">
-                    {fmtMoney(taken)}
+                <span className="text-right">
+                    <span className="font-serif text-lg font-bold text-sidebar tabular-nums">{fmtMoney(taken)}</span>
+                    {share != null && <span className="block text-xs text-muted tabular-nums">{fmtPct(share, 2)} of net sales</span>}
                 </span>
             </div>
 
@@ -520,8 +521,11 @@ function Claims({ claims, weekStart, canEdit, onSaveItem }) {
     )
 }
 
-export default function ReportOnlineSales({ section, platforms, taken, weekStart, canEdit, handlers }) {
+export default function ReportOnlineSales({ section, platforms, taken, net, weekStart, canEdit, handlers }) {
     const total = platforms.reduce((t, p) => t + (taken[p.id] || 0), 0)
+    // What online came to as a share of the week's net sales, all of it and
+    // each platform (his, 13 November 2026), the share every cost is given.
+    const share = amount => (Number(net) > 0 ? (amount / Number(net)) * 100 : null)
 
     const byKind = kind => section.items.filter(i => i.kind === kind)
     const forPlatform = (items, p) => items.filter(i => i.key === p.id)
@@ -539,7 +543,12 @@ export default function ReportOnlineSales({ section, platforms, taken, weekStart
 
             <div className="rounded-lg bg-sidebar text-white px-4 py-3 mb-4 flex flex-wrap items-baseline justify-between gap-2">
                 <span className="text-xs font-bold uppercase tracking-wider opacity-75">Online revenue</span>
-                <span className="font-serif text-2xl font-bold tabular-nums">{fmtMoney(total)}</span>
+                <span className="text-right">
+                    <span className="font-serif text-2xl font-bold tabular-nums">{fmtMoney(total)}</span>
+                    {share(total) != null && (
+                        <span className="block text-xs tabular-nums opacity-75">{fmtPct(share(total), 2)} of net sales</span>
+                    )}
+                </span>
             </div>
 
             <div className="space-y-3">
@@ -548,6 +557,7 @@ export default function ReportOnlineSales({ section, platforms, taken, weekStart
                         key={p.id}
                         platform={p}
                         taken={taken[p.id] || 0}
+                        share={share(taken[p.id] || 0)}
                         rating={byKind('rating').find(i => i.key === p.id)}
                         reviews={forPlatform(byKind('review'), p)}
                         refunds={forPlatform(byKind('refund'), p)}

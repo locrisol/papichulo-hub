@@ -311,8 +311,8 @@ function DeliveryLine({ row, statement, waiting, canEdit, onSave }) {
 }
 
 // A plain line of figures: a name, an amount, a share. The totals and the run
-// down to what was left.
-function FigureRow({ label, hint, amount, share, tint, strong }) {
+// down to what was left. The monthly report draws its lines with it too.
+export function FigureRow({ label, hint, amount, share, tint, strong }) {
     return (
         <Row
             tint={tint}

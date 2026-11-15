@@ -61,7 +61,8 @@ const TABLES = {
     absences: 'Absence',
     shift_requests: 'Shift swap',
     day_notes: 'Day note',
-    weekly_reports: 'Weekly report',
+    // Weekly and monthly reports share the table (weeks, 13 November 2026).
+    weekly_reports: 'Report',
     report_sections: 'Report section',
     report_items: 'Report line',
     cost_target_overrides: 'Cost target',

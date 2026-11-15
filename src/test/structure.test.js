@@ -726,3 +726,33 @@ describe('dates and times are worded in dates.js', () => {
         expect(calls.map(short).filter(p => p !== 'lib/dates.js'), 'add the wording to dates.js and import it').toEqual([])
     })
 })
+
+describe('a read of reports by week says which kind it wants', () => {
+    // Since 13 November 2026 weekly_reports holds a monthly report on the
+    // first Sunday of its four weeks (weeks 4), beside that week's own report
+    // (weeks 1). A read that picks reports by their Sunday without saying which
+    // kind takes the monthly one for the week: the chart history drew week 44
+    // with no overheads, and the list put it in week 44's row.
+    const reads = sourcePaths.flatMap(p => {
+        const text = sources[p]
+        const out = []
+        let at = text.indexOf("from('weekly_reports')")
+        while (at !== -1) {
+            // The chain, up to the end of its statement.
+            const chain = text.slice(at, at + 700).split(/\n\s*\n|\)\s*\n\s*(?:const|if|return|setReport|\/\/)/)[0]
+            const byWeek = /\.(?:gte|lte|gt|lt|eq|in|order)\('week_start'/.test(chain)
+            const isRead = chain.includes('.select(') && !/\.(?:update|insert|delete|upsert)\(/.test(chain)
+            if (byWeek && isRead) out.push([p, chain])
+            at = text.indexOf("from('weekly_reports')", at + 1)
+        }
+        return out
+    })
+
+    it('finds the reads it is about', () => {
+        expect(reads.length).toBeGreaterThan(2)
+    })
+
+    it.each(reads.map(([p, chain]) => [p.replace('../', ''), chain]))('%s says weekly or monthly', (_, chain) => {
+        expect(chain).toMatch(/weeks/)
+    })
+})

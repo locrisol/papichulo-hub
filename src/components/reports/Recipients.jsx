@@ -125,7 +125,7 @@ export default function Recipients({
                     {problem && <p role="alert" className="text-xs text-accent-ink mt-2">{problem}</p>}
                     <p className="text-xs text-muted mt-2">
                         Any address works. They do not need a Hub account, and whoever is added stays
-                        on every week from now until they are removed.
+                        on every report from now until they are removed.
                     </p>
                 </div>
             ) : (

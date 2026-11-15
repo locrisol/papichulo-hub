@@ -94,6 +94,30 @@ describe('reports owed', () => {
     it('owes nothing where none has ever been sent', () => {
         expect(reportsOwed([], '2026-10-14')).toBe(0)
     })
+
+    // The monthly report (his, 13 November 2026) shares its first week's
+    // Sunday and is a job of its own.
+    describe('with a monthly report', () => {
+        const today = '2026-12-02'
+        const weeks = ['2026-10-25', '2026-11-01', '2026-11-08', '2026-11-15', '2026-11-22'].map(sent)
+        const monthly = over => ({ week_start: '2026-11-01', weeks: 4, status: 'draft', send_count: 0, ...over })
+
+        it('counts one waiting to be sent, once, and never takes it for its first week', () => {
+            expect(reportsOwed(weeks, today)).toBe(0)
+            expect(reportsOwed([...weeks, monthly()], today)).toBe(1)
+        })
+
+        it('counts one reopened or sent with no mail, and not one sent', () => {
+            expect(reportsOwed([...weeks, monthly({ send_count: 1 })], today)).toBe(1)
+            expect(reportsOwed([...weeks, monthly({ status: 'published', send_count: 1, sent_to: null })], today)).toBe(1)
+            expect(reportsOwed([...weeks, monthly({ status: 'published', send_count: 1, sent_to: ['a@b.ie'] })], today)).toBe(0)
+        })
+
+        // The one made by hand to try it on, October, never lights the badge.
+        it('says nothing about October', () => {
+            expect(reportsOwed([...weeks, monthly({ week_start: '2026-10-04' })], today)).toBe(0)
+        })
+    })
 })
 
 describe('the badges', () => {

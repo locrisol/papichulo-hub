@@ -21,6 +21,7 @@ import {
     mailMissing,
 } from '@/lib/weeklyReport'
 import { personWeek, unanswered, peopleFor } from '@/lib/timesheet'
+import { fourWeeksOf, monthlyWeeks, monthlyDates, FIRST_MONTHLY } from '@/lib/fourWeekReport'
 import { can, RESTAURANT_CONFIG } from '@/lib/access'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 
@@ -209,6 +210,77 @@ function StateBadge({ report, isNew = false }) {
     )
 }
 
+// A monthly report on the list: its weeks, its dates, its net sales and the
+// button to open it, or, while its weeks are still being sent, how far it has
+// got. The same row on a phone and in the table, the way a week has one.
+function monthNet(month) {
+    if (month.report?.status === 'published' && month.report.net != null) return num(month.report.net)
+    return month.report ? month.liveNet : null
+}
+
+// Open, or Continue on one reopened, the way a week's button reads.
+const monthButton = report => (report.status === 'draft' && report.send_count > 0 ? 'Continue' : 'Open')
+
+function MonthState({ month, isNew }) {
+    if (month.report) return <StateBadge report={month.report} isNew={isNew} />
+    return <span className={`${badge} bg-gray-100 text-gray-600`}>{month.sent} of 4 sent</span>
+}
+
+function MonthCard({ month, isNew, onOpen }) {
+    const net = monthNet(month)
+    return (
+        <div className={`${cardEdge} p-4 bg-white border-l-4 border-l-sidebar`}>
+            <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                    <p className="font-serif text-lg font-bold text-sidebar leading-tight">Monthly report</p>
+                    <p className="text-sm text-muted mt-0.5">
+                        {monthlyWeeks(month.start)} &middot; {monthlyDates(month.start)}
+                    </p>
+                </div>
+                <div className="flex-shrink-0"><MonthState month={month} isNew={isNew} /></div>
+            </div>
+            {month.report ? (
+                <>
+                    {net != null && (
+                        <p className="mt-3 text-xl font-bold tabular-nums text-sidebar">
+                            {fmtMoney(net)}<span className="text-xs font-normal text-muted ml-2">net sales</span>
+                        </p>
+                    )}
+                    <div className="mt-3">
+                        <button onClick={onOpen} className={`w-full justify-center ${secondaryButton}`}>
+                            {monthButton(month.report)}
+                        </button>
+                    </div>
+                </>
+            ) : (
+                <p className="mt-2 text-sm text-muted">Made here once all four weeks are sent.</p>
+            )}
+        </div>
+    )
+}
+
+function MonthRow({ month, isNew, onOpen }) {
+    const net = monthNet(month)
+    return (
+        <tr className="bg-app-bg">
+            <td className="px-5 py-3 whitespace-nowrap border-l-4 border-l-sidebar">
+                <span className="block font-bold text-sidebar">Monthly</span>
+                <span className="block text-xs text-muted">{monthlyWeeks(month.start)}</span>
+            </td>
+            <td className="px-5 py-3 text-sm text-gray-700 whitespace-nowrap">{monthlyDates(month.start)}</td>
+            <td className="px-5 py-3 text-sm text-right tabular-nums text-gray-700">
+                {net != null ? fmtMoney(net) : <span className="text-muted">&mdash;</span>}
+            </td>
+            <td className="px-5 py-3"><MonthState month={month} isNew={isNew} /></td>
+            <td className="px-5 py-3 text-right whitespace-nowrap">
+                {month.report
+                    ? <button onClick={onOpen} className={secondaryButton}>{monthButton(month.report)}</button>
+                    : <span className="text-sm text-muted">Once all four are sent</span>}
+            </td>
+        </tr>
+    )
+}
+
 export default function ReportsListPage() {
     const navigate = useNavigate()
     const { user } = useAuth()
@@ -217,6 +289,9 @@ export default function ReportsListPage() {
     const canWrite = can(user, RESTAURANT_CONFIG)
 
     const [weeks, setWeeks] = useState([])
+    // The monthly reports (his, 13 November 2026), one a block of four weeks,
+    // each drawn just above the last of its weeks on the list.
+    const [months, setMonths] = useState(new Map())
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
     const [starting, setStarting] = useState(null)
@@ -259,11 +334,14 @@ export default function ReportsListPage() {
         // the timesheet has been done: who is on the team, what they were
         // rostered, what the clock registered and who was away.
         const [reports, sales, tenders, team, entries, absences, shifts, labour, weekRows] = await Promise.all([
+            // The monthly reports too, from the first Sunday of the block the
+            // oldest listed week is in, so its monthly report is found. Only
+            // the net sales out of the figures, not the whole of them.
             supabase
                 .from('weekly_reports')
-                .select('id, week_start, status, published_at, send_count, sent_to')
+                .select('id, week_start, weeks, status, published_at, send_count, sent_to, net:figures->>net')
                 .eq('restaurant_id', restaurantId)
-                .gte('week_start', from),
+                .gte('week_start', fourWeeksOf(from)?.start || from),
             supabase
                 .from('sales_records')
                 .select('sale_date, gross_sales, net_sales, tender_sales, is_closed')
@@ -331,7 +409,18 @@ export default function ReportsListPage() {
             .filter(l => l.came_from === 'archive')
             .map(l => l.entry_date))
 
-        const byWeek = new Map((reports.data || []).map(r => [r.week_start, r]))
+        // A week and its block's monthly report share a Sunday, so the two are
+        // kept apart: one a week, one a block.
+        const weekly = (reports.data || []).filter(r => (r.weeks ?? 1) === 1)
+        const byWeek = new Map(weekly.map(r => [r.week_start, r]))
+        setMonths(new Map(wanted.map(w => fourWeeksOf(w)?.start).filter(Boolean).map(start => {
+            const block = fourWeeksOf(start)
+            return [start, {
+                start,
+                report: (reports.data || []).find(r => r.weeks === 4 && r.week_start === start) || null,
+                sent: block.weeks.filter(w => byWeek.get(w)?.status === 'published').length,
+            }]
+        })))
         const imported = new Set((weekRows.data || [])
             .filter(w => w.imported_at)
             .map(w => w.week_start))
@@ -376,6 +465,7 @@ export default function ReportsListPage() {
             .from('weekly_reports')
             .select('id, week_start, report_sections(id, key, title, sort_order, report_items(*))')
             .eq('restaurant_id', restaurantId)
+            .eq('weeks', 1)
             .lt('week_start', weekStart)
             .order('week_start', { ascending: false })
             .limit(1)
@@ -444,13 +534,32 @@ export default function ReportsListPage() {
 
     if (!restaurantId) return null
 
+    // The list as drawn: each week, and above the newest of a block's weeks its
+    // monthly report, or the row saying it is on its way. Before 1 November a
+    // block only shows once its report exists (October, made by hand).
+    const listed = []
+    const placed = new Set()
+    for (const week of weeks) {
+        const month = months.get(fourWeeksOf(week.weekStart)?.start)
+        if (month && !placed.has(month.start)) {
+            placed.add(month.start)
+            // A draft's net sales are its four weeks' added up, the same
+            // figures as the rows under it, while all four are on the list.
+            const four = weeks.filter(w => fourWeeksOf(w.weekStart)?.start === month.start)
+            const liveNet = four.length === 4 ? four.reduce((t, w) => t + w.net, 0) : null
+            if (month.report || month.start >= FIRST_MONTHLY) listed.push({ month: { ...month, liveNet } })
+        }
+        listed.push({ week })
+    }
+
     return (
         <div className="space-y-4">
             <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div>
                     <h2 className={pageTitle}>Reports</h2>
                     <p className={pageSubtitle}>
-                        One report a week, written from the figures already in the Hub.
+                        One report a week, written from the figures already in the Hub, and a monthly report
+                        adding up every four weeks.
                     </p>
                 </div>
                 <button onClick={load} className={secondaryButton} disabled={loading}>
@@ -472,7 +581,17 @@ export default function ReportsListPage() {
                 the team already made this choice, so this follows them rather
                 than inventing a third way. */}
             <div className="md:hidden space-y-3">
-                {weeks.map(week => {
+                {listed.map(({ week, month }) => {
+                    if (month) {
+                        return (
+                            <MonthCard
+                                key={`m${month.start}`}
+                                month={month}
+                                isNew={isNew(month.report)}
+                                onOpen={() => navigate(`/reports/${month.report.id}`)}
+                            />
+                        )
+                    }
                     const blocked = !week.report && !week.readiness.ready
                     const off = week.readiness.unbalanced
                     return (
@@ -547,7 +666,17 @@ export default function ReportsListPage() {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
-                        {weeks.map(week => {
+                        {listed.map(({ week, month }) => {
+                            if (month) {
+                                return (
+                                    <MonthRow
+                                        key={`m${month.start}`}
+                                        month={month}
+                                        isNew={isNew(month.report)}
+                                        onOpen={() => navigate(`/reports/${month.report.id}`)}
+                                    />
+                                )
+                            }
                             const blocked = !week.report && !week.readiness.ready
                             const off = week.readiness.unbalanced
                             return (
@@ -611,7 +740,7 @@ export default function ReportsListPage() {
 
             <p className="text-sm text-muted px-1">
                 {canWrite
-                    ? 'A week can be started once every day has been entered or marked closed, and every rostered shift has times, time off or a comment on the timesheet. A day that does not match the till is shown, but does not stop the week being started.'
+                    ? 'A week can be started once every day has been entered or marked closed, and every rostered shift has times, time off or a comment on the timesheet. A day that does not match the till is shown, but does not stop the week being started. Once all four weeks of a block are sent, a monthly report adding them up appears here as a draft, for comments before it is sent. It is never sent on its own.'
                     : 'Reports are written by the store manager. This is the same list they see, so you can open any week here instead of searching your email.'}
             </p>
         </div>

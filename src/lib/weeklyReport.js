@@ -229,23 +229,18 @@ export function reportFigures({ days = [], spend = [], labour = [], overheads = 
     const grossProfit = net - costOfSales
     const earnings = grossProfit - overhead
 
-    const share = amount => (net > 0 ? (amount / net) * 100 : null)
-    const shareGross = amount => (gross > 0 ? (amount / gross) * 100 : null)
-
-    return {
-        net, gross,
-        food, foodPct: share(food), foodPctGross: shareGross(food),
-        packaging, packagingPct: share(packaging), packagingPctGross: shareGross(packaging),
-        labour: labourCost, labourPct: share(labourCost), labourPctGross: shareGross(labourCost),
-        deliveryTotal, standing, overhead, overheadPct: share(overhead),
-        grossMargin, grossMarginPct: share(grossMargin),
-        grossProfit, grossProfitPct: share(grossProfit),
-        earnings, earningsPct: share(earnings), earningsPctGross: shareGross(earnings),
-
+    const totals = {
+        net, gross, food, packaging, labour: labourCost, deliveryTotal, standing, overhead,
+        grossMargin, grossProfit, earnings,
         // The cost of making the food and paying the people who made it. On the
         // spreadsheet this line is what the two costs above are read against,
         // so it belongs here rather than being left for anybody to add up.
-        costOfSales, costOfSalesPct: share(costOfSales),
+        costOfSales,
+    }
+
+    return {
+        ...totals,
+        ...sharesFrom(totals),
 
         tradingDays: trading.length,
         labourDays,
@@ -255,6 +250,28 @@ export function reportFigures({ days = [], spend = [], labour = [], overheads = 
         // claim on it is still a week with no invoices in it.
         foodEntries: onPaper(spend, FOOD).length,
         packagingEntries: onPaper(spend, PACKAGING).length,
+    }
+}
+
+// Every share the report gives, worked out from the totals.
+//
+// Percentages are against net sales, matching the cost dashboard; a few carry
+// a share of gross too. The monthly report (fourWeekReport.js) adds up four
+// weeks and works its shares out here as well, from the sums: an average of
+// four weekly shares is a different and wrong number (October 2026: food
+// 33.23% of the four weeks' net, against 33.55% for the average).
+export function sharesFrom(t) {
+    const share = amount => (num(t.net) > 0 ? (num(amount) / num(t.net)) * 100 : null)
+    const shareGross = amount => (num(t.gross) > 0 ? (num(amount) / num(t.gross)) * 100 : null)
+    return {
+        foodPct: share(t.food), foodPctGross: shareGross(t.food),
+        packagingPct: share(t.packaging), packagingPctGross: shareGross(t.packaging),
+        labourPct: share(t.labour), labourPctGross: shareGross(t.labour),
+        overheadPct: share(t.overhead),
+        grossMarginPct: share(t.grossMargin),
+        grossProfitPct: share(t.grossProfit),
+        earningsPct: share(t.earnings), earningsPctGross: shareGross(t.earnings),
+        costOfSalesPct: share(t.costOfSales),
     }
 }
 
