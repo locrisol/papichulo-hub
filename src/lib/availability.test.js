@@ -14,6 +14,7 @@ import {
     availabilitySummary,
     toRows,
     fromRows,
+    queuedFromRows,
     availabilityProblem,
     windowShape,
     windowLabel,
@@ -252,6 +253,23 @@ describe('the rows the dialog edits', () => {
 
     it('stores nothing at all when every day is unrestricted', () => {
         expect(fromRows(toRows(null))).toBe(null)
+    })
+
+    // His Alfredo, 21 November 2026: any time every day from the 29th was
+    // saved as a date with no week, which the database refuses.
+    it('stores a change to any time every day as an empty week, never as nothing', () => {
+        const queued = queuedFromRows(toRows(null))
+        expect(queued).toEqual({})
+        const employee = { availability: { 0: [] }, availability_from: '2026-11-29', availability_next: queued }
+        expect(patternOn(employee, '2026-11-29')).toEqual({})
+        expect(dayState(patternOn(employee, '2026-11-29'), '2026-11-29')).toEqual(dayState(null, '2026-11-29'))
+        expect(pendingAvailability(employee, '2026-11-21')).toEqual({ from: '2026-11-29', pattern: {} })
+        expect(toRows(queued).every(r => r.state === 'any')).toBe(true)
+    })
+
+    it('stores a queued week with something set the same as the usual week', () => {
+        const rows = toRows({ 0: [] })
+        expect(queuedFromRows(rows)).toEqual(fromRows(rows))
     })
 
     // Saving this as an empty list would turn "between these times" into "not
