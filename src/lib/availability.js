@@ -242,6 +242,17 @@ export function fromRows(rows) {
     return Object.keys(out).length ? out : null
 }
 
+// A week queued to start on a date, ready for the database.
+//
+// Never nothing at all, unlike the usual week: a date is only ever saved with
+// a week beside it (the employees_availability_next_needs_a_date check), so a
+// change to "any time, every day" from the 29th went to the database as a date
+// with no week and was refused. An empty object says the same thing to every
+// reader, a weekday missing from it being no restriction that day.
+export function queuedFromRows(rows) {
+    return fromRows(rows) ?? {}
+}
+
 // The three sets of days worth copying onto in one go.
 //
 // Monday to Friday is the one this exists for. Somebody who can only start at
