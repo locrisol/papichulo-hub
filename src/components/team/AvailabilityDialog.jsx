@@ -9,7 +9,7 @@ import {
     segmentTrack, segmentButton,
 } from '@/lib/controlStyles'
 import {
-    toRows, fromRows, availabilityProblem, windowShape, copyDay, DAY_GROUPS,
+    toRows, fromRows, queuedFromRows, availabilityProblem, windowShape, copyDay, DAY_GROUPS,
     DAY_START, DAY_END, patternOn,
 } from '@/lib/availability'
 import { todayISO, fullDate, addDays } from '@/lib/dates'
@@ -157,7 +157,7 @@ export default function AvailabilityDialog({ employee, onClose, onChanged }) {
             .from('employees')
             .update({
                 availability: fromRows(rows),
-                availability_next: changing ? fromRows(nextRows) : null,
+                availability_next: changing ? queuedFromRows(nextRows) : null,
                 availability_from: changing ? from : null,
             })
             .eq('id', employee.id)
