@@ -329,9 +329,15 @@ export function dayCell({
         //
         // On a week nobody imported, a typed row is the only kind there is and
         // says nothing new by existing, so nothing is asked.
+        //
+        // **A typed Training or Trial day is already explained** (his, 22
+        // November 2026). Somebody new on trial is not on the till yet, so
+        // their hours can only be typed, and the label says why the report has
+        // nothing for them. A till time moved by hand still asks: the label
+        // says what the day was, not why the clock was wrong.
         unexplained: mine.some(e => (
             !String(e.note || '').trim()
-            && (e.source === 'corrected' || (imported && e.source === 'typed'))
+            && (e.source === 'corrected' || (imported && e.source === 'typed' && kindOf(e.kind).value === 'worked'))
         )),
         // A clock in with no clock out. It comes to nought hours and the pay
         // mail only carries a shift with both ends, so left alone the day
