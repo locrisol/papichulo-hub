@@ -278,6 +278,32 @@ describe('a week whose till report has been read in', () => {
         expect(unanswered(rows)).toEqual([{ person: aoife, days: [], changed: [MON], open: [] }])
     })
 
+    // His, 22 November 2026: somebody new is not on the till yet, so a trial
+    // can only be typed, and the label is the reason.
+    it.each(['trial', 'training'])('takes a typed %s day as said already', kind => {
+        const rows = [personWeek({
+            person: aoife, weekStart: WEEK, imported: true, today: AFTER,
+            entries: [shift({ employee_id: 'e1', work_date: MON, starts_at: '10:00:00', ends_at: '14:00:00', source: 'typed', kind })],
+        })]
+        expect(weekAnswered(rows)).toBe(true)
+    })
+
+    it('still wants a comment on a till time moved by hand on a trial day', () => {
+        const rows = [personWeek({
+            person: aoife, weekStart: WEEK, imported: true, today: AFTER,
+            entries: [shift({ employee_id: 'e1', work_date: MON, starts_at: '10:00:00', ends_at: '14:00:00', source: 'corrected', kind: 'trial' })],
+        })]
+        expect(unanswered(rows)).toEqual([{ person: aoife, days: [], changed: [MON], open: [] }])
+    })
+
+    it('still wants a clock out on a trial day', () => {
+        const rows = [personWeek({
+            person: aoife, weekStart: WEEK, imported: true, today: AFTER,
+            entries: [shift({ id: 't9', employee_id: 'e1', work_date: MON, starts_at: '10:00:00', ends_at: null, source: 'typed', kind: 'trial' })],
+        })]
+        expect(unanswered(rows)).toEqual([{ person: aoife, days: [], changed: [], open: [MON] }])
+    })
+
     it('is happy once those hours say why', () => {
         const rows = [personWeek({
             person: aoife, weekStart: WEEK, imported: true, today: AFTER,
